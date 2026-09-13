@@ -81,7 +81,8 @@ def main(argv: list[str] | None = None) -> int:
         for path in logs.list_logs(args.task)[: args.tail]:
             print(path)
         return 0
-    description = args.description if args.command == "task" else _load_data(args.file).get("description")
+    definition = None if args.command == "task" else _load_data(args.file)
+    description = args.description if args.command == "task" else definition.get("description")
     if not isinstance(description, str) or not description.strip():
         print("ERROR: workflow file requires a string 'description'.")
         return 2
@@ -94,7 +95,18 @@ def main(argv: list[str] | None = None) -> int:
     remove_worktree = False
     try:
         worktree = manager.create(args.cwd if args.command == "task" else Path.cwd(), description)
-        result = asyncio.run(engine.run_high_level(description, worktree.path))
+        if definition and definition.get("tasks"):
+            specifications = definition["tasks"]
+            if not isinstance(specifications, list) or not all(isinstance(item, dict) for item in specifications):
+                print("ERROR: workflow 'tasks' must be a list of mappings.")
+                return 2
+            workflow_id, _ = engine.create_workflow(description, specifications)
+            asyncio.run(engine.execute(workflow_id, worktree.path))
+            status = state.refresh_workflow_status(workflow_id)
+            from .workflow import WorkflowResult
+            result = WorkflowResult(workflow_id, status.value == "passed", "READY" if status.value == "passed" else str(status))
+        else:
+            result = asyncio.run(engine.run_high_level(description, worktree.path))
         workflow_id = result.workflow_id
         changed = False
         if result.ready:

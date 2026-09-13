@@ -42,6 +42,34 @@ class WorkflowEngine:
                                           dependencies=(verification.id,), max_attempts=self.config.max_attempts))
         return workflow_id, [plan, implementation, verification, review]
 
+    def create_workflow(self, description: str, specifications: list[dict[str, object]]) -> tuple[str, list[Task]]:
+        """Create a user-defined dependency graph from a validated workflow file."""
+        workflow_id = self.state.create_workflow(description)
+        identifiers: dict[str, str] = {}
+        for index, specification in enumerate(specifications):
+            identifier = specification.get("id", f"task-{index + 1}")
+            if not isinstance(identifier, str) or not identifier or identifier in identifiers:
+                raise ValueError("Each workflow task needs a unique string id.")
+            identifiers[identifier] = Task("", "", workflow_id).id
+        tasks: list[Task] = []
+        for index, specification in enumerate(specifications):
+            identifier = specification.get("id", f"task-{index + 1}")
+            description_value = specification.get("description")
+            role = specification.get("role")
+            dependencies = specification.get("dependencies", [])
+            if not isinstance(description_value, str) or not isinstance(role, str):
+                raise ValueError("Each workflow task requires string description and role fields.")
+            if not isinstance(dependencies, list) or not all(isinstance(item, str) for item in dependencies):
+                raise ValueError("Workflow task dependencies must be a list of task ids.")
+            unknown = [item for item in dependencies if item not in identifiers]
+            if unknown:
+                raise ValueError(f"Unknown task dependencies: {', '.join(unknown)}")
+            task = Task(description_value, role, workflow_id, id=identifiers[identifier],
+                        dependencies=tuple(identifiers[item] for item in dependencies),
+                        max_attempts=self.config.max_attempts)
+            tasks.append(self.state.add_task(task))
+        return workflow_id, tasks
+
     async def execute(self, workflow_id: str, working_directory: str | Path) -> None:
         semaphore = asyncio.Semaphore(self.config.concurrency)
         while ready := self.state.ready_tasks(workflow_id):

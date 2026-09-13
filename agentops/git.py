@@ -38,6 +38,7 @@ class GitWorktreeManager:
         slug = re.sub(r"[^a-z0-9]+", "-", task_name.lower()).strip("-")[:32] or "task"
         branch = f"agentops/{slug}-{uuid4().hex[:8]}"
         path = repository / ".agentops" / "worktrees" / branch.replace("/", "-")
+        path.parent.mkdir(parents=True, exist_ok=True)
         result = self._run(repository, "worktree", "add", "-b", branch, str(path), "HEAD")
         if result.returncode:
             raise GitError(result.stderr.strip() or "Could not create Git worktree.")

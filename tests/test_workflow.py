@@ -47,3 +47,15 @@ class WorkflowTests(unittest.TestCase):
         result = asyncio.run(engine.run_high_level("Fix issue", Path.cwd()))
         self.assertTrue(result.ready)
         self.assertEqual(len(self.state.list_tasks(result.workflow_id)), 7)
+
+    def test_custom_workflow_accepts_parallel_tasks(self):
+        passed_check = MagicMock(succeeded=True, output="tests passed")
+        self.verifier.run = MagicMock(return_value=asyncio.sleep(0, result=[passed_check]))
+        engine = WorkflowEngine(self.config, self.state, self.registry, self.runner, self.verifier)
+        workflow_id, tasks = engine.create_workflow("custom", [
+            {"id": "a", "description": "first", "role": "implementation"},
+            {"id": "b", "description": "second", "role": "implementation"},
+            {"id": "verify", "description": "check", "role": "verification", "dependencies": ["a", "b"]},
+        ])
+        asyncio.run(engine.execute(workflow_id, Path.cwd()))
+        self.assertTrue(all(self.state.get_task(task.id).status.value == "passed" for task in tasks))
