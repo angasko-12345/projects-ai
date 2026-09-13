@@ -14,6 +14,7 @@ from .registry import AgentRegistry
 from .logging import LogManager
 from .runner import AgentRunner
 from .state import StateStore
+from .tasks import Task
 from .verification import Verifier
 from .workflow import WorkflowEngine
 
@@ -89,14 +90,27 @@ def main(argv: list[str] | None = None) -> int:
     engine = WorkflowEngine(config, state, registry, AgentRunner(logs), Verifier(config.verification_commands))
     manager = GitWorktreeManager()
     worktree = None
+    workflow_id = None
+    remove_worktree = False
     try:
         worktree = manager.create(args.cwd if args.command == "task" else Path.cwd(), description)
         result = asyncio.run(engine.run_high_level(description, worktree.path))
+        workflow_id = result.workflow_id
         changed = False
         if result.ready:
             changed = manager.commit_changes(worktree, f"agentops: {description}")
             if changed:
-                manager.merge(worktree)
+                try:
+                    manager.merge(worktree)
+                except GitError as error:
+                    state.add_task(Task(
+                        f"Resolve Git merge conflict for '{description}'.\n{error}", "debugging", workflow_id,
+                        max_attempts=config.max_attempts,
+                    ))
+                    print(f"CONFLICT: {error}")
+                    print("A persisted conflict-resolution task was created; the worktree is preserved.")
+                    return 1
+        remove_worktree = result.ready
         print(f"RESULT: {result.summary}")
         print(f"workflow: {result.workflow_id}")
         print("merged worktree changes" if changed else "no worktree changes to merge")
@@ -105,9 +119,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ERROR: {error}")
         return 1
     finally:
-        if worktree is not None:
+        if worktree is not None and remove_worktree:
             try:
                 manager.remove(worktree)
             except GitError as error:
                 print(f"Worktree preserved at {worktree.path}: {error}")
+        elif worktree is not None:
+            print(f"Worktree preserved at {worktree.path} for inspection or repair.")
         state.close()
