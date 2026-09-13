@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 from pathlib import Path
 
 from . import __version__
 from .config import load_config
 from .registry import AgentRegistry
+from .logging import LogManager
+from .runner import AgentRunner
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -41,5 +44,25 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "status":
         print("No workflow state has been requested yet.")
         return 0
-    print(f"The '{args.command}' command is available after Stage 2 initialization.")
+    logs = LogManager(Path.cwd() / ".agentops" / "logs")
+    if args.command == "run":
+        registry = AgentRegistry(config)
+        try:
+            agent = registry.get(args.agent)
+            result = asyncio.run(AgentRunner(logs).run_agent(agent, args.prompt, Path.cwd()))
+        except (KeyError, RuntimeError, OSError) as error:
+            print(f"ERROR: {error}")
+            return 1
+        print(f"[{result.agent}] {'PASSED' if result.succeeded else 'FAILED'} ({result.duration_seconds:.1f}s)")
+        print(f"log: {result.log_path}")
+        if result.stdout:
+            print(result.stdout.rstrip())
+        if result.stderr:
+            print(result.stderr.rstrip())
+        return 0 if result.succeeded else 1
+    if args.command == "logs":
+        for path in logs.list_logs(args.task)[: args.tail]:
+            print(path)
+        return 0
+    print(f"The '{args.command}' command is available after Stage 3 initialization.")
     return 0
