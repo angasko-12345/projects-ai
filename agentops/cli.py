@@ -8,9 +8,14 @@ from pathlib import Path
 
 from . import __version__
 from .config import load_config
+from .config import _load_data
+from .git import GitError, GitWorktreeManager
 from .registry import AgentRegistry
 from .logging import LogManager
 from .runner import AgentRunner
+from .state import StateStore
+from .verification import Verifier
+from .workflow import WorkflowEngine
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -41,10 +46,21 @@ def main(argv: list[str] | None = None) -> int:
         for name, agent in AgentRegistry(config).detect().items():
             print(f"{name:<14} {'ONLINE' if agent.available else 'OFFLINE'}")
         return 0
+    state_root = (getattr(args, "cwd", None) or Path.cwd()) / ".agentops"
+    logs = LogManager(state_root / "logs")
     if args.command == "status":
-        print("No workflow state has been requested yet.")
+        state = StateStore(state_root / "state.sqlite")
+        try:
+            workflow = state.latest_workflow()
+            if workflow is None:
+                print("No persisted workflows.")
+            else:
+                print(f"{workflow['id']}  {workflow['status']}  {workflow['description']}")
+                for task in state.list_tasks(workflow["id"]):
+                    print(f"  {task.status:<8} {task.role:<16} {task.description}")
+        finally:
+            state.close()
         return 0
-    logs = LogManager(Path.cwd() / ".agentops" / "logs")
     if args.command == "run":
         registry = AgentRegistry(config)
         try:
@@ -64,5 +80,34 @@ def main(argv: list[str] | None = None) -> int:
         for path in logs.list_logs(args.task)[: args.tail]:
             print(path)
         return 0
-    print(f"The '{args.command}' command is available after Stage 3 initialization.")
-    return 0
+    description = args.description if args.command == "task" else _load_data(args.file).get("description")
+    if not isinstance(description, str) or not description.strip():
+        print("ERROR: workflow file requires a string 'description'.")
+        return 2
+    state = StateStore(state_root / "state.sqlite")
+    registry = AgentRegistry(config)
+    engine = WorkflowEngine(config, state, registry, AgentRunner(logs), Verifier(config.verification_commands))
+    manager = GitWorktreeManager()
+    worktree = None
+    try:
+        worktree = manager.create(args.cwd if args.command == "task" else Path.cwd(), description)
+        result = asyncio.run(engine.run_high_level(description, worktree.path))
+        changed = False
+        if result.ready:
+            changed = manager.commit_changes(worktree, f"agentops: {description}")
+            if changed:
+                manager.merge(worktree)
+        print(f"RESULT: {result.summary}")
+        print(f"workflow: {result.workflow_id}")
+        print("merged worktree changes" if changed else "no worktree changes to merge")
+        return 0 if result.ready else 1
+    except (GitError, OSError, RuntimeError) as error:
+        print(f"ERROR: {error}")
+        return 1
+    finally:
+        if worktree is not None:
+            try:
+                manager.remove(worktree)
+            except GitError as error:
+                print(f"Worktree preserved at {worktree.path}: {error}")
+        state.close()

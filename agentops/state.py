@@ -85,6 +85,9 @@ class StateStore:
         rows = self.connection.execute(query, (workflow_id,) if workflow_id else ()).fetchall()
         return [self._task_from_row(row) for row in rows]
 
+    def latest_workflow(self) -> sqlite3.Row | None:
+        return self.connection.execute("SELECT * FROM workflows ORDER BY created_at DESC LIMIT 1").fetchone()
+
     def update_task(self, task: Task) -> None:
         task.updated_at = utc_now()
         self.connection.execute(
