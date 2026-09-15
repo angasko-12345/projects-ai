@@ -30,10 +30,12 @@
 
 ---
 
-## AgentOps Packaging & Release
+## AgentOps Packaging & Release — ✅ RESOLVED 2026-09-15
 
-**Status:** Blocked on decision
+**Status:** Done. Commit strategy executed (`935f4dc` + subtree fold `a1c95d3` + branch unification `fd9abfb`); Roadmap Phase 1 + Phase 3 delivered (`1047121`); fresh `dist/AgentOps.exe` (14,807,079 bytes) published as GitHub Release `v0.1.3`. Exe stays out of git per standing decision.
 
-**Issue:** Working tree has uncommitted feature work (GUI, packaging, AgentRun, Verification Kernel). Need commit strategy decided before substantial new work.
+**See:** `memory/project.md` release record.
 
-**See:** `memory/project.md` priority #3.
+## Roadmap Phase 1 + Phase 3 — ✅ COMPLETE 2026-09-15
+
+**Status:** Done, suite 224 OK. Plan: `plans/phase-1-storage-dtos-phase-3-worktree-refs-plan.md`. Output: `outputs/phase-1-storage-dtos-phase-3-worktree-refs.md`.
