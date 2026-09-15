@@ -136,3 +136,11 @@
 - **Reason:** Task requirement (Phase 4 header): durable execution timeline + first-class artifacts with SQLite as source of truth, GUI now / API later via the shared subscriber protocol.
 - **Alternatives considered:** Extending the legacy `events` table in place (rejected — kind/detail strings can't carry severity/payload/version; new table keeps old readers intact); FK-constrained run refs (rejected — same lesson as `failures` table: recovery evidence has no run to reference).
 - **Agents involved:** pi-manager (copilot + opencode live reviews requested).
+
+## 2026-09-15 — Roadmap v2.0 expansion (unified three-track plan)
+
+- **Date:** 2026-09-15
+- **Decision:** Expanded `roadmap.md` from the 10-phase list into a unified, execution-ready v2.0: Track A (architecture stabilization, A1–A10: state machine, AgentAdapter, ProcessRuntime, structured evidence, WorkflowEngine decomposition, ReviewRun/MergeRun, StateStore split, persistence-failure policy, artifact lifecycle, CI gating), Track B (governance/API: B6 policies → B7 router → B8 approvals → B9 project memory → B10 REST/evals), Track C (UX product layer C1/C2/C3 from `chatgpt_addition_recommendations.md`). Added a Decision Backlog (D1–D8), sequencing DAG, milestones, and assumptions. Preserved the entire prior roadmap verbatim under "Preserved historical record" — nothing removed.
+- **Reason:** User directive: read the GitHub `.agents/plans/` documents and expand the roadmap into a practical, prioritized, execution-ready plan with objectives, owners, dependencies, risks, milestones, and opened decisions; horizon stays open-ended; UX items included.
+- **Alternatives considered:** Keeping the two parallel tracks (original 10 phases + separate ChatGPT-hardening track — rejected, overlaps/duplication); keeping UX in a separate document (rejected — user requested it in the roadmap).
+- **Agents involved:** pi-manager.
