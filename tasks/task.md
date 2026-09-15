@@ -111,10 +111,10 @@ Structured-results upgrade complete. `agentops/agent_result.py` (leaf): versione
 
 ---
 
-# USER NOTE TO AGENT: Put everything below this point into dedicated files in "D:\admin\code\projects\.agent\...". Use this as a replaceable, updated summary of recent projects/prompts.
+# USER NOTE TO AGENT: Put everything below this point into dedicated files in "D:\admin\code\projects\.agents\...". Use this as a replaceable, updated summary of recent projects/prompts.
 
-## Recent summary (replaceable — details live in .agent/)
+## Recent summary (replaceable — details live in .agents/)
 
-- **Phase 2 — Verification Kernel: DONE.** Deterministic kernel (`verification_model.py`, `verification_kernel.py`, schema v2, config profiles, `verify` CLI, GUI summaries). 122 tests OK. Details: `.agent/outputs/phase-2-verification-kernel.md`.
-- **Phase 3 — Failure, Repair, and Recovery Kernel: DONE.** First-class failure subsystem (`failure.py` leaf: 16 categories, deterministic classifier, RetryPolicy, RepairPlan, 6 interruption contexts), schema v3 `failures` table, workflow bounded-retry + inherited context + parent-linked AgentRuns, `failures`/`recover` CLI, controller/GUI views. 146 tests OK (1 pre-existing skip); exe rebuilt (14,756,616 bytes). Plan: `.agent/plans/phase-3-failure-recovery-kernel-plan.md`. Details: `.agent/outputs/phase-3-failure-recovery-kernel.md`.
+- **Phase 2 — Verification Kernel: DONE.** Deterministic kernel (`verification_model.py`, `verification_kernel.py`, schema v2, config profiles, `verify` CLI, GUI summaries). 122 tests OK. Details: `.agents/outputs/phase-2-verification-kernel.md`.
+- **Phase 3 — Failure, Repair, and Recovery Kernel: DONE.** First-class failure subsystem (`failure.py` leaf: 16 categories, deterministic classifier, RetryPolicy, RepairPlan, 6 interruption contexts), schema v3 `failures` table, workflow bounded-retry + inherited context + parent-linked AgentRuns, `failures`/`recover` CLI, controller/GUI views. 146 tests OK (1 pre-existing skip); exe rebuilt (14,756,616 bytes). Plan: `.agents/plans/phase-3-failure-recovery-kernel-plan.md`. Details: `.agents/outputs/phase-3-failure-recovery-kernel.md`.
 - **Pending:** copilot/opencode review findings (requested, replies pending); commit strategy for accumulated uncommitted work (AgentRun + Verification + Failure kernels).
