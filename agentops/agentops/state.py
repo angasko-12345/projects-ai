@@ -28,7 +28,8 @@ from .failure import (
     RecoveryState,
     RepairAction,
 )
-from .tasks import Task, TaskStatus, utc_now
+from .git import WorktreeRef
+from .tasks import Task, TaskStatus, Workflow, utc_now
 from .verification_model import (
     VerificationCheck,
     VerificationCheckClass,
@@ -181,6 +182,7 @@ class StateStore:
         self._migrate_failures()
         self._migrate_typed_events()
         self._migrate_artifacts()
+        self._migrate_worktree_refs()
         self.connection.commit()
 
     def _migrate_agent_runs(self) -> None:
@@ -416,6 +418,30 @@ class StateStore:
         if "verification_run_id" not in existing:
             self.connection.execute("ALTER TABLE tasks ADD COLUMN verification_run_id TEXT")
 
+    def _workflow_from_row(self, row: sqlite3.Row) -> Workflow:
+        try:
+            status = TaskStatus(row["status"])
+        except (ValueError, KeyError, TypeError):
+            status = TaskStatus.PENDING
+        return Workflow(
+            id=row["id"],
+            description=row["description"],
+            status=status,
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
+
+    def _worktree_ref_from_row(self, row: sqlite3.Row) -> WorktreeRef:
+        return WorktreeRef(
+            id=row["id"],
+            workflow_id=row["workflow_id"],
+            path=row["path"],
+            branch=row["branch"],
+            base_branch=row["base_branch"],
+            base_commit=row["base_commit"],
+            created_at=row["created_at"],
+        )
+
     def _task_from_row(self, row: sqlite3.Row) -> Task:
         return Task(
             id=row["id"], workflow_id=row["workflow_id"], description=row["description"], role=row["role"],
@@ -514,9 +540,11 @@ class StateStore:
             rows = self.connection.execute(query, (workflow_id,) if workflow_id else ()).fetchall()
         return [self._task_from_row(row) for row in rows]
 
-    def latest_workflow(self) -> sqlite3.Row | None:
+    def latest_workflow(self) -> Workflow | None:
+        """Newest workflow as a DTO (Phase 1: no Row leakage)."""
         with self._lock:
-            return self.connection.execute("SELECT * FROM workflows ORDER BY rowid DESC LIMIT 1").fetchone()
+            row = self.connection.execute("SELECT * FROM workflows ORDER BY rowid DESC LIMIT 1").fetchone()
+        return self._workflow_from_row(row) if row is not None else None
 
     def count_workflows(self, status: str | None = None) -> int:
         query = "SELECT COUNT(*) AS total FROM workflows"
@@ -528,7 +556,7 @@ class StateStore:
             row = self.connection.execute(query, params).fetchone()
         return int(row["total"])
 
-    def list_workflows(self, limit: int = 50, offset: int = 0, status: str | None = None) -> list[sqlite3.Row]:
+    def list_workflows(self, limit: int = 50, offset: int = 0, status: str | None = None) -> list[Workflow]:
         if not isinstance(limit, int) or not isinstance(offset, int) or limit < 0 or offset < 0:
             raise ValueError("Workflow list limit and offset must be non-negative integers.")
         query = "SELECT * FROM workflows"
@@ -538,11 +566,14 @@ class StateStore:
             params = (status,)
         query += " ORDER BY rowid DESC LIMIT ? OFFSET ?"
         with self._lock:
-            return self.connection.execute(query, (*params, limit, offset)).fetchall()
+            rows = self.connection.execute(query, (*params, limit, offset)).fetchall()
+        return [self._workflow_from_row(row) for row in rows]
 
-    def get_workflow(self, workflow_id: str) -> sqlite3.Row | None:
+    def get_workflow(self, workflow_id: str) -> Workflow | None:
+        """Fetch one workflow header as a DTO (Phase 1: no Row leakage)."""
         with self._lock:
-            return self.connection.execute("SELECT * FROM workflows WHERE id = ?", (workflow_id,)).fetchone()
+            row = self.connection.execute("SELECT * FROM workflows WHERE id = ?", (workflow_id,)).fetchone()
+        return self._workflow_from_row(row) if row is not None else None
 
     def update_task(self, task: Task) -> None:
         task.updated_at = utc_now()
@@ -588,12 +619,14 @@ class StateStore:
             payload={"legacy_kind": kind},
         ))
 
-    def list_events(self, workflow_id: str, task_id: str | None = None) -> list[sqlite3.Row]:
+    def list_events(self, workflow_id: str, task_id: str | None = None) -> list[dict[str, object]]:
+        """Legacy events as plain dicts (Phase 1: no Row leakage)."""
         query = "SELECT * FROM events WHERE workflow_id = ?" + (" AND task_id = ?" if task_id else "")
         query += " ORDER BY rowid"
         params: tuple[str, ...] = (workflow_id,) if not task_id else (workflow_id, task_id)
         with self._lock:
-            return self.connection.execute(query, params).fetchall()
+            rows = self.connection.execute(query, params).fetchall()
+        return [dict(row) for row in rows]
 
     def _event(self, workflow_id: str, task_id: str | None, kind: str, detail: str) -> None:
         self.connection.execute(
@@ -1657,6 +1690,82 @@ class StateStore:
                 "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
                 (5, utc_now()),
             )
+
+    def _migrate_worktree_refs(self) -> None:
+        """Phase 3: persisted worktree provenance (additive, idempotent)."""
+        self.connection.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS worktree_refs (
+                id TEXT PRIMARY KEY,
+                -- Plain TEXT refs (no REFERENCES): refs must survive for
+                -- workflows recorded in older DBs and crash-recovery paths.
+                workflow_id TEXT NOT NULL,
+                path TEXT NOT NULL,
+                branch TEXT NOT NULL,
+                base_branch TEXT NOT NULL,
+                base_commit TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_worktree_refs_workflow
+                ON worktree_refs(workflow_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_worktree_refs_path
+                ON worktree_refs(path);
+            """
+        )
+        migrated = self.connection.execute(
+            "SELECT 1 FROM schema_migrations WHERE version = 6"
+        ).fetchone()
+        if migrated is None:
+            self.connection.execute(
+                "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+                (6, utc_now()),
+            )
+
+    def record_worktree_ref(self, ref: WorktreeRef) -> WorktreeRef:
+        """Persist one worktree provenance record (Phase 3)."""
+        if not ref.id:
+            ref.id = str(uuid4())
+        if not ref.created_at:
+            ref.created_at = utc_now()
+        with self._lock:
+            self.connection.execute(
+                """INSERT OR REPLACE INTO worktree_refs (
+                    id, workflow_id, path, branch, base_branch, base_commit, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (ref.id, ref.workflow_id, ref.path, ref.branch,
+                 ref.base_branch, ref.base_commit, ref.created_at),
+            )
+            self.connection.commit()
+        return ref
+
+    def get_worktree_ref(self, workflow_id: str) -> WorktreeRef | None:
+        """Latest persisted provenance for a workflow, if any."""
+        with self._lock:
+            row = self.connection.execute(
+                "SELECT * FROM worktree_refs WHERE workflow_id = ? ORDER BY rowid DESC LIMIT 1",
+                (workflow_id,),
+            ).fetchone()
+        return self._worktree_ref_from_row(row) if row is not None else None
+
+    def find_worktree_ref_by_path(self, path: str | Path) -> WorktreeRef | None:
+        """Look up persisted provenance by worktree path (retry/merge path)."""
+        with self._lock:
+            row = self.connection.execute(
+                "SELECT * FROM worktree_refs WHERE path = ? ORDER BY rowid DESC LIMIT 1",
+                (str(path),),
+            ).fetchone()
+        return self._worktree_ref_from_row(row) if row is not None else None
+
+    def list_worktree_refs(self, workflow_id: str | None = None) -> list[WorktreeRef]:
+        query = "SELECT * FROM worktree_refs"
+        params: tuple[str, ...] = ()
+        if workflow_id is not None:
+            query += " WHERE workflow_id = ?"
+            params = (workflow_id,)
+        query += " ORDER BY rowid"
+        with self._lock:
+            rows = self.connection.execute(query, params).fetchall()
+        return [self._worktree_ref_from_row(row) for row in rows]
 
     def _failure_from_row(self, row: sqlite3.Row) -> Failure:
         recovery = row["recovery_state"]

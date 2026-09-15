@@ -43,6 +43,10 @@
 - Operating rules: read memory before substantial work; update after; preserve history; keep concise, no transcripts; no duplicate entries.
 - Manager verifies Intercom connectivity before major work.
 
+## Phase 1 + Phase 3 delivery 2026-09-15
+
+- Roadmap Phase 1 (Storage DTOs) + Phase 3 (persisted worktree refs) implemented in `agentops/`: Workflow/WorktreeRef DTOs, schema v6, controller serialization, stored-provenance retry, CLI/GUI exposure. Suite 224 OK (3 skips). GitHub `.agents/plans/chatgpt_*.md` synced locally; phase-3 kernel plan already DONE. See `memory/roadmap.md`, `memory/architecture.md`, `memory/decisions.md`, `memory/lessons.md`.
+
 ## Current priorities
 
 1. Structured Results upgrade implemented 2026-09-15: `agentops/agent_result.py` leaf (versioned `AgentResult` schema with all 12 required fields, `ParseMode`, total `parse_agent_result`/`agent_result_from_dict`/`coerce_agent_result`, `evaluate_execution` five-way outcome distinction), runner + workflow store normalized envelopes (TEXT column unchanged, no migration), prompt seam gains optional JSON contract with plain-text fallback, 34 dedicated tests. Copilot snapshot review (94s, read-only `/tmp/agentops-review-structured-results/`) reported 4 findings, all fixed with regressions (JSON-text coerce, strict process-success bool, unsupported-version downgrade for all statuses, warnings+parse_mode persisted); hostile-payload test caught a 5th bug (repr crash in warnings). Full suite 184 passing (1 platform skip). No live Intercom peers; opencode/fcc-claude reviews not requested (no live sessions, backend/server unverified). No exe rebuild (packaging untouched).

@@ -225,6 +225,12 @@
 - **Solution:** Retry the whole open (8 attempts, backoff, close-on-failure); test closes handles in `finally`. 10/10 stress runs clean.
 - **Remember:** Retry must cover connection setup through migrations, and every failed open must close its handle — especially on Windows where open files block cleanup.
 
+### 2026-09-15 — Phase 1/3 test fallout (2 fixes)
+- **Symptom:** New run failed: `IndentationError` in `cli.py status` (worktree-ref print spliced inside the failure loop) + `test_concurrent_migration_single_version` asserting `[1..5]`.
+- **Root cause:** Edit inserted the provenance print at the wrong indent; schema v6 legitimately adds a 6th migration version.
+- **Solution:** Re-indented CLI block (failures loop intact, provenance after); updated test to `[1..6]`. Suite 224 OK.
+- **Remember:** When splicing prints into a loop body, verify the `for` suite boundary; bump migration-version assertions with every additive schema change.
+
 ## Environment-specific problems
 
 - Repo root `D:/admin/code/projects`; no stack/test runner configured yet — record pitfalls here once encountered.

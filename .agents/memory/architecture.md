@@ -6,6 +6,11 @@
 
 - AgentOps v0.1.2 (`D:/admin/code/projects/agentops`): layered local-first orchestrator. Entry points (`cli.py`, `gui.py`+`gui_controller.py`) compose an injected `WorkflowEngine`; GUI never imports service modules directly — all Tk updates marshalled via `root.after()`, work runs on controller background threads. Audited 2026-09-13.
 
+## Phase 1 + Phase 3 delivery 2026-09-15
+
+- Phase 1 Storage DTOs DONE: `tasks.Workflow` DTO; `StateStore.latest/list/get_workflow` return DTOs; `list_events` returns plain dicts; controller `serialize_workflow`/`serialize_task` emit dicts (tasks no longer leak dataclasses); `get/latest_workflow` include serialized failures + `worktree_ref`; CLI status uses attribute access. Tests: `test_storage_dtos_worktree_refs.py` (DTO mapping) + updated `test_state`/`test_review_regressions`/`test_events` (v6). Suite 224 OK, 3 skips.
+- Phase 3 Persisted worktree refs DONE: `git.WorktreeRef` DTO; schema v6 `worktree_refs` table (FK-free, indexed by workflow/path); `record/get/find_by_path/list` CRUD; CLI + controller record provenance after workflow creation; `retry_merge` prefers stored base_branch/base_commit (`used_stored_provenance` flag); controller `get/list_worktree_refs`; CLI status prints provenance line. Survives restart (reopen test). GitHub `.agents/plans` synced locally (`chatgpt_*.md` restored from origin/main) — phase-3 kernel plan already DONE; ChatGPT audit/addition docs map to roadmap (AgentAdapter/ProcessRuntime/engine split deferred per stabilization-first principle).
+
 ## Components
 
 - `tasks.py`: `Task` dataclass, `TaskStatus` StrEnum — leaf module, no I/O.

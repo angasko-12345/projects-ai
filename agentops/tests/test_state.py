@@ -33,16 +33,25 @@ class StateStoreTests(unittest.TestCase):
         self.state.event(self.workflow_id, None, "second", "two")
         kinds = [row["kind"] for row in self.state.list_events(self.workflow_id)]
         self.assertEqual(kinds, ["first", "second"])
+        # Phase 1: legacy events are plain dicts, never sqlite3.Row.
+        self.assertIsInstance(self.state.list_events(self.workflow_id)[0], dict)
 
     def test_workflows_list_newest_first_with_pagination(self):
         second = self.state.create_workflow("second workflow")
         third = self.state.create_workflow("third workflow")
         self.assertEqual(self.state.count_workflows(), 3)
-        self.assertIsNotNone(self.state.get_workflow(second))
+        fetched = self.state.get_workflow(second)
+        self.assertIsNotNone(fetched)
+        assert fetched is not None
+        self.assertEqual(fetched.id, second)
+        self.assertEqual(fetched.description, "second workflow")
         self.assertIsNone(self.state.get_workflow("missing-workflow"))
         page = self.state.list_workflows(limit=2, offset=0)
-        self.assertEqual([row["id"] for row in page], [third, second])
+        self.assertEqual([w.id for w in page], [third, second])
         page = self.state.list_workflows(limit=2, offset=2)
-        self.assertEqual([row["id"] for row in page], [self.workflow_id])
+        self.assertEqual([w.id for w in page], [self.workflow_id])
+        latest = self.state.latest_workflow()
+        assert latest is not None
+        self.assertEqual(latest.id, third)
         with self.assertRaises(ValueError):
             self.state.list_workflows(limit=-1)

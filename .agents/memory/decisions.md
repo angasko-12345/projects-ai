@@ -122,6 +122,13 @@
 - **Alternatives considered:** New DB column/table for results (rejected — existing TEXT column already stores JSON, additive-only rule); storing `None` for plain-text output (rejected — envelope with UNKNOWN status + summary preserves evidence without changing process-success semantics).
 - **Agents involved:** pi-manager (copilot read-only snapshot review, 4 findings fixed).
 
+## 2026-09-15 — Storage DTOs (Phase 1) + persisted worktree refs (Phase 3)
+- **Date:** 2026-09-15
+- **Decision:** Completed roadmap Phase 1 (Workflow DTO, no Row leakage past StateStore, controller serializes to plain dicts) and Phase 3 (worktree_refs schema v6, record-on-create in CLI+controller, retry_merge prefers stored provenance). Synced GitHub `.agents/plans/chatgpt_*.md` into the local tree (phase-3 kernel plan was already DONE).
+- **Reason:** User directive (read memory + GitHub .agents/plans, run it; complete Phase 1, implement Phase 3). Stored provenance fixes the memory-only base branch/commit risk (debt #1); DTOs unblock every state consumer.
+- **Alternatives considered:** Returning dataclasses directly from the controller (rejected — GUI/CLI/API need stable plain-dict payloads; dataclasses stay inside StateStore); FK-constrained worktree refs (rejected — recovery evidence must persist without a parent row, per failures/typed_events precedent).
+- **Agents involved:** pi-manager.
+
 ## 2026-09-15 — Event and Artifact Infrastructure (Phase 4)
 
 - **Date:** 2026-09-15

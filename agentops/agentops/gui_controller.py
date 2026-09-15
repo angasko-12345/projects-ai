@@ -18,7 +18,8 @@ from .agent_run import AgentRun, AgentRunStatus, GitRunMetadataCollector
 from .artifacts import ArtifactError, ArtifactStore
 from .config import AppConfig, load_config
 from .finalize import finalize_worktree
-from .git import GitError, GitWorktreeManager, Worktree
+from .git import GitError, GitWorktreeManager, Worktree, WorktreeRef
+from .tasks import Task, Workflow
 from .logging import LogManager
 from .registry import AgentRegistry
 from .runner import AgentRunner, OperationCancelled
@@ -54,6 +55,52 @@ def serialize_failure(failure: Failure) -> dict[str, object]:
 
 
 EventCallback = Callable[[dict[str, object]], None]
+
+
+def serialize_task(task: Task) -> dict[str, object]:
+    """Phase 1: Task dataclass -> plain dict at the controller boundary."""
+    return {
+        "id": task.id,
+        "workflow_id": task.workflow_id,
+        "description": task.description,
+        "role": task.role,
+        "assigned_agent": task.assigned_agent,
+        "dependencies": list(task.dependencies),
+        "status": task.status.value if hasattr(task.status, "value") else str(task.status),
+        "attempts": task.attempts,
+        "max_attempts": task.max_attempts,
+        "result": task.result,
+        "verified": task.verified,
+        "verification_run_id": task.verification_run_id,
+        "created_at": task.created_at,
+        "started_at": task.started_at,
+        "finished_at": task.finished_at,
+        "updated_at": task.updated_at,
+    }
+
+
+def serialize_workflow(workflow: Workflow) -> dict[str, object]:
+    """Phase 1: Workflow dataclass -> plain dict at the controller boundary."""
+    return {
+        "id": workflow.id,
+        "description": workflow.description,
+        "status": workflow.status.value if hasattr(workflow.status, "value") else str(workflow.status),
+        "created_at": workflow.created_at,
+        "updated_at": workflow.updated_at,
+    }
+
+
+def serialize_worktree_ref(ref: WorktreeRef) -> dict[str, object]:
+    """Phase 3: persisted worktree provenance -> plain dict."""
+    return {
+        "id": ref.id,
+        "workflow_id": ref.workflow_id,
+        "path": ref.path,
+        "branch": ref.branch,
+        "base_branch": ref.base_branch,
+        "base_commit": ref.base_commit,
+        "created_at": ref.created_at,
+    }
 
 
 def serialize_verification_check(check: VerificationCheck) -> dict[str, object]:
@@ -333,6 +380,18 @@ class AgentOpsController:
             callback({"kind": "workflow-started", "worktree": str(worktree.path),
                       "base_branch": worktree.base_branch})
             result = asyncio.run(engine.run_high_level(description, worktree.path, cancel_event=cancel_event))
+            # Phase 3: persist provenance against the real workflow id so
+            # retry/merge validate against stored base even after restart.
+            try:
+                from uuid import uuid4 as _uuid4b
+                from .tasks import utc_now as _utc_nowb
+                state.record_worktree_ref(WorktreeRef(
+                    id=str(_uuid4b()), workflow_id=result.workflow_id, path=str(worktree.path),
+                    branch=worktree.branch, base_branch=worktree.base_branch,
+                    base_commit=worktree.base_commit, created_at=_utc_nowb(),
+                ))
+            except Exception:
+                pass
             if cancel_event.is_set():
                 raise OperationCancelled
             changed = False
@@ -368,53 +427,58 @@ class AgentOpsController:
         offset: int = 0,
         status: str | None = None,
     ) -> dict[str, object]:
+        """Phase 1: StateStore returns Workflow DTOs; controller emits plain dicts."""
         root = self._operation_root(directory)
         state = StateStore(self._state_path(root))
         try:
             total = state.count_workflows(status)
             workflows: list[dict[str, object]] = []
-            for row in state.list_workflows(limit=limit, offset=offset, status=status):
-                tasks = state.list_tasks(row["id"])
+            for workflow in state.list_workflows(limit=limit, offset=offset, status=status):
+                tasks = state.list_tasks(workflow.id)
                 counts: dict[str, int] = {}
                 for task in tasks:
                     key = str(task.status)
                     counts[key] = counts.get(key, 0) + 1
-                runs = state.list_agent_runs(row["id"], limit=200)
+                runs = state.list_agent_runs(workflow.id, limit=200)
                 run_counts: dict[str, int] = {}
                 for run in runs:
                     key = run.status.value
                     run_counts[key] = run_counts.get(key, 0) + 1
-                workflows.append({
-                    "id": row["id"],
-                    "status": row["status"],
-                    "description": row["description"],
-                    "created_at": row["created_at"],
-                    "updated_at": row["updated_at"],
+                payload = serialize_workflow(workflow)
+                payload.update({
                     "task_count": len(tasks),
                     "task_counts": counts,
                     "run_count": len(runs),
                     "run_counts": run_counts,
                 })
+                workflows.append(payload)
             return {"total": total, "limit": limit, "offset": offset, "workflows": workflows}
         finally:
             state.close()
 
     def get_workflow(self, directory: str | Path, workflow_id: str) -> dict[str, object] | None:
+        """Phase 1+3: DTO-backed payload with serialized tasks + stored provenance."""
         root = self._operation_root(directory)
         state = StateStore(self._state_path(root))
         try:
             workflow = state.get_workflow(workflow_id)
             if workflow is None:
                 return None
-            tasks = state.list_tasks(workflow["id"])
-            runs = [serialize_agent_run(run) for run in state.list_agent_runs(workflow["id"], limit=200)]
+            tasks = [serialize_task(task) for task in state.list_tasks(workflow.id)]
+            runs = [serialize_agent_run(run) for run in state.list_agent_runs(workflow.id, limit=200)]
             verifications = [
                 serialize_verification_run(run)
-                for run in state.list_verification_runs(workflow["id"], limit=50)
+                for run in state.list_verification_runs(workflow.id, limit=50)
             ]
-            return {"id": workflow["id"], "status": workflow["status"],
-                    "description": workflow["description"], "tasks": tasks, "runs": runs,
-                    "verifications": verifications}
+            failures = [serialize_failure(f) for f in state.list_failures(workflow.id, limit=50)]
+            ref = state.get_worktree_ref(workflow.id)
+            payload = serialize_workflow(workflow)
+            payload.update({
+                "tasks": tasks, "runs": runs,
+                "verifications": verifications, "failures": failures,
+                "worktree_ref": serialize_worktree_ref(ref) if ref is not None else None,
+            })
+            return payload
         finally:
             state.close()
 
@@ -639,6 +703,7 @@ class AgentOpsController:
         return GitWorktreeManager().cleanup_worktree(root, path, delete_unmerged_branch)
 
     def retry_merge(self, directory: str | Path, path: str | Path) -> dict[str, object]:
+        """Phase 3: retry validates against stored provenance when available."""
         root = self._operation_root(directory)
         manager = GitWorktreeManager()
         info = manager.inspect_worktree(root, path)
@@ -647,26 +712,64 @@ class AgentOpsController:
         branch = info.get("branch")
         if not isinstance(branch, str) or not branch.startswith("agentops/"):
             raise GitError("Retry is only supported for managed agentops/* worktree branches.")
-        worktree = Worktree(root, Path(str(info["path"])), branch,
-                            manager.current_branch(root), manager.current_commit(root))
+        state = StateStore(self._state_path(root))
+        try:
+            stored = state.find_worktree_ref_by_path(str(info["path"]))
+        finally:
+            state.close()
+        if stored is not None:
+            # Stored provenance wins: the retry must target the original base
+            # branch/commit, not whatever HEAD happens to be now.
+            worktree = Worktree(root, Path(str(info["path"])), stored.branch,
+                                stored.base_branch, stored.base_commit)
+        else:
+            worktree = Worktree(root, Path(str(info["path"])), branch,
+                                manager.current_branch(root), manager.current_commit(root))
         manager.merge(worktree)
-        return {"merged": True, "path": str(info["path"]), "branch": branch,
-                "base_branch": worktree.base_branch}
+        return {"merged": True, "path": str(info["path"]), "branch": worktree.branch,
+                "base_branch": worktree.base_branch,
+                "used_stored_provenance": stored is not None}
+
+    def get_worktree_ref(self, directory: str | Path, workflow_id: str) -> dict[str, object] | None:
+        """Phase 3: expose persisted provenance for one workflow."""
+        root = self._operation_root(directory)
+        state = StateStore(self._state_path(root))
+        try:
+            ref = state.get_worktree_ref(workflow_id)
+            return serialize_worktree_ref(ref) if ref is not None else None
+        finally:
+            state.close()
+
+    def list_worktree_refs(
+        self, directory: str | Path, workflow_id: str | None = None
+    ) -> list[dict[str, object]]:
+        """Phase 3: list persisted provenance records."""
+        root = self._operation_root(directory)
+        state = StateStore(self._state_path(root))
+        try:
+            return [serialize_worktree_ref(ref) for ref in state.list_worktree_refs(workflow_id)]
+        finally:
+            state.close()
 
     def latest_workflow(self, directory: str | Path) -> dict[str, object] | None:
+        """Phase 1+3: DTO-backed latest payload with serialized tasks + provenance."""
         state = StateStore(self._state_path(directory))
         try:
             workflow = state.latest_workflow()
             if workflow is None:
                 return None
-            tasks = state.list_tasks(workflow["id"])
-            runs = [serialize_agent_run(run) for run in state.list_agent_runs(workflow["id"], limit=200)]
+            tasks = [serialize_task(task) for task in state.list_tasks(workflow.id)]
+            runs = [serialize_agent_run(run) for run in state.list_agent_runs(workflow.id, limit=200)]
             verifications = [
                 serialize_verification_run(run)
-                for run in state.list_verification_runs(workflow["id"], limit=50)
+                for run in state.list_verification_runs(workflow.id, limit=50)
             ]
-            return {"id": workflow["id"], "status": workflow["status"],
-                    "description": workflow["description"], "tasks": tasks, "runs": runs,
-                    "verifications": verifications}
+            ref = state.get_worktree_ref(workflow.id)
+            payload = serialize_workflow(workflow)
+            payload.update({
+                "tasks": tasks, "runs": runs, "verifications": verifications,
+                "worktree_ref": serialize_worktree_ref(ref) if ref is not None else None,
+            })
+            return payload
         finally:
             state.close()

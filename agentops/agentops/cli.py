@@ -12,7 +12,7 @@ from .agent_run import AgentRunStatus, GitRunMetadataCollector
 from .artifacts import ArtifactError
 from .config import _load_data, load_config
 from .finalize import WorktreeFinalization, finalize_worktree
-from .git import GitError, GitWorktreeManager
+from .git import GitError, GitWorktreeManager, WorktreeRef
 from .registry import AgentRegistry
 from .logging import LogManager
 from .runner import AgentRunner
@@ -151,24 +151,27 @@ def main(argv: list[str] | None = None) -> int:
             if workflow is None:
                 print("No persisted workflows.")
             else:
-                print(f"{workflow['id']}  {workflow['status']}  {workflow['description']}")
-                for task in state.list_tasks(workflow["id"]):
+                print(f"{workflow.id}  {workflow.status.value}  {workflow.description}")
+                for task in state.list_tasks(workflow.id):
                     print(f"  {task.status:<8} {task.role:<16} {task.description}")
-                for run in state.list_agent_runs(workflow["id"], limit=50):
+                for run in state.list_agent_runs(workflow.id, limit=50):
                     print(
                         f"  run {run.status.value:<10} {run.agent or '<no-agent>':<14} "
                         f"task={run.task_id or '-'} attempt={run.attempt}"
                     )
-                for verification in state.list_verification_runs(workflow["id"], limit=20):
+                for verification in state.list_verification_runs(workflow.id, limit=20):
                     print(
                         f"  verification {verification.overall_status or verification.status.value:<10} "
                         f"{verification.profile_name:<14} task={verification.task_id or '-'}"
                     )
-                for failure in state.list_failures(workflow["id"], limit=10):
+                for failure in state.list_failures(workflow.id, limit=10):
                     print(
                         f"  failure {failure.category.value:<20} {failure.recommended_action.value:<22} "
                         f"task={failure.task_id or '-'} retryable={failure.retryable}"
                     )
+                ref = state.get_worktree_ref(workflow.id)
+                if ref is not None:
+                    print(f"  worktree {ref.branch} base={ref.base_branch}@{ref.base_commit[:12]} path={ref.path}")
         finally:
             state.close()
         return 0
@@ -397,6 +400,19 @@ def main(argv: list[str] | None = None) -> int:
         else:
             result = asyncio.run(engine.run_high_level(description, worktree.path))
         workflow_id = result.workflow_id
+        # Phase 3: persist provenance so retry/merge validate against the
+        # stored base even after restart (never memory-only).
+        try:
+            from uuid import uuid4 as _uuid4
+            from .tasks import utc_now as _utc_now
+            if worktree is not None and workflow_id is not None:
+                state.record_worktree_ref(WorktreeRef(
+                    id=str(_uuid4()), workflow_id=workflow_id, path=str(worktree.path),
+                    branch=worktree.branch, base_branch=worktree.base_branch,
+                    base_commit=worktree.base_commit, created_at=_utc_now(),
+                ))
+        except Exception:
+            pass
         finalization = WorktreeFinalization(changed=False, merged=False, conflict_error=None)
         if result.ready:
             finalization = finalize_worktree(manager, state, worktree, description, workflow_id,

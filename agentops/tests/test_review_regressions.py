@@ -222,7 +222,8 @@ class StateRegressions(unittest.TestCase):
             second = store.create_workflow("second")
             latest = store.latest_workflow()
             self.assertIsNotNone(latest)
-            self.assertEqual(latest["id"], second)
+            assert latest is not None
+            self.assertEqual(latest.id, second)
             self.assertNotEqual(first, second)
         finally:
             store.close()

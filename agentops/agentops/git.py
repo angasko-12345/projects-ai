@@ -5,9 +5,14 @@ from __future__ import annotations
 import os
 import re
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 class GitError(RuntimeError):
@@ -21,6 +26,24 @@ class Worktree:
     branch: str
     base_branch: str
     base_commit: str
+
+
+@dataclass
+class WorktreeRef:
+    """Persisted worktree provenance (Phase 3).
+
+    Records the base branch/commit a workflow's isolated worktree was
+    created from so retry/merge can validate against stored provenance
+    instead of memory-only Worktree objects. Plain dataclass, no I/O.
+    """
+
+    id: str
+    workflow_id: str
+    path: str
+    branch: str
+    base_branch: str
+    base_commit: str
+    created_at: str = field(default_factory=_utc_now)
 
 
 @dataclass(frozen=True)

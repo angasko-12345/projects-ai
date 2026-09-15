@@ -64,7 +64,8 @@ from .failure import (
     RetryPolicy,
     build_retry_prompt,
 )
-from .tasks import Task, TaskStatus
+from .git import Worktree, WorktreeRef
+from .tasks import Task, TaskStatus, Workflow
 
 __all__ = [
     "Failure",
@@ -121,5 +122,8 @@ __all__ = [
     "parse_agent_result",
     "Task",
     "TaskStatus",
+    "Workflow",
+    "Worktree",
+    "WorktreeRef",
 ]
 __version__ = "0.1.3"

@@ -21,6 +21,21 @@ class TaskStatus(StrEnum):
 
 
 @dataclass
+class Workflow:
+    """Persistent workflow header (Phase 1 Storage DTO).
+
+    Returned by StateStore instead of raw sqlite3.Row so presentation layers
+    never touch database rows directly.
+    """
+
+    id: str
+    description: str
+    status: TaskStatus = TaskStatus.PENDING
+    created_at: str = field(default_factory=utc_now)
+    updated_at: str = field(default_factory=utc_now)
+
+
+@dataclass
 class Task:
     description: str
     role: str
