@@ -1,0 +1,52 @@
+# Project Memory (canonical)
+
+> Read before substantial work. Update when project state changes. Never store secrets. Populate only verifiable facts; otherwise `Not yet established.`
+
+## Project purpose
+
+- AgentOps: local-first orchestrator for installed coding-agent CLIs (opencode, codex, pi, claude/fcc-claude, copilot, antigravity). Plan → implement → verify → review workflows in isolated Git worktrees, with SQLite persistence, a Tkinter GUI, and a Windows .exe. Established 2026-09-13 from `D:/admin/code/projects/agentops` + `tasks/task.md`.
+
+## Current project state
+
+- AgentOps v0.1.2 at `D:/admin/code/projects/agentops` (bumped 2026-09-14). AgentRun support implemented 2026-09-14 (95 tests passing). Verification Kernel implemented 2026-09-14: 122-test suite passing (1 Windows-platform skip), including 27 kernel tests; relayed opencode review findings fixed and rebuilt. `dist/AgentOps.exe` rebuilt (~14.7 MB, PyInstaller one-file windowed), archive-inspected (15 `agentops.*` modules), and startup/shutdown smoke-tested.
+- Working tree carries uncommitted feature work (do not assume HEAD == working state): GUI (`gui.py`, `gui_controller.py`), packaging (`AgentOps.spec`, `agentops_gui.py`, `scripts/build_windows_exe.py`), History/Logs/Worktrees tabs, cancellation tokens, operation-ID staleness guard, shared `finalize.py`, AgentRun lifecycle, Verification Kernel, Failure/Repair/Recovery Kernel (backed up to `/tmp/agentops-backup-failure-kernel/` before work began), and now the Structured Results upgrade (backed up to `/tmp/agentops-backup-structured-results/`; 184-test suite passing, 1 platform skip).
+- Milestones 1–2 complete: workflow history + task inspector, safe log browser, worktree inspect/cleanup/retry-merge. Full architecture audit completed 2026-09-13 with a 10-phase roadmap (in session, not yet user-approved).
+- Historical 2026-09-12 note: repo root was greenfield (memory scaffold only); product work lives in `agentops/`.
+- Shared memory scaffolding created 2026-09-12; full memory system initialized same day per user directive (Parts 1–7).
+
+## Requirements
+
+- From `tasks/task.md`: Windows .exe + intuitive GUI integrated with existing services (not standalone); reliability/dependency upgrades without breaking architecture; bug diagnosis + regression tests; graceful errors with useful logging; reproducible build/deploy docs.
+- Follow-ups requested: more exe features (planned first, then Milestones 1–2 implemented), version 0.1.1, architecture audit with 10-phase roadmap.
+
+## Constraints
+
+- Do not reinstall or reconfigure Agent Intercom; do not change Intercom scope.
+- Never store secrets, API keys, passwords, tokens, credentials, or private keys in memory (files or Supermemory).
+- Coworker policy (explicit user instruction, overrides team.md): collaborate only with opencode, free-claude-code (`fcc-claude`), and copilot. No Codex/Claude coworkers.
+- Single writer in the dirty tree (Pi implements); other agents review via read-only `/tmp/agentops-review-*` snapshots through `agentops run` (keeps repo untouched, logs under snapshot).
+- Back up the dirty tree (`git diff` + untracked tarball to `/tmp/agentops-backup-*`) before substantial work.
+- team.md reconciled 2026-09-13 to this policy; new memory files: `audit.md` (audit record), `roadmap.md` (10-phase plan, all PROPOSED).
+- pi-subagents worktree isolation requires a clean tree — it fails on this dirty repo; use `agent_fleet`/direct `agentops run` instead.
+- User must not manually relay messages between agents; Pi relays via Intercom.
+- No concurrent uncoordinated edits to the same files.
+
+## Technologies
+
+- Python >= 3.11, runtime dependencies: stdlib only (Tkinter, sqlite3, asyncio, unittest). Optional: PyYAML (`.[yaml]`), PyInstaller >= 6 (`.[windows]`).
+- Test runner: `python -m unittest discover -s tests` (75→79 tests across 10 files as of 2026-09-13).
+- Packaging: PyInstaller 6.22 one-file windowed exe; package-aware `agentops_gui.py` launcher (entry script must not be `agentops/gui.py` — relative imports break frozen).
+
+## Important conventions
+
+- Memory location: `.agents/team.md`, `.agents/memory/project.md`, `.agents/memory/architecture.md`, `.agents/memory/decisions.md`, `.agents/memory/lessons.md`.
+- Operating rules: read memory before substantial work; update after; preserve history; keep concise, no transcripts; no duplicate entries.
+- Manager verifies Intercom connectivity before major work.
+
+## Current priorities
+
+1. Structured Results upgrade implemented 2026-09-15: `agentops/agent_result.py` leaf (versioned `AgentResult` schema with all 12 required fields, `ParseMode`, total `parse_agent_result`/`agent_result_from_dict`/`coerce_agent_result`, `evaluate_execution` five-way outcome distinction), runner + workflow store normalized envelopes (TEXT column unchanged, no migration), prompt seam gains optional JSON contract with plain-text fallback, 34 dedicated tests. Copilot snapshot review (94s, read-only `/tmp/agentops-review-structured-results/`) reported 4 findings, all fixed with regressions (JSON-text coerce, strict process-success bool, unsupported-version downgrade for all statuses, warnings+parse_mode persisted); hostile-payload test caught a 5th bug (repr crash in warnings). Full suite 184 passing (1 platform skip). No live Intercom peers; opencode/fcc-claude reviews not requested (no live sessions, backend/server unverified). No exe rebuild (packaging untouched).
+2. Phase 3 Failure/Repair/Recovery Kernel implemented 2026-09-14: `agentops/failure.py` leaf domain (16 categories, deterministic classifier, RetryPolicy, RepairPlan, interruption classification), schema v3 `failures` table, workflow bounded-retry + inherited-context + parent-linked AgentRun integration, `failures`/`recover` CLI, controller/GUI failure views, 24 new tests (146-test suite passing, 1 platform skip), exe rebuilt (~14.8 MB, 16 modules incl. `failure`, smoke-tested). Reviews requested from live `copilot` (tests) + `opencode-projects-17196` (architecture) via read-only `/tmp/agentops-review-failure-kernel/` snapshots; replies pending at close. fcc-claude review not requested (`fcc-server` down).
+2. Roadmap approved 2026-09-14: work Phase 1 (finish `Row`→dataclass mapping); Phases 2–10 remain an ordered backlog. AgentRun/Verification Kernel already delivered parts of Phases 1, 4, and 5.
+3. Commit strategy resolved 2026-09-15: all accumulated feature work committed as `935f4dc` (37 files, +10283/-173). Note: `tasks/task.md` + `.agents/memory/` live outside the git repo (projects root is not a repo) and remain on-disk only.
+4. Standing 2026-09-12 items (superseded where product work took precedence): memory peer reviews PENDING (Intercom EPIPE outage); Supermemory availability for non-Pi agents PENDING (Pi: none — 0 MCP servers).
