@@ -4,6 +4,7 @@ import tempfile
 import threading
 import tkinter as tk
 import unittest
+from tkinter import ttk
 from contextlib import suppress
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -177,6 +178,54 @@ class FakeController:
 
     def latest_workflow(self, directory):
         return None
+
+
+class LayoutScrollbarTests(unittest.TestCase):
+    def setUp(self):
+        self.root = tk.Tk()
+        self.root.withdraw()
+        self.app = AgentOpsApp(self.root, controller=FakeController())
+        self.root.update_idletasks()
+
+    def tearDown(self):
+        with suppress(tk.TclError):
+            self.root.destroy()
+
+    def test_text_boxes_have_vertical_scrollbars(self):
+        for text_name, scroll_name in (("prompt", "prompt_yscroll"),
+                                       ("description", "description_yscroll"),
+                                       ("output", None)):
+            text = getattr(self.app, text_name)
+            self.assertIsInstance(text, tk.Text)
+            self.assertTrue(text.grid_info(), text_name)
+            if scroll_name is not None:
+                scroll = getattr(self.app, scroll_name)
+                self.assertIsInstance(scroll, ttk.Scrollbar)
+                self.assertTrue(scroll.grid_info(), scroll_name)
+                self.assertIn("yview", str(scroll.cget("command")))
+
+    def test_trees_and_lists_scroll_both_directions(self):
+        for widget_name, vscroll_name, hscroll_name in (
+                ("history_tree", "history_vscroll", "history_hscroll"),
+                ("worktree_tree", "worktree_vscroll", "worktree_hscroll"),
+                ("task_tree", "task_vscroll", "task_hscroll"),
+                ("log_list", None, "logs_hscroll"),
+                ("artifact_list", None, "artifacts_hscroll")):
+            widget = getattr(self.app, widget_name)
+            self.assertTrue(widget.grid_info(), widget_name)
+            hscroll = getattr(self.app, hscroll_name)
+            self.assertIsInstance(hscroll, ttk.Scrollbar)
+            self.assertTrue(hscroll.grid_info(), hscroll_name)
+            if vscroll_name is not None:
+                vscroll = getattr(self.app, vscroll_name)
+                self.assertIsInstance(vscroll, ttk.Scrollbar)
+                self.assertTrue(vscroll.grid_info(), vscroll_name)
+
+    def test_tree_columns_share_extra_width(self):
+        for tree_name in ("history_tree", "worktree_tree", "task_tree"):
+            tree = getattr(self.app, tree_name)
+            for column in tree["columns"]:
+                self.assertTrue(bool(tree.column(column, "stretch")), (tree_name, column))
 
 
 class GuiTests(unittest.TestCase):

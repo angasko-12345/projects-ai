@@ -154,7 +154,10 @@ class AgentOpsApp:
         self.agent_box.grid(row=0, column=1, sticky="ew", padx=(8, 0))
         ttk.Label(run_tab, text="Prompt:").grid(row=1, column=0, sticky="nw", pady=(10, 0))
         self.prompt = tk.Text(run_tab, height=7, wrap="word")
-        self.prompt.grid(row=1, column=1, columnspan=2, sticky="nsew", padx=(8, 0), pady=(10, 0))
+        self.prompt.grid(row=1, column=1, sticky="nsew", padx=(8, 0), pady=(10, 0))
+        self.prompt_yscroll = ttk.Scrollbar(run_tab, orient="vertical", command=self.prompt.yview)
+        self.prompt_yscroll.grid(row=1, column=2, sticky="ns", pady=(10, 0))
+        self.prompt.configure(yscrollcommand=self.prompt_yscroll.set)
         button_row = ttk.Frame(run_tab)
         button_row.grid(row=2, column=1, columnspan=2, sticky="e", pady=(10, 0))
         self.run_button = ttk.Button(button_row, text="Run agent", command=self.start_run)
@@ -164,7 +167,10 @@ class AgentOpsApp:
 
         ttk.Label(task_tab, text="Task description:").grid(row=0, column=0, sticky="nw")
         self.description = tk.Text(task_tab, height=5, wrap="word")
-        self.description.grid(row=0, column=1, columnspan=2, sticky="nsew", padx=(8, 0))
+        self.description.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
+        self.description_yscroll = ttk.Scrollbar(task_tab, orient="vertical", command=self.description.yview)
+        self.description_yscroll.grid(row=0, column=2, sticky="ns")
+        self.description.configure(yscrollcommand=self.description_yscroll.set)
         task_button_row = ttk.Frame(task_tab)
         task_button_row.grid(row=1, column=1, columnspan=2, sticky="e", pady=(10, 0))
         self.task_button = ttk.Button(task_button_row, text="Run task workflow", command=self.start_task)
@@ -200,8 +206,14 @@ class AgentOpsApp:
                                     ("tasks", "Tasks", 70), ("updated", "Updated", 170),
                                     ("description", "Description", 430)):
             self.history_tree.heading(column, text=title)
-            self.history_tree.column(column, width=width, stretch=(column == "description"))
+            self.history_tree.column(column, width=width, stretch=True)
         self.history_tree.grid(row=2, column=0, sticky="nsew", pady=(6, 0))
+        self.history_vscroll = ttk.Scrollbar(history_tab, orient="vertical", command=self.history_tree.yview)
+        self.history_vscroll.grid(row=2, column=1, sticky="ns", pady=(6, 0))
+        self.history_hscroll = ttk.Scrollbar(history_tab, orient="horizontal", command=self.history_tree.xview)
+        self.history_hscroll.grid(row=3, column=0, columnspan=2, sticky="ew")
+        self.history_tree.configure(yscrollcommand=self.history_vscroll.set,
+                                    xscrollcommand=self.history_hscroll.set)
         logs_tab.columnconfigure(0, weight=1)
         logs_tab.rowconfigure(1, weight=1)
         logs_controls = ttk.Frame(logs_tab)
@@ -220,7 +232,9 @@ class AgentOpsApp:
         self.log_list.grid(row=1, column=0, sticky="nsew", pady=(8, 0))
         logs_scroll = ttk.Scrollbar(logs_tab, orient="vertical", command=self.log_list.yview)
         logs_scroll.grid(row=1, column=1, sticky="ns", pady=(8, 0))
-        self.log_list.configure(yscrollcommand=logs_scroll.set)
+        self.logs_hscroll = ttk.Scrollbar(logs_tab, orient="horizontal", command=self.log_list.xview)
+        self.logs_hscroll.grid(row=2, column=0, columnspan=2, sticky="ew")
+        self.log_list.configure(yscrollcommand=logs_scroll.set, xscrollcommand=self.logs_hscroll.set)
         artifacts_tab = ttk.Frame(notebook, padding=10)
         notebook.add(artifacts_tab, text="Artifacts")
         artifacts_tab.columnconfigure(0, weight=1)
@@ -237,7 +251,11 @@ class AgentOpsApp:
         self.artifact_list.grid(row=1, column=0, sticky="nsew", pady=(8, 0))
         artifacts_scroll = ttk.Scrollbar(artifacts_tab, orient="vertical", command=self.artifact_list.yview)
         artifacts_scroll.grid(row=1, column=1, sticky="ns", pady=(8, 0))
-        self.artifact_list.configure(yscrollcommand=artifacts_scroll.set)
+        self.artifacts_hscroll = ttk.Scrollbar(artifacts_tab, orient="horizontal",
+                                               command=self.artifact_list.xview)
+        self.artifacts_hscroll.grid(row=2, column=0, columnspan=2, sticky="ew")
+        self.artifact_list.configure(yscrollcommand=artifacts_scroll.set,
+                                     xscrollcommand=self.artifacts_hscroll.set)
         worktrees_tab = ttk.Frame(notebook, padding=10)
         notebook.add(worktrees_tab, text="Worktrees")
         worktrees_tab.columnconfigure(0, weight=1)
@@ -266,8 +284,15 @@ class AgentOpsApp:
         for column, title, width in (("path", "Path", 420), ("branch", "Branch", 220),
                                     ("head", "Commit", 90), ("state", "Working tree", 160)):
             self.worktree_tree.heading(column, text=title)
-            self.worktree_tree.column(column, width=width, stretch=(column == "path"))
+            self.worktree_tree.column(column, width=width, stretch=True)
         self.worktree_tree.grid(row=1, column=0, sticky="nsew", pady=(8, 0))
+        self.worktree_vscroll = ttk.Scrollbar(worktrees_tab, orient="vertical", command=self.worktree_tree.yview)
+        self.worktree_vscroll.grid(row=1, column=1, sticky="ns", pady=(8, 0))
+        self.worktree_hscroll = ttk.Scrollbar(worktrees_tab, orient="horizontal",
+                                              command=self.worktree_tree.xview)
+        self.worktree_hscroll.grid(row=2, column=0, columnspan=2, sticky="ew")
+        self.worktree_tree.configure(yscrollcommand=self.worktree_vscroll.set,
+                                     xscrollcommand=self.worktree_hscroll.set)
 
         status_frame = ttk.LabelFrame(main, text="Workflow status", padding=8)
         status_frame.grid(row=5, column=0, columnspan=4, sticky="nsew")
@@ -279,11 +304,17 @@ class AgentOpsApp:
         for column, title, width in (("id", "Task", 90), ("role", "Role", 120), ("status", "Status", 90),
                                     ("agent", "Agent", 120), ("description", "Description", 520)):
             self.task_tree.heading(column, text=title)
-            self.task_tree.column(column, width=width, stretch=(column == "description"))
+            self.task_tree.column(column, width=width, stretch=True)
         self.task_tree.grid(row=1, column=0, sticky="nsew", pady=(6, 0))
+        self.task_vscroll = ttk.Scrollbar(status_frame, orient="vertical", command=self.task_tree.yview)
+        self.task_vscroll.grid(row=1, column=1, sticky="ns", pady=(6, 0))
+        self.task_hscroll = ttk.Scrollbar(status_frame, orient="horizontal", command=self.task_tree.xview)
+        self.task_hscroll.grid(row=2, column=0, columnspan=2, sticky="ew")
+        self.task_tree.configure(yscrollcommand=self.task_vscroll.set,
+                                 xscrollcommand=self.task_hscroll.set)
         self.task_details_button = ttk.Button(status_frame, text="Show selected task details",
                                              command=self.show_selected_task)
-        self.task_details_button.grid(row=2, column=0, sticky="e", pady=(6, 0))
+        self.task_details_button.grid(row=3, column=0, columnspan=2, sticky="e", pady=(6, 0))
 
         output_frame = ttk.LabelFrame(main, text="Output", padding=8)
         output_frame.grid(row=6, column=0, columnspan=4, sticky="nsew", pady=(8, 0))

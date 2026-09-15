@@ -43,6 +43,10 @@
 - Operating rules: read memory before substantial work; update after; preserve history; keep concise, no transcripts; no duplicate entries.
 - Manager verifies Intercom connectivity before major work.
 
+## GUI scrollbar/layout fix 2026-09-15
+
+- User report: text boxes cut off in Direct run / Task workflow / History / Logs / Artifacts / Worktrees tabs. Root causes: prompt/description `Text` widgets had no scrollbars (tall content unreachable); all three Treeviews + both Listboxes had no horizontal scrollbars while fixed column widths overflow even at min-size (850–940px of columns); only one column per tree was allowed to stretch. Fix: vertical scrollbars on prompt/description; vertical + horizontal scrollbars on all trees/lists with `xscroll`/`yscroll` wiring; `stretch=True` on every tree column. 3 layout regression tests; suite 288 OK. Exe rebuilt + Release asset replaced (14,822,467 bytes).
+
 ## GUI no-flash + poll efficiency fix 2026-09-15
 
 - User report: exe "runs a ton of powershell commands", hogs desktop, slow UI. Root causes found: (1) every `git.exe`/agent spawn from the windowless exe flashed a console window (`CREATE_NO_WINDOW` missing on all spawn sites; the 1s status poll re-spawns git constantly); (2) the 1s poll rebuilt the full task tree + full `latest_workflow` payload (200 runs) on the Tk thread. Fixes: `_no_window_kwargs()` centralized in `git.py`, applied to git spawns, metadata collector, runner + legacy/kernel verification spawns (kernel via `_default_spawn` wrapper preserving injectable factory); controller caches git-root lookups (failures not cached); `_update_tasks` skips rebuilds when the task signature is unchanged. 7 new tests; suite 285 OK. Exe rebuilt + Release asset replaced (14,820,748 bytes). Cold-start AV-scan slowness (one-file extraction) noted as residual, one-dir build offered as follow-up.
