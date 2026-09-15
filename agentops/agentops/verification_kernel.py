@@ -156,6 +156,16 @@ class VerificationKernel:
         cancel_event: threading.Event | None = None,
     ) -> VerificationReport:
         profile = self.resolve_profile(profile_name)
+        if not profile.checks:
+            # No vacuous success: a profile with zero checks can never emit
+            # evidence.  Fail fast here (ValueError -> task FAILED + repair
+            # loop via the workflow's generic handler) instead of returning
+            # a PASSED report for nothing, consistent with the legacy
+            # empty-suite rule.
+            raise ValueError(
+                f"Verification profile '{profile.name}' defines no checks: "
+                "configure verification.profiles or verification commands."
+            )
         base = Path(working_directory).resolve()
         snapshot = profile_to_dict(profile)
         started = monotonic()

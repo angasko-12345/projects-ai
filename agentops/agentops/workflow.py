@@ -926,9 +926,11 @@ class WorkflowEngine:
         if verification.status is TaskStatus.PASSED and verification.verified:
             review = self.state.get_task(tasks[3].id)
             if review.status is TaskStatus.PASSED:
-                # A1: READY requires verification + review + evidence.
+                # A1: READY requires verification + review + evidence
+                # (actual statuses passed so the invariant reads standalone).
                 assert_workflow_ready(
-                    verification_ok=True, review_ok=True,
+                    verification_ok=verification.status is TaskStatus.PASSED and verification.verified,
+                    review_ok=review.status is TaskStatus.PASSED,
                     evidence_present=bool(self.verification_evidence(workflow_id)),
                     workflow_id=workflow_id,
                 )
@@ -950,9 +952,11 @@ class WorkflowEngine:
             final_review = self.state.get_task(final_review.id)
             if verification.status is TaskStatus.PASSED and verification.verified:
                 if final_review.status is TaskStatus.PASSED:
-                    # A1: READY requires verification + review + evidence.
+                    # A1: READY requires verification + review + evidence
+                    # (actual statuses passed so the invariant reads standalone).
                     assert_workflow_ready(
-                        verification_ok=True, review_ok=True,
+                        verification_ok=verification.status is TaskStatus.PASSED and verification.verified,
+                        review_ok=final_review.status is TaskStatus.PASSED,
                         evidence_present=bool(self.verification_evidence(workflow_id)),
                         workflow_id=workflow_id,
                     )

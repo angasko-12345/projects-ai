@@ -33,9 +33,11 @@ Authoritative transition matrix::
     encoded here explicitly so it is a decision, not an accident.
 
     Verification: a PASSED report must describe a non-empty suite with zero
-    failed checks and zero required failures.  Vacuous success (PASSED with
-    total_checks == 0) is rejected: unknown/invalid output never becomes
-    success.
+    required failures and at least one passed check.  Optional-check
+    failures do NOT contradict PASSED (only required failures do).
+    Vacuous success (PASSED with total_checks == 0, or with zero passed
+    checks such as an all-skipped suite) is rejected: unknown/invalid
+    output never becomes success.
 
     Task:       a PASSED verification-role task must carry verified=True and
     evidence of the run: a linked verification_run_id (kernel path) or a
@@ -144,10 +146,10 @@ def assert_report_consistent(report: VerificationReport) -> None:
     if report.overall_status is VerificationReportStatus.PASSED:
         if report.total_checks == 0:
             reasons.append("PASSED report describes an empty check suite (vacuous success)")
-        if report.failed_checks != 0:
-            reasons.append(f"PASSED report has {report.failed_checks} failed checks")
         if report.required_failures != 0:
             reasons.append(f"PASSED report has {report.required_failures} required failures")
+        if report.passed_checks < 1:
+            reasons.append("PASSED report has zero passed checks (no positive evidence)")
     if reasons:
         raise StateTransitionError(
             f"Inconsistent VerificationReport {report.id}: " + "; ".join(reasons)

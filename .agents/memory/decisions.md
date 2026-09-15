@@ -142,7 +142,14 @@
 - **Decision:** Delivered Track A1 (`execution_model.py`, single-sourced matrix, 3 fail-loud workflow gates). Two refinements forced by validator-vs-suite confrontation: (1) legacy-verified tasks count as evidence via result transcript (kernel run OR transcript — legacy output IS the evidence per the preserved contract); (2) empty legacy command suites (`Verifier(())`) no longer verify — supersedes Review #2 (`test_empty_verification_commands_pass` renamed to `test_empty_verification_commands_fail_without_evidence`), because vacuous success is exactly what A1 forbids. `verification_evidence()` unified to the same definition (was kernel-only). User may overrule (2) — flagged in report.
 - **Reason:** A1 objective (invalid transitions rejected, never coerced); validators exposed real gaps, treated as bugs per the A1 risk plan.
 - **Alternatives considered:** Weakening validators to match legacy behavior (rejected — legalizes fabricated success); giving legacy runs synthetic run ids (rejected — fake linkage is worse than honest transcript evidence); leaving Review #2 intact with a carve-out (rejected — carve-outs defeat a state machine).
-- **Agents involved:** pi-manager (opencode architecture review requested async via live `opencode-projects-12884`; reply pending).
+- **Agents involved:** pi-manager (opencode architecture review received 2026-09-15 via `opencode-projects-12884`: 4 findings + 1 note; all adjudicated — see 2026-09-15 A1R entry).
+
+## 2026-09-15 — A1R opencode review adjudication (4/4 fixed + note applied)
+- **Date:** 2026-09-15
+- **Decision:** (1) Kernel empty-profile fails fast at resolve (`ValueError`: no checks configured) → task FAILED + repair via the generic handler, consistent with the legacy empty-suite rule (verified outcome parity by test, not just intent). (2) `assert_no_fabricated_success` wired as post-conditions into all three recover passes (was export-only). (3) PASSED now also requires `passed_checks >= 1` (all-skipped suites rejected); simultaneously narrowed `failed_checks != 0` to `required_failures != 0` after proving optional failures legally coexist with PASSED (self-found false positive the review missed). (4) Same-state `_transition` early-returns (no write, no event) matching the documented no-op. NOTE applied: READY call sites pass actual task statuses.
+- **Reason:** Review correctness bar per collaboration workflow; every fix evidence-backed with regression tests (kernel-empty ×2, all-skipped, optional-failure, recovery-honesty, same-state-no-event); suite 256 OK.
+- **Alternatives considered:** Hard-aborting on kernel-empty (rejected — inconsistent with legacy FAILED+repair for the same policy); leaving the validator export-only (rejected — unenforced contracts rot); keeping `failed_checks != 0` (rejected — proven false positive against optional failures).
+- **Agents involved:** pi-manager, opencode-projects-12884 (reviewer).
 
 ## 2026-09-15 — Roadmap v2.0 expansion (unified three-track plan)
 

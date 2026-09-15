@@ -1,8 +1,15 @@
 """A1 invariant tests: the execution/result state machine never lies."""
 
+import asyncio
 import unittest
+from pathlib import Path
+from unittest.mock import MagicMock
 
-from agentops.agent_run import AgentRunStatus
+from agentops.agent_run import (
+    AgentRunContext,
+    AgentRunOutcome,
+    AgentRunStatus,
+)
 from agentops.execution_model import (
     StateTransitionError,
     assert_agent_run_transition,
@@ -65,9 +72,17 @@ class ReportConsistencyTests(unittest.TestCase):
     def test_passed_report_validates(self):
         assert_report_consistent(_report())
 
-    def test_passed_with_failed_checks_raises(self):
+    def test_passed_with_required_failures_raises(self):
         with self.assertRaises(StateTransitionError):
-            assert_report_consistent(_report(failed_checks=1, passed_checks=2))
+            assert_report_consistent(_report(failed_checks=1, passed_checks=2, required_failures=1))
+
+    def test_passed_with_only_optional_failures_validates(self):
+        # Optional-check failures do not contradict PASSED.
+        assert_report_consistent(_report(failed_checks=1, passed_checks=2, required_failures=0))
+
+    def test_passed_all_skipped_raises(self):
+        with self.assertRaises(StateTransitionError):
+            assert_report_consistent(_report(passed_checks=0, skipped_checks=3))
 
     def test_passed_with_required_failures_raises(self):
         with self.assertRaises(StateTransitionError):
@@ -161,6 +176,86 @@ class HonestyAndLadderTests(unittest.TestCase):
         self.assertIn("verification", layer_requires("review"))
         with self.assertRaises(StateTransitionError):
             ladder_position("vibes")
+
+
+class KernelEmptySuiteWiringTests(unittest.TestCase):
+    """A1R-[1]: kernel-empty verification fails the task, never aborts."""
+
+    def test_kernel_empty_task_fails_without_abort(self):
+        from agentops.config import AgentConfig, AppConfig
+        from agentops.state import StateStore
+        from agentops.verification_kernel import VerificationKernel
+        from agentops.workflow import WorkflowEngine
+        config = AppConfig(
+            {"fallback": AgentConfig("fallback", "fake", ("{prompt}",),
+                                       ("implementation",))},
+            {"implementation": ("fallback",), "verification": (),
+             "review": (), "debugging": ()},
+            (), max_attempts=1, concurrency=1,
+        )
+        state = StateStore(":memory:")
+        try:
+            engine = WorkflowEngine(
+                config, state, MagicMock(), MagicMock(), MagicMock(),
+                verification_kernel=VerificationKernel(profiles={}, legacy_commands=()))
+            wid, created = engine.create_workflow("custom", [
+                {"id": "v", "description": "check", "role": "verification"},
+            ])
+            # Must not raise: empty suite -> task FAILED via the generic
+            # handler (consistent with the legacy empty-suite rule).
+            asyncio.run(engine.execute(wid, Path.cwd()))
+            final = state.get_task(created[0].id)
+            self.assertEqual(final.status, TaskStatus.FAILED)
+            self.assertFalse(final.verified)
+        finally:
+            state.close()
+
+
+class RecoveryHonestyWiringTests(unittest.TestCase):
+    """A1R-[2]: recover_* post-conditions never mint success."""
+
+    def test_recovery_outputs_contain_no_success(self):
+        from agentops.state import StateStore
+        from agentops.verification_model import VerificationProfile
+        state = StateStore(":memory:")
+        try:
+            wid = state.create_workflow("w")
+            run = state.create_agent_run(AgentRunContext(workflow_id=wid, task_id="t"))
+            state.start_agent_run(run.id)
+            task = state.add_task(Task("work", "implementation", wid))
+            claimed = state.claim_task(task.id)
+            assert claimed is not None
+            profile = VerificationProfile(name="p", checks=())
+            vrun = state.create_verification_run(wid, task.id, profile)
+            recovered_runs = state.recover_agent_runs()
+            recovered_vruns = state.recover_verification_runs()
+            recovered_tasks = state.recover_tasks()
+            self.assertTrue(recovered_runs and recovered_vruns and recovered_tasks)
+            for item in (*recovered_runs, *recovered_vruns, *recovered_tasks):
+                self.assertNotIn(item.status.value,
+                                 {"completed", "passed", "ready", "merged", "success"})
+            self.assertEqual(vrun.id, recovered_vruns[0].id)
+        finally:
+            state.close()
+
+
+class SameStateNoopTests(unittest.TestCase):
+    """A1R-[4]: same-state transitions write nothing and emit nothing."""
+
+    def test_repeat_finish_emits_no_event(self):
+        from agentops.state import StateStore
+        state = StateStore(":memory:")
+        try:
+            wid = state.create_workflow("w")
+            run = state.create_agent_run(AgentRunContext(workflow_id=wid, task_id="t"))
+            state.finish_agent_run(run.id, AgentRunOutcome(status=AgentRunStatus.FAILED))
+            before = state.list_events(wid)
+            state.finish_agent_run(run.id, AgentRunOutcome(status=AgentRunStatus.FAILED))
+            after = state.list_events(wid)
+            self.assertEqual(len(before), len(after))
+            self.assertEqual(state.get_agent_run(run.id).status, AgentRunStatus.FAILED)
+        finally:
+            state.close()
 
 
 if __name__ == "__main__":

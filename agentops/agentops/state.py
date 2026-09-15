@@ -28,7 +28,11 @@ from .failure import (
     RecoveryState,
     RepairAction,
 )
-from .execution_model import StateTransitionError, assert_agent_run_transition
+from .execution_model import (
+    StateTransitionError,
+    assert_agent_run_transition,
+    assert_no_fabricated_success,
+)
 from .git import WorktreeRef
 from .tasks import Task, TaskStatus, Workflow, utc_now
 from .verification_model import (
@@ -990,6 +994,9 @@ class StateStore:
             if row is None:
                 raise KeyError(f"Unknown AgentRun: {run_id}")
             current = AgentRunStatus(row["status"])
+            if current is target:
+                # Same-state is a documented no-op: no write, no event.
+                return self.get_agent_run(run_id)
             # Single-sourced matrix (Track A1): execution_model owns the
             # table; this method only maps the violation to ValueError to
             # preserve the long-standing public error contract.
@@ -1171,6 +1178,9 @@ class StateStore:
                 recovered.append(self.get_agent_run(run_id))
             if rows:
                 self.connection.commit()
+        # A1 honesty post-condition: recovery must never mint success.
+        for run in recovered:
+            assert_no_fabricated_success(run.status.value, False, f"recover_agent_runs({run.id})")
         return recovered
 
     # ------------------------------------------------------------------
@@ -1546,6 +1556,9 @@ class StateStore:
                 recovered.append(self.get_verification_run(run["id"]))
             if runs or checks:
                 self.connection.commit()
+        # A1 honesty post-condition: recovery must never mint success.
+        for run in recovered:
+            assert_no_fabricated_success(run.status.value, False, f"recover_verification_runs({run.id})")
         return recovered
 
     def agent_run_observer(self) -> StateAgentRunObserver:
@@ -1881,6 +1894,9 @@ class StateStore:
             if rows:
                 self.connection.commit()
             recovered = [self.get_task(row["id"]) for row in rows]
+        # A1 honesty post-condition: recovery must never mint success.
+        for task in recovered:
+            assert_no_fabricated_success(task.status.value, False, f"recover_tasks({task.id})")
         for task in recovered:
             self.refresh_workflow_status(task.workflow_id)
         return recovered

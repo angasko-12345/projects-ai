@@ -25,5 +25,14 @@
 
 ## Follow-ups
 
-- Opencode architecture review reply pending (requested via live session; non-blocking).
+- Opencode architecture review RECEIVED and adjudicated 4/4 + note (see decisions.md 2026-09-15 A1R). Re-review offered async, non-blocking.
 - A2 (AgentAdapter) is unblocked and next in Track A sequence.
+
+## Addendum 2026-09-15 — A1R adjudication (all fixed, suite 256 OK)
+
+- **[1] kernel-empty parity:** `run_verification` raises `ValueError` on zero-check profiles → generic handler → task FAILED + repair, same outcome as the legacy empty-suite rule. Regression tests at both layers (kernel raises; workflow task FAILED, no abort).
+- **[2] honesty wired:** `assert_no_fabricated_success` post-conditions in `recover_agent_runs` / `recover_verification_runs` / `recover_tasks` + recovery-honesty test (no success statuses in any recover output).
+- **[3] all-skipped closed + optional-failure correction:** PASSED requires `required_failures == 0` (narrowed from `failed_checks == 0` — optional failures are legal) and `passed_checks >= 1`.
+- **[4] same-state no-op:** `_transition` early-returns (no UPDATE, no event); repeat-finish test proves it.
+- **NOTE:** READY call sites pass actual task statuses.
+- Exe rebuilt + smoke-tested; Release v0.1.3 asset replaced (14,814,649 bytes).

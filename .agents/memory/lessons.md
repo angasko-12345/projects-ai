@@ -237,6 +237,12 @@
 - **Solution:** Evidence = kernel run OR non-empty transcript (documented in matrix); `verification_evidence()` unified; empty suites fail at the source (`bool(results) and all(...)`); Review #2 test renamed with supersede note. Suite 251 OK (27 new).
 - **Remember:** When a new invariant breaks old tests, check whether the invariant or the test encodes the bug — here it was both (refine the rule, fix the fabrication), and record superseded decisions explicitly so the user can overrule.
 
+### 2026-09-15 — Optional failures legally coexist with PASSED (A1R self-found)
+- **Symptom:** `assert_report_consistent` rejected any PASSED report with `failed_checks > 0`; but `_summarize_counts` counts optional-check failures in `failed`, and overall PASSED depends only on `required_failures == 0` — a PASSED-with-optional-failures report is legitimate and would have hard-aborted a healthy workflow.
+- **Root cause:** Validator written against the strict reading ("zero failed checks") instead of the kernel's actual rule (required-failures decide).
+- **Solution:** PASSED requires `required_failures == 0` + `passed_checks >= 1` (also closes the all-skipped hole); optional-failure regression test added.
+- **Remember:** Validators must be checked against the producer's real semantics (`_summarize_counts`), not the docstring idealization — especially for counters with mixed populations (required vs optional).
+
 ## Environment-specific problems
 
 - Repo root `D:/admin/code/projects`; no stack/test runner configured yet — record pitfalls here once encountered.

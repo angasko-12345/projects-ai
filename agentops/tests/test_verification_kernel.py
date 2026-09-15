@@ -449,6 +449,19 @@ class KernelExecutionTests(unittest.TestCase):
             finally:
                 state.close()
 
+    def test_empty_profile_raises_instead_of_vacuous_pass(self):
+        """A1R-[1]: zero-check profiles fail fast, never emit PASSED-for-nothing."""
+        with tempfile.TemporaryDirectory() as directory:
+            state = StateStore(":memory:")
+            logs = LogManager(Path(directory) / "logs")
+            try:
+                kernel = VerificationKernel(
+                    profiles={}, legacy_commands=(), logs=logs, state=state)
+                with self.assertRaises(ValueError):
+                    asyncio.run(kernel.run_verification(None, None, directory))
+            finally:
+                state.close()
+
 
 class KernelPersistenceTests(unittest.TestCase):
     def test_run_check_report_persist_and_recover(self):

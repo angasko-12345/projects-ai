@@ -45,7 +45,7 @@
 
 ## A1 execution state machine 2026-09-15
 
-- Track A1 DONE: `agentops/execution_model.py` (matrix + `StateTransitionError` + 5 validators), single-sourced AgentRun matrix, 3 fail-loud workflow gates, unified evidence, 27 invariant tests, suite 251 OK. Behavior change: empty verification suites no longer verify (supersedes Review #2 — user may overrule). Opencode review requested (reply pending). Exe rebuilt (22 modules) + Release v0.1.3 asset replaced (14,812,835 bytes).
+- Track A1 DONE + A1R review adjudicated: opencode 4 findings + 1 note all fixed (kernel-empty fail-fast with legacy parity, recover post-conditions wired, all-skipped rejected + optional-failure correction, same-state no-op, self-contained READY asserts). Suite 256 OK. Exe rebuilt (22 modules) + Release v0.1.3 asset replaced twice (final 14,814,649 bytes). Behavior change stands: empty verification suites no longer verify (supersedes Review #2 — user may overrule).
 
 ## Release v0.1.3 + exe 2026-09-15
 
