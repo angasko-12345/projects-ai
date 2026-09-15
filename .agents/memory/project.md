@@ -43,6 +43,10 @@
 - Operating rules: read memory before substantial work; update after; preserve history; keep concise, no transcripts; no duplicate entries.
 - Manager verifies Intercom connectivity before major work.
 
+## Release v0.1.3 + exe 2026-09-15
+
+- Fresh `dist/AgentOps.exe` rebuilt from Phase 1/3 tree (14,807,079 bytes, PyInstaller 6.22.3; 2 stale processes taskkilled first per lesson); archive-inspected (21 `agentops.*` modules incl. all kernels); startup/shutdown smoke-tested with process-exit verification. Published as GitHub Release asset `v0.1.3` (tag pushed, release id 389098654). Exe stays out of git per standing decision.
+
 ## Phase 1 + Phase 3 delivery 2026-09-15
 
 - Roadmap Phase 1 (Storage DTOs) + Phase 3 (persisted worktree refs) implemented in `agentops/`: Workflow/WorktreeRef DTOs, schema v6, controller serialization, stored-provenance retry, CLI/GUI exposure. Suite 224 OK (3 skips). GitHub `.agents/plans/chatgpt_*.md` synced locally; phase-3 kernel plan already DONE. See `memory/roadmap.md`, `memory/architecture.md`, `memory/decisions.md`, `memory/lessons.md`.
