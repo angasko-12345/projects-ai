@@ -251,22 +251,38 @@ Status: done
 ---
 
 ### Subtask 6 — Snapshot review (read-only)
-Agent: copilot (tests) + opencode/fcc-claude only if live sessions appear
+Agent: copilot (tests) + opencode (architecture, DONE)
 Depends on: Subtask 5
-Status: in_progress
+Status: done (opencode) / pending (copilot)
 
-Live sessions confirmed (`copilot`, `opencode-projects-7544`, both idle) — review asks sent via Intercom 2026-09-15 with `/tmp/agentops-review-phase4/` snapshot scope (repo untouched).
+opencode findings received and fixed (adjudication follows); copilot live ask + nudge sent, reply pending at push time. Committed as `5742b2a` and pushed; copilot findings (if any) will land as a follow-up.
 
-**opencode findings received 2026-09-15 (15 items). Fixed before merge:** T1 (bus notify moved outside store RLock), M1 (INSERT OR IGNORE on all 5 migration version inserts), A1 (`_jsonable` deep sanitizer for payloads/metadata). **Contract hardening fixed:** L1 (docstring — GUI reads via controller queries; bus is the shared live/API protocol), L4 (public `redact_text`, `_redact` kept as alias), A3 (uniform ValueError pagination, matching existing list_*), A4 (hash-covers-stored-bytes documented), A5 (`EventBus(error_handler)`), T2 (publisher-thread contract documented), T4 (reentrant emits drained iteratively), M4 (store/registry pairing documented). **Noted, not changed:** T3 (pre-existing stateless-fallback, out of scope), L2 (pre-existing Task leak — roadmap Phase 1), M2 (invalid — single atomic commit, no partial shape possible), M3 (by design — global events have no workflow), L3 (typed timeline authoritative; legacy retained for old readers), A2 (reader-side tolerance documented). 5 new regression tests; suite 214 OK.
+**opencode adjudication (15 items). Fixed before merge:** T1 (bus notify moved outside store RLock), M1 (INSERT OR IGNORE on all 5 migration version inserts), A1 (`_jsonable` deep sanitizer for payloads/metadata). **Contract hardening fixed:** L1 (docstring — GUI reads via controller queries; bus is the shared live/API protocol), L4 (public `redact_text`, `_redact` kept as alias), A3 (uniform ValueError pagination, matching existing list_*), A4 (hash-covers-stored-bytes documented), A5 (`EventBus(error_handler)`), T2 (publisher-thread contract documented), T4 (reentrant emits drained iteratively), M4 (store/registry pairing documented). **Noted, not changed:** T3 (pre-existing stateless-fallback, out of scope), L2 (pre-existing Task leak — roadmap Phase 1), M2 (invalid — single atomic commit, no partial shape possible), M3 (by design — global events have no workflow), L3 (typed timeline authoritative; legacy retained for old readers), A2 (reader-side tolerance documented). 5 new regression tests; suite 214 OK.
 
 ---
 
 ### Subtask 7 — Memory + report + commit + push
 Agent: pi
 Depends on: Subtask 6
-Status: pending
+Status: done
 
-Update memory, append `## Output`, commit, push to origin main. No exe rebuild (packaging untouched).
+Committed `5742b2a`, pushed to origin main. No exe rebuild (packaging untouched).
+
+---
+
+## Output (PHASE 3 re-audit + PHASE 4 build)
+
+**Phase 3:** no gaps (reaffirmed — code untouched since the prior audit; suite green).
+
+**Phase 4 delivered** (`5742b2a`, pushed to origin main):
+
+- `agentops/events.py` (leaf): `Event` schema v1 (id, timestamp, workflow/task/agent-run ids, type, severity, message, payload, schema_version), 27 `EventType` members covering all 26 specified + NOTE, total `event_from_dict`/`coerce_event` (legacy kinds → NOTE with `legacy_type` preserved), `EventBus` (thread-safe fan-out, per-subscriber isolation, error handler, iterative reentrancy drain, delivery count).
+- `agentops/artifacts.py`: `ArtifactKind` (10 families covering all 9 specified + custom), `Artifact` + `ArtifactMetadata`, `ArtifactStore` (containment + traversal rejection, 0o700/0o600 perms, sha256 verify-on-read, retention prune, missing/integrity errors, redaction on text writes). Metadata in SQLite, bytes in files.
+- State: additive schema v4 (`typed_events`) + v5 (`artifacts`), plain-TEXT refs (no FK — recovery evidence), race-safe version inserts, `record_typed_event` + `query_events` (chronological, pagination with uniform ValueError contract, workflow/task/run/type filters), artifact CRUD, bus notification outside the lock. Legacy `events` table + `list_events` untouched.
+- CLI `events` / `artifacts` (list/show/prune-keep); controller `query_events`/`list_artifacts`/`read_artifact`; GUI Artifacts tab (Logs-tab pattern, Tk-safe).
+- Tests: `test_events.py` (19) + `test_artifacts.py` (11); full suite 214 OK (2 environment skips). No secrets in payloads (redaction + test).
+- Review: opencode architecture review — 15 findings, 3 blockers fixed (T1/M1/A1) + 8 hardening, 4 noted with rationale (see Subtask 6). Copilot test review pending at push; follow-up if needed. No exe rebuild (packaging untouched).
+- Files: `events.py`, `artifacts.py` (new); `state.py`, `cli.py`, `gui.py`, `gui_controller.py`, `logging.py` (`redact_text`), `__init__.py`; `test_events.py`, `test_artifacts.py` (new). Backup: `/tmp/agentops-backup-phase4/diff.patch`. Snapshots: `/tmp/agentops-review-phase4/`.
 
 ---
 
