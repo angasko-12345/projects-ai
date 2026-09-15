@@ -1,6 +1,0 @@
-# Track project memory, tasks, and agent outputs only.
-/*
-!/tasks
-!/.agents
-!/.agent
-!/.gitignore
