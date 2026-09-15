@@ -6,6 +6,10 @@
 
 - AgentOps v0.1.2 (`D:/admin/code/projects/agentops`): layered local-first orchestrator. Entry points (`cli.py`, `gui.py`+`gui_controller.py`) compose an injected `WorkflowEngine`; GUI never imports service modules directly — all Tk updates marshalled via `root.after()`, work runs on controller background threads. Audited 2026-09-13.
 
+## A2 adapter boundary 2026-09-15
+
+- New `agentops/agent_adapter.py` leaf: `Capability` (9 values) + extras passthrough, `AgentAdapter` Protocol (runtime_checkable), `CliAdapter` wrapping `AgentConfig`, `adapter_for` factory, role-derived honesty baseline. `AgentConfig.capabilities` additive tuple (default empty; positional construction preserved). Registry: cached `adapters()`/`adapter(name)` + `select(role, excluded, required_capabilities=())` (empty = legacy path). Runner `build_command` delegates, signature/output unchanged. Engine confirmed flag-free. Tests: `test_agent_adapter.py` (14) + config/registry/runner additions (8). Suite 278 OK.
+
 ## A1 execution state machine 2026-09-15
 
 - New `agentops/execution_model.py` leaf (no I/O): authoritative matrix (AgentRun table mirroring `state._transition` exactly incl. the deliberate `pending → terminal` allowance; verification/task/workflow/recovery rules; success ladder process→agent→verification→review→merge→workflow), `StateTransitionError`, `AGENT_RUN_TRANSITIONS`, 5 pure validators. `state._transition` delegates to `assert_agent_run_transition` (ValueError contract preserved). Workflow wiring: `assert_report_consistent` after kernel runs, `assert_task_completion` on PASSED before persist, `assert_workflow_ready` before every READY return; `StateTransitionError` re-raised past the task-failure handler (fail-loud). `verification_evidence()` unified (kernel run OR legacy transcript). Exports in `__init__.py`. Tests: `test_execution_model.py` (27 tests).

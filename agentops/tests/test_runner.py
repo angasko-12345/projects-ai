@@ -10,6 +10,15 @@ from agentops.runner import AgentRunner
 
 
 class AgentRunnerTests(unittest.TestCase):
+    def test_build_command_delegates_to_adapter(self):
+        from agentops.agent_adapter import adapter_for
+        config = AgentConfig("pi", "pi", ("--prompt", "{prompt}"))
+        agent = DetectedAgent(config, True, "/bin/pi")
+        self.assertEqual(AgentRunner.build_command(agent, "hi"),
+                         adapter_for(config, "/bin/pi").build_command("hi"))
+        self.assertEqual(AgentRunner.build_command(config, "hi"),
+                         adapter_for(config).build_command("hi"))
+
     @patch("agentops.runner.asyncio.create_subprocess_exec", new_callable=AsyncMock)
     def test_captures_output_and_writes_logs(self, create_process):
         logs = MagicMock()

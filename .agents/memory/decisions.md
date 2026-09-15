@@ -152,6 +152,13 @@
 - **Agents involved:** pi-manager, opencode-projects-12884 (reviewer).
 - **Sign-off 2026-09-15:** opencode re-reviewed `908dce6` (working tree + local 256-OK run): all 4 fixes + note accepted, no new findings; agreed the optional-failure catch was a real landmine-sweep; legacy-empty/kernel fail-fast consistency endorsed with user-override retained. A1 + A1R closed.
 
+## 2026-09-15 — A2 adapter boundary (D1/D2 + A3-first variance)
+- **Date:** 2026-09-15
+- **Decision:** D1 = fixed `Capability` enum + free-form extras (config accepts any non-empty strings; unknown names warn, pass through). D2 = adapter WRAPS `AgentConfig` (overlay; `CliAdapter` + `adapter_for` factory). A2 proceeded BEFORE A3 (variance from the DAG): adapters exclude process-spawning/env/output-parse/cancel — those stay in the runner as generic code until A3 gives them a runtime to target. M-A2.4 (legacy-path removal) deferred indefinitely: the legacy path IS the path. Shipped `agents.yaml` unchanged (no fabricated capabilities; B7 populates them). `select()` gains optional `required_capabilities` (empty = byte-identical legacy scan); `build_command` keeps signature/output.
+- **Reason:** PI directive (incremental behavior-preserving refactor around existing code) + roadmap mitigations (thin wrappers, no CLI protocol changes). Import direction forced one wart: function-local `agent_adapter` import inside `load_config` (module-level would cycle, since adapters wrap config).
+- **Alternatives considered:** Per-agent adapter subclasses (`PiAdapter`, …) now (rejected — no per-agent behavior differences exist yet; subclasses with identical bodies are decoration, add when a CLI diverges); capabilities field replacing `roles` (rejected — roles drive selection today, capabilities filter); hardcoding capability maps per agent name (rejected — duplicates config, rots).
+- **Agents involved:** pi-manager (opencode contract review requested async).
+
 ## 2026-09-15 — Roadmap v2.0 expansion (unified three-track plan)
 
 - **Date:** 2026-09-15

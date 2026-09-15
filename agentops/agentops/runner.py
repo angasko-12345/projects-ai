@@ -23,6 +23,7 @@ from .agent_run import (
     AgentRunOutcome,
     AgentRunStatus,
 )
+from .agent_adapter import adapter_for
 from .agent_result import parse_agent_result
 from .config import AgentConfig
 from .logging import LogManager, RunLogArtifacts
@@ -154,18 +155,12 @@ class AgentRunner:
 
     @staticmethod
     def build_command(agent: DetectedAgent | AgentConfig, prompt: str) -> tuple[str, ...]:
+        # Track A2: construction lives in the adapter; this static method
+        # keeps its signature and byte-identical output as the stable entry
+        # point (workflow persistence calls it directly).
         if isinstance(agent, DetectedAgent):
-            config = agent.config
-            # Use the absolute path resolved at detection time instead of the
-            # bare command name, so execution cannot pick up a different binary
-            # if PATH changes between detection and run (TOCTOU). Users who
-            # need a pinned binary can set an absolute path as `command` in
-            # agents.yaml; shutil.which passes absolute paths through.
-            executable = agent.executable or config.command
-        else:
-            config = agent
-            executable = config.command
-        return (executable, *(argument.replace("{prompt}", prompt) for argument in config.args))
+            return adapter_for(agent.config, agent.executable).build_command(prompt)
+        return adapter_for(agent).build_command(prompt)
 
     @staticmethod
     async def _communicate_with_cancel(

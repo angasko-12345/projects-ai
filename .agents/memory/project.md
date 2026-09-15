@@ -43,6 +43,10 @@
 - Operating rules: read memory before substantial work; update after; preserve history; keep concise, no transcripts; no duplicate entries.
 - Manager verifies Intercom connectivity before major work.
 
+## A2 adapter boundary 2026-09-15
+
+- Track A2 DONE: `agent_adapter.py` (Protocol + `CliAdapter` + honesty baseline), `AgentConfig.capabilities`, capability-aware `select()`, runner delegation, engine verified flag-free. 22 new tests, suite 278 OK. Shipped `agents.yaml` unchanged (no fabricated capabilities). Opencode contract review requested (reply pending). Exe rebuilt + Release v0.1.3 asset replaced.
+
 ## A1 execution state machine 2026-09-15
 
 - Track A1 DONE + A1R review adjudicated: opencode 4 findings + 1 note all fixed (kernel-empty fail-fast with legacy parity, recover post-conditions wired, all-skipped rejected + optional-failure correction, same-state no-op, self-contained READY asserts). Suite 256 OK. Exe rebuilt (22 modules) + Release v0.1.3 asset replaced twice (final 14,814,649 bytes). Behavior change stands: empty verification suites no longer verify (supersedes Review #2 — user may overrule).

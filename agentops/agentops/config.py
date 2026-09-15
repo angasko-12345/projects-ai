@@ -26,6 +26,10 @@ class AgentConfig:
     timeout_seconds: int = 900
     enabled: bool = True
     model: str | None = None
+    # Declared extra capabilities (Track A2). Baseline coding/planning/
+    # review is derived from `roles` by the adapter; only list here what
+    # the CLI demonstrably provides — never fabricate entries.
+    capabilities: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -167,7 +171,19 @@ def load_config(path: str | Path | None = None) -> AppConfig:
         model = raw.get("model")
         if model is not None and not isinstance(model, str):
             raise ValueError(f"agents.{name}.model must be a string when provided.")
-        agents[name] = AgentConfig(name, command, tuple(args), tuple(roles), timeout, enabled, model)
+        capabilities = raw.get("capabilities", [])
+        if (not isinstance(capabilities, list) or not all(isinstance(item, str) and item.strip() for item in capabilities)):
+            raise ValueError(f"agents.{name}.capabilities must be a list of non-empty strings.")
+        # Local import: agent_adapter owns the Capability vocabulary but
+        # wraps AgentConfig, so a module-level import here would cycle.
+        from .agent_adapter import KNOWN_CAPABILITIES
+        for item in capabilities:
+            if item not in KNOWN_CAPABILITIES:
+                warnings.warn(
+                    f"agents.{name}.capabilities has unrecognized capability '{item}'; "
+                    "it will be passed through as-is.", stacklevel=2)
+        agents[name] = AgentConfig(name, command, tuple(args), tuple(roles), timeout, enabled, model,
+                                   tuple(capabilities))
     roles_raw = data.get("role_preferences", {})
     if not isinstance(roles_raw, dict):
         raise ValueError("role_preferences must be a mapping.")

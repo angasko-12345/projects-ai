@@ -64,6 +64,14 @@ from .failure import (
     RetryPolicy,
     build_retry_prompt,
 )
+from .agent_adapter import (
+    KNOWN_CAPABILITIES,
+    AgentAdapter,
+    Capability,
+    CliAdapter,
+    adapter_for,
+    capabilities_for_roles,
+)
 from .execution_model import (
     StateTransitionError,
     assert_agent_run_transition,
@@ -133,6 +141,12 @@ __all__ = [
     "Workflow",
     "Worktree",
     "WorktreeRef",
+    "KNOWN_CAPABILITIES",
+    "AgentAdapter",
+    "Capability",
+    "CliAdapter",
+    "adapter_for",
+    "capabilities_for_roles",
     "StateTransitionError",
     "assert_agent_run_transition",
     "assert_no_fabricated_success",

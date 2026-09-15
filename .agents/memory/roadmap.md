@@ -44,7 +44,9 @@
 - **Risks:** least-astonishment risk — existing test fixtures or legacy paths may violate new invariants. Mitigate by running the suite immediately and treating violations as bugs.
 - **Success criteria:** Transition matrix documented; ≥10 new invariant tests; `evaluate_execution` semantics become the single reference; suite stays green.
 
-### A2 — AgentAdapter + capability model (P1)
+### A2 — AgentAdapter + capability model (P1) ✅ DONE 2026-09-15
+
+> Delivered: `agentops/agent_adapter.py` leaf (`Capability` enum + extras passthrough per D1, `AgentAdapter` Protocol, `CliAdapter` overlay per D2, honesty rule — baseline derived from roles only, shipped `agents.yaml` unchanged); `AgentConfig.capabilities` additive field + validation (unknown names warn, pass through); `AgentRegistry.adapter(s)` + capability-aware `select(required_capabilities=())` (empty = byte-identical legacy path); `AgentRunner.build_command` delegates (signature + output unchanged); engine verified flag-free (only `select` + `build_command` calls). 22 new tests; suite 278 OK; exe rebuilt + re-published to Release v0.1.3. Opencode contract review requested async. Variance: A2 proceeded before A3 — adapters exclude process-spawning (stays in runner); M-A2.4 deferred (legacy path IS the path, nothing to remove). Original action list kept below for history.
 
 - **Objective:** Remove agent-CLI-specific knowledge from `WorkflowEngine` and `registry.select`. Adapters own detection, command/env construction, capability reporting, output parsing, cancellation.
 - **Key decisions to make (see Decision Backlog):**

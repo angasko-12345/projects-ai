@@ -243,6 +243,12 @@
 - **Solution:** PASSED requires `required_failures == 0` + `passed_checks >= 1` (also closes the all-skipped hole); optional-failure regression test added.
 - **Remember:** Validators must be checked against the producer's real semantics (`_summarize_counts`), not the docstring idealization — especially for counters with mixed populations (required vs optional).
 
+### 2026-09-15 — Local import breaks a config↔adapter cycle (A2)
+- **Symptom:** `config.py` needs the `Capability` vocabulary (warn on unknown names); `agent_adapter.py` needs `AgentConfig` (wraps it) — module-level imports cycle.
+- **Root cause:** Vocabulary ownership (adapter) vs validation site (config) pull opposite directions.
+- **Solution:** Function-local import inside `load_config` with a comment (deferred to call time, both modules loaded). Keeps the correct ownership (adapter owns vocabulary) without restructuring.
+- **Remember:** Overlay direction (adapter→config) forbids config→adapter at module level; localize the import and say why.
+
 ## Environment-specific problems
 
 - Repo root `D:/admin/code/projects`; no stack/test runner configured yet — record pitfalls here once encountered.
