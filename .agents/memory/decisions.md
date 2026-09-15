@@ -158,6 +158,7 @@
 - **Reason:** PI directive (incremental behavior-preserving refactor around existing code) + roadmap mitigations (thin wrappers, no CLI protocol changes). Import direction forced one wart: function-local `agent_adapter` import inside `load_config` (module-level would cycle, since adapters wrap config).
 - **Alternatives considered:** Per-agent adapter subclasses (`PiAdapter`, …) now (rejected — no per-agent behavior differences exist yet; subclasses with identical bodies are decoration, add when a CLI diverges); capabilities field replacing `roles` (rejected — roles drive selection today, capabilities filter); hardcoding capability maps per agent name (rejected — duplicates config, rots).
 - **Agents involved:** pi-manager (opencode contract review received 2026-09-15: APPROVE, 2 LOW + 2 notes; all applied — dead None-branch removed, capability names stripped/deduped at load, adapter-cache pin warning documented; suite 278 OK; A2 closed).
+- **Sign-off 2026-09-15 (GUI rounds):** opencode light review APPROVED (289 OK confirmed locally): no-flash consistency verified incl. POSIX passthrough + kill semantics; signature-gate proven safe (sole mutator, superset fields); root-cache design endorsed; layout internally consistent. Notes: N1 import order (applied), N2 POSIX session asymmetry → recorded in A3, N3/N4 accepted as-is. GUI rounds closed.
 
 ## 2026-09-15 — Roadmap v2.0 expansion (unified three-track plan)
 

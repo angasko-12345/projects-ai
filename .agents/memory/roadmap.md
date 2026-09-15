@@ -73,6 +73,7 @@
 - **Owner:** pi (writer); copilot (test review — subtle regressions hide here).
 - **Dependencies:** A1 (uniform terminal-state rules for cancelled/timed-out).
 - **Risks:** highest-risk refactor on the 416-line `runner.py`. Mitigate: ship as behavior-preserving extraction, keep `AgentRunner` public API identical, rely on existing `test_runner.py` + add dedicated runtime tests.
+- **Review input (opencode, GUI round):** POSIX session asymmetry — runner spawns with `start_new_session=True` but kernel spawns passthrough without it, so `os.killpg` on a kernel child is a no-op (grandchildren orphan on POSIX; win32 unaffected). A3 must give both paths one session policy. Also unify `CREATE_NO_WINDOW` handling in the runtime.
 - **Success criteria:** `VerificationKernel` imports runtime, not runner internals; full suite green; smoke-test a real agent run + a real verification run back-to-back.
 
 ### A4 — Structured failure evidence (P2)
