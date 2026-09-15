@@ -16,6 +16,8 @@ from .agent_run import (
     AgentRunStatus,
     TERMINAL_STATUSES,
 )
+from .artifacts import Artifact, ArtifactKind, ArtifactMetadata
+from .events import Event, EventBus, EventSeverity, EventType, coerce_event
 from .failure import (
     Failure,
     FailureCategory,
@@ -41,6 +43,41 @@ from .verification_model import (
 )
 
 
+def _jsonable(value: object) -> object:
+    """Deep-coerce a value into JSON-serializable data (never raises)."""
+    try:
+        if value is None or isinstance(value, (bool, int, str)):
+            return value
+        if isinstance(value, float):
+            return value if value == value and value not in (float("inf"), float("-inf")) else str(value)
+        if isinstance(value, dict):
+            return {str(_jsonable_key(key)): _jsonable(item) for key, item in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [_jsonable(item) for item in value]
+        return _safe_json_repr(value)
+    except Exception:
+        return _safe_json_repr(value)
+
+
+def _jsonable_key(key: object) -> str:
+    if isinstance(key, str):
+        return key
+    try:
+        return str(key)
+    except Exception:
+        return "<unrepresentable>"
+
+
+def _safe_json_repr(value: object) -> str:
+    try:
+        return repr(value)
+    except Exception:
+        try:
+            return f"<unrepresentable {type(value).__name__}>"
+        except Exception:
+            return "<unrepresentable>"
+
+
 def _json(value: object | None) -> str | None:
     if value is None:
         return None
@@ -57,8 +94,9 @@ def _loads(value: str | None, default: object) -> object:
 
 
 class StateStore:
-    def __init__(self, database_path: str | Path):
+    def __init__(self, database_path: str | Path, event_bus: EventBus | None = None):
         self.database_path = str(database_path)
+        self._event_bus = event_bus
         if self.database_path != ":memory:":
             Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
         # RLock (not Lock): public methods nest (e.g. ready_tasks -> update_task).
@@ -107,6 +145,8 @@ class StateStore:
         self._ensure_task_verification_columns()
         self._migrate_verification()
         self._migrate_failures()
+        self._migrate_typed_events()
+        self._migrate_artifacts()
         self.connection.commit()
 
     def _migrate_agent_runs(self) -> None:
@@ -212,7 +252,7 @@ class StateStore:
         ).fetchone()
         if migrated is None:
             self.connection.execute(
-                "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+                "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
                 (1, utc_now()),
             )
 
@@ -328,7 +368,7 @@ class StateStore:
         ).fetchone()
         if migrated is None:
             self.connection.execute(
-                "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+                "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
                 (2, utc_now()),
             )
 
@@ -504,6 +544,15 @@ class StateStore:
         with self._lock:
             self._event(workflow_id, task_id, kind, detail)
             self.connection.commit()
+        # Notify outside the lock: subscribers run on the publisher thread
+        # and must never stall other store users (see EventBus docs).
+        self._notify_bus(Event(
+            workflow_id=workflow_id,
+            task_id=task_id,
+            type=EventType.NOTE,
+            message=detail,
+            payload={"legacy_kind": kind},
+        ))
 
     def list_events(self, workflow_id: str, task_id: str | None = None) -> list[sqlite3.Row]:
         query = "SELECT * FROM events WHERE workflow_id = ?" + (" AND task_id = ?" if task_id else "")
@@ -516,6 +565,197 @@ class StateStore:
         self.connection.execute(
             "INSERT INTO events VALUES (?, ?, ?, ?, ?, ?)",
             (str(uuid4()), workflow_id, task_id, kind, detail, utc_now()),
+        )
+
+    def _notify_bus(self, event: Event) -> None:
+        bus = getattr(self, "_event_bus", None)
+        if bus is None:
+            return
+        try:
+            bus.emit(event)
+        except Exception:
+            pass
+
+    def record_typed_event(self, event: Event) -> Event:
+        """Persist a versioned timeline event and notify subscribers."""
+        normalized = coerce_event(event.to_dict() if isinstance(event, Event) else event)
+        if normalized is None:
+            raise ValueError("cannot record an empty event")
+        with self._lock:
+            self.connection.execute(
+                """INSERT INTO typed_events (
+                    id, workflow_id, task_id, agent_run_id, type, severity,
+                    message, payload, schema_version, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    normalized.id,
+                    normalized.workflow_id,
+                    normalized.task_id,
+                    normalized.agent_run_id,
+                    normalized.type.value if isinstance(normalized.type, EventType) else str(normalized.type),
+                    normalized.severity.value if isinstance(normalized.severity, EventSeverity) else str(normalized.severity),
+                    normalized.message,
+                    _json(_jsonable(normalized.payload)),
+                    normalized.schema_version,
+                    normalized.timestamp,
+                ),
+            )
+            self.connection.commit()
+        self._notify_bus(normalized)
+        return normalized
+
+    def query_events(
+        self,
+        workflow_id: str | None = None,
+        task_id: str | None = None,
+        agent_run_id: str | None = None,
+        event_type: EventType | str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[Event]:
+        """Chronologically ordered, paginated, filterable timeline query."""
+        if not isinstance(limit, int) or not isinstance(offset, int) or limit < 0 or offset < 0:
+            raise ValueError("Event query limit and offset must be non-negative integers.")
+        take = min(limit, 1000)
+        skip = offset
+        clauses: list[str] = []
+        params: list[object] = []
+        if workflow_id is not None:
+            clauses.append("workflow_id = ?")
+            params.append(workflow_id)
+        if task_id is not None:
+            clauses.append("task_id = ?")
+            params.append(task_id)
+        if agent_run_id is not None:
+            clauses.append("agent_run_id = ?")
+            params.append(agent_run_id)
+        if event_type is not None:
+            clauses.append("type = ?")
+            params.append(event_type.value if isinstance(event_type, EventType) else str(event_type))
+        query = "SELECT * FROM typed_events"
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY created_at, rowid LIMIT ? OFFSET ?"
+        params.extend([take, skip])
+        with self._lock:
+            rows = self.connection.execute(query, tuple(params)).fetchall()
+        return [self._typed_event_from_row(row) for row in rows]
+
+    def _typed_event_from_row(self, row: sqlite3.Row) -> Event:
+        try:
+            event_type = EventType(row["type"])
+        except (ValueError, KeyError, TypeError):
+            event_type = EventType.NOTE
+        try:
+            severity = EventSeverity(row["severity"])
+        except (ValueError, KeyError, TypeError):
+            severity = EventSeverity.INFO
+        payload = _loads(row["payload"], {})
+        return Event(
+            id=row["id"],
+            timestamp=row["created_at"],
+            workflow_id=row["workflow_id"],
+            task_id=row["task_id"],
+            agent_run_id=row["agent_run_id"],
+            type=event_type,
+            severity=severity,
+            message=row["message"],
+            payload=payload if isinstance(payload, dict) else {},
+            schema_version=row["schema_version"] or 1,
+        )
+
+    def create_artifact_record(self, artifact: Artifact) -> Artifact:
+        with self._lock:
+            self.connection.execute(
+                """INSERT INTO artifacts (
+                    id, workflow_id, task_id, agent_run_id, kind, name,
+                    rel_path, sha256, size_bytes, metadata, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    artifact.id,
+                    artifact.workflow_id,
+                    artifact.task_id,
+                    artifact.agent_run_id,
+                    artifact.kind.value if isinstance(artifact.kind, ArtifactKind) else str(artifact.kind),
+                    artifact.name,
+                    artifact.rel_path,
+                    artifact.sha256,
+                    artifact.size_bytes,
+                    _json(_jsonable(artifact.metadata.to_dict() if isinstance(artifact.metadata, ArtifactMetadata) else {})),
+                    artifact.created_at,
+                ),
+            )
+            self.connection.commit()
+        return artifact
+
+    def get_artifact(self, artifact_id: str) -> Artifact | None:
+        with self._lock:
+            row = self.connection.execute(
+                "SELECT * FROM artifacts WHERE id = ?", (artifact_id,)
+            ).fetchone()
+        return self._artifact_from_row(row) if row is not None else None
+
+    def list_artifacts(
+        self,
+        workflow_id: str | None = None,
+        task_id: str | None = None,
+        kind: ArtifactKind | str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[Artifact]:
+        if not isinstance(limit, int) or not isinstance(offset, int) or limit < 0 or offset < 0:
+            raise ValueError("Artifact list limit and offset must be non-negative integers.")
+        take = min(limit, 1000)
+        skip = offset
+        clauses: list[str] = []
+        params: list[object] = []
+        if workflow_id is not None:
+            clauses.append("workflow_id = ?")
+            params.append(workflow_id)
+        if task_id is not None:
+            clauses.append("task_id = ?")
+            params.append(task_id)
+        if kind is not None:
+            clauses.append("kind = ?")
+            params.append(kind.value if isinstance(kind, ArtifactKind) else str(kind))
+        query = "SELECT * FROM artifacts"
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY created_at, rowid LIMIT ? OFFSET ?"
+        params.extend([take, skip])
+        with self._lock:
+            rows = self.connection.execute(query, tuple(params)).fetchall()
+        return [self._artifact_from_row(row) for row in rows]
+
+    def delete_artifact_record(self, artifact_id: str) -> bool:
+        """Delete one artifact metadata row.
+
+        Removes only the DB row; pair with ``ArtifactStore.delete`` to remove
+        the file (the CLI ``artifacts --prune-keep`` path does both).
+        """
+        with self._lock:
+            cursor = self.connection.execute("DELETE FROM artifacts WHERE id = ?", (artifact_id,))
+            self.connection.commit()
+            return cursor.rowcount > 0
+
+    def _artifact_from_row(self, row: sqlite3.Row) -> Artifact:
+        try:
+            kind = ArtifactKind(row["kind"])
+        except (ValueError, KeyError, TypeError):
+            kind = ArtifactKind.CUSTOM
+        metadata = _loads(row["metadata"], {})
+        return Artifact(
+            id=row["id"],
+            workflow_id=row["workflow_id"],
+            task_id=row["task_id"],
+            agent_run_id=row["agent_run_id"],
+            kind=kind,
+            name=row["name"],
+            rel_path=row["rel_path"],
+            sha256=row["sha256"],
+            size_bytes=row["size_bytes"] or 0,
+            metadata=ArtifactMetadata.from_dict(metadata if isinstance(metadata, dict) else {}),
+            created_at=row["created_at"],
         )
 
     def ready_tasks(self, workflow_id: str) -> list[Task]:
@@ -1291,8 +1531,84 @@ class StateStore:
         ).fetchone()
         if migrated is None:
             self.connection.execute(
-                "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+                "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
                 (3, utc_now()),
+            )
+
+    def _migrate_typed_events(self) -> None:
+        """Apply additive versioned-timeline migrations without rewriting tables."""
+
+        self.connection.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS typed_events (
+                id TEXT PRIMARY KEY,
+                -- Run references are plain TEXT (no REFERENCES): events must
+                -- record for workflows/runs that were never persisted
+                -- (crash recovery, legacy imports), mirroring failures.
+                workflow_id TEXT,
+                task_id TEXT,
+                agent_run_id TEXT,
+                type TEXT NOT NULL,
+                severity TEXT NOT NULL,
+                message TEXT,
+                payload TEXT,
+                schema_version INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_typed_events_workflow
+                ON typed_events(workflow_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_typed_events_task
+                ON typed_events(task_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_typed_events_run
+                ON typed_events(agent_run_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_typed_events_type
+                ON typed_events(type, created_at);
+            """
+        )
+        migrated = self.connection.execute(
+            "SELECT 1 FROM schema_migrations WHERE version = 4"
+        ).fetchone()
+        if migrated is None:
+            self.connection.execute(
+                "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+                (4, utc_now()),
+            )
+
+    def _migrate_artifacts(self) -> None:
+        """Apply additive artifact-registry migrations without rewriting tables."""
+
+        self.connection.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS artifacts (
+                id TEXT PRIMARY KEY,
+                -- Plain TEXT refs (no REFERENCES): artifacts may describe
+                -- runs/workflows recorded elsewhere or not at all.
+                workflow_id TEXT,
+                task_id TEXT,
+                agent_run_id TEXT,
+                kind TEXT NOT NULL,
+                name TEXT NOT NULL,
+                rel_path TEXT NOT NULL,
+                sha256 TEXT NOT NULL,
+                size_bytes INTEGER NOT NULL DEFAULT 0,
+                metadata TEXT,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_artifacts_workflow
+                ON artifacts(workflow_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_artifacts_task
+                ON artifacts(task_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_artifacts_kind
+                ON artifacts(kind, created_at);
+            """
+        )
+        migrated = self.connection.execute(
+            "SELECT 1 FROM schema_migrations WHERE version = 5"
+        ).fetchone()
+        if migrated is None:
+            self.connection.execute(
+                "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+                (5, utc_now()),
             )
 
     def _failure_from_row(self, row: sqlite3.Row) -> Failure:

@@ -14,9 +14,14 @@ def _safe_name(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "-", value).strip("-") or "run"
 
 
-def _redact(value: str) -> str:
+def redact_text(value: str) -> str:
+    """Redact secret-looking tokens from text (public API; ``_redact`` is an alias)."""
     value = re.sub(r"(?i)((?:api[_-]?key|token|secret|password)\s*[=:]\s*)([^\s'\"]+)", r"\1[REDACTED]", value)
     return re.sub(r"\b(?:sk-[A-Za-z0-9_-]{12,}|ghp_[A-Za-z0-9]{20,})\b", "[REDACTED]", value)
+
+
+def _redact(value: str) -> str:
+    return redact_text(value)
 
 
 def _restrict(path: Path, mode: int) -> None:

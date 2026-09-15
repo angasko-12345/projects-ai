@@ -9,6 +9,7 @@ from pathlib import Path
 
 from . import __version__
 from .agent_run import AgentRunStatus, GitRunMetadataCollector
+from .artifacts import ArtifactError
 from .config import _load_data, load_config
 from .finalize import WorktreeFinalization, finalize_worktree
 from .git import GitError, GitWorktreeManager
@@ -57,6 +58,21 @@ def build_parser() -> argparse.ArgumentParser:
     failures.add_argument("--limit", type=int, default=20)
     failures.add_argument("--offset", type=int, default=0)
     subcommands.add_parser("recover", help="Recover interrupted agent runs, verification runs, and tasks")
+    events = subcommands.add_parser("events", help="Query the durable execution timeline")
+    events.add_argument("--workflow")
+    events.add_argument("--task")
+    events.add_argument("--run")
+    events.add_argument("--type")
+    events.add_argument("--limit", type=int, default=20)
+    events.add_argument("--offset", type=int, default=0)
+    artifacts = subcommands.add_parser("artifacts", help="Inspect stored workflow artifacts")
+    artifacts.add_argument("--workflow")
+    artifacts.add_argument("--task")
+    artifacts.add_argument("--kind")
+    artifacts.add_argument("--show")
+    artifacts.add_argument("--prune-keep", type=int, default=None)
+    artifacts.add_argument("--limit", type=int, default=20)
+    artifacts.add_argument("--offset", type=int, default=0)
     workflow = subcommands.add_parser("workflow", help="Execute a YAML workflow file")
     workflow.add_argument("file", type=Path)
     workflow.add_argument("--cwd", type=Path, default=Path.cwd(),
@@ -236,6 +252,60 @@ def main(argv: list[str] | None = None) -> int:
         except (KeyError, ValueError) as error:
             print(f"ERROR: {error}")
             return 2
+        finally:
+            state.close()
+        return 0
+    if args.command == "events":
+        state = StateStore(state_root / "state.sqlite")
+        try:
+            found = state.query_events(
+                args.workflow, args.task, args.run, args.type, args.limit, args.offset
+            )
+            if not found:
+                print("No timeline events.")
+            for event in found:
+                print(
+                    f"{event.timestamp}  {event.type.value:<24} {event.severity.value:<8} "
+                    f"workflow={event.workflow_id or '-'} task={event.task_id or '-'} "
+                    f"run={event.agent_run_id or '-'} {event.message or ''}"
+                )
+        finally:
+            state.close()
+        return 0
+    if args.command == "artifacts":
+        from .artifacts import ArtifactStore
+
+        state = StateStore(state_root / "state.sqlite")
+        try:
+            store = ArtifactStore(state_root / "artifacts")
+            if args.show:
+                artifact = state.get_artifact(args.show)
+                if artifact is None:
+                    print(f"ERROR: unknown artifact {args.show}")
+                    return 2
+                try:
+                    _print_text(store.read_text(artifact))
+                except (ArtifactError, OSError) as error:
+                    print(f"ERROR: {error}")
+                    return 2
+                return 0
+            found = state.list_artifacts(
+                args.workflow, args.task, args.kind, args.limit, args.offset
+            )
+            if args.prune_keep is not None:
+                deleted = store.prune(found, keep_last_n=args.prune_keep)
+                for artifact_id in deleted:
+                    state.delete_artifact_record(artifact_id)
+                print(f"Pruned {len(deleted)} artifact(s).")
+                return 0
+            if not found:
+                print("No stored artifacts.")
+            for artifact in found:
+                print(
+                    f"{artifact.id}  {artifact.kind.value:<20} {artifact.name:<28} "
+                    f"{artifact.size_bytes}B sha256={artifact.sha256[:12]} "
+                    f"workflow={artifact.workflow_id or '-'}"
+                )
         finally:
             state.close()
         return 0

@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Callable
 
 from .agent_run import AgentRun, AgentRunStatus, GitRunMetadataCollector
+from .artifacts import ArtifactError, ArtifactStore
 from .config import AppConfig, load_config
 from .finalize import finalize_worktree
 from .git import GitError, GitWorktreeManager, Worktree
@@ -190,6 +191,9 @@ class AgentOpsController:
         if self.state_path is not None:
             return self.state_path
         return self._operation_root(directory) / ".agentops" / "state.sqlite"
+
+    def _artifact_root(self, directory: str | Path) -> Path:
+        return self._state_path(directory).parent / "artifacts"
 
     def cancel(self) -> None:
         """Request cancellation of the current operation, if one exists."""
@@ -510,6 +514,65 @@ class AgentOpsController:
                 "verification_runs": len(state.recover_verification_runs()),
                 "tasks": len(state.recover_tasks(workflow_id)),
             })
+        finally:
+            state.close()
+
+    def query_events(
+        self,
+        directory: str | Path,
+        workflow_id: str | None = None,
+        task_id: str | None = None,
+        agent_run_id: str | None = None,
+        event_type: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict[str, object]]:
+        root = self._operation_root(directory)
+        state = StateStore(self._state_path(root))
+        try:
+            return [
+                event.to_dict()
+                for event in state.query_events(
+                    workflow_id, task_id, agent_run_id, event_type, limit, offset
+                )
+            ]
+        finally:
+            state.close()
+
+    def list_artifacts(
+        self,
+        directory: str | Path,
+        workflow_id: str | None = None,
+        task_id: str | None = None,
+        kind: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict[str, object]]:
+        root = self._operation_root(directory)
+        state = StateStore(self._state_path(root))
+        try:
+            return [
+                artifact.to_dict()
+                for artifact in state.list_artifacts(workflow_id, task_id, kind, limit, offset)
+            ]
+        finally:
+            state.close()
+
+    def read_artifact(
+        self, directory: str | Path, artifact_id: str, max_bytes: int = 65536
+    ) -> dict[str, object]:
+        root = self._operation_root(directory)
+        state = StateStore(self._state_path(root))
+        try:
+            artifact = state.get_artifact(artifact_id)
+            if artifact is None:
+                raise ValueError(f"Unknown artifact {artifact_id}")
+            store = ArtifactStore(self._artifact_root(root))
+            try:
+                text = store.read_text(artifact, max_bytes)
+            except ArtifactError as error:
+                raise ValueError(str(error))
+            return {"artifact": artifact.to_dict(), "text": text}
         finally:
             state.close()
 

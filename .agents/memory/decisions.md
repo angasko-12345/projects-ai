@@ -121,3 +121,11 @@
 - **Reason:** Task requirement: never trust natural-language output as the success signal; parser must never crash a valid execution; preserve backward compatibility.
 - **Alternatives considered:** New DB column/table for results (rejected — existing TEXT column already stores JSON, additive-only rule); storing `None` for plain-text output (rejected — envelope with UNKNOWN status + summary preserves evidence without changing process-success semantics).
 - **Agents involved:** pi-manager (copilot read-only snapshot review, 4 findings fixed).
+
+## 2026-09-15 — Event and Artifact Infrastructure (Phase 4)
+
+- **Date:** 2026-09-15
+- **Decision:** Added `agentops/events.py` leaf (versioned timeline schema v1, 27 event types, total codec, thread-safe bus) and `agentops/artifacts.py` (10-kind registry, contained hash-verified store, retention), additive schema v4/v5 (`typed_events`, `artifacts`; plain-TEXT refs, no FK — crash-recovery events must record for never-persisted runs), CLI `events`/`artifacts`, controller pass-throughs, GUI Artifacts tab; legacy `events` table and `list_events` preserved untouched.
+- **Reason:** Task requirement (Phase 4 header): durable execution timeline + first-class artifacts with SQLite as source of truth, GUI now / API later via the shared subscriber protocol.
+- **Alternatives considered:** Extending the legacy `events` table in place (rejected — kind/detail strings can't carry severity/payload/version; new table keeps old readers intact); FK-constrained run refs (rejected — same lesson as `failures` table: recovery evidence has no run to reference).
+- **Agents involved:** pi-manager (copilot + opencode live reviews requested).

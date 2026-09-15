@@ -1,37 +1,30 @@
 # Task
 
-Implement a Failure Analysis subsystem for AgentOps.
+PHASE 3 — Failure, Repair, and Recovery Kernel
 
-When an agent run or verification step fails, classify the failure.
+First inspect the current implementation and Phase 2 changes.
 
-Create a Failure object containing:
+Implement a first-class failure and recovery subsystem.
 
-* id
-* workflow_id
-* task_id
-* agent_run_id
-* source
-* category
-* severity
-* retryable
-* repairable
-* evidence
-* primary error
-* related verification checks
-* suggested action
-* created_at
+Create:
 
-Initial categories:
+Failure
+FailureClassifier
+RepairPlan
+RetryPolicy
+RecoveryState
+
+Failure categories should initially include:
 
 AGENT_ERROR
 PROCESS_ERROR
 TIMEOUT
 CANCELLATION
-VERIFICATION_FAILURE
 TEST_FAILURE
 LINT_FAILURE
 TYPECHECK_FAILURE
 BUILD_FAILURE
+VERIFICATION_FAILURE
 ENVIRONMENT_FAILURE
 DEPENDENCY_FAILURE
 GIT_CONFLICT
@@ -40,42 +33,244 @@ POLICY_VIOLATION
 REVIEW_REJECTION
 UNKNOWN
 
+A Failure should contain:
+
+id
+workflow_id
+task_id
+agent_run_id
+source
+category
+severity
+retryable
+repairable
+evidence
+primary error
+related verification run
+recommended action
+timestamps
+
 Implement deterministic classification first.
 
-Then implement a repair planner.
+Do not use an LLM for basic error classification.
 
-The repair planner should decide:
+Implement repair decisions such as:
 
-* retry same agent
-* retry different agent
-* repair implementation
-* rerun verification
-* request human approval
-* stop permanently
+retry same agent
+retry different agent
+repair implementation
+rerun verification
+request approval
+stop permanently
 
-Do NOT blindly retry.
+Retries must be bounded by policy.
 
-Retries must have:
+Support:
 
-* maximum attempts
-* backoff
-* failure-category rules
-* context from previous attempts
-* previous verification evidence
+maximum attempts
+maximum repair cycles
+backoff
+cancellation
+inherited context from previous attempts
+previous verification evidence
 
-Repair attempts must create new AgentRuns linked to their parent attempt.
+Every retry/repair must create a distinct AgentRun linked to its parent.
 
-Persist all decisions.
+Also implement workflow crash recovery.
 
-Expose the repair chain in CLI and GUI.
+On restart, detect incomplete operations and classify them as appropriate recovery states.
 
-Add tests for every failure category and repair decision.
+Never convert an unknown/interrupted state into success without evidence.
 
-Ensure failed worktrees remain inspectable according to current AgentOps behavior.
+Handle interruption during:
+
+agent execution
+verification
+review
+worktree creation
+Git operations
+merge
+
+Preserve failed/cancelled/conflicted worktrees according to existing AgentOps behavior.
+
+Add tests for every failure category and recovery scenario.
+
+Simulate process interruption in tests where practical.
+
+Run the full test suite.
+
+PHASE 4 — Event and Artifact Infrastructure
+
+Inspect existing event and logging code before implementing anything.
+
+Upgrade AgentOps into a durable execution timeline.
+
+Implement a versioned event model.
+
+Events should include:
+
+workflow.created
+workflow.started
+task.claimed
+task.started
+task.completed
+task.failed
+agent.selected
+agent.started
+agent.finished
+verification.started
+verification.completed
+verification.failed
+failure.classified
+repair.started
+repair.completed
+review.started
+review.completed
+policy.evaluated
+approval.requested
+approval.completed
+worktree.created
+worktree.cleaned
+merge.started
+merge.completed
+merge.conflict
+workflow.cancelled
+
+Each event should include:
+
+id
+timestamp
+workflow id
+task id
+agent run id when applicable
+event type
+severity
+message
+structured payload
+schema version
+
+Never store secrets in event payloads.
+
+Implement event querying with:
+
+chronological ordering
+pagination
+task filtering
+agent-run filtering
+event-type filtering
+
+Create a lightweight event subscription abstraction that the GUI can consume now and an API can consume later.
+
+Keep SQLite as the durable source of truth.
+
+Then implement first-class workflow artifacts.
+
+Create:
+
+Artifact
+ArtifactStore
+ArtifactMetadata
+
+Support artifacts such as:
+
+plans
+diffs
+patches
+execution logs
+verification reports
+reviews
+failure analysis
+risk reports
+final workflow summaries
+
+Store metadata in SQLite and large file content outside SQLite where appropriate.
+
+Every artifact must have a content hash.
+
+Add:
+
+retention
+cleanup
+missing-artifact handling
+safe permissions
+redaction
+
+Expose artifacts through CLI and GUI.
+
+Add comprehensive persistence and concurrency tests.
+
+Run the complete test suite.
 
 
 
-## Plan (Failure Analysis audit — 2026-09-15)
+## Plan (PHASE 3 re-audit + PHASE 4 build — 2026-09-15)
+
+### Subtask 1 — Phase 3 re-audit (no code expected)
+Agent: pi (sole writer)
+Depends on: none
+Status: done
+
+Phase 3 code untouched since the 2026-09-15 audit (only tasks/*.md modified at plan time). Suite re-verified green in Subtask 5.
+
+---
+
+### Subtask 2 — Versioned event model + store + query + subscription
+Agent: pi (sole writer)
+Depends on: Subtask 1
+Status: done
+
+New `agentops/events.py` leaf: `EVENT_SCHEMA_VERSION`, 26 `EventType` members, `EventSeverity`, `Event` dataclass (id, timestamp, workflow/task/agent-run ids, type, severity, message, payload, schema_version), tolerant `to_dict`/`from_dict`/`coerce_event`, `EventSubscriber` protocol + thread-safe `EventBus` (never raises into publishers). State: additive `typed_events` table (schema v4, explicit-column inserts, legacy-DB repair loop), `record_typed_event` + `query_events` (chronological, pagination, task/agent-run/type filters) returning `Event` objects; legacy `event`/`list_events` untouched; store notifies bus on write (best-effort). Payloads never carry secrets (redaction reuse + tests).
+
+---
+
+### Subtask 3 — Artifact store + metadata + retention
+Agent: pi (sole writer)
+Depends on: Subtask 2
+Status: done
+
+New `agentops/artifacts.py`: `ArtifactKind` (plans, diffs, patches, execution_logs, verification_reports, reviews, failure_analysis, risk_reports, workflow_summaries, custom), `Artifact` + `ArtifactMetadata`, `ArtifactStore` (root containment incl. traversal rejection, 0o700/0o600 perms, sha256 on write + verify on read, retention `prune`, missing-artifact sentinel, redaction on text writes). State: additive `artifacts` table (schema v5) with create/get/list/delete. Large content stays in files, metadata in SQLite.
+
+---
+
+### Subtask 4 — CLI + controller + GUI exposure
+Agent: pi (sole writer)
+Depends on: Subtask 3
+Status: done
+
+CLI `events` (workflow/task/run/type filters + limit/offset) and `artifacts` (list/show/prune) mirroring existing styles; controller pass-throughs; GUI artifacts visibility via the Logs-tab pattern (read-only, Tk-thread safe).
+
+---
+
+### Subtask 5 — Tests + full suite
+Agent: pi (sole writer)
+Depends on: Subtask 4
+Status: done
+
+`tests/test_events.py` (14 tests) + `tests/test_artifacts.py` (11 tests). Full suite 209 passing (184 prior + 25 new), 2 skips (1 pre-existing platform skip + 1 Windows perms skip per standing precedent). Two self-found bugs fixed during testing (FK-constrained refs, repr-quoted legacy_type).
+
+---
+
+### Subtask 6 — Snapshot review (read-only)
+Agent: copilot (tests) + opencode/fcc-claude only if live sessions appear
+Depends on: Subtask 5
+Status: in_progress
+
+Live sessions confirmed (`copilot`, `opencode-projects-7544`, both idle) — review asks sent via Intercom 2026-09-15 with `/tmp/agentops-review-phase4/` snapshot scope (repo untouched).
+
+**opencode findings received 2026-09-15 (15 items). Fixed before merge:** T1 (bus notify moved outside store RLock), M1 (INSERT OR IGNORE on all 5 migration version inserts), A1 (`_jsonable` deep sanitizer for payloads/metadata). **Contract hardening fixed:** L1 (docstring — GUI reads via controller queries; bus is the shared live/API protocol), L4 (public `redact_text`, `_redact` kept as alias), A3 (uniform ValueError pagination, matching existing list_*), A4 (hash-covers-stored-bytes documented), A5 (`EventBus(error_handler)`), T2 (publisher-thread contract documented), T4 (reentrant emits drained iteratively), M4 (store/registry pairing documented). **Noted, not changed:** T3 (pre-existing stateless-fallback, out of scope), L2 (pre-existing Task leak — roadmap Phase 1), M2 (invalid — single atomic commit, no partial shape possible), M3 (by design — global events have no workflow), L3 (typed timeline authoritative; legacy retained for old readers), A2 (reader-side tolerance documented). 5 new regression tests; suite 214 OK.
+
+---
+
+### Subtask 7 — Memory + report + commit + push
+Agent: pi
+Depends on: Subtask 6
+Status: pending
+
+Update memory, append `## Output`, commit, push to origin main. No exe rebuild (packaging untouched).
+
+---
+
+## Plan (SUPERSEDED — Failure Analysis audit, kept for history)
 
 ### Subtask 1 — Spec-to-code audit
 Agent: pi (sole writer)

@@ -8,6 +8,7 @@
 - Phase 1: IN PROGRESS (AgentRun/verification boundaries already return dataclasses; remaining `Row` leakage in workflow/task paths still to map).
 - Phases 2–10: PROPOSED, ordered backlog.
 - Already delivered outside the phase sequence: `agent_runs` table (covers the Phase 1 `runs`-table design), structured agent results + verification contracts (Phase 4, via AgentRun structured results and the Verification Kernel), artifact references in run/check records (first step of Phase 5).
+- 2026-09-15: Phase 4 task-header arrived (Event + Artifact Infrastructure). Delivered ahead of phase sequence: versioned timeline events + subscriptions (covers roadmap Phase 2 event-bus intent at the protocol/store layer; GUI polling retained, subscription available) and artifact registry with hash + CLI/GUI visibility (covers Phase 5 Artifacts registry).
 
 ## The 10 phases
 

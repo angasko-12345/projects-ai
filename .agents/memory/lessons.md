@@ -207,6 +207,18 @@
 - **Solution:** JSON-text branch in `coerce_agent_result`; `_coerce_bool_signal` with string spellings; downgrade any status to PARTIAL with `original_schema_version` in metadata; `_safe_*` helpers fold warnings + `parse_mode` into stored envelopes; `_safe_repr`/`_safe_get` make `agent_result_from_dict` total. Six regression tests added (184 passing).
 - **Remember:** Total functions must distrust `repr`/`str` of caller-controlled values; warning paths are crash paths too.
 
+### 2026-09-15 — FK refs break crash-recovery event recording (Phase 4)
+- **Symptom:** New `typed_events`/`artifacts` tests failed with `FOREIGN KEY constraint failed` when recording events for workflow ids with no `workflows` row.
+- **Root cause:** `REFERENCES workflows(id)` with `foreign_keys=ON` rejects evidence for runs/workflows that were never persisted — exactly the crash-recovery case.
+- **Solution:** Plain TEXT refs without REFERENCES (same fix as the `failures` table lesson 2026-09-14). Lesson now applied proactively: event/artifact tables were designed FK-free after the first test failure.
+- **Remember:** Any table that stores recovery/crash evidence must not FK-constrain the thing it reports on.
+
+### 2026-09-15 — Root-level unittest invocation shadows the package (Phase 4)
+- **Symptom:** `python -m unittest discover -s agentops/tests` from the repo root ran 128 tests with 8 import errors; the documented `cd agentops` invocation runs 184+ clean.
+- **Root cause:** The root `agentops/` project folder shadows the `agentops` package for namespace resolution.
+- **Solution:** Always run the suite from `agentops/`; recorded in project memory.
+- **Remember:** After the single-repo fold, the suite only runs from the `agentops/` directory.
+
 ## Environment-specific problems
 
 - Repo root `D:/admin/code/projects`; no stack/test runner configured yet — record pitfalls here once encountered.

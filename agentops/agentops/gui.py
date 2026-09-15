@@ -44,6 +44,11 @@ class GuiController(Protocol):
     def list_logs(self, directory: str | Path, task_id: str | None = None,
                   limit: int = 200) -> list[dict[str, object]]: ...
     def read_log(self, directory: str | Path, name: str | Path, max_bytes: int = 65536) -> dict[str, object]: ...
+    def list_artifacts(self, directory: str | Path, workflow_id: str | None = None,
+                       task_id: str | None = None, kind: str | None = None,
+                       limit: int = 100, offset: int = 0) -> list[dict[str, object]]: ...
+    def read_artifact(self, directory: str | Path, artifact_id: str,
+                      max_bytes: int = 65536) -> dict[str, object]: ...
     def list_worktrees(self, directory: str | Path) -> list[dict[str, object]]: ...
     def inspect_worktree(self, directory: str | Path, path: str | Path) -> dict[str, object]: ...
     def cleanup_worktree(self, directory: str | Path, path: str | Path,
@@ -92,6 +97,8 @@ class AgentOpsApp:
         self.history_filter = tk.StringVar(value="all")
         self._log_entries: list[dict[str, object]] = []
         self.log_task = tk.StringVar()
+        self._artifact_entries: list[dict[str, object]] = []
+        self.artifact_task = tk.StringVar()
         self._worktree_entries: list[dict[str, object]] = []
         self.delete_unmerged_branch = tk.BooleanVar(value=False)
         self.repository = tk.StringVar(value=str(Path.cwd()))
@@ -214,6 +221,23 @@ class AgentOpsApp:
         logs_scroll = ttk.Scrollbar(logs_tab, orient="vertical", command=self.log_list.yview)
         logs_scroll.grid(row=1, column=1, sticky="ns", pady=(8, 0))
         self.log_list.configure(yscrollcommand=logs_scroll.set)
+        artifacts_tab = ttk.Frame(notebook, padding=10)
+        notebook.add(artifacts_tab, text="Artifacts")
+        artifacts_tab.columnconfigure(0, weight=1)
+        artifacts_tab.rowconfigure(1, weight=1)
+        artifacts_controls = ttk.Frame(artifacts_tab)
+        artifacts_controls.grid(row=0, column=0, sticky="ew")
+        ttk.Label(artifacts_controls, text="Task filter:").pack(side="left")
+        ttk.Entry(artifacts_controls, textvariable=self.artifact_task, width=30).pack(side="left", padx=(6, 12))
+        self.artifacts_refresh_button = ttk.Button(artifacts_controls, text="Refresh", command=self.refresh_artifacts)
+        self.artifacts_refresh_button.pack(side="left")
+        self.artifact_view_button = ttk.Button(artifacts_controls, text="View selected", command=self.view_selected_artifact)
+        self.artifact_view_button.pack(side="left", padx=(8, 0))
+        self.artifact_list = tk.Listbox(artifacts_tab, height=8)
+        self.artifact_list.grid(row=1, column=0, sticky="nsew", pady=(8, 0))
+        artifacts_scroll = ttk.Scrollbar(artifacts_tab, orient="vertical", command=self.artifact_list.yview)
+        artifacts_scroll.grid(row=1, column=1, sticky="ns", pady=(8, 0))
+        self.artifact_list.configure(yscrollcommand=artifacts_scroll.set)
         worktrees_tab = ttk.Frame(notebook, padding=10)
         notebook.add(worktrees_tab, text="Worktrees")
         worktrees_tab.columnconfigure(0, weight=1)
@@ -559,6 +583,51 @@ class AgentOpsApp:
             self.append_output(str(data.get("text", "")).rstrip() or "(empty log)")
         except Exception as error:
             self.show_error(error, "Unable to read log")
+
+    def refresh_artifacts(self) -> None:
+        try:
+            list_artifacts = getattr(self._effective_controller(), "list_artifacts", None)
+            if not callable(list_artifacts):
+                self.append_output("Artifacts unavailable in this controller.")
+                return
+            task_filter = self.artifact_task.get().strip() or None
+            entries = list_artifacts(self.repository.get().strip(), task_id=task_filter)
+            self._artifact_entries = list(entries) if isinstance(entries, (list, tuple)) else []
+            self.artifact_list.delete(0, "end")
+            for entry in self._artifact_entries:
+                size = entry.get("size_bytes", 0)
+                try:
+                    size_text = f"{int(size):,} bytes"
+                except (TypeError, ValueError):
+                    size_text = "-"
+                self.artifact_list.insert("end", f"{entry.get('kind', '')} {entry.get('name', '')} ({size_text})")
+            self.append_output(f"Found {len(self._artifact_entries)} artifact(s).")
+        except Exception as error:
+            self.show_error(error, "Unable to list artifacts")
+
+    def view_selected_artifact(self) -> None:
+        selection = self.artifact_list.curselection()
+        if not selection:
+            messagebox.showwarning("No artifact selected", "Select an artifact first.", parent=self.root)
+            return
+        try:
+            entry = self._artifact_entries[selection[0]]
+        except IndexError:
+            messagebox.showwarning("Invalid selection", "Select an artifact first.", parent=self.root)
+            return
+        try:
+            read_artifact = getattr(self._effective_controller(), "read_artifact", None)
+            if not callable(read_artifact):
+                self.append_output("Artifact reading unavailable in this controller.")
+                return
+            data = read_artifact(self.repository.get().strip(), str(entry.get("id", "")))
+            artifact = data.get("artifact") if isinstance(data, dict) else None
+            name = artifact.get("name", "") if isinstance(artifact, dict) else ""
+            self.append_output(f"Artifact: {name}")
+            text = data.get("text", "") if isinstance(data, dict) else ""
+            self.append_output(str(text).rstrip() or "(empty artifact)")
+        except Exception as error:
+            self.show_error(error, "Unable to read artifact")
 
     def copy_selected_log_path(self) -> None:
         entry = self._selected_log()
