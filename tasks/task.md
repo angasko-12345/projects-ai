@@ -1,66 +1,121 @@
 # Task
 
-Upgrade AgentOps agent execution to support structured results.
+Implement a Failure Analysis subsystem for AgentOps.
 
-Do not trust natural-language agent output as the authoritative indication of success.
+When an agent run or verification step fails, classify the failure.
 
-Define a versioned AgentResult schema containing:
+Create a Failure object containing:
 
-status
-summary
-files_changed
-tests_run
-tests_passed
-tests_failed
-verification_results
-review_findings
-requested_followup
-confidence
-errors
-warnings
-metadata
+* id
+* workflow_id
+* task_id
+* agent_run_id
+* source
+* category
+* severity
+* retryable
+* repairable
+* evidence
+* primary error
+* related verification checks
+* suggested action
+* created_at
 
-Support agents that return:
+Initial categories:
 
-structured JSON
-plain text
-malformed/partial output
+AGENT_ERROR
+PROCESS_ERROR
+TIMEOUT
+CANCELLATION
+VERIFICATION_FAILURE
+TEST_FAILURE
+LINT_FAILURE
+TYPECHECK_FAILURE
+BUILD_FAILURE
+ENVIRONMENT_FAILURE
+DEPENDENCY_FAILURE
+GIT_CONFLICT
+DIRTY_WORKTREE
+POLICY_VIOLATION
+REVIEW_REJECTION
+UNKNOWN
 
-Implement a robust parser.
+Implement deterministic classification first.
 
-Plain-text agents must continue working.
+Then implement a repair planner.
 
-The parser must never cause an otherwise valid agent execution to crash solely because structured output is unavailable.
+The repair planner should decide:
 
-Store the structured result with the AgentRun.
+* retry same agent
+* retry different agent
+* repair implementation
+* rerun verification
+* request human approval
+* stop permanently
 
-Define a distinction between:
+Do NOT blindly retry.
 
-process success
-agent success
-verification success
-review approval
-merge eligibility
+Retries must have:
 
-These must NOT be treated as equivalent.
+* maximum attempts
+* backoff
+* failure-category rules
+* context from previous attempts
+* previous verification evidence
 
-Add schema versioning so future result formats can evolve.
+Repair attempts must create new AgentRuns linked to their parent attempt.
 
-Add comprehensive tests for:
+Persist all decisions.
 
-valid JSON
-malformed JSON
-empty output
-partial output
-plain text
-process failure
-verification failure
-reviewer rejection
+Expose the repair chain in CLI and GUI.
 
-Preserve backward compatibility.
-Run the full test suite.
+Add tests for every failure category and repair decision.
 
-## Plan
+Ensure failed worktrees remain inspectable according to current AgentOps behavior.
+
+
+
+## Plan (Failure Analysis audit — 2026-09-15)
+
+### Subtask 1 — Spec-to-code audit
+Agent: pi (sole writer)
+Depends on: none
+Status: done
+
+Verified every header bullet against `agentops/agentops/failure.py`, `workflow.py`, `cli.py`, `gui_controller.py`: Failure object carries all 14 required fields (verification linkage as `verification_run_id`, suggestion as `recommended_action` — functionally equivalent, noted in Output); all 16 categories present; deterministic classifier + repair planner with all 6 decisions; bounded retries (max attempts, backoff, category rules, inherited context + verification evidence); parent-linked repair AgentRuns; persisted decisions; repair chain in `failures`/`recover` CLI and GUI failure views; failed worktrees preserved per `finalize.py` conflict-task path.
+
+---
+
+### Subtask 2 — Test verification + full suite
+Agent: pi (sole writer)
+Depends on: Subtask 1
+Status: done
+
+`tests/test_failure_kernel.py`: 28 tests OK (every category + repair decisions + recovery). Full suite: 184 passing, 1 pre-existing platform skip. No code changes required — implementation predates this task header (Phase 3, committed `935f4dc`, copilot-reviewed with 4 findings fixed).
+
+---
+
+### Subtask 3 — Memory + report
+Agent: pi
+Depends on: Subtask 2
+Status: done
+
+## Output (Failure Analysis audit)
+
+No gaps found — the subsystem as specified already exists and is tested:
+
+- Failure record (`failure.py:110`): id, workflow_id, task_id, agent_run_id, source, category, severity, retryable, repairable, evidence, primary_error, verification_run_id (= related verification checks, via the linked run), recommended_action (= suggested action), created_at (+ updated_at, attempt, repair_cycle, recovery_state).
+- All 16 categories (`failure.py:20-35`): AGENT_ERROR, PROCESS_ERROR, TIMEOUT, CANCELLATION, TEST_FAILURE, LINT_FAILURE, TYPECHECK_FAILURE, BUILD_FAILURE, VERIFICATION_FAILURE, ENVIRONMENT_FAILURE, DEPENDENCY_FAILURE, GIT_CONFLICT, DIRTY_WORKTREE, POLICY_VIOLATION, REVIEW_REJECTION, UNKNOWN.
+- Deterministic classifier first; repair planner decides all 6 (`failure.py:59-65`): retry same/different agent, repair implementation, rerun verification, request human approval, stop permanently. No blind retry: `RetryPolicy` (max_attempts, backoff base/max/factor), category retry rules, inherited context + prior verification evidence (`workflow.py:461-462`, `_prompt_with_history`).
+- Repair attempts mint new parent-linked AgentRuns (`workflow.py:557-573`); decisions persisted in `failures` table; repair chain exposed via `failures`/`recover` CLI (`cli.py:53-59`) and GUI (`gui_controller.py:serialize_failure`).
+- Tests: 28 failure-kernel tests (every category + repair decision + recovery paths); full suite 184 OK. Failed worktrees stay inspectable via the conflict-task + preserved-worktree path.
+- Prior review coverage: copilot snapshot review of this exact code fixed 4 findings (see `.agents/memory/lessons.md` 2026-09-14 entry); no re-review needed as no lines changed.
+
+Note: the previous Plan/Output below (structured-results work) is retained for history but belonged to an earlier task header; the header has since been replaced twice by an external process. Backup of pre-audit tree: `/tmp/agentops-backup-failure-audit/diff.patch`.
+
+---
+
+## Plan (SUPERSEDED — structured-results work, kept for history)
 
 ### Subtask 1 — Versioned AgentResult schema + robust parser (leaf module)
 Agent: pi (sole writer)
