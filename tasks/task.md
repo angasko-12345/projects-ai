@@ -253,9 +253,9 @@ Status: done
 ### Subtask 6 — Snapshot review (read-only)
 Agent: copilot (tests) + opencode (architecture, DONE)
 Depends on: Subtask 5
-Status: done (opencode) / pending (copilot)
+Status: done (opencode) / done (copilot — findings received and fixed, see below)
 
-opencode findings received and fixed (adjudication follows); copilot live ask + nudge sent, reply pending at push time. Committed as `5742b2a` and pushed; copilot findings (if any) will land as a follow-up.
+opencode findings received and fixed (adjudication follows); copilot findings received 2026-09-15 (2 issues + 3 test gaps), both fixed: (1) artifact crash-window — true cross-system atomicity is impossible, so narrowed it: temp-write + atomic rename (no partial files), crash-window docstring, `scan_files`/`find_orphans` helpers + orphan test; (2) typed-event legacy compat — bridged by mirroring typed events into the legacy table in the same transaction (workflow-less events stay typed-only, documented). Gap tests added: crash-window/orphan, legacy-mirror compat, symlink + absolute-path traversal. While stress-testing, a real flake surfaced (concurrent first-open SQLITE_LOCKED at WAL pragma + leaked handles) — fixed with whole-open retry (8 attempts, backoff, close-on-failure) + test-handle hygiene; 10/10 stress runs clean. Suite 217 OK (3 environment skips).
 
 **opencode adjudication (15 items). Fixed before merge:** T1 (bus notify moved outside store RLock), M1 (INSERT OR IGNORE on all 5 migration version inserts), A1 (`_jsonable` deep sanitizer for payloads/metadata). **Contract hardening fixed:** L1 (docstring — GUI reads via controller queries; bus is the shared live/API protocol), L4 (public `redact_text`, `_redact` kept as alias), A3 (uniform ValueError pagination, matching existing list_*), A4 (hash-covers-stored-bytes documented), A5 (`EventBus(error_handler)`), T2 (publisher-thread contract documented), T4 (reentrant emits drained iteratively), M4 (store/registry pairing documented). **Noted, not changed:** T3 (pre-existing stateless-fallback, out of scope), L2 (pre-existing Task leak — roadmap Phase 1), M2 (invalid — single atomic commit, no partial shape possible), M3 (by design — global events have no workflow), L3 (typed timeline authoritative; legacy retained for old readers), A2 (reader-side tolerance documented). 5 new regression tests; suite 214 OK.
 

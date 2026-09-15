@@ -54,6 +54,32 @@ class ArtifactStoreTests(unittest.TestCase):
                 id=artifact.id, kind=artifact.kind, name="evil",
                 rel_path="../../evil", sha256=artifact.sha256,
             ))
+        with self.assertRaises(ArtifactError):
+            self.store.read(Artifact(
+                id=artifact.id, kind=artifact.kind, name="evil",
+                rel_path="/etc/passwd", sha256=artifact.sha256,
+            ))
+
+    @unittest.skipIf(os.name == "nt", "POSIX symlinks need privileges on Windows")
+    def test_symlink_escape_rejected(self):
+        outside = Path(self.tmp.name) / "outside.txt"
+        outside.write_text("secret", encoding="utf-8")
+        link = self.store.root / "plans" / "global"
+        link.mkdir(parents=True, exist_ok=True)
+        (link / "link").symlink_to(outside)
+        with self.assertRaises(ArtifactError):
+            self.store.read(Artifact(
+                id="x", kind=ArtifactKind.PLANS, name="link",
+                rel_path="plans/global/link", sha256="",
+            ))
+
+    def test_crash_window_leaves_orphan_without_row(self):
+        # Simulate a crash between file write and metadata insert: the
+        # file exists, no DB row does, and the orphan is discoverable.
+        artifact = self.store.write("orphan", name="crash", workflow_id="w")
+        self.assertEqual(self.store.find_orphans([]), [artifact.rel_path])
+        self.assertEqual(self.store.find_orphans([artifact.rel_path]), [])
+        self.assertIn(artifact.rel_path, self.store.scan_files())
 
     def test_missing_and_integrity(self):
         artifact = self.store.write("x", name="gone")

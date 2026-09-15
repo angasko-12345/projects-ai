@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+import time
 from pathlib import Path
 from uuid import uuid4
 
@@ -104,19 +105,52 @@ class StateStore:
         # across threads; across processes the conditional UPDATE in
         # claim_task is the atomicity guarantee (serialized by SQLite).
         self._lock = threading.RLock()
-        self.connection = sqlite3.connect(self.database_path, timeout=30, check_same_thread=False)
-        self.connection.row_factory = sqlite3.Row
-        self.connection.execute("PRAGMA foreign_keys = ON")
-        self.connection.execute("PRAGMA busy_timeout = 30000")
-        if self.database_path != ":memory:":
-            self.connection.execute("PRAGMA journal_mode = WAL")
-        self._initialize()
+        self.connection = self._open_with_retry()
+
+    def _open_with_retry(self) -> sqlite3.Connection:
+        # Concurrent first-open of one database file can hit SQLITE_LOCKED
+        # (journal-mode change, DDL snapshot conflicts), which busy_timeout
+        # does not cover. Everything below is idempotent (IF NOT EXISTS +
+        # OR IGNORE), so retry the whole open; failed attempts are closed
+        # to avoid leaking file handles.
+        attempts = 8
+        delay = 0.05
+        last_error: sqlite3.OperationalError | None = None
+        for attempt in range(attempts):
+            connection = sqlite3.connect(self.database_path, timeout=30, check_same_thread=False)
+            connection.row_factory = sqlite3.Row
+            self.connection = connection
+            try:
+                connection.execute("PRAGMA foreign_keys = ON")
+                connection.execute("PRAGMA busy_timeout = 30000")
+                if self.database_path != ":memory:":
+                    connection.execute("PRAGMA journal_mode = WAL")
+                self._initialize()
+                return connection
+            except sqlite3.OperationalError as error:
+                last_error = error
+                try:
+                    connection.rollback()
+                except sqlite3.Error:
+                    pass
+                try:
+                    connection.close()
+                except sqlite3.Error:
+                    pass
+                if attempt == attempts - 1:
+                    break
+                time.sleep(delay)
+                delay *= 2
+        raise last_error  # type: ignore[misc]
 
     def close(self) -> None:
         with self._lock:
             self.connection.close()
 
     def _initialize(self) -> None:
+        self._initialize_once()
+
+    def _initialize_once(self) -> None:
         self.connection.executescript(
             """
             CREATE TABLE IF NOT EXISTS workflows (
@@ -577,7 +611,13 @@ class StateStore:
             pass
 
     def record_typed_event(self, event: Event) -> Event:
-        """Persist a versioned timeline event and notify subscribers."""
+        """Persist a versioned timeline event and notify subscribers.
+
+        Also mirrors the event into the legacy ``events`` table (same
+        transaction) so older readers using ``list_events`` keep seeing new
+        activity. Events without a workflow id cannot mirror (the legacy
+        column is NOT NULL) and live only in ``typed_events``.
+        """
         normalized = coerce_event(event.to_dict() if isinstance(event, Event) else event)
         if normalized is None:
             raise ValueError("cannot record an empty event")
@@ -600,6 +640,13 @@ class StateStore:
                     normalized.timestamp,
                 ),
             )
+            if normalized.workflow_id is not None:
+                self._event(
+                    normalized.workflow_id,
+                    normalized.task_id,
+                    normalized.type.value if isinstance(normalized.type, EventType) else str(normalized.type),
+                    normalized.message or "",
+                )
             self.connection.commit()
         self._notify_bus(normalized)
         return normalized

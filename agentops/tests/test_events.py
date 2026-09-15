@@ -195,6 +195,21 @@ class EventStoreTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["kind"], "task-claimed")
 
+    def test_typed_events_mirror_into_legacy_table(self):
+        self.state.record_typed_event(Event(
+            workflow_id="w", task_id="t",
+            type=EventType.TASK_FAILED, message="boom",
+        ))
+        rows = self.state.list_events("w")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["kind"], "task.failed")
+        self.assertEqual(rows[0]["detail"], "boom")
+        # Global events (no workflow) cannot mirror into the NOT NULL
+        # legacy column but must still persist in the typed timeline.
+        self.state.record_typed_event(Event(type=EventType.NOTE, message="g"))
+        self.assertEqual(len(self.state.query_events()), 2)
+        self.assertEqual(len(self.state.list_events("w")), 1)
+
     def test_invalid_pagination_raises(self):
         for bad in ("x", -1, None):
             with self.assertRaises(ValueError):
@@ -227,12 +242,20 @@ class EventStoreTests(unittest.TestCase):
             path = str(_Path(directory) / "state.sqlite")
 
             def opener() -> None:
+                import traceback as _traceback
+
+                store = None
                 try:
                     store = StateStore(path)
                     store.query_events(limit=1)
-                    store.close()
                 except Exception as error:  # pragma: no cover
-                    errors.append(error)
+                    errors.append(f"{error!r}\n{_traceback.format_exc()[-1500:]}")
+                finally:
+                    try:
+                        if store is not None:
+                            store.close()
+                    except Exception:  # pragma: no cover
+                        pass
 
             threads = [threading.Thread(target=opener) for _ in range(8)]
             for thread in threads:

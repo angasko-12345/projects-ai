@@ -219,6 +219,12 @@
 - **Solution:** Always run the suite from `agentops/`; recorded in project memory.
 - **Remember:** After the single-repo fold, the suite only runs from the `agentops/` directory.
 
+### 2026-09-15 — Concurrent first-open SQLITE_LOCKED + leaked handles (Phase 4)
+- **Symptom:** New concurrent-migration stress test flaked ~25% with `database is locked` at `PRAGMA journal_mode=WAL`, plus Windows file-cleanup failures from unclosed handles.
+- **Root cause:** (1) Retry covered only migrations, not the WAL pragma (busy_timeout does not cover SQLITE_LOCKED snapshot/mode conflicts); (2) failed `__init__` leaked the connection (test `finally` skipped close when `store` stayed None).
+- **Solution:** Retry the whole open (8 attempts, backoff, close-on-failure); test closes handles in `finally`. 10/10 stress runs clean.
+- **Remember:** Retry must cover connection setup through migrations, and every failed open must close its handle — especially on Windows where open files block cleanup.
+
 ## Environment-specific problems
 
 - Repo root `D:/admin/code/projects`; no stack/test runner configured yet — record pitfalls here once encountered.

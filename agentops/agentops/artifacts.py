@@ -124,6 +124,8 @@ class ArtifactStore:
     def _contained(self, rel_path: str | Path) -> Path:
         candidate = self.root / Path(str(rel_path or ""))
         try:
+            # resolve() follows symlinks, so a symlink pointing outside the
+            # root is rejected just like a ../ traversal.
             resolved = candidate.resolve()
             resolved.relative_to(self.root.resolve())
         except (OSError, ValueError):
@@ -146,6 +148,14 @@ class ArtifactStore:
 
         The recorded sha256 covers the stored (post-redaction) bytes, so it
         verifies store integrity — not equality with the caller's original.
+
+        Crash semantics: the file is written to a temporary sibling and
+        atomically renamed, so a crash never leaves a partial file behind.
+        A crash between this call and the separately-committed metadata row
+        can still leave an orphan file (visible via ``scan_files`` /
+        ``find_orphans``); filesystem and SQLite cannot share one
+        transaction, so callers should record metadata promptly and prune
+        orphans on a schedule.
         """
         with self._lock:
             try:
@@ -168,7 +178,10 @@ class ArtifactStore:
             _restrict(directory, 0o700)
             filename = f"{_safe_name(name)}-{uuid4().hex[:12]}"
             path = directory / filename
-            path.write_bytes(payload)
+            staging = directory / f"{filename}.tmp-{uuid4().hex[:8]}"
+            staging.write_bytes(payload)
+            _restrict(staging, 0o600)
+            os.replace(staging, path)
             _restrict(path, 0o600)
             try:
                 rel = path.resolve().relative_to(self.root.resolve()).as_posix()
@@ -225,6 +238,27 @@ class ArtifactStore:
             except OSError:
                 return False
             return True
+
+    def scan_files(self) -> list[str]:
+        """List all file paths in the store, relative to the root (POSIX)."""
+        with self._lock:
+            try:
+                root = self.root.resolve()
+            except OSError:
+                return []
+            found: list[str] = []
+            for path in sorted(root.rglob("*")):
+                try:
+                    if path.is_file():
+                        found.append(path.relative_to(root).as_posix())
+                except (OSError, ValueError):
+                    continue
+            return found
+
+    def find_orphans(self, known_rel_paths: list[str] | set[str]) -> list[str]:
+        """Return stored files with no metadata row (crash-window residue)."""
+        known = set(known_rel_paths)
+        return [path for path in self.scan_files() if path not in known]
 
     def prune(self, candidates: list[Artifact], *, keep_last_n: int = 0) -> list[str]:
         """Delete all but the newest `keep_last_n` artifacts. Returns deleted ids."""
