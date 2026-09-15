@@ -150,6 +150,7 @@
 - **Reason:** Review correctness bar per collaboration workflow; every fix evidence-backed with regression tests (kernel-empty ×2, all-skipped, optional-failure, recovery-honesty, same-state-no-event); suite 256 OK.
 - **Alternatives considered:** Hard-aborting on kernel-empty (rejected — inconsistent with legacy FAILED+repair for the same policy); leaving the validator export-only (rejected — unenforced contracts rot); keeping `failed_checks != 0` (rejected — proven false positive against optional failures).
 - **Agents involved:** pi-manager, opencode-projects-12884 (reviewer).
+- **Sign-off 2026-09-15:** opencode re-reviewed `908dce6` (working tree + local 256-OK run): all 4 fixes + note accepted, no new findings; agreed the optional-failure catch was a real landmine-sweep; legacy-empty/kernel fail-fast consistency endorsed with user-override retained. A1 + A1R closed.
 
 ## 2026-09-15 — Roadmap v2.0 expansion (unified three-track plan)
 
