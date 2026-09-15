@@ -25,6 +25,7 @@ class AgentRegistry:
             return self._detected
         self._detected = {
             name: DetectedAgent(agent, (executable := shutil.which(agent.command)) is not None, executable)
+            if agent.enabled else DetectedAgent(agent, False, None)
             for name, agent in self.config.agents.items()
         }
         return self._detected
@@ -41,6 +42,8 @@ class AgentRegistry:
         preferred = self.config.role_preferences.get(role, ())
         ordered = list(preferred) + [name for name in detected if name not in preferred]
         for name in ordered:
+            if name not in detected:
+                continue
             candidate = detected[name]
             if candidate.available and name not in excluded and (not candidate.config.roles or role in candidate.config.roles):
                 return candidate

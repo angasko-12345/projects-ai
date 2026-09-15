@@ -23,3 +23,29 @@ class ConfigAndRegistryTests(unittest.TestCase):
         load_data.return_value = {"agents": {"bad": {"command": "x", "args": "nope"}}}
         with self.assertRaises(ValueError):
             load_config()
+
+    @patch("agentops.config._load_data")
+    def test_agent_enabled_flag(self, load_data):
+        load_data.return_value = {"agents": {
+            "on": {"command": "on"},
+            "off": {"command": "off", "enabled": False},
+        }}
+        config = load_config()
+        self.assertTrue(config.agents["on"].enabled)
+        self.assertFalse(config.agents["off"].enabled)
+        load_data.return_value = {"agents": {"bad": {"command": "x", "enabled": "yes"}}}
+        with self.assertRaises(ValueError):
+            load_config()
+
+    @patch("agentops.registry.shutil.which")
+    def test_disabled_agents_are_never_selected(self, which):
+        which.side_effect = lambda command: f"C:/bin/{command}"
+        registry = AgentRegistry(load_config())
+        detected = registry.detect()
+        self.assertFalse(detected["claude"].available)
+        self.assertIsNone(detected["claude"].executable)
+        self.assertNotIn("claude", [call.args[0] for call in which.mock_calls])
+        for role in ("architecture", "implementation", "debugging", "review"):
+            selected = registry.select(role)
+            if selected is not None:
+                self.assertNotEqual(selected.config.name, "claude")

@@ -32,6 +32,8 @@ class Task:
     attempts: int = 0
     max_attempts: int = 2
     result: str | None = None
+    verified: bool = False
+    verification_run_id: str | None = None
     created_at: str = field(default_factory=utc_now)
     started_at: str | None = None
     finished_at: str | None = None

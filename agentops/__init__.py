@@ -1,6 +1,91 @@
 """AgentOps: local-first orchestration for coding-agent CLIs."""
 
+from .agent_run import (
+    AgentRun,
+    AgentRunContext,
+    AgentRunMetadata,
+    AgentRunOutcome,
+    AgentRunRelationship,
+    AgentRunStatus,
+)
+from .agent_result import (
+    RESULT_SCHEMA_VERSION,
+    AgentResult,
+    AgentResultStatus,
+    ExecutionOutcome,
+    ParseMode,
+    ParsedAgentResult,
+    coerce_agent_result,
+    evaluate_execution,
+    parse_agent_result,
+)
+from .verification_model import (
+    VerificationCheck,
+    VerificationCheckClass,
+    VerificationCheckSpec,
+    VerificationCheckStatus,
+    VerificationExecutionPolicy,
+    VerificationProfile,
+    VerificationProfileMode,
+    VerificationReport,
+    VerificationReportStatus,
+    VerificationRun,
+    VerificationRunStatus,
+)
+from .failure import (
+    Failure,
+    FailureCategory,
+    FailureClassifier,
+    FailureSeverity,
+    FailureSource,
+    InterruptionContext,
+    RecoveryState,
+    RepairAction,
+    RepairPlan,
+    RetryPolicy,
+    build_retry_prompt,
+)
 from .tasks import Task, TaskStatus
 
-__all__ = ["Task", "TaskStatus"]
-__version__ = "0.1.0"
+__all__ = [
+    "Failure",
+    "FailureCategory",
+    "FailureClassifier",
+    "FailureSeverity",
+    "FailureSource",
+    "InterruptionContext",
+    "RecoveryState",
+    "RepairAction",
+    "RepairPlan",
+    "RetryPolicy",
+    "build_retry_prompt",
+    "VerificationCheck",
+    "VerificationCheckClass",
+    "VerificationCheckSpec",
+    "VerificationCheckStatus",
+    "VerificationExecutionPolicy",
+    "VerificationProfile",
+    "VerificationProfileMode",
+    "VerificationReport",
+    "VerificationReportStatus",
+    "VerificationRun",
+    "VerificationRunStatus",
+    "AgentRun",
+    "AgentRunContext",
+    "AgentRunMetadata",
+    "AgentRunOutcome",
+    "AgentRunRelationship",
+    "AgentRunStatus",
+    "RESULT_SCHEMA_VERSION",
+    "AgentResult",
+    "AgentResultStatus",
+    "ExecutionOutcome",
+    "ParseMode",
+    "ParsedAgentResult",
+    "coerce_agent_result",
+    "evaluate_execution",
+    "parse_agent_result",
+    "Task",
+    "TaskStatus",
+]
+__version__ = "0.1.2"

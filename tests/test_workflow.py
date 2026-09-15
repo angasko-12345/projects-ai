@@ -24,7 +24,7 @@ class WorkflowTests(unittest.TestCase):
         self.runner.run_agent = self._run_agent
         self.verifier = MagicMock()
 
-    async def _run_agent(self, agent, prompt, directory, task_id):
+    async def _run_agent(self, agent, prompt, directory, task_id, cancel_event=None):
         return RunResult(agent.config.name, ("fake",), 0, "done", "", 0.01, False, Path(f"{task_id}.log"))
 
     def tearDown(self):
