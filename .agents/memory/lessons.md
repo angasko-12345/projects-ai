@@ -231,6 +231,12 @@
 - **Solution:** Re-indented CLI block (failures loop intact, provenance after); updated test to `[1..6]`. Suite 224 OK.
 - **Remember:** When splicing prints into a loop body, verify the `for` suite boundary; bump migration-version assertions with every additive schema change.
 
+### 2026-09-15 — Validators vs suite: treat violations as (refined) bugs (A1)
+- **Symptom:** New A1 validators broke 5 then 1 existing tests: legacy-verified tasks carry no `verification_run_id`; `verification_evidence()` was kernel-only; `Verifier(())` vacuous-passed.
+- **Root cause:** Invariants written kernel-first ignored the preserved legacy contract (output IS the evidence) — and the legacy contract contained one real fabrication (empty suite passes).
+- **Solution:** Evidence = kernel run OR non-empty transcript (documented in matrix); `verification_evidence()` unified; empty suites fail at the source (`bool(results) and all(...)`); Review #2 test renamed with supersede note. Suite 251 OK (27 new).
+- **Remember:** When a new invariant breaks old tests, check whether the invariant or the test encodes the bug — here it was both (refine the rule, fix the fabrication), and record superseded decisions explicitly so the user can overrule.
+
 ## Environment-specific problems
 
 - Repo root `D:/admin/code/projects`; no stack/test runner configured yet — record pitfalls here once encountered.

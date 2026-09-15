@@ -64,6 +64,14 @@ from .failure import (
     RetryPolicy,
     build_retry_prompt,
 )
+from .execution_model import (
+    StateTransitionError,
+    assert_agent_run_transition,
+    assert_no_fabricated_success,
+    assert_report_consistent,
+    assert_task_completion,
+    assert_workflow_ready,
+)
 from .git import Worktree, WorktreeRef
 from .tasks import Task, TaskStatus, Workflow
 
@@ -125,5 +133,11 @@ __all__ = [
     "Workflow",
     "Worktree",
     "WorktreeRef",
+    "StateTransitionError",
+    "assert_agent_run_transition",
+    "assert_no_fabricated_success",
+    "assert_report_consistent",
+    "assert_task_completion",
+    "assert_workflow_ready",
 ]
 __version__ = "0.1.3"

@@ -29,7 +29,9 @@
 
 > Rationale: the ChatGPT audit scored the system 8/10 with an explicit directive: *evolution, not rewrite*. These are the contract-stabilization items that make Phases 6–10 and all UX work cheaper. Order matters: **A1 → A3 before A2** because the runtime is a prerequisite for clean adapters.
 
-### A1 — Formal execution/result state machine (P0)
+### A1 — Formal execution/result state machine (P0) ✅ DONE 2026-09-15
+
+> Delivered: `agentops/execution_model.py` leaf (matrix docstring, `StateTransitionError`, 5 pure validators, `SUCCESS_LADDER`); `state._transition` single-sources the matrix; 3 fail-loud workflow call sites; unified `verification_evidence()`; 27 new invariant tests; suite 251 OK; exe rebuilt + re-published to Release v0.1.3. Opencode architecture review requested async. Original action list kept below for history.
 
 - **Objective:** One authoritative definition of success per layer (process / agent / verification / review / merge / workflow) with invalid transitions rejected, not just documented.
 - **State today:** `evaluate_execution` in `agent_result.py` already distinguishes the five-way outcome; `TaskStatus`/`AgentRunStatus`/`VerificationRunStatus` have transition guards. The gap is *cross-object* rules (e.g., a task can't be COMPLETED if its required verification is not PASSED) and central documentation.

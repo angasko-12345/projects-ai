@@ -6,6 +6,10 @@
 
 - AgentOps v0.1.2 (`D:/admin/code/projects/agentops`): layered local-first orchestrator. Entry points (`cli.py`, `gui.py`+`gui_controller.py`) compose an injected `WorkflowEngine`; GUI never imports service modules directly — all Tk updates marshalled via `root.after()`, work runs on controller background threads. Audited 2026-09-13.
 
+## A1 execution state machine 2026-09-15
+
+- New `agentops/execution_model.py` leaf (no I/O): authoritative matrix (AgentRun table mirroring `state._transition` exactly incl. the deliberate `pending → terminal` allowance; verification/task/workflow/recovery rules; success ladder process→agent→verification→review→merge→workflow), `StateTransitionError`, `AGENT_RUN_TRANSITIONS`, 5 pure validators. `state._transition` delegates to `assert_agent_run_transition` (ValueError contract preserved). Workflow wiring: `assert_report_consistent` after kernel runs, `assert_task_completion` on PASSED before persist, `assert_workflow_ready` before every READY return; `StateTransitionError` re-raised past the task-failure handler (fail-loud). `verification_evidence()` unified (kernel run OR legacy transcript). Exports in `__init__.py`. Tests: `test_execution_model.py` (27 tests).
+
 ## Phase 1 + Phase 3 delivery 2026-09-15
 
 - Phase 1 Storage DTOs DONE: `tasks.Workflow` DTO; `StateStore.latest/list/get_workflow` return DTOs; `list_events` returns plain dicts; controller `serialize_workflow`/`serialize_task` emit dicts (tasks no longer leak dataclasses); `get/latest_workflow` include serialized failures + `worktree_ref`; CLI status uses attribute access. Tests: `test_storage_dtos_worktree_refs.py` (DTO mapping) + updated `test_state`/`test_review_regressions`/`test_events` (v6). Suite 224 OK, 3 skips.

@@ -43,8 +43,11 @@ def _engine(**overrides):
 
 
 class VerificationRegressions(unittest.TestCase):
-    def test_empty_verification_commands_pass(self):
-        """Review #2: Verifier([]) must not fail the verification task."""
+    def test_empty_verification_commands_fail_without_evidence(self):
+        """A1 (supersedes Review #2 `test_empty_verification_commands_pass`):
+        an empty legacy command suite is vacuous success and must NOT verify.
+        `Verifier(())` still returns [] (no crash); the workflow layer must
+        mark the task FAILED instead of PASSED+verified."""
         async def go():
             return await Verifier((), 5).run(".")
         self.assertEqual(asyncio.run(go()), [])
@@ -68,7 +71,9 @@ class VerificationRegressions(unittest.TestCase):
             task = state.add_task(Task("check", "verification", wid, max_attempts=1))
             asyncio.run(engine.execute(wid, Path.cwd()))
             from agentops.tasks import TaskStatus
-            self.assertEqual(state.get_task(task.id).status, TaskStatus.PASSED)
+            final = state.get_task(task.id)
+            self.assertEqual(final.status, TaskStatus.FAILED)
+            self.assertFalse(final.verified)
         finally:
             state.close()
 

@@ -43,6 +43,10 @@
 - Operating rules: read memory before substantial work; update after; preserve history; keep concise, no transcripts; no duplicate entries.
 - Manager verifies Intercom connectivity before major work.
 
+## A1 execution state machine 2026-09-15
+
+- Track A1 DONE: `agentops/execution_model.py` (matrix + `StateTransitionError` + 5 validators), single-sourced AgentRun matrix, 3 fail-loud workflow gates, unified evidence, 27 invariant tests, suite 251 OK. Behavior change: empty verification suites no longer verify (supersedes Review #2 — user may overrule). Opencode review requested (reply pending). Exe rebuilt (22 modules) + Release v0.1.3 asset replaced (14,812,835 bytes).
+
 ## Release v0.1.3 + exe 2026-09-15
 
 - Fresh `dist/AgentOps.exe` rebuilt from Phase 1/3 tree (14,807,079 bytes, PyInstaller 6.22.3; 2 stale processes taskkilled first per lesson); archive-inspected (21 `agentops.*` modules incl. all kernels); startup/shutdown smoke-tested with process-exit verification. Published as GitHub Release asset `v0.1.3` (tag pushed, release id 389098654). Exe stays out of git per standing decision.

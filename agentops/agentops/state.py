@@ -28,6 +28,7 @@ from .failure import (
     RecoveryState,
     RepairAction,
 )
+from .execution_model import StateTransitionError, assert_agent_run_transition
 from .git import WorktreeRef
 from .tasks import Task, TaskStatus, Workflow, utc_now
 from .verification_model import (
@@ -989,32 +990,13 @@ class StateStore:
             if row is None:
                 raise KeyError(f"Unknown AgentRun: {run_id}")
             current = AgentRunStatus(row["status"])
-            allowed = {
-                AgentRunStatus.PENDING: {
-                    AgentRunStatus.STARTING,
-                    AgentRunStatus.COMPLETED,
-                    AgentRunStatus.FAILED,
-                    AgentRunStatus.CANCELLED,
-                    AgentRunStatus.TIMED_OUT,
-                    AgentRunStatus.TERMINATED,
-                },
-                AgentRunStatus.STARTING: {
-                    AgentRunStatus.RUNNING,
-                    AgentRunStatus.FAILED,
-                    AgentRunStatus.CANCELLED,
-                    AgentRunStatus.TIMED_OUT,
-                    AgentRunStatus.TERMINATED,
-                },
-                AgentRunStatus.RUNNING: {
-                    AgentRunStatus.COMPLETED,
-                    AgentRunStatus.FAILED,
-                    AgentRunStatus.CANCELLED,
-                    AgentRunStatus.TIMED_OUT,
-                    AgentRunStatus.TERMINATED,
-                },
-            }
-            if current is not target and target not in allowed.get(current, set()):
-                raise ValueError(f"Invalid AgentRun transition: {current.value} -> {target.value}")
+            # Single-sourced matrix (Track A1): execution_model owns the
+            # table; this method only maps the violation to ValueError to
+            # preserve the long-standing public error contract.
+            try:
+                assert_agent_run_transition(current, target)
+            except StateTransitionError as error:
+                raise ValueError(str(error)) from error
             assignments = ["status=?", "updated_at=?"]
             values: list[object] = [target, utc_now()]
             for key, value in changes.items():

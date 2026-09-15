@@ -137,6 +137,13 @@
 - **Alternatives considered:** Extending the legacy `events` table in place (rejected — kind/detail strings can't carry severity/payload/version; new table keeps old readers intact); FK-constrained run refs (rejected — same lesson as `failures` table: recovery evidence has no run to reference).
 - **Agents involved:** pi-manager (copilot + opencode live reviews requested).
 
+## 2026-09-15 — A1 execution state machine + vacuous-success reversal
+- **Date:** 2026-09-15
+- **Decision:** Delivered Track A1 (`execution_model.py`, single-sourced matrix, 3 fail-loud workflow gates). Two refinements forced by validator-vs-suite confrontation: (1) legacy-verified tasks count as evidence via result transcript (kernel run OR transcript — legacy output IS the evidence per the preserved contract); (2) empty legacy command suites (`Verifier(())`) no longer verify — supersedes Review #2 (`test_empty_verification_commands_pass` renamed to `test_empty_verification_commands_fail_without_evidence`), because vacuous success is exactly what A1 forbids. `verification_evidence()` unified to the same definition (was kernel-only). User may overrule (2) — flagged in report.
+- **Reason:** A1 objective (invalid transitions rejected, never coerced); validators exposed real gaps, treated as bugs per the A1 risk plan.
+- **Alternatives considered:** Weakening validators to match legacy behavior (rejected — legalizes fabricated success); giving legacy runs synthetic run ids (rejected — fake linkage is worse than honest transcript evidence); leaving Review #2 intact with a carve-out (rejected — carve-outs defeat a state machine).
+- **Agents involved:** pi-manager (opencode architecture review requested async via live `opencode-projects-12884`; reply pending).
+
 ## 2026-09-15 — Roadmap v2.0 expansion (unified three-track plan)
 
 - **Date:** 2026-09-15

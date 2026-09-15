@@ -22,6 +22,12 @@ from .agent_run import (
     GitRunMetadataCollector,
 )
 from .agent_result import parse_agent_result
+from .execution_model import (
+    StateTransitionError,
+    assert_report_consistent,
+    assert_task_completion,
+    assert_workflow_ready,
+)
 from .failure import (
     Failure,
     FailureCategory,
@@ -356,6 +362,10 @@ class WorkflowEngine:
                         cancel_event=cancel_event,
                     )
                     task.verification_run_id = report.run_id
+                    # A1: the report must be self-consistent before it can
+                    # verify anything (fail-loud: violations propagate via
+                    # the StateTransitionError re-raise below, never coerce).
+                    assert_report_consistent(report)
                     # An agent claiming success can never set this flag: only a
                     # passed VerificationReport marks a task verified.
                     task.verified = report.overall_status is VerificationReportStatus.PASSED
@@ -365,7 +375,9 @@ class WorkflowEngine:
                         self._record_verification_failure(task, report)
                 else:
                     results = await self.verifier.run(working_directory, cancel_event)
-                    succeeded = all(result.succeeded for result in results)
+                    # A1: an empty command suite is vacuous success and must
+                    # not verify (supersedes Review #2 — see decisions.md).
+                    succeeded = bool(results) and all(result.succeeded for result in results)
                     task.result = "\n".join(result.output for result in results)
                     # Legacy verification commands are verification evidence
                     # themselves; only agent-task success leaves verified False.
@@ -414,6 +426,11 @@ class WorkflowEngine:
                     task.status = TaskStatus.PASSED if result.succeeded else TaskStatus.FAILED
                     if task.status is TaskStatus.FAILED:
                         self._record_agent_failure(task, result)
+        except StateTransitionError:
+            # A1: invariant violations are programmer errors — never fold
+            # them into task failure records; abort loudly so the suite
+            # (or the operator) sees the real bug.
+            raise
         except asyncio.CancelledError:
             if started:
                 task.status = TaskStatus.FAILED
@@ -475,6 +492,10 @@ class WorkflowEngine:
             task.result = f"Attempt {task.attempts} failed; retrying.\n{task.result}"
         if task.status in {TaskStatus.PASSED, TaskStatus.FAILED}:
             task.finished_at = utc_now()
+        if task.status is TaskStatus.PASSED:
+            # A1: completion rules checked outside the try above so a
+            # violation propagates instead of becoming a task failure.
+            assert_task_completion(task)
         self.state.update_task(task)
 
     def _record_agent_failure(self, task: Task, result) -> None:
@@ -536,10 +557,18 @@ class WorkflowEngine:
         return max(candidates, key=lambda run: (run.created_at, run.id)).id
 
     def verification_evidence(self, workflow_id: str) -> list[Task]:
-        """Return verification tasks backed by a passed VerificationReport."""
+        """Return verification tasks backed by passed verification evidence.
+
+        Kernel path: verified flag plus a linked VerificationReport run.
+        Legacy path: verified flag plus the command-output transcript (the
+        output IS the evidence — no run object exists there).  Single
+        definition used by READY gating everywhere (Track A1).
+        """
         return [
             task for task in self.state.list_tasks(workflow_id)
-            if task.role == "verification" and task.verified and task.verification_run_id
+            if task.role == "verification" and task.verified and (
+                task.verification_run_id or (task.result or "").strip()
+            )
         ]
 
     def _run_observer_for_task(self) -> AgentRunObserver | None:
@@ -896,8 +925,15 @@ class WorkflowEngine:
         verification = self.state.get_task(tasks[2].id)
         if verification.status is TaskStatus.PASSED and verification.verified:
             review = self.state.get_task(tasks[3].id)
-            return WorkflowResult(workflow_id, review.status is TaskStatus.PASSED,
-                                  "READY" if review.status is TaskStatus.PASSED else "Review did not pass.")
+            if review.status is TaskStatus.PASSED:
+                # A1: READY requires verification + review + evidence.
+                assert_workflow_ready(
+                    verification_ok=True, review_ok=True,
+                    evidence_present=bool(self.verification_evidence(workflow_id)),
+                    workflow_id=workflow_id,
+                )
+                return WorkflowResult(workflow_id, True, "READY")
+            return WorkflowResult(workflow_id, False, "Review did not pass.")
         implementation = self.state.get_task(tasks[1].id)
         if implementation.status is not TaskStatus.PASSED:
             return WorkflowResult(workflow_id, False, "Implementation did not pass; verification was not run.")
@@ -913,6 +949,13 @@ class WorkflowEngine:
             verification = self.state.get_task(reverify.id)
             final_review = self.state.get_task(final_review.id)
             if verification.status is TaskStatus.PASSED and verification.verified:
-                return WorkflowResult(workflow_id, final_review.status is TaskStatus.PASSED,
-                                      "READY" if final_review.status is TaskStatus.PASSED else "Repair or review did not pass.")
+                if final_review.status is TaskStatus.PASSED:
+                    # A1: READY requires verification + review + evidence.
+                    assert_workflow_ready(
+                        verification_ok=True, review_ok=True,
+                        evidence_present=bool(self.verification_evidence(workflow_id)),
+                        workflow_id=workflow_id,
+                    )
+                    return WorkflowResult(workflow_id, True, "READY")
+                return WorkflowResult(workflow_id, False, "Repair or review did not pass.")
         return WorkflowResult(workflow_id, False, "Repair or review did not pass.")
