@@ -21,6 +21,6 @@
 
 ## Follow-ups
 
-- Opencode review requested async (non-blocking).
+- Opencode light review RECEIVED and closed: APPROVE, notes N1 (import order — applied), N2 (POSIX session asymmetry → A3 roadmap input), N3/N4 accepted as-is. See decisions.md sign-off.
 - Residual: one-file cold-start AV-scan latency; one-dir build offered as follow-up.
 - Cold-start UX (splash/progress) not addressed — candidate C1 item.
