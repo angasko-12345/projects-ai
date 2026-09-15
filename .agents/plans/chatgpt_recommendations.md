@@ -1491,3 +1491,578 @@ Put agent-specific behavior behind adapters.
 Then build upward.
 
 That is the clearest path from the current 0.1.x architecture to a robust AgentOps 0.2+ platform.
+
+---
+
+# 27. Fresh Current-Repository Top 10 Improvements
+
+This section is a fresh review of the current repository after the earlier audit. It should be treated as the current prioritized action list, superseding any older ordering where they differ.
+
+## 1. Add a first-class AgentAdapter and capability model
+
+### Problem
+
+Agent configuration is still centered on executable names, arguments, roles, models, and timeouts. That works for launching CLIs, but it does not provide a strong abstraction for materially different coding-agent interfaces.
+
+### Recommendation
+
+Create an `AgentAdapter` contract responsible for:
+
+- detection
+- capabilities
+- command construction
+- environment construction
+- prompt/input transport
+- output parsing
+- cancellation behavior
+- role/capability support
+
+Represent capabilities explicitly, for example:
+
+```text
+coding
+planning
+review
+structured_output
+streaming
+mcp
+model_selection
+read_only
+non_interactive
+```
+
+Keep the registry responsible for selection, but make adapters responsible for agent-specific behavior.
+
+### Why it matters
+
+This is the architectural foundation for cleanly supporting Pi, Codex, OpenCode, Antigravity, and future agents without teaching `WorkflowEngine` the quirks of each CLI.
+
+### Priority
+
+**P0/P1**
+
+---
+
+## 2. Extract a shared ProcessRuntime
+
+### Problem
+
+Agent execution and verification both need the same low-level process functionality, including environment policy, process groups, timeouts, cancellation, termination, and output collection.
+
+The current design creates coupling between the verification and agent-running subsystems.
+
+### Recommendation
+
+Create a shared runtime layer:
+
+```text
+ProcessRuntime
+    spawn()
+    communicate()
+    cancel()
+    terminate()
+    enforce_timeout()
+    build_environment()
+```
+
+Then:
+
+```text
+ProcessRuntime
+   +--> AgentRunner
+   +--> VerificationKernel
+```
+
+Neither subsystem should depend on the other's private implementation.
+
+### Priority
+
+**P1**
+
+---
+
+## 3. Formalize the complete execution state machine
+
+### Problem
+
+Agent success, task success, verification success, review approval, workflow success, and merge success are already conceptually distinct, but the rules should become an explicit domain contract.
+
+### Recommendation
+
+Define clear invariants such as:
+
+```text
+Agent process exit 0
+    != verified
+
+Verified
+    != reviewed
+
+Reviewed
+    != merged
+
+Merged
+    != workflow successful unless all required tasks succeeded
+```
+
+Make invalid transitions impossible or explicitly rejected.
+
+### Target model
+
+```text
+Workflow
+  -> Tasks
+      -> AgentRuns
+      -> VerificationRuns
+      -> ReviewRuns
+      -> Failure/Repair cycles
+  -> MergeRun
+```
+
+### Priority
+
+**P1**
+
+---
+
+## 4. Decompose WorkflowEngine before adding major features
+
+### Problem
+
+`WorkflowEngine` now coordinates planning, scheduling, agent execution, verification, retries, repair, recovery, persistence, and cancellation.
+
+It is becoming a god object.
+
+### Recommendation
+
+Move toward:
+
+```text
+WorkflowPlanner
+WorkflowScheduler
+TaskExecutor
+RepairCoordinator
+RecoveryCoordinator
+```
+
+Keep a small `WorkflowEngine` facade if that preserves the public API.
+
+### Priority
+
+**P1**
+
+Do this before adding a large number of new orchestration features.
+
+---
+
+## 5. Make review and merge first-class persisted operations
+
+### Problem
+
+Agent runs and verification runs already have strong lifecycle models. Review and Git merge operations are less formally represented.
+
+### Recommendation
+
+Introduce concepts such as:
+
+```text
+ReviewRun
+MergeRun
+```
+
+with explicit lifecycle states and persisted evidence.
+
+A `MergeRun` should record at least:
+
+- base commit
+- source branch/commit
+- verification run IDs
+- review decision
+- merge result
+- conflict/failure reason
+- resulting commit
+
+### Important current-code issue
+
+The finalization layer should distinguish different `GitError` causes. A dirty base worktree, changed base commit, and an actual merge conflict are not necessarily the same recovery situation. Do not classify every Git failure as a merge conflict.
+
+### Priority
+
+**P1/P2**
+
+---
+
+## 6. Replace string-first failure classification with structured evidence
+
+### Problem
+
+Failure classification still depends heavily on textual clues such as command names and error-message fragments.
+
+### Recommendation
+
+Make structured evidence the primary input:
+
+```text
+FailureEvidence
+    source
+    check_class
+    exit_code
+    timed_out
+    cancelled
+    terminated
+    command
+    agent
+    stderr
+    stdout
+```
+
+Then use textual matching only when structured evidence cannot determine the category.
+
+### Benefits
+
+- fewer false classifications
+- more deterministic repair decisions
+- easier testing
+- better analytics
+- easier support for new agents
+
+### Priority
+
+**P2**
+
+---
+
+## 7. Make persistence failures observable and intentional
+
+### Problem
+
+The current code contains defensive persistence fallbacks that can preserve the main operation when state recording fails. This is useful for resilience, but silent degradation can leave the operator with incomplete history.
+
+### Recommendation
+
+Separate:
+
+```text
+operation success
+persistence success
+```
+
+If an operation succeeds but persistence fails, surface an explicit degraded-state warning and record whatever recovery information can safely be retained.
+
+For critical transitions, consider making persistence failure fatal when continuing would create an unsafe or ambiguous state.
+
+### Priority
+
+**P1/P2**
+
+---
+
+## 8. Strengthen artifact lifecycle and orphan recovery
+
+### Problem
+
+Artifacts and event persistence have been added, but artifact handling should be treated as a complete lifecycle rather than just file registration.
+
+### Recommendation
+
+Define explicit artifact states and ownership:
+
+```text
+created
+attached
+verified
+preserved
+cleaned
+orphaned
+```
+
+Add recovery logic for artifacts left behind by crashes or interrupted runs.
+
+Every artifact should have enough metadata to answer:
+
+```text
+which workflow?
+which task?
+which run?
+which worktree?
+what created it?
+when?
+can it be safely deleted?
+```
+
+### Priority
+
+**P2**
+
+---
+
+## 9. Add continuous CI/regression gating
+
+### Problem
+
+The repository has a substantial test suite, but orchestration software needs continuous regression protection because small changes to lifecycle code can cause subtle state-machine regressions.
+
+### Recommendation
+
+Make CI run at minimum:
+
+```text
+unit tests
+integration tests
+lint
+type checking
+package/build validation
+```
+
+Add targeted regression tests for:
+
+- duplicate task claims
+- cancellation during agent execution
+- cancellation during verification
+- timeout recovery
+- repeated recovery idempotency
+- merge/base-commit races
+- missing-agent fallback
+- malformed agent output
+- persistence failures
+- artifact orphan recovery
+
+### Priority
+
+**P1**
+
+---
+
+## 10. Split StateStore behind a stable facade
+
+### Problem
+
+`StateStore` is becoming responsible for nearly every persistence concern.
+
+### Recommendation
+
+Gradually introduce repositories:
+
+```text
+WorkflowRepository
+TaskRepository
+RunRepository
+VerificationRepository
+FailureRepository
+EventRepository
+ArtifactRepository
+```
+
+Keep `StateStore` as a compatibility facade during migration.
+
+### Benefits
+
+- smaller modules
+- easier tests
+- clearer transactions
+- easier future storage migration
+- less coupling between domain and SQL
+
+### Priority
+
+**P2**
+
+---
+
+# 28. Recommended Implementation Order
+
+Do not implement the ten recommendations randomly.
+
+Use this order:
+
+```text
+Phase A: Stabilize contracts
+
+1. Formal execution state machine
+2. AgentAdapter + capability model
+3. Shared ProcessRuntime
+4. Structured failure evidence
+
+Phase B: Simplify orchestration
+
+5. Decompose WorkflowEngine
+6. First-class ReviewRun/MergeRun
+7. Fix Git failure classification
+
+Phase C: Strengthen durability
+
+8. Persistence failure policy
+9. Artifact lifecycle/recovery
+10. StateStore repository split
+
+Phase D: Regression protection
+
+11. CI gating
+12. Expand targeted integration/regression tests
+```
+
+The exact implementation order can change if a prerequisite becomes blocking, but the core principle should remain: **stabilize the execution model before expanding the feature surface.**
+
+---
+
+# 29. What Not to Do Yet
+
+Do not respond to these findings by rewriting AgentOps from scratch.
+
+Do not immediately add:
+
+- dozens of new agent integrations
+- distributed workers
+- remote execution
+- cloud orchestration
+- a huge plugin framework
+- a second AI planning layer
+- large GUI feature expansions
+
+The current system already contains too much valuable domain logic to justify a rewrite.
+
+The correct strategy is targeted refactoring around the orchestration kernel.
+
+---
+
+# 30. Current Architectural Target
+
+The long-term architecture should converge toward:
+
+```text
+                         +----------------+
+                         |   CLI / GUI    |
+                         +-------+--------+
+                                 |
+                                 v
+                         +----------------+
+                         | WorkflowEngine |
+                         |    Facade      |
+                         +-------+--------+
+                                 |
+              +------------------+------------------+
+              |                  |                  |
+              v                  v                  v
+        WorkflowPlanner   WorkflowScheduler   RecoveryCoordinator
+                                 |
+                                 v
+                           TaskExecutor
+                                 |
+                    +------------+------------+
+                    |                         |
+                    v                         v
+              AgentAdapter             VerificationKernel
+                    |                         |
+                    +------------+------------+
+                                 |
+                                 v
+                          ProcessRuntime
+                                 |
+                                 v
+                            Subprocesses
+
+          +------------------- Persistence -------------------+
+          |                                                    |
+          v                                                    v
+   Domain repositories                                  Event/Artifact
+          |                                                    |
+          +----------------------+-----------------------------+
+                                 |
+                                 v
+                               SQLite
+
+                     +----------------------+
+                     | Git / Worktree layer |
+                     | ReviewRun / MergeRun  |
+                     +----------------------+
+```
+
+This preserves the project's existing strengths while reducing coupling.
+
+---
+
+# 31. Full Bottom Line
+
+AgentOps is already a serious local coding-agent orchestration project, not merely a wrapper around subprocess calls.
+
+Its strongest existing ideas are:
+
+1. Explicit persistent agent lifecycle.
+2. Prompt privacy.
+3. Run lineage for retries and repairs.
+4. Structured agent results.
+5. Verification as an independent concept.
+6. Deterministic failure categories and recovery policies.
+7. Crash recovery that does not invent success.
+8. Git worktree isolation.
+9. Dependency-aware scheduling.
+10. Persistent events and artifacts.
+11. Defensive process management.
+12. A broad regression-oriented test suite.
+
+The project does not need a rewrite.
+
+It needs a stronger center.
+
+That center should be an explicit orchestration contract connecting:
+
+```text
+Workflow
+  -> Task
+      -> AgentRun
+      -> VerificationRun
+      -> ReviewRun
+      -> Repair/Failure cycles
+  -> MergeRun
+```
+
+The single most important architectural improvement is the **AgentAdapter + capability model**. It separates the orchestration system from the quirks of individual coding-agent CLIs.
+
+The second most important improvement is **ProcessRuntime**, which gives agents and verification a shared, clean process boundary.
+
+The third is making **success semantics explicit** so AgentOps never confuses an agent's claim with actual verified project state.
+
+After that, reduce the size of the two main god objects: `WorkflowEngine` and `StateStore`.
+
+Finally, make review, merge, persistence degradation, artifacts, and structured failure evidence first-class parts of the system.
+
+## Final recommendation
+
+**Do not build more features first. Stabilize the kernel first.**
+
+Once these contracts are solid, adding Pi, Codex, OpenCode, Antigravity, future agents, richer GUI features, and more sophisticated workflows becomes substantially easier and safer.
+
+AgentOps should be the **conductor**, not another coding agent.
+
+Its job is to decide:
+
+```text
+who should act
+what they should do
+where they should work
+what evidence is required
+whether the result is actually acceptable
+what to do when it fails
+and whether the resulting change can be safely merged
+```
+
+That is the clearest path from the current project to a robust personal multi-agent development platform.
+
+---
+
+# 32. Audit Status
+
+This document was updated from a fresh review of the current repository after the earlier AgentOps audit.
+
+Important current observations include:
+
+- the repository has continued adding events and artifacts
+- SQLite initialization has received race-safety improvements
+- worktree finalization has been centralized
+- recovery and failure idempotency have improved
+- the repository reports a substantially expanded passing test suite
+- the remaining highest-value work is increasingly architectural rather than feature-count driven
+
+No source-code changes were made as part of this recommendation update.
+
+The intended next step is to turn the prioritized recommendations into small, testable implementation plans rather than attempting a large rewrite.
