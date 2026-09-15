@@ -43,6 +43,10 @@
 - Operating rules: read memory before substantial work; update after; preserve history; keep concise, no transcripts; no duplicate entries.
 - Manager verifies Intercom connectivity before major work.
 
+## GUI vertical-budget fix 2026-09-15
+
+- Follow-up: scrollbar commit alone left the prompt box UNMAPPED (zero-height cell) — measured live: notebook starved to ~99px because only its row had weight while fixed-height siblings (trees height 6, output 8) claimed the 700px window first; pre-change the box was a 4px sliver, i.e. already broken. Fix: main rows 4/5/6 share growth (2/1/1); trees 6→5 rows, output 8→6 rows; default geometry 1060x740. Verified mapped: prompt 940x98, description 894x129, notebook 210px. Row-weight regression test added. Suite 289 OK. Exe rebuilt + Release asset replaced (14,823,429 bytes).
+
 ## GUI scrollbar/layout fix 2026-09-15
 
 - User report: text boxes cut off in Direct run / Task workflow / History / Logs / Artifacts / Worktrees tabs. Root causes: prompt/description `Text` widgets had no scrollbars (tall content unreachable); all three Treeviews + both Listboxes had no horizontal scrollbars while fixed column widths overflow even at min-size (850–940px of columns); only one column per tree was allowed to stretch. Fix: vertical scrollbars on prompt/description; vertical + horizontal scrollbars on all trees/lists with `xscroll`/`yscroll` wiring; `stretch=True` on every tree column. 3 layout regression tests; suite 288 OK. Exe rebuilt + Release asset replaced (14,822,467 bytes).

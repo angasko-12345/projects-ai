@@ -255,6 +255,12 @@
 - **Solution:** Central `_no_window_kwargs()` in `git.py`, applied at all spawn sites (git, collector, runner OR-ed with NEW_PROCESS_GROUP, legacy verifier, kernel `_default_spawn` wrapper so injected test factories keep working); controller caches git roots (never failures); `_update_tasks` signature-gated. 7 regression tests; suite 285 OK.
 - **Remember:** Every new subprocess spawn in AgentOps must consider the windowed-build case — no console child may flash. Test flags via mocks on each site.
 
+### 2026-09-15 — Weight-only-one-row starves fixed-height siblings (Tk grid)
+- **Symptom:** After adding scrollbars, the prompt text box was literally unmapped (0px cell); pre-change probe showed it was a 4px sliver — already broken, my change just finished it.
+- **Root cause:** Only the notebook row had grid weight; fixed-height siblings (trees, output text) claimed the window first, leaving the notebook ~99px. Weight distributes surplus AND deficit — a single weighted row absorbs all shortfall.
+- **Solution:** Weights on all three body rows (2/1/1) + trim fixed heights (trees 6→5, output 8→6) + taller default geometry (740). Diagnose with `grid_bbox` row heights on a mapped window, and always A/B against the parent commit via a temp worktree.
+- **Remember:** Never ship a Tk layout change without mapping a real window and measuring cells — headless `grid_info` assertions cannot catch starvation.
+
 ## Environment-specific problems
 
 - Repo root `D:/admin/code/projects`; no stack/test runner configured yet — record pitfalls here once encountered.

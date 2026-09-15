@@ -221,6 +221,16 @@ class LayoutScrollbarTests(unittest.TestCase):
                 self.assertIsInstance(vscroll, ttk.Scrollbar)
                 self.assertTrue(vscroll.grid_info(), vscroll_name)
 
+    def test_main_rows_share_vertical_space(self):
+        # Regression: with weight only on the notebook row, fixed-height
+        # siblings claimed the window first and starved the notebook to
+        # ~100px, leaving its text boxes unmapped (zero-height cells).
+        main = self.app.prompt.master.master.master
+        weights = {row: main.grid_rowconfigure(row).get("weight", 0) for row in (4, 5, 6)}
+        self.assertGreater(weights[4], 0)
+        self.assertGreater(weights[5], 0)
+        self.assertGreater(weights[6], 0)
+
     def test_tree_columns_share_extra_width(self):
         for tree_name in ("history_tree", "worktree_tree", "task_tree"):
             tree = getattr(self.app, tree_name)

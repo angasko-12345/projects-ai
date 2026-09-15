@@ -112,12 +112,18 @@ class AgentOpsApp:
 
     def _build_ui(self) -> None:
         self.root.title(f"AgentOps {__version__}")
-        self.root.geometry("1060x700")
+        self.root.geometry("1060x740")
         self.root.minsize(840, 540)
         main = ttk.Frame(self.root, padding=12)
         main.pack(fill="both", expand=True)
         main.columnconfigure(1, weight=1)
-        main.rowconfigure(4, weight=1)
+        # Vertical budget: the notebook, status, and output frames share
+        # all extra space (previously only the notebook grew, and it still
+        # starved: fixed-height children claimed the 700px window first,
+        # leaving the notebook ~100px tall and its text boxes unmapped).
+        main.rowconfigure(4, weight=2)
+        main.rowconfigure(5, weight=1)
+        main.rowconfigure(6, weight=1)
 
         ttk.Label(main, text="AgentOps", font=("Segoe UI", 16, "bold")).grid(
             row=0, column=0, columnspan=4, sticky="w")
@@ -201,7 +207,7 @@ class AgentOpsApp:
         self.history_nav_var = tk.StringVar(value="No workflows loaded")
         ttk.Label(history_tab, textvariable=self.history_nav_var).grid(row=1, column=0, sticky="w", pady=(8, 0))
         self.history_tree = ttk.Treeview(history_tab, columns=("id", "status", "tasks", "updated", "description"),
-                                         show="headings", height=6)
+                                         show="headings", height=5)
         for column, title, width in (("id", "Workflow", 90), ("status", "Status", 90),
                                     ("tasks", "Tasks", 70), ("updated", "Updated", 170),
                                     ("description", "Description", 430)):
@@ -280,7 +286,7 @@ class AgentOpsApp:
         ttk.Checkbutton(worktrees_controls, text="Delete unmerged branch",
                         variable=self.delete_unmerged_branch).pack(side="right")
         self.worktree_tree = ttk.Treeview(worktrees_tab, columns=("path", "branch", "head", "state"),
-                                          show="headings", height=6)
+                                          show="headings", height=5)
         for column, title, width in (("path", "Path", 420), ("branch", "Branch", 220),
                                     ("head", "Commit", 90), ("state", "Working tree", 160)):
             self.worktree_tree.heading(column, text=title)
@@ -300,7 +306,7 @@ class AgentOpsApp:
         status_frame.rowconfigure(1, weight=1)
         ttk.Label(status_frame, textvariable=self.status_var).grid(row=0, column=0, sticky="w")
         self.task_tree = ttk.Treeview(status_frame, columns=("id", "role", "status", "agent", "description"),
-                                      show="headings", height=6)
+                                      show="headings", height=5)
         for column, title, width in (("id", "Task", 90), ("role", "Role", 120), ("status", "Status", 90),
                                     ("agent", "Agent", 120), ("description", "Description", 520)):
             self.task_tree.heading(column, text=title)
@@ -320,7 +326,7 @@ class AgentOpsApp:
         output_frame.grid(row=6, column=0, columnspan=4, sticky="nsew", pady=(8, 0))
         output_frame.columnconfigure(0, weight=1)
         output_frame.rowconfigure(0, weight=1)
-        self.output = tk.Text(output_frame, height=8, wrap="word", state="disabled")
+        self.output = tk.Text(output_frame, height=6, wrap="word", state="disabled")
         self.output.grid(row=0, column=0, sticky="nsew")
         scrollbar = ttk.Scrollbar(output_frame, orient="vertical", command=self.output.yview)
         scrollbar.grid(row=0, column=1, sticky="ns")
