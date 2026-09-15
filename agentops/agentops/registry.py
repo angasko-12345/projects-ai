@@ -39,7 +39,15 @@ class AgentRegistry:
             raise KeyError(f"Unknown agent: {name}") from error
 
     def adapters(self, refresh: bool = False) -> dict[str, CliAdapter]:
-        """One cached adapter per configured agent (Track A2 boundary)."""
+        """One cached adapter per configured agent (Track A2 boundary).
+
+        NOTE: cached adapters carry ``executable=None`` and are for
+        capability-matching only — never call ``build_command`` on them,
+        or the detection-time executable pin is silently lost.  Command
+        construction must build a fresh adapter from the ``DetectedAgent``
+        (as ``AgentRunner.build_command`` does).  A3 may re-key this cache
+        off ``detect()`` instead.
+        """
         if self._adapters is not None and not refresh:
             return self._adapters
         self._adapters = {
@@ -77,8 +85,10 @@ class AgentRegistry:
             candidate = detected[name]
             if candidate.available and name not in excluded and (not candidate.config.roles or role in candidate.config.roles):
                 if required_capabilities:
-                    adapter = adapters.get(name)
-                    if adapter is None or not all(adapter.matches(item) for item in required_capabilities):
+                    # Every name here passed `name in detected`, and adapters
+                    # covers every configured agent, so the lookup is total.
+                    adapter = adapters[name]
+                    if not all(adapter.matches(item) for item in required_capabilities):
                         continue
                 return candidate
         return None

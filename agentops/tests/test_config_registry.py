@@ -40,11 +40,11 @@ class ConfigAndRegistryTests(unittest.TestCase):
     @patch("agentops.config._load_data")
     def test_agent_capabilities_parsed_and_default_empty(self, load_data):
         load_data.return_value = {"agents": {
-            "a": {"command": "a", "capabilities": ["coding", " streaming "]},
+            "a": {"command": "a", "capabilities": ["coding", " streaming ", "coding"]},
             "b": {"command": "b"},
         }}
         config = load_config()
-        self.assertEqual(config.agents["a"].capabilities, ("coding", " streaming "))
+        self.assertEqual(config.agents["a"].capabilities, ("coding", "streaming"))
         self.assertEqual(config.agents["b"].capabilities, ())
 
     @patch("agentops.config._load_data")

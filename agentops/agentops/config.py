@@ -174,6 +174,9 @@ def load_config(path: str | Path | None = None) -> AppConfig:
         capabilities = raw.get("capabilities", [])
         if (not isinstance(capabilities, list) or not all(isinstance(item, str) and item.strip() for item in capabilities)):
             raise ValueError(f"agents.{name}.capabilities must be a list of non-empty strings.")
+        # Normalize: strip whitespace (so " streaming " matches STREAMING)
+        # and drop duplicates (harmless but polluting) — order preserved.
+        capabilities = tuple(dict.fromkeys(item.strip() for item in capabilities))
         # Local import: agent_adapter owns the Capability vocabulary but
         # wraps AgentConfig, so a module-level import here would cycle.
         from .agent_adapter import KNOWN_CAPABILITIES
@@ -183,7 +186,7 @@ def load_config(path: str | Path | None = None) -> AppConfig:
                     f"agents.{name}.capabilities has unrecognized capability '{item}'; "
                     "it will be passed through as-is.", stacklevel=2)
         agents[name] = AgentConfig(name, command, tuple(args), tuple(roles), timeout, enabled, model,
-                                   tuple(capabilities))
+                                   capabilities)
     roles_raw = data.get("role_preferences", {})
     if not isinstance(roles_raw, dict):
         raise ValueError("role_preferences must be a mapping.")
