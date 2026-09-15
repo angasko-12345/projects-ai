@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -55,13 +56,26 @@ class WorktreeInfo:
     managed: bool
 
 
+def _no_window_kwargs() -> dict[str, object]:
+    """subprocess flags so windowed GUI builds never flash consoles.
+
+    A windowless (pythonw/PyInstaller-windowed) parent gives every child
+    console app a visible console window unless CREATE_NO_WINDOW is set —
+    users read the flashing as rogue terminals.  Centralized here so every
+    git spawn (polling paths included) stays invisible.
+    """
+    if sys.platform == "win32":
+        return {"creationflags": subprocess.CREATE_NO_WINDOW}
+    return {}
+
+
 class GitWorktreeManager:
     def _run(self, repository: Path, *args: str) -> subprocess.CompletedProcess[str]:
         environment = os.environ.copy()
         environment["GIT_TERMINAL_PROMPT"] = "0"
         try:
             return subprocess.run(["git", "-C", str(repository), *args], text=True, capture_output=True,
-                                  check=False, timeout=120, env=environment)
+                                  check=False, timeout=120, env=environment, **_no_window_kwargs())  # type: ignore[arg-type]
         except (OSError, subprocess.TimeoutExpired) as error:
             raise GitError(f"Git command {' '.join(args)} failed: {error}") from error
 

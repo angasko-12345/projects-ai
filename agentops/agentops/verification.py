@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import subprocess
+import sys
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -44,6 +46,8 @@ class Verifier:
                 *command, cwd=str(working_directory),
                 env=AgentRunner._environment(self.pass_env_names, self.pass_env_prefixes),
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+                # Same no-flash rule as the agent runner (windowed builds).
+                **({"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}),
             )
             timed_out = False
             try:

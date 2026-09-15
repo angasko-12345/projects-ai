@@ -449,6 +449,22 @@ class KernelExecutionTests(unittest.TestCase):
             finally:
                 state.close()
 
+    def test_default_spawn_hides_consoles(self):
+        import subprocess as stdlib_subprocess
+        import sys as _sys
+        from unittest.mock import AsyncMock as _AsyncMock
+        from unittest.mock import patch as _patch
+        from agentops.verification_kernel import _default_spawn
+        with _patch("agentops.verification_kernel.asyncio.create_subprocess_exec",
+                     new_callable=_AsyncMock) as spawn:
+            spawn.return_value = object()
+            asyncio.run(_default_spawn("prog", stdout=None))
+        kwargs = spawn.call_args.kwargs
+        if _sys.platform == "win32":
+            self.assertTrue(kwargs.get("creationflags", 0) & stdlib_subprocess.CREATE_NO_WINDOW)
+        else:
+            self.assertNotIn("creationflags", kwargs)
+
     def test_empty_profile_raises_instead_of_vacuous_pass(self):
         """A1R-[1]: zero-check profiles fail fast, never emit PASSED-for-nothing."""
         with tempfile.TemporaryDirectory() as directory:

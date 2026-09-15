@@ -372,8 +372,22 @@ class AgentOpsApp:
             if notify:
                 self.show_error(error, "Unable to read workflow status")
 
-    def _update_tasks(self, tasks: list[object]) -> None:
-        self._current_tasks = list(tasks)
+    @staticmethod
+    def _task_signature(tasks: list[object]) -> tuple[tuple[str, ...], ...]:
+        # Cheap change key so the 1s status poll can skip tree rebuilds.
+        # Covers everything the table shows plus progress signals.
+        return tuple(tuple(_task_value(task, name) for name in (
+            "id", "role", "status", "assigned_agent", "attempts",
+            "verified", "description",
+        )) for task in tasks)
+
+    def _update_tasks(self, tasks: list[object], force: bool = False) -> None:
+        task_list = list(tasks)
+        signature = self._task_signature(task_list)
+        if not force and signature == getattr(self, "_task_signature_cache", None):
+            return
+        self._task_signature_cache = signature
+        self._current_tasks = task_list
         for item in self.task_tree.get_children():
             self.task_tree.delete(item)
         for index, task in enumerate(self._current_tasks):

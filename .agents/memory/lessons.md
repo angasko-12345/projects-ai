@@ -249,6 +249,12 @@
 - **Solution:** Function-local import inside `load_config` with a comment (deferred to call time, both modules loaded). Keeps the correct ownership (adapter owns vocabulary) without restructuring.
 - **Remember:** Overlay direction (adapter→config) forbids config→adapter at module level; localize the import and say why.
 
+### 2026-09-15 — Windowed exe flashes consoles for every child process
+- **Symptom:** User saw "tons of powershell commands" + desktop hogging + slow UI from the exe.
+- **Root cause:** A windowless parent (pythonw/PyInstaller-windowed) gives every console child a visible window unless `CREATE_NO_WINDOW` is set. Git spawns sit on hot paths (1s status poll → `repository_root` → git every second; metadata collector; agent/kernel spawns), and the poll also rebuilt the whole task tree + full workflow payload on the Tk thread.
+- **Solution:** Central `_no_window_kwargs()` in `git.py`, applied at all spawn sites (git, collector, runner OR-ed with NEW_PROCESS_GROUP, legacy verifier, kernel `_default_spawn` wrapper so injected test factories keep working); controller caches git roots (never failures); `_update_tasks` signature-gated. 7 regression tests; suite 285 OK.
+- **Remember:** Every new subprocess spawn in AgentOps must consider the windowed-build case — no console child may flash. Test flags via mocks on each site.
+
 ## Environment-specific problems
 
 - Repo root `D:/admin/code/projects`; no stack/test runner configured yet — record pitfalls here once encountered.

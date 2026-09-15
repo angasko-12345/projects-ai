@@ -38,6 +38,50 @@ class RunnerCancellationTests(unittest.TestCase):
                 timer.join(timeout=5)
 
 
+class StatusPollEfficiencyTests(unittest.TestCase):
+    def test_operation_root_is_cached(self):
+        from agentops.git import GitWorktreeManager
+        with tempfile.TemporaryDirectory() as directory:
+            controller = AgentOpsController(config=AppConfig({}, {}, (), max_attempts=1, concurrency=1))
+            with patch.object(GitWorktreeManager, "repository_root",
+                              return_value=Path(directory)) as root:
+                first = controller._operation_root(directory)
+                second = controller._operation_root(directory)
+            self.assertEqual(first, second)
+            self.assertEqual(root.call_count, 1)
+
+    def test_operation_root_failures_are_not_cached(self):
+        from agentops.git import GitError, GitWorktreeManager
+        with tempfile.TemporaryDirectory() as directory:
+            controller = AgentOpsController(config=AppConfig({}, {}, (), max_attempts=1, concurrency=1))
+            with patch.object(GitWorktreeManager, "repository_root",
+                              side_effect=[GitError("nope"), Path(directory)]) as root:
+                controller._operation_root(directory)
+                controller._operation_root(directory)
+            self.assertEqual(root.call_count, 2)
+
+    def test_update_tasks_skips_unchanged_payloads(self):
+        app = AgentOpsApp.__new__(AgentOpsApp)
+        app.task_tree = MagicMock()
+        app._current_tasks = []
+        if hasattr(app, "_task_signature_cache"):
+            del app._task_signature_cache
+        tasks = [Task("work", "implementation", "w", max_attempts=1)]
+        app._update_tasks(tasks)
+        first_deletes = app.task_tree.delete.call_count
+        first_inserts = app.task_tree.insert.call_count
+        self.assertGreater(first_inserts, 0)
+        # Same object again, then an equal-valued copy: both skip the rebuild.
+        app._update_tasks(tasks)
+        app._update_tasks([Task("work", "implementation", "w", id=tasks[0].id, max_attempts=1)])
+        self.assertEqual(app.task_tree.delete.call_count, first_deletes)
+        self.assertEqual(app.task_tree.insert.call_count, first_inserts)
+        changed = Task("work", "implementation", "w", max_attempts=1)
+        changed.status = TaskStatus.FAILED
+        app._update_tasks([changed])
+        self.assertGreater(app.task_tree.insert.call_count, first_inserts)
+
+
 class ControllerObservabilityTests(unittest.TestCase):
     def test_history_and_logs_use_canonical_roots(self):
         with tempfile.TemporaryDirectory() as directory:

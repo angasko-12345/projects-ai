@@ -43,6 +43,10 @@
 - Operating rules: read memory before substantial work; update after; preserve history; keep concise, no transcripts; no duplicate entries.
 - Manager verifies Intercom connectivity before major work.
 
+## GUI no-flash + poll efficiency fix 2026-09-15
+
+- User report: exe "runs a ton of powershell commands", hogs desktop, slow UI. Root causes found: (1) every `git.exe`/agent spawn from the windowless exe flashed a console window (`CREATE_NO_WINDOW` missing on all spawn sites; the 1s status poll re-spawns git constantly); (2) the 1s poll rebuilt the full task tree + full `latest_workflow` payload (200 runs) on the Tk thread. Fixes: `_no_window_kwargs()` centralized in `git.py`, applied to git spawns, metadata collector, runner + legacy/kernel verification spawns (kernel via `_default_spawn` wrapper preserving injectable factory); controller caches git-root lookups (failures not cached); `_update_tasks` skips rebuilds when the task signature is unchanged. 7 new tests; suite 285 OK. Exe rebuilt + Release asset replaced (14,820,748 bytes). Cold-start AV-scan slowness (one-file extraction) noted as residual, one-dir build offered as follow-up.
+
 ## A2 adapter boundary 2026-09-15
 
 - Track A2 DONE + review closed: opencode APPROVED (278 OK confirmed locally); 2 LOW + 2 notes all applied (dead-branch removal, strip/dedupe capabilities at load, cache-pin warning). Suite 278 OK. Exe rebuilt + Release v0.1.3 asset replaced (14,820,707 bytes).

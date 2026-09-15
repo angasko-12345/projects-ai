@@ -19,6 +19,24 @@ class AgentRunnerTests(unittest.TestCase):
         self.assertEqual(AgentRunner.build_command(config, "hi"),
                          adapter_for(config).build_command("hi"))
 
+    def test_spawn_hides_console_on_windows(self):
+        import subprocess as stdlib_subprocess
+        logs = MagicMock()
+        logs.write_run.return_value = Path("task-1.meta.log")
+        process = MagicMock()
+        process.communicate = AsyncMock(return_value=(b"ok\n", b""))
+        process.returncode = 0
+        config = AgentConfig("python", sys.executable, ("-c", "print('{prompt}')"))
+        agent = DetectedAgent(config, True, sys.executable)
+        with patch("agentops.runner.asyncio.create_subprocess_exec", new_callable=AsyncMock) as create_process:
+            create_process.return_value = process
+            asyncio.run(AgentRunner(logs).run_agent(agent, "hello", Path.cwd(), "task-1"))
+        kwargs = create_process.call_args.kwargs
+        if sys.platform == "win32":
+            flags = kwargs.get("creationflags", 0)
+            self.assertTrue(flags & stdlib_subprocess.CREATE_NO_WINDOW)
+            self.assertTrue(flags & stdlib_subprocess.CREATE_NEW_PROCESS_GROUP)
+
     @patch("agentops.runner.asyncio.create_subprocess_exec", new_callable=AsyncMock)
     def test_captures_output_and_writes_logs(self, create_process):
         logs = MagicMock()

@@ -9,12 +9,22 @@ working directory.
 from __future__ import annotations
 
 import asyncio
+import subprocess
+import sys
 import threading
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from time import monotonic
 from typing import Any
 from uuid import uuid4
+
+
+async def _default_spawn(*args: object, **kwargs: object) -> asyncio.subprocess.Process:
+    """Default process factory with the no-flash rule for windowed builds."""
+    if sys.platform == "win32":
+        flags = int(kwargs.get("creationflags", 0))  # type: ignore[arg-type]
+        kwargs["creationflags"] = flags | subprocess.CREATE_NO_WINDOW
+    return await asyncio.create_subprocess_exec(*args, **kwargs)  # type: ignore[arg-type]
 
 from .logging import LogManager
 from .runner import AgentRunner, OperationCancelled
@@ -91,7 +101,7 @@ class VerificationKernel:
         self._pass_env_prefixes = pass_env_prefixes
         self._logs = logs
         self._state = state
-        self._spawn = process_factory or asyncio.create_subprocess_exec
+        self._spawn = process_factory or _default_spawn
         if default_profile is not None and default_profile not in self._profiles:
             raise ValueError(f"Unknown verification profile: {default_profile}.")
 

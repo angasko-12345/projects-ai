@@ -10,6 +10,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Protocol
 
+from .git import _no_window_kwargs
+
 
 class AgentRunStatus(StrEnum):
     """Deterministic lifecycle states for one agent process invocation."""
@@ -221,6 +223,7 @@ class GitRunMetadataCollector:
                 capture_output=True,
                 check=False,
                 timeout=10,
+                **_no_window_kwargs(),  # type: ignore[arg-type]
             )
             if status.returncode == 0:
                 for line in status.stdout.splitlines():
@@ -241,6 +244,7 @@ class GitRunMetadataCollector:
                 capture_output=True,
                 check=False,
                 timeout=10,
+                **_no_window_kwargs(),  # type: ignore[arg-type]
             )
             if stat.returncode == 0 and stat.stdout.strip():
                 diff_stat = stat.stdout

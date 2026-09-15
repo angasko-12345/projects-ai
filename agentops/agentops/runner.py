@@ -279,7 +279,10 @@ class AgentRunner:
                 env=self._environment(self.pass_env_names, self.pass_env_prefixes),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                **({"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if sys.platform == "win32" else {"start_new_session": True}),
+                # CREATE_NO_WINDOW keeps windowed GUI builds from flashing
+                # a console per agent spawn; NEW_PROCESS_GROUP preserves the
+                # existing cleanup semantics (A3 will unify this in runtime).
+                **({"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {"start_new_session": True}),
             )
             self._notify_running(observer, run_id)
             timed_out = False

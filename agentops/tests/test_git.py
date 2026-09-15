@@ -161,3 +161,17 @@ class GitWorktreeTests(unittest.TestCase):
             finally:
                 if worktree.path.exists():
                     manager.cleanup_worktree(root, worktree.path, delete_unmerged_branch=True)
+
+
+class NoWindowSpawnTests(unittest.TestCase):
+    def test_git_spawns_hide_consoles(self):
+        import sys
+        from unittest.mock import MagicMock
+        completed = subprocess.CompletedProcess(args=["git"], returncode=0, stdout="", stderr="")
+        with patch("agentops.git.subprocess.run", return_value=completed) as run:
+            GitWorktreeManager()._run(Path.cwd(), "status", "--porcelain")
+        kwargs = run.call_args.kwargs
+        if sys.platform == "win32":
+            self.assertEqual(kwargs.get("creationflags"), subprocess.CREATE_NO_WINDOW)
+        else:
+            self.assertNotIn("creationflags", kwargs)

@@ -224,15 +224,25 @@ class AgentOpsController:
     _cancel_event: threading.Event = field(default_factory=threading.Event, init=False, repr=False)
     _operation_lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
     _active: bool = field(default=False, init=False, repr=False)
+    _root_cache: dict[str, str] = field(default_factory=dict, init=False, repr=False)
 
     def _load_config(self) -> AppConfig:
         return self.config if self.config is not None else load_config(self.config_path)
 
     def _operation_root(self, directory: str | Path) -> Path:
+        # Cache git-root lookups: the GUI resolves this on every poll, and
+        # each miss spawns a git process.  Roots essentially never move
+        # within a controller's lifetime; failures are NOT cached.
+        key = str(directory)
+        cached = self._root_cache.get(key)
+        if cached is not None:
+            return Path(cached)
         try:
-            return GitWorktreeManager().repository_root(directory)
+            root = GitWorktreeManager().repository_root(directory)
         except GitError:
             return Path(directory)
+        self._root_cache[key] = str(root)
+        return root
 
     def _state_path(self, directory: str | Path) -> Path:
         if self.state_path is not None:

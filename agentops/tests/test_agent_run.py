@@ -544,5 +544,24 @@ class RunsGuiTests(unittest.TestCase):
                 pass
 
 
+class NoWindowCollectorTests(unittest.TestCase):
+    def test_collector_hides_consoles(self):
+        import subprocess as stdlib_subprocess
+        from unittest.mock import patch
+        from agentops.agent_run import GitRunMetadataCollector
+        completed = stdlib_subprocess.CompletedProcess(args=["git"], returncode=1, stdout="", stderr="")
+        with tempfile.TemporaryDirectory() as directory:
+            with patch("agentops.agent_run.subprocess.run", return_value=completed) as run:
+                metadata = GitRunMetadataCollector()(directory)
+        self.assertEqual(metadata.files_changed, ())
+        self.assertIsNone(metadata.diff_stat)
+        for call in run.call_args_list:
+            kwargs = call.kwargs
+            if sys.platform == "win32":
+                self.assertEqual(kwargs.get("creationflags"), stdlib_subprocess.CREATE_NO_WINDOW)
+            else:
+                self.assertNotIn("creationflags", kwargs)
+
+
 if __name__ == "__main__":
     unittest.main()
