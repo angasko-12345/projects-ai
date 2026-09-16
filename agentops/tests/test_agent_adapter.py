@@ -43,6 +43,15 @@ class DerivationHonestyTests(unittest.TestCase):
                          Capability.NON_INTERACTIVE):
             self.assertNotIn(advanced, adapter.capabilities())
 
+    def test_roles_derive_task_capabilities(self):
+        implementation = adapter_for(_config(roles=("implementation",)))
+        for capability in (Capability.IMPLEMENTATION, Capability.REFACTORING, Capability.TESTING,
+                           Capability.REPOSITORY_EXPLORATION):
+            self.assertIn(capability, implementation.capabilities())
+        reviewer = adapter_for(_config(roles=("review",)))
+        for capability in (Capability.CODE_REVIEW, Capability.SECURITY_REVIEW, Capability.DOCUMENTATION):
+            self.assertIn(capability, reviewer.capabilities())
+
     def test_declared_extras_apply(self):
         adapter = adapter_for(_config(), )
         self.assertEqual(adapter.extra_capabilities, ())

@@ -1,7 +1,6 @@
 # Output — B7 Capability Resolver and Deterministic Router
 
-> Implementation complete and suite-green. OpenCode architecture review was
-> requested asynchronously and remains pending.
+> Implementation and both requested reviews complete. Full suite 315 OK.
 
 ## What was built
 
@@ -32,21 +31,25 @@
 
 ## Verification
 
-- `tests/test_routing.py`: 20 tests covering capability matching, disabled and
+- `tests/test_routing.py`: 25 tests covering capability matching, disabled and
   unavailable agents, preference fallback, explicit preference, missing
   capabilities, deterministic scoring, explainability, disabled routing,
   registry compatibility, configuration parsing, and event persistence.
-- Full suite: 309 passing, 3 environment skips.
+- Full suite: 315 passing, 3 environment skips.
 - `git diff --check`: clean.
 - Copilot snapshot review completed: one valid scalar-string compatibility
   finding was reproduced and fixed; two snapshot-packaging observations were
   rejected with evidence.
+- OpenCode architecture review completed: fixed non-ASCII version decoding,
+  role-derived selector capabilities, legacy-capability consolidation,
+  executed-agent/event agreement, and single-profile input; rejected stale
+  bottom-import/route-exception observations; retained full-vocabulary
+  empty-role profiles by design.
 - Backup: `/tmp/agentops-backup-b7-router-20260916-182309`.
 - Review snapshot: `/tmp/agentops-review-router`.
 
 ## Follow-ups
 
-- Adjudicate the pending OpenCode architecture reply when it arrives.
 - Consider whether repository characteristics should be supplied from workflow
   context beyond the current empty mapping.
 - Packaging is untouched, so no executable rebuild is required.

@@ -19,6 +19,7 @@ from agentops.routing import (
 )
 from agentops.runner import RunResult
 from agentops.state import StateStore
+from agentops.tasks import Task
 from agentops.workflow import WorkflowEngine
 
 
@@ -102,6 +103,19 @@ class AgentCapabilityResolverTests(unittest.TestCase):
         self.assertIn("testing", required)
         self.assertIn("security review", required)
         self.assertEqual(required, tuple(sorted(required)))
+
+    def test_declared_legacy_capabilities_expand_to_task_capabilities(self):
+        coding = self.resolver.profile(_detected(_config(
+            "coder", ("architecture",), capabilities=("coding",)
+        )))
+        self.assertIn("implementation", coding.capabilities)
+        self.assertIn("refactoring", coding.capabilities)
+        self.assertIn("testing", coding.capabilities)
+        reviewing = self.resolver.profile(_detected(_config(
+            "reviewer", ("architecture",), capabilities=("review",)
+        )))
+        self.assertIn("code review", reviewing.capabilities)
+        self.assertIn("security review", reviewing.capabilities)
 
 
 class AgentRouterTests(unittest.TestCase):
@@ -247,6 +261,16 @@ class AgentRouterTests(unittest.TestCase):
         self.assertEqual(decision.selected_agent.identifier, "fallback")
         self.assertTrue(any("excluded" in reason.lower() for reason in decision.rejected_candidates[0].reasons))
 
+    def test_single_profile_is_accepted_without_iteration(self):
+        decision = AgentRouter(resolver=self.resolver).route(
+            role="implementation",
+            task_description="Implement",
+            required_capabilities=("implementation",),
+            available_agents=self.profiles[0],
+            user_preferences=("preferred",),
+        )
+        self.assertEqual(decision.selected_agent.identifier, "preferred")
+
     def test_registry_mapping_and_single_string_requirement(self):
         mapping = {profile.identifier: profile for profile in self.profiles}
         disabled_decision = AgentRouter(resolver=self.resolver, enabled=False).route(
@@ -285,6 +309,24 @@ class AgentRouterTests(unittest.TestCase):
         assert selected is not None
         self.assertEqual(selected.config.name, "rich")
 
+    @patch("agentops.config._load_data")
+    @patch("agentops.registry.shutil.which")
+    def test_registry_select_matches_role_derived_task_capabilities(self, which, load_data):
+        which.side_effect = lambda command: f"/bin/{command}"
+        load_data.return_value = {
+            "agents": {
+                "coder": {"command": "coder", "roles": ["implementation"]},
+                "reviewer": {"command": "reviewer", "roles": ["review"]},
+            },
+            "role_preferences": {"implementation": ["coder", "reviewer"]},
+        }
+        registry = AgentRegistry(load_config())
+        selected = registry.select("implementation", required_capabilities=("implementation",))
+        self.assertIsNotNone(selected)
+        assert selected is not None
+        self.assertEqual(selected.config.name, "coder")
+        self.assertIsNone(registry.select("implementation", required_capabilities=("security review",)))
+
 
 class ConfigRoutingTests(unittest.TestCase):
     @patch("agentops.config._load_data")
@@ -319,6 +361,20 @@ class ConfigRoutingTests(unittest.TestCase):
 
 
 class RegistryProfileTests(unittest.TestCase):
+    @patch("agentops.registry.shutil.which")
+    @patch("agentops.registry.subprocess.run")
+    def test_non_ascii_version_output_never_breaks_detection(self, run, which):
+        which.return_value = "/bin/pi"
+        run.side_effect = UnicodeDecodeError("cp1252", b"\xff", 0, 1, "invalid start byte")
+        registry = AgentRegistry(AppConfig(
+            {"pi": _config("pi", ("implementation",))},
+            {"implementation": ("pi",)},
+        ))
+        detected = registry.detect()["pi"]
+        self.assertTrue(detected.available)
+        self.assertEqual(detected.executable, "/bin/pi")
+        self.assertIsNone(detected.version)
+
     @patch("agentops.registry.shutil.which")
     @patch("agentops.registry.subprocess.run")
     def test_registry_builds_profiles_for_installed_agents(self, run, which):
@@ -378,6 +434,33 @@ class WorkflowRoutingTests(unittest.TestCase):
         payload = events[0].payload
         self.assertEqual(payload["selected_agent"], "first")
         self.assertIn("reasons", payload)
+
+    def test_stale_registry_mapping_records_execution_fallback(self):
+        workflow_id = self.state.create_workflow("stale mapping")
+        task = self.state.add_task(Task("Implement", "implementation", workflow_id, max_attempts=1))
+        preferred_detected = _detected(_config("preferred", ("implementation",)))
+        fallback_detected = _detected(_config("fallback", ("implementation",)))
+        preferred, fallback = _profiles(preferred_detected, fallback_detected)
+        registry = MagicMock()
+        registry.profiles.return_value = {"preferred": preferred, "fallback": fallback}
+        registry.get.side_effect = KeyError("preferred")
+        registry.select.return_value = fallback_detected
+        self.config = AppConfig(
+            self.config.agents,
+            {**self.config.role_preferences, "implementation": ("preferred", "fallback")},
+            self.config.verification_commands,
+            max_attempts=1,
+            concurrency=1,
+        )
+        engine = WorkflowEngine(self.config, self.state, registry, self.runner, self.verifier)
+        selected = engine._select_agent(task, set())
+        self.assertIsNotNone(selected)
+        assert selected is not None
+        self.assertEqual(selected.config.name, "fallback")
+        events = self.state.query_events(event_type=EventType.ROUTING_DECISION)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].payload["selected_agent"], "preferred")
+        self.assertEqual(events[0].payload["executed_agent"], "fallback")
 
     @patch("agentops.registry.shutil.which")
     @patch("agentops.registry.subprocess.run")

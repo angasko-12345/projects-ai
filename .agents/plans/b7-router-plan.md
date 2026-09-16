@@ -1,7 +1,7 @@
 # Plan — B7 Capability Resolver and Deterministic Router
 
-> Owner: pi (sole writer); copilot (test review); opencode (architecture review, async).
-> Status: implementation complete and suite-green; architecture reply pending.
+> Owner: pi (sole writer); copilot (test review); opencode (architecture review).
+> Status: implementation and both reviews complete; full suite 315 OK.
 
 ## Objective
 
@@ -50,4 +50,7 @@ role gates, preference order, fallback behavior, or persisted-data contracts.
 - `git diff --check`: clean.
 - Copilot review: one valid finding fixed; two snapshot-packaging observations
   correctly rejected as review-harness artifacts.
-- OpenCode architecture review: pending at the time of this record.
+- OpenCode architecture review: all eight findings adjudicated. Fixed version
+  decoding, role-derived selector capabilities, legacy-capability mapping,
+  executed-agent/event agreement, and single-profile input. Rejected two stale
+  observations and retained full-vocabulary empty-role profiles by design.

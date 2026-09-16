@@ -40,6 +40,6 @@
 
 **Status:** Done, suite 224 OK. Plan: `plans/phase-1-storage-dtos-phase-3-worktree-refs-plan.md`. Output: `outputs/phase-1-storage-dtos-phase-3-worktree-refs.md`.
 
-## B7 Capability Resolver and Deterministic Router — ⏳ REVIEW PENDING 2026-09-16
+## B7 Capability Resolver and Deterministic Router — ✅ COMPLETE 2026-09-16
 
-**Status:** Implementation complete; suite 309 OK. Copilot review closed. OpenCode architecture reply pending. Plan: `plans/b7-router-plan.md`. Output: `outputs/b7-router.md`.
+**Status:** Done, suite 315 OK. Copilot and OpenCode reviews closed. Plan: `plans/b7-router-plan.md`. Output: `outputs/b7-router.md`.

@@ -86,6 +86,6 @@
 
 ## B7 capability router 2026-09-16
 
-- Implementation complete: `routing.py`, registry profiles/version detection, workflow routing with exclusions/history, `routing.decision` events, routing switch, README/package exports, 20 routing tests. Suite 309 OK (3 skips). Backup: `/tmp/agentops-backup-b7-router-20260916-182309`.
-- Reviews: copilot snapshot review completed (one valid scalar-selector finding fixed; two harness artifacts rejected); opencode architecture review requested asynchronously and pending.
+- Implementation complete: `routing.py`, registry profiles/version detection, workflow routing with exclusions/history, `routing.decision` events with executed-agent tracking, routing switch, README/package exports, 25 routing tests plus one adapter regression test. Suite 315 OK (3 skips). Backup: `/tmp/agentops-backup-b7-router-20260916-182309`.
+- Reviews: copilot and opencode reviews complete. Fixed scalar-selector compatibility, non-ASCII version decoding, role-derived selector capabilities, legacy-capability consolidation, executed-agent/event agreement, and single-profile input; rejected stale/harness observations with evidence.
 - No executable rebuild: packaging untouched.

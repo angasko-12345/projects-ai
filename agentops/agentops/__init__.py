@@ -69,9 +69,11 @@ from .agent_adapter import (
     AgentAdapter,
     AgentCapability,
     Capability,
+    TASK_CAPABILITIES_FOR_ROLES,
     CliAdapter,
     adapter_for,
     capabilities_for_roles,
+    task_capabilities_for_roles,
 )
 from .routing import (
     AgentCapabilityResolver,
@@ -158,6 +160,8 @@ __all__ = [
     "AgentRouter",
     "Capability",
     "CliAdapter",
+    "TASK_CAPABILITIES_FOR_ROLES",
+    "task_capabilities_for_roles",
     "RoutingAlternative",
     "RoutingDecision",
     "RoutingRejection",

@@ -120,7 +120,7 @@ Add `AgentRouter`, deterministic scoring, explicit preference/fallback handling,
 ### Subtask 4 — Add coverage and run reviews
 Agent: pi (sole writer)
 Depends on: Subtask 3
-Status: done (OpenCode architecture reply pending asynchronously)
+Status: done
 
 Add tests for capability matching, disabled/unavailable agents, fallback, explicit preferences, missing capabilities, deterministic scoring, explainability, disabled routing, and event persistence. Run focused tests, full suite, and read-only reviewer checks.
 
@@ -137,14 +137,14 @@ Update canonical memory and append the task output. Commit and push unless the u
 
 ## Output (Agent registry capability resolver and deterministic router)
 
-Status: implementation complete; architecture review pending.
+Status: implementation and both requested reviews complete.
 
 - Added `agentops/routing.py` with profiles, resolver, deterministic scoring router, explainable decisions, and input normalization.
-- Extended task capabilities, config/profile metadata, registry version/profile support, workflow routing-event persistence, routing switch, README documentation, and package exports.
-- Added `tests/test_routing.py` with 20 tests for all requested coverage categories plus registry/config compatibility.
-- Full suite: 309 passing, 3 environment skips; `git diff --check` clean.
+- Extended task capabilities, config/profile metadata, registry version/profile support, workflow routing-event persistence with executed-agent tracking, routing switch, README documentation, and package exports.
+- Added `tests/test_routing.py` with 25 routing tests for all requested coverage categories plus registry/config compatibility; added one adapter regression test.
+- Full suite: 315 passing, 3 environment skips; `git diff --check` clean.
 - Copilot snapshot review: fixed valid scalar-selector compatibility; rejected two snapshot-packaging artifacts with evidence.
-- OpenCode architecture review requested asynchronously; pending.
+- OpenCode architecture review: adjudicated all eight findings. Fixed non-ASCII version decoding, role-derived task-capability selection, legacy capability consolidation, executed-agent/event agreement, and single-profile input. Rejected stale bottom-import and stale route-exception observations with code evidence; retained full-vocabulary empty-role profiles by design; swept all `AppConfig` constructions for positional compatibility.
 - Backup: `/tmp/agentops-backup-b7-router-20260916-182309`; snapshot: `/tmp/agentops-review-router`.
 - No executable rebuild: packaging untouched.
 

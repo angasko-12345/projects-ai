@@ -12,7 +12,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from .agent_adapter import Capability
+from .agent_adapter import Capability, task_capabilities_for_roles
 from .config import AgentConfig
 
 
@@ -32,14 +32,7 @@ _INITIAL_CAPABILITIES: tuple[str, ...] = (
 # These are task capabilities rather than the older adapter-level transport
 # capabilities (coding/review/structured_output/...).  The resolver intentionally
 # keeps both vocabularies available so A2 configuration remains compatible.
-_ROLE_CAPABILITIES: dict[str, frozenset[str]] = {
-    "architecture": frozenset({"planning", "architecture"}),
-    "implementation": frozenset({
-        "implementation", "refactoring", "testing", "repository exploration",
-    }),
-    "debugging": frozenset({"debugging", "testing", "repository exploration"}),
-    "review": frozenset({"code review", "security review", "documentation"}),
-}
+# Canonical role mapping lives in agent_adapter.task_capabilities_for_roles.
 
 _CAPABILITY_ALIASES: dict[str, str] = {
     "code-review": "code review",
@@ -56,9 +49,7 @@ _CAPABILITY_ALIASES: dict[str, str] = {
     "refactor": "refactoring",
     "debug": "debugging",
     "implement": "implementation",
-    "coding": "implementation",
     "reviewer": "code review",
-    "review": "code review",
     "plan": "planning",
 }
 
@@ -331,9 +322,11 @@ class AgentCapabilityResolver:
 
     def for_role(self, role: str) -> frozenset[str]:
         """Capabilities honestly implied by an AgentOps workflow role."""
-        if not role:
-            return frozenset(self.capabilities)
-        return frozenset(self.capabilities & _ROLE_CAPABILITIES.get(role.lower(), frozenset()))
+        canonical = {
+            _normalise_capability(item)
+            for item in task_capabilities_for_roles((role,) if role else ())
+        }
+        return frozenset(self.capabilities & canonical)
 
     def resolve(
         self,
@@ -595,6 +588,8 @@ class AgentRouter:
         """
         if isinstance(available_agents, Mapping):
             available_values = tuple(available_agents.values())
+        elif isinstance(available_agents, AgentProfile):
+            available_values = (available_agents,)
         else:
             available_values = tuple((available_agents or ()) if not isinstance(available_agents, str) else (available_agents,))
         profiles = tuple(

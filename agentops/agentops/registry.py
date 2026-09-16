@@ -41,6 +41,11 @@ class AgentRegistry:
         kwargs: dict[str, object] = {
             "capture_output": True,
             "text": True,
+            # Version output is untrusted CLI text. Decode as UTF-8 with
+            # replacement so non-codepage bytes cannot break detection on
+            # Windows cp1252 consoles.
+            "encoding": "utf-8",
+            "errors": "replace",
             "timeout": 2,
             "check": False,
         }
@@ -48,7 +53,7 @@ class AgentRegistry:
             kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
         try:
             completed = subprocess.run(command, **kwargs)
-        except (OSError, subprocess.SubprocessError, TimeoutError):
+        except (OSError, UnicodeDecodeError, subprocess.SubprocessError, TimeoutError):
             return None
         text = (completed.stdout or completed.stderr or "").strip()
         if not text:

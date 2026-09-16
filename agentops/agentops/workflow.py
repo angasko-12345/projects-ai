@@ -394,28 +394,39 @@ class WorkflowEngine:
                     )
                 except Exception:
                     return self.registry.select(task.role, excluded)
-                self._record_routing_decision(task, decision)
                 selected = getattr(decision, "selected_agent", None)
                 identifier = getattr(selected, "identifier", None)
                 if identifier:
                     try:
-                        return self.registry.get(identifier)
+                        agent = self.registry.get(identifier)
+                        self._record_routing_decision(task, decision, agent.config.name)
+                        return agent
                     except (KeyError, TypeError):
-                        return None
+                        # A stale router/registry mapping must not silently
+                        # execute a different agent than the persisted decision.
+                        fallback = self.registry.select(task.role, excluded)
+                        executed = fallback.config.name if fallback is not None else None
+                        self._record_routing_decision(task, decision, executed)
+                        return fallback
+                self._record_routing_decision(task, decision, None)
+                return None
         return self.registry.select(task.role, excluded)
 
-    def _record_routing_decision(self, task: Task, decision) -> None:
+    def _record_routing_decision(self, task: Task, decision, executed_agent: str | None = None) -> None:
         """Persist an explainable routing decision without leaking metadata."""
         try:
             payload = decision.to_dict()
             selected_profile = payload.get("selected_profile")
             if isinstance(selected_profile, dict):
                 selected_profile["metadata"] = {}
+            payload["executed_agent"] = executed_agent
+            selected = payload.get("selected_agent") or "no agent"
+            detail = selected if executed_agent in (None, selected) else f"{selected} (executed {executed_agent})"
             self.state.record_typed_event(Event(
                 workflow_id=task.workflow_id,
                 task_id=task.id,
                 type=EventType.ROUTING_DECISION,
-                message=f"Routed {task.role} to {payload.get('selected_agent') or 'no agent'}",
+                message=f"Routed {task.role} to {detail}",
                 payload=payload,
             ))
         except Exception:

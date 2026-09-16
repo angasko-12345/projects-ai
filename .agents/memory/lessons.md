@@ -268,6 +268,20 @@
 - **Solution:** Added `normalize_requirements()` and used it in both paths; added a regression test proving scalar `mcp` selects the capable agent.
 - **Remember:** When adding a tolerant input contract, apply it to every public entry point for the same concept, not only the newest one.
 
+### 2026-09-16 — Capability filters must share role-derived task vocabulary
+
+- **Symptom:** OpenCode review showed `registry.select(required_capabilities=("implementation",))` returned no agent even though implementation-role agents existed.
+- **Root cause:** Adapter capabilities exposed only transport-level role derivations; task-level capabilities lived only in the router.
+- **Solution:** Moved the canonical role/task mapping into `agent_adapter` and included it in `CliAdapter.capabilities()`; removed split semantic aliases in routing.
+- **Remember:** Capability filters at different layers must consume one canonical mapping, or hard gates will silently disagree.
+
+### 2026-09-16 — Routing events must record execution, not only selection
+
+- **Symptom:** OpenCode review showed a stale router/registry mapping could persist a selected agent while workflow execution used or failed to find another agent.
+- **Root cause:** The decision was recorded before registry resolution.
+- **Solution:** Record selection together with the executed agent and use legacy fallback for stale mappings.
+- **Remember:** Persisted automation decisions should distinguish intended selection from actual execution.
+
 ### 2026-09-16 — Snapshot-review packaging can create false findings
 
 - **Symptom:** Copilot correctly read a partial review tree and reported missing package modules plus a missing default config path.

@@ -68,7 +68,7 @@ KNOWN_CAPABILITIES: frozenset[str] = frozenset(item.value for item in Capability
 
 
 def capabilities_for_roles(roles: tuple[str, ...]) -> frozenset[Capability]:
-    """Honest baseline derived from roles only (empty roles -> all three)."""
+    """Honest transport baseline derived from roles only (empty roles -> all three)."""
     if not roles:
         return frozenset({Capability.CODING, Capability.PLANNING, Capability.REVIEW})
     derived: set[Capability] = set()
@@ -79,6 +79,41 @@ def capabilities_for_roles(roles: tuple[str, ...]) -> frozenset[Capability]:
     if "review" in roles:
         derived.add(Capability.REVIEW)
     return frozenset(derived)
+
+
+TASK_CAPABILITIES_FOR_ROLES: dict[str, frozenset[Capability]] = {
+    "architecture": frozenset({Capability.PLANNING, Capability.ARCHITECTURE}),
+    "implementation": frozenset({
+        Capability.IMPLEMENTATION,
+        Capability.REFACTORING,
+        Capability.TESTING,
+        Capability.REPOSITORY_EXPLORATION,
+    }),
+    "debugging": frozenset({
+        Capability.DEBUGGING,
+        Capability.TESTING,
+        Capability.REPOSITORY_EXPLORATION,
+    }),
+    "review": frozenset({
+        Capability.CODE_REVIEW,
+        Capability.SECURITY_REVIEW,
+        Capability.DOCUMENTATION,
+    }),
+}
+
+
+def task_capabilities_for_roles(roles: tuple[str, ...]) -> frozenset[Capability]:
+    """Task-level capabilities honestly implied by workflow roles.
+
+    Empty roles retain the registry's historical supports-every-role meaning,
+    so they expose the complete task-level vocabulary.  This is the canonical
+    role mapping shared by adapters and the B7 resolver.
+    """
+    if not roles:
+        return frozenset().union(*TASK_CAPABILITIES_FOR_ROLES.values())
+    return frozenset().union(*(
+        TASK_CAPABILITIES_FOR_ROLES.get(role.lower(), frozenset()) for role in roles
+    ))
 
 
 @runtime_checkable
@@ -118,7 +153,11 @@ class CliAdapter:
 
     def capabilities(self) -> frozenset[Capability]:
         known = {Capability(item) for item in self._extra if item in KNOWN_CAPABILITIES}
-        return capabilities_for_roles(self.config.roles) | known
+        return (
+            capabilities_for_roles(self.config.roles)
+            | task_capabilities_for_roles(self.config.roles)
+            | known
+        )
 
     @property
     def extra_capabilities(self) -> tuple[str, ...]:
@@ -162,6 +201,8 @@ __all__ = [
     "AgentCapability",
     "Capability",
     "CliAdapter",
+    "TASK_CAPABILITIES_FOR_ROLES",
     "adapter_for",
     "capabilities_for_roles",
+    "task_capabilities_for_roles",
 ]
