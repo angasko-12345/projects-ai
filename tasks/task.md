@@ -403,10 +403,86 @@ Run read-only snapshot reviews, address valid findings, run the full suite from 
 
 ---
 
+## Plan (A4 Structured Failure Evidence — 2026-09-16)
+
+### Objective
+Agent: pi (sole writer)
+Depends on: none
+Status: in progress
+
+Implement roadmap A4: classification driven by structured `FailureEvidence` with substring matching demoted to fallback. Keep `classify()` signature compatible, persist evidence JSON in the `failures` row (additive schema v7), and prove with before/after tests that structured evidence beats string heuristics.
+
+---
+
+### Subtask 1 — Audit classifier and evidence points
+Agent: pi
+Depends on: none
+Status: done
+
+Audit `failure.py` classifier branches, workflow `_record_agent_failure` / `_record_verification_failure` / `record_failure`, state `failures` persistence, and existing kernel tests. Backup: `/tmp/agentops-backup-a4-evidence-20260916-211809`.
+
+---
+
+### Subtask 2 — Improve the A4 design
+Agent: pi
+Depends on: Subtask 1
+Status: done
+
+Improvements over the roadmap paragraph:
+
+- `FailureEvidence` is a frozen leaf dataclass (`source`, `check_class`, `exit_code`, `timed_out`, `cancelled`, `terminated`, `command`, `stderr_peek`) with `to_dict()` and `is_empty()`; empty evidence falls back to strings.
+- Populate evidence at the two workflow failure-recording choke points (from `RunResult` and from the failing verification check) instead of threading new fields through runner/kernel output contracts — keeps A3 output contracts stable.
+- `stderr_peek` is capped at 500 chars and redacted via `logging.redact_text` at construction, so evidence JSON never becomes a secret sink.
+- New additive `structured_evidence TEXT` column (schema v7); `Failure.structured_evidence` appended field; `serialize_failure` exposes it; migration assertion bumped to `[1..7]`.
+- Structured-first branch mirrors string-branch outcomes exactly, so behavior only changes where structured evidence wins.
+
+---
+
+### Subtask 3 — Implement evidence + structured-first classification
+Agent: pi
+Depends on: Subtask 2
+Status: done
+
+Add `FailureEvidence`, extend `classify()` with keyword-only `evidence=`, wire workflow recording paths, persist the evidence column.
+
+---
+
+### Subtask 4 — Add before/after tests
+Agent: pi
+Depends on: Subtask 3
+Status: done
+
+Extend `tests/test_failure_kernel.py`: ≥5 tests proving structured evidence beats string heuristics, plus evidence-empty parity, persistence round-trip, legacy-migration repair, and workflow integration coverage.
+
+---
+
+### Subtask 5 — Reviews, full suite, and records
+Agent: pi; reviewers: copilot (tests), opencode (architecture)
+Depends on: Subtask 4
+Status: done (copilot closed; opencode async reply pending)
+
+Run read-only snapshot reviews, address valid findings, run the full suite from `agentops/`, update canonical memory and task output, then commit and push. No new module is added, so no executable rebuild is required.
+
+---
+
+## Output (A4 Structured Failure Evidence — 2026-09-16)
+
+- New `FailureEvidence` leaf dataclass (`source`, `check_class`, `exit_code`, `timed_out`, `cancelled`, `terminated`, `command`, capped `stderr_peek`) with total constructor/`to_dict()` and `is_empty()` fallback.
+- `FailureClassifier.classify()` gains keyword-only `evidence=`; structured-first branch mirrors string-branch outcomes, so behavior changes only where structured evidence wins.
+- Evidence populated at the two workflow recording choke points (from `RunResult`, from the failing check) plus the legacy verifier path; agent commands persist executable-only, stderr peeks and arbitrary mappings are redacted/scrubbed.
+- Additive `structured_evidence TEXT` column (schema v7); `Failure.structured_evidence` appended field; `serialize_failure` exposes it; migration assertion bumped to `[1..7]`.
+- Tests: 17 new failure-kernel tests (6 structured-beats-strings, precedence combos, hostile fields, secret redaction, defensive malformed checks, legacy persistence, migration repair, workflow integration); full suite 353 passing, 4 environment skips.
+- Copilot snapshot review: 5 findings, all fixed with regressions (legacy-path evidence, command/dict secret scrubbing, hostile `to_dict` fields, malformed-check defense, precedence coverage).
+- OpenCode architecture review requested asynchronously; pending.
+- Backup: `/tmp/agentops-backup-a4-evidence-20260916-211809`; snapshot: `/tmp/agentops-review-a4-evidence`.
+- No new module added, so no executable rebuild is required.
+
+---
+
 # USER NOTE TO AGENT: Put everything below this point into dedicated files in "D:\admin\code\projects\.agents\...". Use this as a replaceable, updated summary of recent projects/prompts.
 
 ## Recent summary (replaceable — details live in .agents/)
 
 - **B7 Capability Router: DONE 2026-09-16.** `routing.py` + registry profiles + deterministic router + routing-decision events; 25 routing tests + 1 adapter regression; suite 336 OK; copilot + opencode reviews closed. Details: `.agents/outputs/b7-router.md`.
 - **A3 Shared ProcessRuntime: DONE 2026-09-16.** `runtime.py` shared by runner/kernel/legacy verifier; unified spawn policy; 16 new tests; suite 336 OK; exe rebuilt + smoke-tested; copilot + opencode reviews closed. Details: `.agents/outputs/a3-runtime.md`.
-- **Pending follow-ups:** A8 persistence failure policy (deferred kernel state-error handling); `SpawnFactory` Protocol typing; repository characteristics for routing.
+- **Pending follow-ups:** A8 persistence failure policy (deferred kernel state-error handling); `SpawnFactory` Protocol typing; repository characteristics for routing; pending OpenCode architecture reply on A4 (see `## Output (A4 ...)` above).

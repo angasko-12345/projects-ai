@@ -49,6 +49,7 @@ def serialize_failure(failure: Failure) -> dict[str, object]:
         "attempt": failure.attempt,
         "repair_cycle": failure.repair_cycle,
         "recovery_state": failure.recovery_state.value if failure.recovery_state and hasattr(failure.recovery_state, "value") else failure.recovery_state,
+        "structured_evidence": dict(failure.structured_evidence) if failure.structured_evidence else None,
         "created_at": failure.created_at,
         "updated_at": failure.updated_at,
     }

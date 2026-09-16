@@ -78,7 +78,9 @@
 - **Review input (opencode, GUI round):** POSIX session asymmetry — runner spawns with `start_new_session=True` but kernel spawns passthrough without it, so `os.killpg` on a kernel child is a no-op (grandchildren orphan on POSIX; win32 unaffected). A3 must give both paths one session policy. Also unify `CREATE_NO_WINDOW` handling in the runtime.
 - **Success criteria:** `VerificationKernel` imports runtime, not runner internals; full suite green; smoke-test a real agent run + a real verification run back-to-back.
 
-### A4 — Structured failure evidence (P2)
+### A4 — Structured failure evidence (P2) ✅ DONE 2026-09-16
+
+> Delivered: `FailureEvidence` leaf dataclass + structured-first `classify(evidence=)`; evidence built at agent/verification/legacy recording sites (executable-only agent commands, redacted peeks, scrubbed mappings); additive `structured_evidence` column, schema v7; 17 new tests; suite 353 OK. Copilot review closed (5 fixed); opencode async reply pending. Plan: `.agents/plans/a4-evidence-plan.md`. Output: `.agents/outputs/a4-evidence.md`.
 
 - **Objective:** Classification driven by structured `FailureEvidence` (source, check_class, exit_code, timed_out, cancelled, terminated, command, stderr peek) with substring matching demoted to fallback.
 - **Concrete actions:**

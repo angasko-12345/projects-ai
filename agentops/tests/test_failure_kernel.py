@@ -17,6 +17,7 @@ from agentops.failure import (
     Failure,
     FailureCategory,
     FailureClassifier,
+    FailureEvidence,
     FailureSeverity,
     FailureSource,
     InterruptionContext,
@@ -449,6 +450,292 @@ class WorkflowIntegrationTests(unittest.TestCase):
         plan = FailureClassifier.plan_repair(failure, attempt=1, repair_cycle=0, policy=policy)
         self.assertIsInstance(plan, RepairPlan)
         self.assertEqual(plan.action, RepairAction.REPAIR_IMPLEMENTATION)
+
+
+class StructuredEvidenceTests(unittest.TestCase):
+    """A4: structured evidence must beat string heuristics (before/after)."""
+
+    def test_exit_code_beats_misleading_success_text(self):
+        evidence = FailureEvidence(
+            source=FailureSource.AGENT, exit_code=2,
+            stderr_peek="deployment completed successfully",
+        )
+        structured = FailureClassifier.classify(
+            source=FailureSource.AGENT,
+            error="deployment completed successfully", evidence=evidence)
+        self.assertEqual(structured.category, FailureCategory.AGENT_ERROR)
+        # String heuristics alone see no failure signal.
+        fallback = FailureClassifier.classify(
+            source=FailureSource.AGENT, error="deployment completed successfully")
+        self.assertEqual(fallback.category, FailureCategory.UNKNOWN)
+
+    def test_check_class_beats_misleading_text(self):
+        evidence = FailureEvidence(
+            source=FailureSource.VERIFICATION, check_class="tests", exit_code=1,
+        )
+        structured = FailureClassifier.classify(
+            source=FailureSource.VERIFICATION, error="build failed", evidence=evidence)
+        self.assertEqual(structured.category, FailureCategory.TEST_FAILURE)
+        # Strings alone follow the misleading text.
+        fallback = FailureClassifier.classify(
+            source=FailureSource.VERIFICATION, error="build failed")
+        self.assertEqual(fallback.category, FailureCategory.BUILD_FAILURE)
+
+    def test_timeout_flag_beats_silent_text(self):
+        evidence = FailureEvidence(source=FailureSource.AGENT, timed_out=True)
+        structured = FailureClassifier.classify(
+            source=FailureSource.AGENT, error="done", evidence=evidence)
+        self.assertEqual(structured.category, FailureCategory.TIMEOUT)
+        fallback = FailureClassifier.classify(source=FailureSource.AGENT, error="done")
+        self.assertEqual(fallback.category, FailureCategory.UNKNOWN)
+
+    def test_terminated_flag_beats_empty_text(self):
+        evidence = FailureEvidence(source=FailureSource.AGENT, terminated=True)
+        structured = FailureClassifier.classify(source=FailureSource.AGENT, evidence=evidence)
+        self.assertEqual(structured.category, FailureCategory.PROCESS_ERROR)
+        fallback = FailureClassifier.classify(source=FailureSource.AGENT)
+        self.assertEqual(fallback.category, FailureCategory.UNKNOWN)
+
+    def test_cancelled_flag_beats_finished_text(self):
+        evidence = FailureEvidence(source=FailureSource.AGENT, cancelled=True)
+        structured = FailureClassifier.classify(
+            source=FailureSource.AGENT, error="finished", evidence=evidence)
+        self.assertEqual(structured.category, FailureCategory.CANCELLATION)
+        fallback = FailureClassifier.classify(source=FailureSource.AGENT, error="finished")
+        self.assertEqual(fallback.category, FailureCategory.UNKNOWN)
+
+    def test_custom_check_class_beats_generic_exit(self):
+        evidence = FailureEvidence(
+            source=FailureSource.VERIFICATION, check_class="custom", exit_code=3,
+        )
+        structured = FailureClassifier.classify(
+            source=FailureSource.VERIFICATION, evidence=evidence)
+        self.assertEqual(structured.category, FailureCategory.VERIFICATION_FAILURE)
+        fallback = FailureClassifier.classify(
+            source=FailureSource.VERIFICATION, exit_code=3)
+        self.assertEqual(fallback.category, FailureCategory.AGENT_ERROR)
+
+    def test_empty_evidence_falls_back_to_strings(self):
+        structured = FailureClassifier.classify(
+            error="ruff check failed", check_class="lint",
+            evidence=FailureEvidence())
+        self.assertEqual(structured.category, FailureCategory.LINT_FAILURE)
+
+    def test_evidence_round_trips_through_failures_row(self):
+        state = StateStore(":memory:")
+        try:
+            workflow_id = state.create_workflow("evidence workflow")
+            failure = _failure(workflow_id=workflow_id,
+                               structured_evidence={"exit_code": 2, "source": "AGENT"})
+            stored = state.create_failure(failure)
+            fetched = state.get_failure(stored.id)
+            self.assertEqual(fetched.structured_evidence, {"exit_code": 2, "source": "AGENT"})
+        finally:
+            state.close()
+
+    def test_legacy_failures_table_gains_evidence_column(self):
+        import sqlite3 as _sqlite3
+        import tempfile
+        from pathlib import Path as _Path
+        with tempfile.TemporaryDirectory() as directory:
+            database = str(_Path(directory) / "legacy.sqlite")
+            connection = _sqlite3.connect(database)
+            try:
+                connection.executescript(
+                    """
+                    CREATE TABLE workflows (
+                        id TEXT PRIMARY KEY, description TEXT NOT NULL,
+                        status TEXT NOT NULL, created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    );
+                    CREATE TABLE tasks (
+                        id TEXT PRIMARY KEY, workflow_id TEXT NOT NULL,
+                        description TEXT NOT NULL, role TEXT NOT NULL,
+                        dependencies TEXT NOT NULL, status TEXT NOT NULL,
+                        attempts INTEGER NOT NULL, max_attempts INTEGER NOT NULL,
+                        result TEXT, created_at TEXT NOT NULL,
+                        started_at TEXT, finished_at TEXT, updated_at TEXT NOT NULL
+                    );
+                    CREATE TABLE events (
+                        id TEXT PRIMARY KEY, workflow_id TEXT NOT NULL, task_id TEXT,
+                        kind TEXT NOT NULL, detail TEXT NOT NULL, created_at TEXT NOT NULL
+                    );
+                    CREATE TABLE failures (
+                        id TEXT PRIMARY KEY, workflow_id TEXT, task_id TEXT,
+                        agent_run_id TEXT, source TEXT NOT NULL, category TEXT NOT NULL,
+                        severity TEXT NOT NULL, retryable INTEGER NOT NULL DEFAULT 0,
+                        repairable INTEGER NOT NULL DEFAULT 0, evidence TEXT,
+                        primary_error TEXT, verification_run_id TEXT,
+                        recommended_action TEXT NOT NULL, attempt INTEGER NOT NULL DEFAULT 1,
+                        repair_cycle INTEGER NOT NULL DEFAULT 0, recovery_state TEXT,
+                        created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+                    );
+                    """
+                )
+                connection.commit()
+            finally:
+                connection.close()
+            state = StateStore(database)
+            try:
+                columns = {
+                    row[1] for row in state.connection.execute("PRAGMA table_info(failures)").fetchall()
+                }
+                self.assertIn("structured_evidence", columns)
+                versions = [
+                    row[0] for row in state.connection.execute(
+                        "SELECT version FROM schema_migrations ORDER BY version").fetchall()
+                ]
+                self.assertEqual(versions, [1, 2, 3, 4, 5, 6, 7])
+            finally:
+                state.close()
+
+    def test_workflow_agent_failure_uses_structured_evidence(self):
+        from agentops.runner import RunResult
+        state = StateStore(":memory:")
+        try:
+            engine = WorkflowEngine(_config(), state, MagicMock(), MagicMock(), MagicMock())
+            workflow_id = state.create_workflow("evidence workflow")
+            task = state.add_task(Task("Implement", "implementation", workflow_id))
+            result = RunResult("fallback", ("fake",), 1, "build failed", "", 0.01,
+                               False, Path("fake.log"))
+            engine._record_agent_failure(task, result)
+            failures = state.list_failures(workflow_id, task.id)
+            self.assertEqual(len(failures), 1)
+            # Structured exit code wins over the misleading "build" text.
+            self.assertEqual(failures[0].category, FailureCategory.AGENT_ERROR)
+            self.assertEqual(failures[0].structured_evidence["exit_code"], 1)
+        finally:
+            state.close()
+
+    def test_structured_precedence_combinations(self):
+        cancelled_and_timed_out = FailureClassifier.classify(
+            evidence=FailureEvidence(timed_out=True, cancelled=True))
+        self.assertEqual(cancelled_and_timed_out.category, FailureCategory.CANCELLATION)
+        timed_out_and_terminated = FailureClassifier.classify(
+            evidence=FailureEvidence(timed_out=True, terminated=True))
+        self.assertEqual(timed_out_and_terminated.category, FailureCategory.TIMEOUT)
+        killed_with_check_class = FailureClassifier.classify(
+            evidence=FailureEvidence(check_class="tests", exit_code=-9))
+        self.assertEqual(killed_with_check_class.category, FailureCategory.PROCESS_ERROR)
+        padded = FailureClassifier.classify(evidence=FailureEvidence(check_class=" Tests "))
+        self.assertEqual(padded.category, FailureCategory.TEST_FAILURE)
+        upper = FailureClassifier.classify(evidence=FailureEvidence(check_class="LINT"))
+        self.assertEqual(upper.category, FailureCategory.LINT_FAILURE)
+
+    def test_evidence_total_for_hostile_fields(self):
+        import json as _json
+
+        class Hostile:
+            def __repr__(self):
+                raise RuntimeError("boom")
+
+            def __int__(self):
+                raise RuntimeError("boom")
+
+        evidence = FailureEvidence(check_class=Hostile(), exit_code=Hostile(),
+                                   command=(Hostile(),))
+        payload = evidence.to_dict()
+        # Never raises, and the payload survives JSON serialization.
+        _json.dumps(payload)
+        self.assertIsNone(payload["check_class"])
+        self.assertIsNone(payload["exit_code"])
+
+    def test_agent_command_persisted_without_prompt_secrets(self):
+        from agentops.runner import RunResult
+        state = StateStore(":memory:")
+        try:
+            engine = WorkflowEngine(_config(), state, MagicMock(), MagicMock(), MagicMock())
+            workflow_id = state.create_workflow("evidence workflow")
+            task = state.add_task(Task("Implement", "implementation", workflow_id))
+            secret = "sk-abcdef1234567890"
+            result = RunResult("fallback", ("fake", "--key", secret), 1,
+                               "out", "boom", 0.01, False, Path("fake.log"))
+            engine._record_agent_failure(task, result)
+            failures = state.list_failures(workflow_id, task.id)
+            self.assertEqual(len(failures), 1)
+            blob = str(failures[0].structured_evidence)
+            self.assertNotIn(secret, blob)
+            self.assertNotIn("--key", blob)
+            self.assertEqual(failures[0].structured_evidence["command"], ["fake"])
+        finally:
+            state.close()
+
+    def test_record_failure_scrubs_arbitrary_mappings(self):
+        state = StateStore(":memory:")
+        try:
+            engine = WorkflowEngine(_config(), state, MagicMock(), MagicMock(), MagicMock())
+            workflow_id = state.create_workflow("evidence workflow")
+            task = state.add_task(Task("Implement", "implementation", workflow_id))
+            classification = FailureClassifier.classify(error="boom")
+            engine.record_failure(
+                task, classification,
+                structured_evidence={"nested": {"token": "ghp_12345678901234567890"}},
+            )
+            failures = state.list_failures(workflow_id, task.id)
+            self.assertEqual(len(failures), 1)
+            blob = str(failures[0].structured_evidence)
+            self.assertNotIn("ghp_12345678901234567890", blob)
+        finally:
+            state.close()
+
+    def test_malformed_check_recorded_defensively(self):
+        from types import SimpleNamespace
+        state = StateStore(":memory:")
+        try:
+            engine = WorkflowEngine(_config(), state, MagicMock(), MagicMock(), MagicMock())
+            workflow_id = state.create_workflow("evidence workflow")
+            task = state.add_task(Task("Verify", "verification", workflow_id))
+            task.result = "mysterious output"
+            report = SimpleNamespace(run_id="run-1", checks=(SimpleNamespace(),))
+            engine._record_verification_failure(task, report)
+            failures = state.list_failures(workflow_id, task.id)
+            self.assertEqual(len(failures), 1)
+            self.assertEqual(failures[0].category, FailureCategory.UNKNOWN)
+            self.assertIsNotNone(failures[0].structured_evidence)
+        finally:
+            state.close()
+
+    def test_legacy_verification_failure_persists_evidence(self):
+        from agentops.verification import CheckResult
+        state = StateStore(":memory:")
+        try:
+            engine = WorkflowEngine(_config(), state, MagicMock(), MagicMock(), MagicMock())
+            workflow_id = state.create_workflow("evidence workflow")
+            task = state.add_task(Task("Verify", "verification", workflow_id))
+            task.result = "boom"
+            results = [CheckResult(("pytest",), 2, "boom", False, 0.1)]
+            engine._record_legacy_verification_failure(task, results)
+            failures = state.list_failures(workflow_id, task.id)
+            self.assertEqual(len(failures), 1)
+            # Legacy text rules still decide the category...
+            self.assertEqual(failures[0].category, FailureCategory.UNKNOWN)
+            # ...while the exit code and command are now persisted.
+            self.assertEqual(failures[0].structured_evidence["exit_code"], 2)
+            self.assertEqual(failures[0].structured_evidence["command"], ["pytest"])
+        finally:
+            state.close()
+
+    def test_workflow_verification_failure_uses_check_class(self):
+        from types import SimpleNamespace
+        state = StateStore(":memory:")
+        try:
+            engine = WorkflowEngine(_config(), state, MagicMock(), MagicMock(), MagicMock())
+            workflow_id = state.create_workflow("evidence workflow")
+            task = state.add_task(Task("Verify", "verification", workflow_id))
+            task.result = "build failed"
+            check = SimpleNamespace(
+                status=SimpleNamespace(value="failed"),
+                check_class=SimpleNamespace(value="tests"),
+                exit_code=1, command=("pytest",),
+            )
+            report = SimpleNamespace(run_id="run-1", checks=(check,))
+            engine._record_verification_failure(task, report)
+            failures = state.list_failures(workflow_id, task.id)
+            self.assertEqual(len(failures), 1)
+            self.assertEqual(failures[0].category, FailureCategory.TEST_FAILURE)
+            self.assertEqual(failures[0].structured_evidence["check_class"], "tests")
+        finally:
+            state.close()
 
 
 if __name__ == "__main__":

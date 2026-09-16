@@ -32,6 +32,7 @@ from .failure import (
     Failure,
     FailureCategory,
     FailureClassifier,
+    FailureEvidence,
     FailureSeverity,
     FailureSource,
     InterruptionContext,
@@ -41,6 +42,25 @@ from .failure import (
     build_retry_prompt,
     new_failure_id,
 )
+from .logging import redact_text
+
+
+def _scrub_structured(value: object) -> object:
+    """Recursively redact secret-looking strings in persisted evidence.
+
+    Callers must still avoid putting raw prompts or credentials into evidence;
+    this is defense-in-depth for token patterns in arbitrary mappings.
+    """
+    try:
+        if isinstance(value, str):
+            return redact_text(value)
+        if isinstance(value, dict):
+            return {key: _scrub_structured(item) for key, item in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [_scrub_structured(item) for item in value]
+    except Exception:
+        return "[UNREPRESENTABLE]"
+    return value
 from .config import AppConfig
 from .events import Event, EventType
 from .registry import AgentRegistry, DetectedAgent
@@ -159,6 +179,7 @@ class WorkflowEngine:
         evidence: str | None = None,
         primary_error: str | None = None,
         recovery_state=None,
+        structured_evidence: FailureEvidence | dict[str, object] | None = None,
     ) -> Failure:
         failure = Failure(
             id=new_failure_id(),
@@ -177,6 +198,11 @@ class WorkflowEngine:
             attempt=max(1, task.attempts),
             repair_cycle=0,
             recovery_state=recovery_state,
+            structured_evidence=_scrub_structured(
+                structured_evidence.to_dict()
+                if isinstance(structured_evidence, FailureEvidence)
+                else dict(structured_evidence) if structured_evidence is not None else None
+            ),
         )
         try:
             return self.state.create_failure(failure)
@@ -479,15 +505,7 @@ class WorkflowEngine:
                     task.verified = succeeded
                     task.status = TaskStatus.PASSED if succeeded else TaskStatus.FAILED
                     if task.status is TaskStatus.FAILED:
-                        classification = FailureClassifier.classify(
-                            source=FailureSource.VERIFICATION,
-                            error=task.result, role=task.role,
-                        )
-                        self.record_failure(
-                            task, classification,
-                            verification_run_id=task.verification_run_id,
-                            evidence=task.result, primary_error="Legacy verification commands failed.",
-                        )
+                        self._record_legacy_verification_failure(task, results)
             else:
                 excluded = {task.assigned_agent} if task.assigned_agent and task.attempts > 1 else set()
                 agent = self._select_agent(task, excluded)
@@ -599,6 +617,20 @@ class WorkflowEngine:
             run_id = run.id if run is not None else None
         except Exception:
             run_id = None
+        stderr = getattr(result, "stderr", "") or ""
+        # Agent commands embed the raw prompt, which may carry secrets: only
+        # the executable is persisted as structured evidence.  Verification
+        # check commands are allowlisted config and keep their full argv.
+        raw_command = tuple(getattr(result, "command", ()) or ())
+        evidence = FailureEvidence(
+            source=FailureSource.AGENT,
+            exit_code=getattr(result, "exit_code", None),
+            timed_out=bool(getattr(result, "timed_out", False)),
+            cancelled=bool(getattr(result, "cancelled", False)),
+            terminated=bool(getattr(result, "terminated", False)),
+            command=raw_command[:1],
+            stderr_peek=redact_text(stderr)[-500:] or None,
+        )
         classification = FailureClassifier.classify(
             source=FailureSource.AGENT,
             exit_code=getattr(result, "exit_code", None),
@@ -607,33 +639,96 @@ class WorkflowEngine:
             terminated=bool(getattr(result, "terminated", False)),
             error=task.result,
             role=task.role,
+            evidence=evidence,
         )
         try:
             self.record_failure(
                 task, classification, agent_run_id=run_id,
                 verification_run_id=task.verification_run_id,
                 evidence=task.result, primary_error=task.result,
+                structured_evidence=evidence,
             )
         except Exception:
             pass
 
+    def _record_legacy_verification_failure(self, task: Task, results) -> None:
+        """Record a failed legacy verification run with structured evidence.
+
+        Legacy commands have no check class, so the evidence is persisted for
+        inspection while the legacy text rules keep deciding the category.
+        """
+        failing = results[-1] if results else None
+        evidence = FailureEvidence(
+            source=FailureSource.VERIFICATION,
+            exit_code=None if failing is None or failing.timed_out else failing.exit_code,
+            timed_out=bool(failing.timed_out) if failing is not None else False,
+            command=tuple(failing.command) if failing is not None else (),
+        )
+        classification = FailureClassifier.classify(
+            source=FailureSource.VERIFICATION,
+            error=task.result, role=task.role,
+            evidence=evidence,
+        )
+        try:
+            self.record_failure(
+                task, classification,
+                verification_run_id=task.verification_run_id,
+                evidence=task.result, primary_error="Legacy verification commands failed.",
+                structured_evidence=evidence,
+            )
+        except Exception:
+            pass
+
+    @staticmethod
+    def _check_attribute(check: object, name: str) -> object:
+        try:
+            return getattr(check, name, None)
+        except Exception:
+            return None
+
     def _record_verification_failure(self, task: Task, report) -> None:
-        failing = [check for check in getattr(report, "checks", ()) if check.status.value != "passed"]
-        check_class = failing[0].check_class.value if failing else None
+        failing = [
+            check for check in getattr(report, "checks", ()) or ()
+            if self._check_attribute(check, "status") is None
+            or getattr(self._check_attribute(check, "status"), "value", None) != "passed"
+        ]
+        first = failing[0] if failing else None
+        raw_class = self._check_attribute(first, "check_class")
+        if isinstance(raw_class, str):
+            check_class = raw_class
+        else:
+            try:
+                check_class = raw_class.value if raw_class is not None else None
+            except Exception:
+                check_class = None
         try:
             run = self.state.latest_agent_run(task.workflow_id, task.id)
             run_id = run.id if run is not None else self._verification_source_run(task)
         except Exception:
             run_id = self._verification_source_run(task)
+        raw_command = self._check_attribute(first, "command") or ()
+        try:
+            command = tuple(raw_command)
+        except Exception:
+            command = ()
+        evidence = FailureEvidence(
+            source=FailureSource.VERIFICATION,
+            check_class=check_class,
+            exit_code=self._check_attribute(first, "exit_code"),
+            command=command,
+        )
         classification = FailureClassifier.classify(
             source=FailureSource.VERIFICATION,
             error=task.result, check_class=check_class, role=task.role,
+            evidence=evidence,
         )
         try:
+            verification_run_id = self._check_attribute(report, "run_id")
             self.record_failure(
                 task, classification, agent_run_id=run_id,
-                verification_run_id=getattr(report, "run_id", None),
+                verification_run_id=verification_run_id if isinstance(verification_run_id, str) else None,
                 evidence=task.result, primary_error="Verification report did not pass.",
+                structured_evidence=evidence,
             )
         except Exception:
             pass

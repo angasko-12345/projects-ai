@@ -273,7 +273,7 @@ class EventStoreTests(unittest.TestCase):
                 ]
             finally:
                 store.close()
-            self.assertEqual(versions, [1, 2, 3, 4, 5, 6])
+            self.assertEqual(versions, [1, 2, 3, 4, 5, 6, 7])
 
 
 if __name__ == "__main__":

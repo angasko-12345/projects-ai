@@ -296,6 +296,13 @@
 - **Solution:** Track spawn ownership (`process_group=self.spawn is None`); custom-factory children get direct `kill()`; document the flag on `terminate_process`.
 - **Remember:** Process-group signals require proof of group ownership at spawn time; otherwise kill only the child.
 
+### 2026-09-16 — Evidence persistence is a secret-handling boundary
+
+- **Symptom:** Copilot review showed structured evidence would persist raw agent argv (embedding the prompt) and arbitrary caller mappings straight into SQLite and the GUI.
+- **Root cause:** Machine-readable evidence was designed for fidelity first, redaction second.
+- **Solution:** Persist executable-only for agent commands (verification commands are allowlisted, keep full argv); cap peeks at 500 chars with `redact_text`; deep-scrub arbitrary mappings in `record_failure`.
+- **Remember:** Every new persisted field is a secret-handling decision — default to the minimal safe shape, then scrub.
+
 ### 2026-09-16 — Reviews can race implementation; adjudicate against the commit
 
 - **Symptom:** OpenCode architecture review reported a thread leak and a hanging POSIX test that were already fixed before the review snapshot was taken.

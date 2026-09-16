@@ -185,3 +185,11 @@
 - **Alternatives considered:** Leaving legacy `Verifier` on runner internals (rejected — runner would remain the implicit process layer); forcing platform flags into custom factories (rejected — breaks the injectable-factory contract; direct kill instead); changing state-error swallowing in the kernel (deferred to A8 — failure-semantics change outside the process layer).
 - **Agents involved:** pi-manager (copilot snapshot review completed; opencode architecture review completed 2026-09-16).
 - **OpenCode adjudication:** Fixed factory-alias duplication (`ProcessFactory = SpawnFactory`), dead runner `except TimeoutError`, custom-factory policy documentation, cleanup-bound/returncode/cancel-skip comments, POSIX cleanup test. Rejected threadpool-leak and POSIX-test findings as stale (fixed pre-snapshot); rebutted SIGKILL-first escalation with baseline evidence (pre-A3 code identical); accepted synthetic cleanup stderr; deferred state-error swallowing (A8), as_posix paths (pre-existing), Protocol typing (follow-up).
+
+## 2026-09-16 — A4 structured failure evidence
+
+- **Date:** 2026-09-16
+- **Decision:** Added `FailureEvidence` leaf dataclass with structured-first `classify(evidence=)`; populate at workflow agent/verification/legacy recording sites (no runner/kernel contract changes); persist executable-only agent commands, redacted 500-char peeks, and scrubbed mappings; additive `structured_evidence` column (schema v7).
+- **Reason:** Roadmap A4: machine-readable evidence beats string heuristics; legacy verification keeps text rules (no invented agent errors); secrets must never reach SQLite via evidence.
+- **Alternatives considered:** Threading evidence fields through runner/kernel outputs (rejected — churns A3 contracts for no gain); persisting full agent argv (rejected — argv embeds the raw prompt); changing legacy classification to AGENT_ERROR on nonzero exit (rejected — invents retryability without check-class authority).
+- **Agents involved:** pi-manager (copilot snapshot review completed; opencode architecture review pending).

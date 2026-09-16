@@ -106,6 +106,83 @@ _INTERRUPTION_CATEGORY: dict[str, FailureCategory] = {
 }
 
 
+# Cap for free-text process output stored inside structured evidence.  The
+# cap bounds row size; callers additionally redact before constructing.
+STDERR_PEEK_MAX_CHARS = 500
+
+
+@dataclass(frozen=True)
+class FailureEvidence:
+    """Machine-readable failure signals captured at the point of failure.
+
+    Structured evidence takes precedence over substring heuristics in
+    :meth:`FailureClassifier.classify`.  An evidence value carrying no
+    signals (see :meth:`is_empty`) is ignored so callers can always pass
+    one through without changing legacy classification behavior.
+    """
+
+    source: FailureSource | str | None = None
+    check_class: str | None = None
+    exit_code: int | None = None
+    timed_out: bool = False
+    cancelled: bool = False
+    terminated: bool = False
+    command: tuple[str, ...] = ()
+    stderr_peek: str | None = None
+
+    def __post_init__(self) -> None:
+        # Total constructor: hostile field values degrade to None/empty
+        # instead of breaking classification or persistence.
+        try:
+            command = tuple(self.command or ())
+        except Exception:
+            command = ()
+        object.__setattr__(self, "command", command)
+        try:
+            check_class = None if self.check_class is None else str(self.check_class)
+        except Exception:
+            check_class = None
+        object.__setattr__(self, "check_class", check_class)
+        try:
+            exit_code = None if self.exit_code is None else int(self.exit_code)
+        except Exception:
+            exit_code = None
+        object.__setattr__(self, "exit_code", exit_code)
+
+    def is_empty(self) -> bool:
+        """True when the evidence carries no classification signal."""
+        return (
+            self.exit_code is None
+            and not (self.timed_out or self.cancelled or self.terminated)
+            and not (self.check_class or "").strip()
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        """JSON-safe mapping (never raises for hostile field values)."""
+        try:
+            source = self.source.value if isinstance(self.source, FailureSource) else self.source
+        except Exception:
+            source = None
+        try:
+            peek = self.stderr_peek[:STDERR_PEEK_MAX_CHARS] if self.stderr_peek else None
+        except Exception:
+            peek = None
+        try:
+            command = [str(item) for item in self.command]
+        except Exception:
+            command = []
+        return {
+            "source": source,
+            "check_class": self.check_class,
+            "exit_code": self.exit_code,
+            "timed_out": bool(self.timed_out),
+            "cancelled": bool(self.cancelled),
+            "terminated": bool(self.terminated),
+            "command": command,
+            "stderr_peek": peek,
+        }
+
+
 @dataclass(frozen=True)
 class Failure:
     id: str
@@ -126,6 +203,7 @@ class Failure:
     recovery_state: RecoveryState | None = None
     created_at: str = field(default_factory=utc_now)
     updated_at: str = field(default_factory=utc_now)
+    structured_evidence: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -218,10 +296,16 @@ class FailureClassifier:
         check_class: str | None = None,
         role: str | None = None,
         agent_available: bool = True,
+        evidence: FailureEvidence | None = None,
     ) -> ClassificationResult:
         src = source if isinstance(source, FailureSource) else FailureSource(str(source))
         text = " ".join(part for part in (error or "", output or "") if part).strip()
         lowered = text.lower()
+
+        if evidence is not None and not evidence.is_empty():
+            structured = FailureClassifier._classify_structured(src, evidence)
+            if structured is not None:
+                return structured
 
         if cancelled or _contains(lowered, "operationcancelled", "task was cancelled", "taskcancelled"):
             return ClassificationResult(
@@ -404,6 +488,84 @@ class FailureClassifier:
         )
 
     @staticmethod
+    def _classify_structured(
+        source: FailureSource, evidence: FailureEvidence,
+    ) -> ClassificationResult | None:
+        """Classify from machine-readable signals before string heuristics.
+
+        Outcome payloads mirror the substring branch exactly, so behavior only
+        changes where structured evidence wins.  Returns None when the
+        evidence carries no decisive signal so callers fall through to text.
+        """
+        if evidence.cancelled:
+            return ClassificationResult(
+                FailureCategory.CANCELLATION, FailureSeverity.MEDIUM,
+                retryable=True, repairable=True,
+                recommended_action=RepairAction.RETRY_SAME_AGENT, source=source,
+            )
+        if evidence.timed_out:
+            return ClassificationResult(
+                FailureCategory.TIMEOUT, FailureSeverity.HIGH,
+                retryable=True, repairable=True,
+                recommended_action=RepairAction.RETRY_SAME_AGENT, source=source,
+            )
+        if evidence.terminated or (evidence.exit_code is not None and evidence.exit_code < 0):
+            return ClassificationResult(
+                FailureCategory.PROCESS_ERROR, FailureSeverity.HIGH,
+                retryable=True, repairable=True,
+                recommended_action=RepairAction.RETRY_SAME_AGENT, source=source,
+            )
+        normalized_check = (evidence.check_class or "").strip().lower()
+        if source is FailureSource.VERIFICATION and not normalized_check:
+            # Legacy verification commands carry an exit code but no check
+            # class: persist the evidence, but do not invent an agent error —
+            # legacy text rules keep deciding the category.
+            return None
+        if normalized_check in {"tests", "test"}:
+            return ClassificationResult(
+                FailureCategory.TEST_FAILURE, FailureSeverity.HIGH,
+                retryable=False, repairable=True,
+                recommended_action=RepairAction.REPAIR_IMPLEMENTATION, source=source,
+            )
+        if normalized_check in {"lint"}:
+            return ClassificationResult(
+                FailureCategory.LINT_FAILURE, FailureSeverity.MEDIUM,
+                retryable=False, repairable=True,
+                recommended_action=RepairAction.REPAIR_IMPLEMENTATION, source=source,
+            )
+        if normalized_check in {"type_checking", "typecheck", "type-check"}:
+            return ClassificationResult(
+                FailureCategory.TYPECHECK_FAILURE, FailureSeverity.MEDIUM,
+                retryable=False, repairable=True,
+                recommended_action=RepairAction.REPAIR_IMPLEMENTATION, source=source,
+            )
+        if normalized_check in {"build"}:
+            return ClassificationResult(
+                FailureCategory.BUILD_FAILURE, FailureSeverity.HIGH,
+                retryable=False, repairable=True,
+                recommended_action=RepairAction.REPAIR_IMPLEMENTATION, source=source,
+            )
+        if normalized_check in {"formatting", "format"}:
+            return ClassificationResult(
+                FailureCategory.LINT_FAILURE, FailureSeverity.LOW,
+                retryable=False, repairable=True,
+                recommended_action=RepairAction.REPAIR_IMPLEMENTATION, source=source,
+            )
+        if normalized_check in {"custom"}:
+            return ClassificationResult(
+                FailureCategory.VERIFICATION_FAILURE, FailureSeverity.HIGH,
+                retryable=False, repairable=True,
+                recommended_action=RepairAction.RERUN_VERIFICATION, source=source,
+            )
+        if evidence.exit_code is not None and evidence.exit_code != 0:
+            return ClassificationResult(
+                FailureCategory.AGENT_ERROR, FailureSeverity.MEDIUM,
+                retryable=True, repairable=True,
+                recommended_action=RepairAction.RETRY_SAME_AGENT, source=source,
+            )
+        return None
+
+    @staticmethod
     def classify_interruption(
         context: InterruptionContext | str,
         detail: str | None = None,
@@ -581,6 +743,7 @@ __all__ = [
     "RecoveryState",
     "InterruptionContext",
     "ClassificationResult",
+    "FailureEvidence",
     "RetryPolicy",
     "RepairPlan",
     "FailureClassifier",

@@ -95,3 +95,9 @@
 - Implementation complete: `runtime.py`, runner/kernel/legacy-verifier delegation, unified spawn policy, CancelledError termination, thread-free cancel polling, duplicate-name validation before persistence, fail-fast evidence-dominated overall status. 16 new tests; suite 336 OK (4 skips). Exe rebuilt (14,851,920 bytes), archive-inspected, smoke-tested.
 - Reviews: copilot and opencode reviews complete and adjudicated (suite 336 OK). Opencode: fixed factory alias, dead TimeoutError branch, policy docs/comments, POSIX cleanup test; stale/threadpool and POSIX-test findings rejected with evidence; SIGKILL-first rebutted from baseline; state-error swallowing stays deferred to A8.
 - Backup: `/tmp/agentops-backup-a3-runtime-20260916-203040`.
+
+## A4 structured failure evidence 2026-09-16
+
+- Implementation complete: `FailureEvidence`, structured-first classifier, evidence at agent/verification/legacy recording sites, executable-only agent commands, redacted/scrubbed evidence, schema v7 column. 17 new tests; suite 353 OK (4 skips).
+- Reviews: copilot snapshot review completed (5 fixed with regressions); opencode architecture review requested asynchronously and pending.
+- Backup: `/tmp/agentops-backup-a4-evidence-20260916-211809`.

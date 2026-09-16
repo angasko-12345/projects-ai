@@ -1591,7 +1591,8 @@ class StateStore:
                 repair_cycle INTEGER NOT NULL DEFAULT 0,
                 recovery_state TEXT,
                 created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                structured_evidence TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_failures_workflow
                 ON failures(workflow_id, created_at);
@@ -1608,6 +1609,25 @@ class StateStore:
             self.connection.execute(
                 "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
                 (3, utc_now()),
+            )
+        self._migrate_failure_evidence()
+
+    def _migrate_failure_evidence(self) -> None:
+        """Apply additive structured-evidence migration without rewriting tables."""
+
+        existing = {
+            row["name"]
+            for row in self.connection.execute("PRAGMA table_info(failures)").fetchall()
+        }
+        if "structured_evidence" not in existing:
+            self.connection.execute("ALTER TABLE failures ADD COLUMN structured_evidence TEXT")
+        migrated = self.connection.execute(
+            "SELECT 1 FROM schema_migrations WHERE version = 7"
+        ).fetchone()
+        if migrated is None:
+            self.connection.execute(
+                "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+                (7, utc_now()),
             )
 
     def _migrate_typed_events(self) -> None:
@@ -1762,6 +1782,11 @@ class StateStore:
             rows = self.connection.execute(query, params).fetchall()
         return [self._worktree_ref_from_row(row) for row in rows]
 
+    @staticmethod
+    def _loads_structured_evidence(value: str | None) -> dict[str, object] | None:
+        decoded = _loads(value, None)
+        return decoded if isinstance(decoded, dict) else None
+
     def _failure_from_row(self, row: sqlite3.Row) -> Failure:
         recovery = row["recovery_state"]
         return Failure(
@@ -1783,6 +1808,7 @@ class StateStore:
             recovery_state=RecoveryState(recovery) if recovery else None,
             created_at=row["created_at"],
             updated_at=row["updated_at"],
+            structured_evidence=self._loads_structured_evidence(row["structured_evidence"]),
         )
 
     def create_failure(self, failure: Failure) -> Failure:
@@ -1792,8 +1818,8 @@ class StateStore:
                     id, workflow_id, task_id, agent_run_id, source, category,
                     severity, retryable, repairable, evidence, primary_error,
                     verification_run_id, recommended_action, attempt, repair_cycle,
-                    recovery_state, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    recovery_state, created_at, updated_at, structured_evidence
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     failure.id, failure.workflow_id, failure.task_id, failure.agent_run_id,
                     failure.source.value if isinstance(failure.source, FailureSource) else str(failure.source),
@@ -1805,6 +1831,7 @@ class StateStore:
                     failure.attempt, failure.repair_cycle,
                     failure.recovery_state.value if isinstance(failure.recovery_state, RecoveryState) else failure.recovery_state,
                     failure.created_at, failure.updated_at,
+                    _json(failure.structured_evidence),
                 ),
             )
             if failure.workflow_id is not None:

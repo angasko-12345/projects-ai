@@ -55,6 +55,7 @@ from .failure import (
     Failure,
     FailureCategory,
     FailureClassifier,
+    FailureEvidence,
     FailureSeverity,
     FailureSource,
     InterruptionContext,
@@ -102,6 +103,7 @@ from .tasks import Task, TaskStatus, Workflow
 
 __all__ = [
     "Failure",
+    "FailureEvidence",
     "FailureCategory",
     "FailureClassifier",
     "FailureSeverity",
