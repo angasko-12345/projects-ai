@@ -504,6 +504,9 @@ class FailureClassifier:
                 recommended_action=RepairAction.RETRY_SAME_AGENT, source=source,
             )
         if evidence.timed_out:
+            # Specified precedence: an authoritative timeout signal wins even
+            # over dependency-flavored context (legacy text rules alone would
+            # say DEPENDENCY_FAILURE for e.g. "pip install timeout").
             return ClassificationResult(
                 FailureCategory.TIMEOUT, FailureSeverity.HIGH,
                 retryable=True, repairable=True,

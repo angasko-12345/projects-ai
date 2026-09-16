@@ -17,7 +17,11 @@ def _safe_name(value: str) -> str:
 def redact_text(value: str) -> str:
     """Redact secret-looking tokens from text (public API; ``_redact`` is an alias)."""
     value = re.sub(r"(?i)((?:api[_-]?key|token|secret|password)\s*[=:]\s*)([^\s'\"]+)", r"\1[REDACTED]", value)
-    return re.sub(r"\b(?:sk-[A-Za-z0-9_-]{12,}|ghp_[A-Za-z0-9]{20,})\b", "[REDACTED]", value)
+    value = re.sub(r"\b(?:sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9]{20,})\b", "[REDACTED]", value)
+    value = re.sub(r"\bAKIA[0-9A-Z]{16}\b", "[REDACTED]", value)
+    # Bearer tokens are long by construction; the length floor avoids matching
+    # ordinary English ("bearer of bad news" must survive redaction).
+    return re.sub(r"(?i)\bBearer\s+[A-Za-z0-9_\-.~+/]{20,}={0,2}", "Bearer [REDACTED]", value)
 
 
 def _redact(value: str) -> str:

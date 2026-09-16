@@ -99,5 +99,5 @@
 ## A4 structured failure evidence 2026-09-16
 
 - Implementation complete: `FailureEvidence`, structured-first classifier, evidence at agent/verification/legacy recording sites, executable-only agent commands, redacted/scrubbed evidence, schema v7 column. 17 new tests; suite 353 OK (4 skips).
-- Reviews: copilot snapshot review completed (5 fixed with regressions); opencode architecture review requested asynchronously and pending.
+- Reviews: copilot and opencode reviews complete and adjudicated (suite 356 OK). Opencode: fixed legacy-evidence redaction, timeout precedence, broader token patterns; command-field finding rebutted with scrub evidence.
 - Backup: `/tmp/agentops-backup-a4-evidence-20260916-211809`.

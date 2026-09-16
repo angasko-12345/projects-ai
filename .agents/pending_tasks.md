@@ -40,9 +40,9 @@
 
 **Status:** Done, suite 224 OK. Plan: `plans/phase-1-storage-dtos-phase-3-worktree-refs-plan.md`. Output: `outputs/phase-1-storage-dtos-phase-3-worktree-refs.md`.
 
-## A4 Structured Failure Evidence — ⏳ REVIEW PENDING 2026-09-16
+## A4 Structured Failure Evidence — ✅ COMPLETE 2026-09-16
 
-**Status:** Implementation complete; suite 353 OK. Copilot review closed. OpenCode architecture reply pending. Plan: `plans/a4-evidence-plan.md`. Output: `outputs/a4-evidence.md`.
+**Status:** Done, suite 356 OK. Copilot and OpenCode reviews closed. Plan: `plans/a4-evidence-plan.md`. Output: `outputs/a4-evidence.md`.
 
 ## A3 Shared ProcessRuntime — ✅ COMPLETE 2026-09-16
 

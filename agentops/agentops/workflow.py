@@ -191,8 +191,11 @@ class WorkflowEngine:
             severity=classification.severity,
             retryable=classification.retryable,
             repairable=classification.repairable,
-            evidence=(evidence or primary_error or task.result or "")[:4000] or None,
-            primary_error=(primary_error or task.result or "")[:2000] or None,
+            # Redact before truncating: failure text carries raw stdout/stderr
+            # and must not persist secrets (structured evidence is scrubbed
+            # separately in _scrub_structured).
+            evidence=redact_text(evidence or primary_error or task.result or "")[:4000] or None,
+            primary_error=redact_text(primary_error or task.result or "")[:2000] or None,
             verification_run_id=verification_run_id,
             recommended_action=classification.recommended_action,
             attempt=max(1, task.attempts),
@@ -261,7 +264,7 @@ class WorkflowEngine:
                 severity=FailureSeverity.HIGH,
                 retryable=True,
                 repairable=True,
-                evidence=task.result[:4000] if task.result else None,
+                evidence=redact_text(task.result)[:4000] if task.result else None,
                 primary_error="Task was interrupted before a terminal outcome was recorded.",
                 verification_run_id=task.verification_run_id,
                 recommended_action=action,

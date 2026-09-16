@@ -1,7 +1,6 @@
 # Output — A4 Structured Failure Evidence
 
-> Delivered 2026-09-16. Full suite 353 OK (4 skips). Copilot review closed.
-> OpenCode architecture review pending.
+> Delivered 2026-09-16. Full suite 356 OK (4 skips). Copilot and OpenCode reviews closed.
 
 ## What was built
 
@@ -31,4 +30,4 @@
 
 ## Follow-ups
 
-- Adjudicate the pending OpenCode architecture reply when it arrives.
+- Consider a `SecretDetector` pass over older `failure.evidence` rows written before redaction (historical rows may still hold secrets).

@@ -1,7 +1,7 @@
 # Plan — A4 Structured Failure Evidence (P2)
 
 > Owner: pi (writer); copilot (test review); opencode (architecture review, async).
-> Status: implementation and copilot review complete; suite 353 OK; opencode reply pending.
+> Status: implementation and both reviews complete; suite 356 OK.
 
 ## Objective
 

@@ -268,6 +268,13 @@ class SecurityRegressions(unittest.TestCase):
         self.assertIn("[REDACTED]", _redact("api_key=sk-abcdef1234567890"))
         self.assertIn("[REDACTED]", _redact("token: ghp_12345678901234567890"))
 
+    def test_redact_text_covers_common_token_shapes(self):
+        from agentops.logging import redact_text
+        self.assertIn("[REDACTED]", redact_text("aws AKIAIOSFODNN7EXAMPLE"))
+        self.assertIn("[REDACTED]", redact_text("Authorization: Bearer eyJhbGciOiJIUzI1NiJ9"))
+        self.assertIn("[REDACTED]", redact_text("token gho_12345678901234567890"))
+        self.assertNotIn("AKIAIOSFODNN7EXAMPLE", redact_text("aws AKIAIOSFODNN7EXAMPLE"))
+
     @unittest.skipIf(os.name == "nt", "POSIX permission bits are not enforced on Windows")
     def test_log_files_restricted(self):
         import stat

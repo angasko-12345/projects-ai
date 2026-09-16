@@ -471,9 +471,10 @@ Run read-only snapshot reviews, address valid findings, run the full suite from 
 - `FailureClassifier.classify()` gains keyword-only `evidence=`; structured-first branch mirrors string-branch outcomes, so behavior changes only where structured evidence wins.
 - Evidence populated at the two workflow recording choke points (from `RunResult`, from the failing check) plus the legacy verifier path; agent commands persist executable-only, stderr peeks and arbitrary mappings are redacted/scrubbed.
 - Additive `structured_evidence TEXT` column (schema v7); `Failure.structured_evidence` appended field; `serialize_failure` exposes it; migration assertion bumped to `[1..7]`.
-- Tests: 17 new failure-kernel tests (6 structured-beats-strings, precedence combos, hostile fields, secret redaction, defensive malformed checks, legacy persistence, migration repair, workflow integration); full suite 353 passing, 4 environment skips.
+- Tests: 19 new failure-kernel tests plus one redaction test (structured-beats-strings, precedence combos, hostile fields, secret redaction, defensive malformed checks, legacy persistence, migration repair, workflow integration); full suite 356 passing, 4 environment skips.
 - Copilot snapshot review: 5 findings, all fixed with regressions (legacy-path evidence, command/dict secret scrubbing, hostile `to_dict` fields, malformed-check defense, precedence coverage).
-- OpenCode architecture review requested asynchronously; pending.
+- OpenCode architecture review: adjudicated all items. Fixed unredacted legacy evidence (HIGH), specified timeout-over-dependency precedence, broadened `redact_text` (AKIA/Bearer/GitHub variants); structured commands already scrubbed via `_scrub_structured` (LOW rebutted with evidence).
+- Full suite after adjudication: 356 passing, 4 environment skips.
 - Backup: `/tmp/agentops-backup-a4-evidence-20260916-211809`; snapshot: `/tmp/agentops-review-a4-evidence`.
 - No new module added, so no executable rebuild is required.
 

@@ -695,6 +695,34 @@ class StructuredEvidenceTests(unittest.TestCase):
         finally:
             state.close()
 
+    def test_record_failure_redacts_legacy_evidence_text(self):
+        state = StateStore(":memory:")
+        try:
+            engine = WorkflowEngine(_config(), state, MagicMock(), MagicMock(), MagicMock())
+            workflow_id = state.create_workflow("evidence workflow")
+            task = state.add_task(Task("Implement", "implementation", workflow_id))
+            secret = "sk-abcdef1234567890"
+            classification = FailureClassifier.classify(error="boom")
+            engine.record_failure(task, classification, evidence=f"boom {secret}",
+                                  primary_error=f"boom {secret}")
+            failures = state.list_failures(workflow_id, task.id)
+            self.assertEqual(len(failures), 1)
+            self.assertNotIn(secret, failures[0].evidence or "")
+            self.assertNotIn(secret, failures[0].primary_error or "")
+            self.assertIn("[REDACTED]", failures[0].evidence or "")
+        finally:
+            state.close()
+
+    def test_timeout_evidence_beats_dependency_text(self):
+        # Specified precedence: an authoritative timeout signal wins over
+        # dependency-flavored text (legacy would say DEPENDENCY_FAILURE).
+        evidence = FailureEvidence(timed_out=True)
+        structured = FailureClassifier.classify(
+            error="pip install timeout: connection refused", evidence=evidence)
+        self.assertEqual(structured.category, FailureCategory.TIMEOUT)
+        legacy = FailureClassifier.classify(error="pip install timeout: connection refused")
+        self.assertEqual(legacy.category, FailureCategory.DEPENDENCY_FAILURE)
+
     def test_legacy_verification_failure_persists_evidence(self):
         from agentops.verification import CheckResult
         state = StateStore(":memory:")
