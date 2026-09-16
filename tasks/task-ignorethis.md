@@ -1,65 +1,72 @@
-Build a first-class Verification Engine for AgentOps.
+Implement a Failure Analysis subsystem for AgentOps.
 
-The engine must make verification deterministic and independent from the coding agent's claim that work is complete.
+When an agent run or verification step fails, classify the failure.
 
-Model verification checks as explicit objects containing:
+Create a Failure object containing:
 
 * id
-* name
-* command
-* working directory
-* timeout
-* environment policy
-* allowlist classification
-* required/optional
-* status
-* exit code
-* start/end time
-* duration
-* stdout/stderr references
-* parsed result
-* failure reason
+* workflow_id
+* task_id
+* agent_run_id
+* source
+* category
+* severity
+* retryable
+* repairable
+* evidence
+* primary error
+* related verification checks
+* suggested action
+* created_at
 
-Support check types:
+Initial categories:
 
-* tests
-* lint
-* formatting
-* type checking
-* build
-* custom allowlisted commands
+AGENT_ERROR
+PROCESS_ERROR
+TIMEOUT
+CANCELLATION
+VERIFICATION_FAILURE
+TEST_FAILURE
+LINT_FAILURE
+TYPECHECK_FAILURE
+BUILD_FAILURE
+ENVIRONMENT_FAILURE
+DEPENDENCY_FAILURE
+GIT_CONFLICT
+DIRTY_WORKTREE
+POLICY_VIOLATION
+REVIEW_REJECTION
+UNKNOWN
 
-Verification commands must continue to use the existing safety restrictions.
+Implement deterministic classification first.
 
-A task should only be considered verified when all required checks pass.
+Then implement a repair planner.
 
-Implement:
+The repair planner should decide:
 
-* verification profiles
-* per-project configuration
-* sequential checks
-* parallel independent checks
-* fail-fast option
-* continue-on-failure option
-* verification summaries
+* retry same agent
+* retry different agent
+* repair implementation
+* rerun verification
+* request human approval
+* stop permanently
 
-Produce a machine-readable VerificationReport.
+Do NOT blindly retry.
 
-The report should contain:
+Retries must have:
 
-* total checks
-* passed
-* failed
-* skipped
-* duration
-* required failures
-* overall status
+* maximum attempts
+* backoff
+* failure-category rules
+* context from previous attempts
+* previous verification evidence
 
-Integrate the report with AgentRun and workflow state.
+Repair attempts must create new AgentRuns linked to their parent attempt.
 
-Add CLI inspection and GUI visibility.
+Persist all decisions.
 
-Add comprehensive tests.
+Expose the repair chain in CLI and GUI.
 
-Do not weaken the current command allowlist/security model.
-Run all tests.
+Add tests for every failure category and repair decision.
+
+Ensure failed worktrees remain inspectable according to current AgentOps behavior.

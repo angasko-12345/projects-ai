@@ -92,6 +92,8 @@ instructions): (1) current source, (2) current tests, (3) explicit user
 instructions, (4) `decisions.md`, (5) `architecture.md`, (6) `project.md`,
 (7) `lessons.md`, (8) Supermemory history, (9) agent assumptions.
 
+Update other files if necessary and relevant to the completed task.
+
 ## 5. Commit and push
 
 - Back up the dirty tree **before** substantial work, not after:
