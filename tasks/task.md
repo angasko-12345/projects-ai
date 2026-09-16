@@ -381,7 +381,7 @@ Add `tests/test_runtime.py` for environment policy, spawn flags, timeout/cancell
 ### Subtask 5 — Reviews, full suite, packaging, and records
 Agent: pi; reviewers: copilot (tests), opencode (architecture)
 Depends on: Subtask 4
-Status: done (copilot closed; opencode async reply pending)
+Status: done (both reviews closed)
 
 Run read-only snapshot reviews, address valid findings, run the full suite from `agentops/`, rebuild/archive-inspect/smoke-test the Windows executable because the new runtime module affects the frozen bundle, update canonical memory and task output, then commit and push.
 
@@ -396,7 +396,8 @@ Run read-only snapshot reviews, address valid findings, run the full suite from 
 - Kernel semantics fix: required FAILED/TIMED_OUT evidence dominates fail-fast sibling cancellation in the overall report.
 - Tests: `tests/test_runtime.py` (13 tests) + `tests/test_runner.py` running-lifecycle regression + 2 kernel regressions; full suite 335 passing, 4 environment skips.
 - Copilot snapshot review: 6 findings — 5 fixed with regressions (thread leak, custom-factory killpg, on_running orphan, stranded RUNNING run, fail-fast overall), 1 deferred to A8 (state-error swallowing) with rationale.
-- OpenCode architecture review requested asynchronously; pending.
+- OpenCode architecture review: adjudicated all 11 items. Fixed factory-alias duplication, dead TimeoutError branch, and custom-factory policy documentation; added cleanup-bound, returncode, and cancel/skip asymmetry comments; hardened the POSIX cleanup test. Rejected as stale: threadpool leak and POSIX-test inconsistency (both fixed before the review snapshot). Rebutted with baseline evidence: SIGKILL-first termination is unchanged from pre-A3. Accepted: synthetic cleanup stderr text. Deferred: state-error swallowing (A8), as_posix log paths (pre-existing, out of scope), SpawnFactory Protocol typing (follow-up).
+- Full suite after adjudication: 336 passing, 4 environment skips.
 - Packaging: `dist/AgentOps.exe` rebuilt (14,851,920 bytes), archive-inspected (`agentops.runtime` bundled), startup/shutdown smoke-tested with process-exit verification. Exe stays out of git.
 - Backup: `/tmp/agentops-backup-a3-runtime-20260916-203040`; snapshot: `/tmp/agentops-review-a3-runtime`.
 

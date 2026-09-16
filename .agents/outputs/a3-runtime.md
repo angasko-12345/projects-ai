@@ -1,7 +1,6 @@
 # Output — A3 Shared ProcessRuntime
 
-> Delivered 2026-09-16. Full suite 335 OK (4 skips). Copilot review closed.
-> OpenCode architecture review pending.
+> Delivered 2026-09-16. Full suite 336 OK (4 skips). Copilot and OpenCode reviews closed.
 
 ## What was built
 
@@ -32,6 +31,6 @@
 
 ## Follow-ups
 
-- Adjudicate the pending OpenCode architecture reply when it arrives.
 - A8 should define fail-closed behavior for state persistence failures.
+- Consider a `SpawnFactory` Protocol for IDE/typechecker ergonomics.
 - Consider supplying repository characteristics to routing from workflow context.

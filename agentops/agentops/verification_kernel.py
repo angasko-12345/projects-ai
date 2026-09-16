@@ -10,14 +10,13 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from collections.abc import Awaitable, Callable
 from pathlib import Path
 from time import monotonic
 from typing import Any
 from uuid import uuid4
 
 from .logging import LogManager
-from .runtime import OperationCancelled, ProcessRuntime
+from .runtime import OperationCancelled, ProcessRuntime, SpawnFactory
 from .tasks import utc_now
 from .verification_model import (
     VerificationCheck,
@@ -35,7 +34,8 @@ from .verification_model import (
     profile_to_dict,
 )
 
-ProcessFactory = Callable[..., Awaitable[Any]]
+# Historical alias: the injectable factory type is owned by runtime.
+ProcessFactory = SpawnFactory
 
 
 async def _default_spawn(*args: object, **kwargs: object) -> asyncio.subprocess.Process:
@@ -355,6 +355,10 @@ class VerificationKernel:
                     await finished
                 # Only cancel siblings for terminal failures: RUNNING/PENDING
                 # siblings must not trigger cancellation when a finisher passed.
+                # Note the deliberate asymmetry: parallel fail-fast siblings
+                # interrupted here end CANCELLED, while sequential fail-fast
+                # siblings never started end SKIPPED.  Both mean "not run
+                # because an earlier check failed the profile".
                 if profile.mode is VerificationProfileMode.FAIL_FAST and any(
                     checks[spec.name].status in {
                         VerificationCheckStatus.FAILED,

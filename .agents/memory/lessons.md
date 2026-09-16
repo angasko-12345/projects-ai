@@ -296,6 +296,13 @@
 - **Solution:** Track spawn ownership (`process_group=self.spawn is None`); custom-factory children get direct `kill()`; document the flag on `terminate_process`.
 - **Remember:** Process-group signals require proof of group ownership at spawn time; otherwise kill only the child.
 
+### 2026-09-16 — Reviews can race implementation; adjudicate against the commit
+
+- **Symptom:** OpenCode architecture review reported a thread leak and a hanging POSIX test that were already fixed before the review snapshot was taken.
+- **Root cause:** Review requested async while implementation continued; findings referenced stale lines.
+- **Solution:** Verified each finding against the committed code (not the snapshot), marked stale ones with evidence, and still hardened the underlying test.
+- **Remember:** Always adjudicate review findings against the current commit — snapshots go stale fast on an active branch.
+
 ### 2026-09-16 — Snapshot-review packaging can create false findings
 
 - **Symptom:** Copilot correctly read a partial review tree and reported missing package modules plus a missing default config path.

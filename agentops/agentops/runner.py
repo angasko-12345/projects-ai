@@ -303,16 +303,6 @@ class AgentRunner:
             )
             self._notify_finish(observer, run_id, outcome)
             raise
-        except TimeoutError:
-            duration = monotonic() - started
-            outcome = AgentRunOutcome(
-                status=AgentRunStatus.TIMED_OUT,
-                duration_seconds=duration,
-                timed_out=True,
-                failure_classification="timeout",
-            )
-            self._notify_finish(observer, run_id, outcome)
-            raise
         except Exception as error:
             duration = monotonic() - started
             outcome = AgentRunOutcome(

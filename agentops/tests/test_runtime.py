@@ -152,11 +152,17 @@ class ProcessRuntimeTests(unittest.TestCase):
 
     def test_default_cleanup_uses_process_group(self):
         process = HangingProcess(pid=4242)
+
+        def fake_killpg(pid, sig):
+            process.kill()
+
         with patch("os.killpg", create=True) as killpg:
-            asyncio.run(ProcessRuntime().terminate_process(
+            killpg.side_effect = fake_killpg
+            stdout, stderr = asyncio.run(ProcessRuntime().terminate_process(
                 process, process_group=True, platform="posix",
             ))
         self.assertEqual(killpg.call_count, 1)
+        self.assertEqual((stdout, stderr), (b"partial", b""))
 
     def test_failing_on_running_callback_terminates_process(self):
         process = HangingProcess()
@@ -239,6 +245,11 @@ class ProcessRuntimeTests(unittest.TestCase):
         kwargs = spawn.call_args.kwargs
         self.assertTrue(kwargs.get("creationflags", 0) & stdlib_subprocess.CREATE_NO_WINDOW)
         self.assertTrue(process.killed)
+
+    def test_factory_alias_is_single_sourced(self):
+        from agentops import runtime as runtime_module
+        from agentops import verification_kernel as kernel_module
+        self.assertIs(kernel_module.ProcessFactory, runtime_module.SpawnFactory)
 
     def test_runner_kernel_and_verifier_share_runtime(self):
         runner = AgentRunner(MagicMock())

@@ -122,7 +122,15 @@ class ProcessRuntime:
         stdout: object = asyncio.subprocess.PIPE,
         stderr: object = asyncio.subprocess.PIPE,
     ) -> Any:
-        """Spawn a child with the runtime policy unless overridden."""
+        """Spawn a child with the runtime policy unless overridden.
+
+        Injected factories receive exactly the caller-supplied arguments: no
+        platform options are passed through, because existing factories do not
+        accept them.  Documented degradation: custom-spawned children skip
+        the unified policy (no guaranteed own process group on POSIX, no
+        guaranteed console hiding on Windows) and are cleaned up with a
+        direct kill rather than process-group signals.
+        """
         factory = self.spawn or asyncio.create_subprocess_exec
         options = self.spawn_options() if self.spawn is None else {}
         return await factory(
@@ -207,6 +215,9 @@ class ProcessRuntime:
                     process.kill()
                 except ProcessLookupError:
                     pass
+        # Worst case is bounded at 2x the cleanup timeout (taskkill wait +
+        # final communicate wait); the synthetic stderr text keeps the byte
+        # channel contract while remaining self-describing as evidence.
         try:
             return await asyncio.wait_for(process.communicate(), timeout=timeout)
         except TimeoutError:
@@ -223,7 +234,13 @@ class ProcessRuntime:
         stderr: object = asyncio.subprocess.PIPE,
         on_running: Callable[[Any], None] | None = None,
     ) -> ProcessResult:
-        """Run one command with timeout, cooperative cancellation, and cleanup."""
+        """Run one command with timeout, cooperative cancellation, and cleanup.
+
+        Timeouts never raise: they are reported as ``timed_out`` results with
+        a ``None`` exit code (the code is unknown by design — the tree was
+        killed, not reaped normally).  Cooperative cancellation returns a
+        ``cancelled`` result; only external task cancellation raises.
+        """
         argv = tuple(command)
         started = monotonic()
         if cancel_event is not None and cancel_event.is_set():

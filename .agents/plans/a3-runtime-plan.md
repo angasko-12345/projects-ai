@@ -1,7 +1,7 @@
 # Plan — A3 Shared ProcessRuntime (P1)
 
 > Owner: pi (writer); copilot (test review); opencode (architecture review, async).
-> Status: implementation and copilot review complete; suite 335 OK; opencode reply pending.
+> Status: implementation and both reviews complete; suite 336 OK.
 
 ## Objective
 
