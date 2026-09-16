@@ -142,7 +142,7 @@ Status: implementation and both requested reviews complete.
 - Added `agentops/routing.py` with profiles, resolver, deterministic scoring router, explainable decisions, and input normalization.
 - Extended task capabilities, config/profile metadata, registry version/profile support, workflow routing-event persistence with executed-agent tracking, routing switch, README documentation, and package exports.
 - Added `tests/test_routing.py` with 25 routing tests for all requested coverage categories plus registry/config compatibility; added one adapter regression test.
-- Full suite: 315 passing, 3 environment skips; `git diff --check` clean.
+- Full suite: 336 passing, 4 environment skips; `git diff --check` clean.
 - Copilot snapshot review: fixed valid scalar-selector compatibility; rejected two snapshot-packaging artifacts with evidence.
 - OpenCode architecture review: adjudicated all eight findings. Fixed non-ASCII version decoding, role-derived task-capability selection, legacy capability consolidation, executed-agent/event agreement, and single-profile input. Rejected stale bottom-import and stale route-exception observations with code evidence; retained full-vocabulary empty-role profiles by design; swept all `AppConfig` constructions for positional compatibility.
 - Backup: `/tmp/agentops-backup-b7-router-20260916-182309`; snapshot: `/tmp/agentops-review-router`.
@@ -329,7 +329,7 @@ Structured-results upgrade complete. `agentops/agent_result.py` (leaf): versione
 ### Objective
 Agent: pi (sole writer)
 Depends on: none
-Status: in progress
+Status: done
 
 Implement roadmap A3 as a behavior-preserving shared process layer used by `AgentRunner`, `VerificationKernel`, and legacy `Verifier`. Remove kernel/verifier dependence on runner internals while keeping all public APIs, outcomes, timeouts, cancellation behavior, logging, and persistence integration unchanged except for explicitly documented safety fixes.
 
@@ -407,6 +407,6 @@ Run read-only snapshot reviews, address valid findings, run the full suite from 
 
 ## Recent summary (replaceable — details live in .agents/)
 
-- **Phase 2 — Verification Kernel: DONE.** Deterministic kernel (`verification_model.py`, `verification_kernel.py`, schema v2, config profiles, `verify` CLI, GUI summaries). 122 tests OK. Details: `.agents/outputs/phase-2-verification-kernel.md`.
-- **Phase 3 — Failure, Repair, and Recovery Kernel: DONE.** First-class failure subsystem (`failure.py` leaf: 16 categories, deterministic classifier, RetryPolicy, RepairPlan, 6 interruption contexts), schema v3 `failures` table, workflow bounded-retry + inherited context + parent-linked AgentRuns, `failures`/`recover` CLI, controller/GUI views. 146 tests OK (1 pre-existing skip); exe rebuilt (14,756,616 bytes). Plan: `.agents/plans/phase-3-failure-recovery-kernel-plan.md`. Details: `.agents/outputs/phase-3-failure-recovery-kernel.md`.
-- **Pending:** copilot/opencode review findings (requested, replies pending); commit strategy for accumulated uncommitted work (AgentRun + Verification + Failure kernels).
+- **B7 Capability Router: DONE 2026-09-16.** `routing.py` + registry profiles + deterministic router + routing-decision events; 25 routing tests + 1 adapter regression; suite 336 OK; copilot + opencode reviews closed. Details: `.agents/outputs/b7-router.md`.
+- **A3 Shared ProcessRuntime: DONE 2026-09-16.** `runtime.py` shared by runner/kernel/legacy verifier; unified spawn policy; 16 new tests; suite 336 OK; exe rebuilt + smoke-tested; copilot + opencode reviews closed. Details: `.agents/outputs/a3-runtime.md`.
+- **Pending follow-ups:** A8 persistence failure policy (deferred kernel state-error handling); `SpawnFactory` Protocol typing; repository characteristics for routing.
