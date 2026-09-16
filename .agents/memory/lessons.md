@@ -310,6 +310,13 @@
 - **Solution:** Verified each finding against the committed code (not the snapshot), marked stale ones with evidence, and still hardened the underlying test.
 - **Remember:** Always adjudicate review findings against the current commit — snapshots go stale fast on an active branch.
 
+### 2026-09-16 — Bundled agent flags must match the installed CLI
+
+- **Symptom:** `agentops run pi` failed with `Unknown option: --prompt` — the bundled `agents.yaml` passed a flag the installed pi CLI (v0.85.1) never supported.
+- **Root cause:** The config was written against an assumed CLI surface, never verified with `pi --help`.
+- **Solution:** Changed the pi entry to `args: ["--print", "{prompt}"]` (positional prompt + non-interactive flag); added a regression test locking the built command; verified with a real `agentops run pi` round-trip.
+- **Remember:** After adding or changing any agent entry, verify its flags against the installed binary's help output — CLIs drift and AgentOps has no response for `Unknown option` beyond the failure record.
+
 ### 2026-09-16 — Snapshot-review packaging can create false findings
 
 - **Symptom:** Copilot correctly read a partial review tree and reported missing package modules plus a missing default config path.

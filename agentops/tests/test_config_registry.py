@@ -11,6 +11,19 @@ class ConfigAndRegistryTests(unittest.TestCase):
         self.assertIn("claude", config.agents)
         self.assertIn("fcc-claude", config.agents)
 
+    def test_bundled_pi_invocation_matches_installed_cli(self):
+        # Regression: the bundled config once passed `--prompt`, which the
+        # installed pi CLI rejects (`Unknown option`). pi takes the prompt
+        # positionally with `--print` for non-interactive runs.
+        from agentops.registry import DetectedAgent
+        from agentops.runner import AgentRunner
+        config = load_config()
+        agent = DetectedAgent(config.agents["pi"], True, "/bin/pi")
+        self.assertEqual(
+            AgentRunner.build_command(agent, "do it"),
+            ("/bin/pi", "--print", "do it"),
+        )
+
     @patch("agentops.registry.shutil.which")
     def test_detects_installed_agents_and_falls_back_by_role(self, which):
         which.side_effect = lambda command: "C:/bin/opencode" if command == "opencode" else None
