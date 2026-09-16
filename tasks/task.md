@@ -120,7 +120,7 @@ Add `AgentRouter`, deterministic scoring, explicit preference/fallback handling,
 ### Subtask 4 — Add coverage and run reviews
 Agent: pi (sole writer)
 Depends on: Subtask 3
-Status: in progress
+Status: done (OpenCode architecture reply pending asynchronously)
 
 Add tests for capability matching, disabled/unavailable agents, fallback, explicit preferences, missing capabilities, deterministic scoring, explainability, disabled routing, and event persistence. Run focused tests, full suite, and read-only reviewer checks.
 
@@ -129,7 +129,7 @@ Add tests for capability matching, disabled/unavailable agents, fallback, explic
 ### Subtask 5 — Update memory, task output, and report
 Agent: pi (sole writer)
 Depends on: Subtask 4
-Status: pending
+Status: done
 
 Update canonical memory and append the task output. Commit and push unless the user says otherwise; do not rebuild the executable because packaging is not affected.
 
