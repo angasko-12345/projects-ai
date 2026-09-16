@@ -30,6 +30,15 @@ class AgentConfig:
     # review is derived from `roles` by the adapter; only list here what
     # the CLI demonstrably provides — never fabricate entries.
     capabilities: tuple[str, ...] = ()
+    display_name: str | None = None
+    priority: int = 0
+    metadata: dict[str, object] = field(default_factory=dict)
+    version_command: tuple[str, ...] | None = None
+    structured_output: bool | None = None
+    cancellation_support: bool | None = None
+    timeout_support: bool | None = None
+    interactive_support: bool | None = None
+    noninteractive_support: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -47,6 +56,7 @@ class AppConfig:
     backoff_base_seconds: float = 1.0
     backoff_max_seconds: float = 30.0
     backoff_factor: float = 2.0
+    routing_enabled: bool = True
 
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "agents" / "agents.yaml"
@@ -185,8 +195,37 @@ def load_config(path: str | Path | None = None) -> AppConfig:
                 warnings.warn(
                     f"agents.{name}.capabilities has unrecognized capability '{item}'; "
                     "it will be passed through as-is.", stacklevel=2)
-        agents[name] = AgentConfig(name, command, tuple(args), tuple(roles), timeout, enabled, model,
-                                   capabilities)
+        display_name = raw.get("display_name")
+        if display_name is not None and (not isinstance(display_name, str) or not display_name.strip()):
+            raise ValueError(f"agents.{name}.display_name must be a non-empty string when provided.")
+        priority = raw.get("priority", 0)
+        if isinstance(priority, bool) or not isinstance(priority, int):
+            raise ValueError(f"agents.{name}.priority must be an integer.")
+        metadata = raw.get("metadata", {})
+        if not isinstance(metadata, dict):
+            raise ValueError(f"agents.{name}.metadata must be a mapping.")
+        version_command = raw.get("version_command")
+        if version_command is not None:
+            if (not isinstance(version_command, list) or not version_command or
+                    not all(isinstance(item, str) and item for item in version_command)):
+                raise ValueError(f"agents.{name}.version_command must be a non-empty list of strings.")
+            version_command = tuple(version_command)
+        boolean_fields: dict[str, object] = {}
+        for field_name in (
+            "structured_output", "cancellation_support", "timeout_support",
+            "interactive_support", "noninteractive_support",
+        ):
+            value = raw.get(field_name)
+            if value is not None and not isinstance(value, bool):
+                raise ValueError(f"agents.{name}.{field_name} must be a boolean when provided.")
+            boolean_fields[field_name] = value
+        agents[name] = AgentConfig(
+            name, command, tuple(args), tuple(roles), timeout, enabled, model,
+            capabilities, display_name, priority, metadata, version_command,
+            boolean_fields["structured_output"], boolean_fields["cancellation_support"],
+            boolean_fields["timeout_support"], boolean_fields["interactive_support"],
+            boolean_fields["noninteractive_support"],
+        )
     roles_raw = data.get("role_preferences", {})
     if not isinstance(roles_raw, dict):
         raise ValueError("role_preferences must be a mapping.")
@@ -233,6 +272,13 @@ def load_config(path: str | Path | None = None) -> AppConfig:
     backoff_base = runtime.get("backoff_base_seconds", 1.0)
     backoff_max = runtime.get("backoff_max_seconds", 30.0)
     backoff_factor = runtime.get("backoff_factor", 2.0)
+    routing_setting = runtime.get("routing", {})
+    routing_enabled = runtime.get(
+        "routing_enabled",
+        routing_setting.get("enabled", True) if isinstance(routing_setting, dict) else True,
+    )
+    if not isinstance(routing_enabled, bool):
+        raise ValueError("runtime.routing_enabled must be a boolean.")
     pass_env = runtime.get("pass_env", {})
     if not isinstance(max_attempts, int) or max_attempts < 1:
         raise ValueError("runtime.max_attempts must be at least one.")
@@ -256,4 +302,5 @@ def load_config(path: str | Path | None = None) -> AppConfig:
     return AppConfig(agents, role_preferences, verification_commands, max_attempts, concurrency,
                      max_repair_cycles, tuple(names), tuple(prefixes),
                      verification_profiles, default_profile,
-                     float(backoff_base), float(backoff_max), float(backoff_factor))
+                     float(backoff_base), float(backoff_max), float(backoff_factor),
+                     routing_enabled)

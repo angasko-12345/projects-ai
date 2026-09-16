@@ -261,6 +261,20 @@
 - **Solution:** Weights on all three body rows (2/1/1) + trim fixed heights (trees 6→5, output 8→6) + taller default geometry (740). Diagnose with `grid_bbox` row heights on a mapped window, and always A/B against the parent commit via a temp worktree.
 - **Remember:** Never ship a Tk layout change without mapping a real window and measuring cells — headless `grid_info` assertions cannot catch starvation.
 
+### 2026-09-16 — Scalar capability requirements need normalization
+
+- **Symptom:** Copilot review found scalar capability requirements behaved differently between the router and legacy selector.
+- **Root cause:** New router input normalization was not shared with the older selector API.
+- **Solution:** Added `normalize_requirements()` and used it in both paths; added a regression test proving scalar `mcp` selects the capable agent.
+- **Remember:** When adding a tolerant input contract, apply it to every public entry point for the same concept, not only the newest one.
+
+### 2026-09-16 — Snapshot-review packaging can create false findings
+
+- **Symptom:** Copilot correctly read a partial review tree and reported missing package modules plus a missing default config path.
+- **Root cause:** The review harness renamed snapshot directories to avoid shadowing the installed package, so the snapshot was intentionally not an importable checkout.
+- **Solution:** Rejected those two findings with evidence; fixed the one genuine API inconsistency.
+- **Remember:** Review-harness limitations are not product bugs, but every reviewer-identified API inconsistency still deserves a regression test before dismissal.
+
 ## Environment-specific problems
 
 - Repo root `D:/admin/code/projects`; no stack/test runner configured yet — record pitfalls here once encountered.

@@ -13,7 +13,7 @@
 | Phase 3 — Persisted worktree refs | ✅ DONE | `commit 1047121`; `worktree_refs` schema v6, `WorktreeRef` DTO, retry_merge validates stored provenance; suite 224 OK |
 | Phase 4 — Structured agent results | ✅ DONE | Delivered via Phase 4 task header: `agent_result.py` (schema v1, total parser/coercion) |
 | Phase 5 — Artifacts registry | ✅ DONE | Delivered via Phase 4 task header: `artifacts.py` (schema v5) |
-| Phases 6–10 | ⏳ PROPOSED | Restructured into Track B below |
+| Phases 6–10 | ⏳ PROPOSED | Restructured into Track B below; B7 is IN PROGRESS |
 | Version | 0.1.3, exe rebuilt | `dist/AgentOps.exe`, suite 224 OK |
 
 **Standing constraints that govern everything below:**
@@ -167,10 +167,11 @@
 - **Dependencies:** A2, A3, A5.
 - **Success criteria:** a task blocked by policy records `POLICY_VIOLATION`, never executes.
 
-### B7 — Router (capability/cost scoring)
+### B7 — Router (capability/cost scoring) — IN PROGRESS 2026-09-16
 
 - **Objective:** automatic agent selection beyond preference lists, scoring capability match + recent success rate + user prefs.
 - **Dependencies:** A2 (capabilities), A6/A1 (success-rate metrics need recorded runs/reviews).
+- **Status:** `routing.py`, registry profiles, workflow integration, routing-decision events, routing switch, 20 tests, README, copilot review completed; suite 309 OK. OpenCode architecture review pending. Plan: `.agents/plans/b7-router-plan.md`. Output: `.agents/outputs/b7-router.md`.
 - **Success criteria:** `Agent: Auto` resolves to a scored candidate with an explainable reason.
 
 ### B8 — Approvals (human gate, first-class)

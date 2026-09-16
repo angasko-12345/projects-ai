@@ -25,7 +25,7 @@ python -m agentops logs
 
 ## Configuration
 
-`agents/agents.yaml` includes OpenCode, Codex, Pi, Claude, `fcc-claude`, Copilot, and Antigravity. Unavailable commands are skipped automatically, and role preferences fall back to another compatible installed CLI. An agent may also declare an optional `model` string, which is recorded on its `AgentRun` when available. The bundled file is JSON-valid YAML so it works without dependencies; install `agentops[yaml]` for conventional YAML formatting.
+`agents/agents.yaml` includes OpenCode, Codex, Pi, Claude, `fcc-claude`, Copilot, and Antigravity. Unavailable commands are skipped automatically, and role preferences fall back to another compatible installed CLI. An agent may also declare an optional `model` string, which is recorded on its `AgentRun` when available. Optional `display_name`, `priority`, `metadata`, `version_command`, structured-output, cancellation, timeout, and interactive/non-interactive support fields may also be declared. The bundled file is JSON-valid YAML so it works without dependencies; install `agentops[yaml]` for conventional YAML formatting.
 
 Only command templates configured in this file are executed. Agent output is treated as captured text, never as shell input. Verification commands are likewise explicitly configured under `verification.commands` (or named `verification.profiles`) and run without a shell. The runner passes a reduced process environment to avoid forwarding common secret variables.
 
@@ -71,6 +71,10 @@ State and logs are stored under `<target-repo>/.agentops/` and ignored by Git. S
 Every subprocess invocation of an installed coding-agent CLI creates a persistent `AgentRun` record. Runs move deterministically through `pending`, `starting`, `running`, and one terminal state: `completed`, `failed`, `cancelled`, `timed_out`, or `terminated`. Retry and repair executions link to their parent run, while task retries preserve their attempt numbers.
 
 AgentRun metadata includes the resolved executable, role, optional configured model, timing, exit code, command metadata, working directory/worktree, log references, changed files/diff statistics when available, failure classification, and structured results when available. Raw prompts and sensitive environment values are not persisted; logs are redacted and execution metadata stores only a prompt hash/length. Database changes are additive, so existing state files migrate without rewriting workflow/task history.
+
+## Agent profiles and routing
+
+The registry exposes capability-rich `AgentProfile` records containing identifier, display name, executable path, detected version, availability, roles, capabilities, structured-output support, cancellation/timeout support, interactive/non-interactive support, configured priority, and optional metadata. Workflows use a deterministic `AgentRouter` by default: explicit role, availability, and required-capability constraints gate eligibility, while explicit user preferences, inferred task fit, historical success, configured priority, and a stable identifier tie-breaker determine ranking. Each decision is persisted as a `routing.decision` event with the selected agent, score, alternatives, reasons, rejected candidates, and constraints. Set `runtime.routing_enabled` (or `runtime.routing.enabled`) to `false` to preserve the previous static preference/fallback selection behavior.
 
 ## Verification Kernel
 

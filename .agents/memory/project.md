@@ -83,3 +83,9 @@
 7. Phase 4 Event + Artifact Infrastructure 2026-09-15: `events.py` leaf (schema v1, 27 types, bus) + `artifacts.py` (hash-verified store, retention), schema v4/v5, CLI/controller/GUI exposure, 30 new tests, suite 214 OK. Opencode review: 15 findings, blockers + hardening fixed. Committed `5742b2a`, pushed. Copilot test review: 2 findings + gaps fixed post-push (atomic-rename + orphan scan, legacy mirror, traversal/symlink tests, whole-open retry fixing a real first-open flake); suite 217 OK.
 8. Version 0.1.3 + exe rebuild 2026-09-15: bumped `__init__.py` + `pyproject.toml` (`023abc7`, suite 217 green); rebuilt `dist/AgentOps.exe` (14,801,169 bytes, PyInstaller 6.22.3) — archive-inspected (21 `agentops.*` modules incl. all new kernels) and startup/shutdown smoke-tested with process-exit verification. Exe itself stays out of git (ignored `dist/`).
 4. Standing 2026-09-12 items (superseded where product work took precedence): memory peer reviews PENDING (Intercom EPIPE outage); Supermemory availability for non-Pi agents PENDING (Pi: none — 0 MCP servers).
+
+## B7 capability router 2026-09-16
+
+- Implementation complete: `routing.py`, registry profiles/version detection, workflow routing with exclusions/history, `routing.decision` events, routing switch, README/package exports, 20 routing tests. Suite 309 OK (3 skips). Backup: `/tmp/agentops-backup-b7-router-20260916-182309`.
+- Reviews: copilot snapshot review completed (one valid scalar-selector finding fixed; two harness artifacts rejected); opencode architecture review requested asynchronously and pending.
+- No executable rebuild: packaging untouched.

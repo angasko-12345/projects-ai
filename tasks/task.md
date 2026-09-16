@@ -1,207 +1,154 @@
 # Task
 
-PHASE 3 — Failure, Repair, and Recovery Kernel
+Inspect the current agent registry and selection logic.
 
-First inspect the current implementation and Phase 2 changes.
+Preserve current explicit preferences and fallback behavior.
 
-Implement a first-class failure and recovery subsystem.
+Upgrade the registry so every installed agent can advertise capabilities.
 
-Create:
+An agent profile should contain:
 
-Failure
-FailureClassifier
-RepairPlan
-RetryPolicy
-RecoveryState
+identifier
+display name
+executable path
+detected version
+availability
+roles
+capabilities
+supported structured output
+cancellation support
+timeout support
+interactive/noninteractive support
+configured priority
+optional metadata
 
-Failure categories should initially include:
+Initial capabilities:
 
-AGENT_ERROR
-PROCESS_ERROR
-TIMEOUT
-CANCELLATION
-TEST_FAILURE
-LINT_FAILURE
-TYPECHECK_FAILURE
-BUILD_FAILURE
-VERIFICATION_FAILURE
-ENVIRONMENT_FAILURE
-DEPENDENCY_FAILURE
-GIT_CONFLICT
-DIRTY_WORKTREE
-POLICY_VIOLATION
-REVIEW_REJECTION
-UNKNOWN
+planning
+architecture
+implementation
+debugging
+refactoring
+testing
+code review
+security review
+documentation
+repository exploration
 
-A Failure should contain:
+Create an AgentCapabilityResolver.
 
-id
-workflow_id
-task_id
-agent_run_id
-source
-category
-severity
-retryable
-repairable
-evidence
-primary error
-related verification run
-recommended action
-timestamps
+Create an AgentRouter that accepts:
 
-Implement deterministic classification first.
+role
+task description
+repository characteristics
+required capabilities
+available agents
+user preferences
+historical performance if available
 
-Do not use an LLM for basic error classification.
+Initially use deterministic scoring.
 
-Implement repair decisions such as:
+The router must return an explainable decision:
 
-retry same agent
-retry different agent
-repair implementation
-rerun verification
-request approval
-stop permanently
+selected agent
+score
+alternatives
+reasons
+rejected candidates
+constraints
 
-Retries must be bounded by policy.
+Example:
 
-Support:
+Selected: codex
 
-maximum attempts
-maximum repair cycles
-backoff
-cancellation
-inherited context from previous attempts
-previous verification evidence
+Reasons:
 
-Every retry/repair must create a distinct AgentRun linked to its parent.
+implementation capability matched
+preferred agent
+available
+fallback not required
 
-Also implement workflow crash recovery.
+Persist routing decisions as events.
 
-On restart, detect incomplete operations and classify them as appropriate recovery states.
+Allow routing to be disabled.
 
-Never convert an unknown/interrupted state into success without evidence.
+When disabled, preserve existing static preference/fallback behavior.
 
-Handle interruption during:
+Add tests for:
 
-agent execution
-verification
-review
-worktree creation
-Git operations
-merge
+capability matching
+disabled agents
+unavailable agents
+fallback
+explicit user preference
+missing capabilities
+deterministic scoring
+explainability
 
-Preserve failed/cancelled/conflicted worktrees according to existing AgentOps behavior.
+Run the entire test suite.
 
-Add tests for every failure category and recovery scenario.
+## Plan (Agent registry capability resolver and deterministic router — 2026-09-15)
 
-Simulate process interruption in tests where practical.
+### Subtask 1 — Audit registry and define compatible profile contract
+Agent: pi (sole writer)
+Depends on: none
+Status: done
 
-Run the full test suite.
+Map current `AgentConfig`, `DetectedAgent`, adapter capabilities, role gates, preference fallback, and event persistence. Define additive profile fields without breaking positional constructors or existing `select()` behavior.
 
-PHASE 4 — Event and Artifact Infrastructure
+---
 
-Inspect existing event and logging code before implementing anything.
+### Subtask 2 — Implement capability resolver and agent profiles
+Agent: pi (sole writer)
+Depends on: Subtask 1
+Status: done
 
-Upgrade AgentOps into a durable execution timeline.
+Add the requested capability vocabulary, resolver, profile construction, configured priority/metadata support, and deterministic capability matching while preserving disabled/unavailable/role/exclusion behavior.
 
-Implement a versioned event model.
+---
 
-Events should include:
+### Subtask 3 — Implement explainable deterministic router
+Agent: pi (sole writer)
+Depends on: Subtask 2
+Status: done
 
-workflow.created
-workflow.started
-task.claimed
-task.started
-task.completed
-task.failed
-agent.selected
-agent.started
-agent.finished
-verification.started
-verification.completed
-verification.failed
-failure.classified
-repair.started
-repair.completed
-review.started
-review.completed
-policy.evaluated
-approval.requested
-approval.completed
-worktree.created
-worktree.cleaned
-merge.started
-merge.completed
-merge.conflict
-workflow.cancelled
+Add `AgentRouter`, deterministic scoring, explicit preference/fallback handling, routing-disable switch, alternatives/rejections/reasons/constraints, and routing-decision event persistence. Integrate it with workflow selection without changing direct registry compatibility.
 
-Each event should include:
+---
 
-id
-timestamp
-workflow id
-task id
-agent run id when applicable
-event type
-severity
-message
-structured payload
-schema version
+### Subtask 4 — Add coverage and run reviews
+Agent: pi (sole writer)
+Depends on: Subtask 3
+Status: in progress
 
-Never store secrets in event payloads.
+Add tests for capability matching, disabled/unavailable agents, fallback, explicit preferences, missing capabilities, deterministic scoring, explainability, disabled routing, and event persistence. Run focused tests, full suite, and read-only reviewer checks.
 
-Implement event querying with:
+---
 
-chronological ordering
-pagination
-task filtering
-agent-run filtering
-event-type filtering
+### Subtask 5 — Update memory, task output, and report
+Agent: pi (sole writer)
+Depends on: Subtask 4
+Status: pending
 
-Create a lightweight event subscription abstraction that the GUI can consume now and an API can consume later.
+Update canonical memory and append the task output. Commit and push unless the user says otherwise; do not rebuild the executable because packaging is not affected.
 
-Keep SQLite as the durable source of truth.
+---
 
-Then implement first-class workflow artifacts.
+## Output (Agent registry capability resolver and deterministic router)
 
-Create:
+Status: implementation complete; architecture review pending.
 
-Artifact
-ArtifactStore
-ArtifactMetadata
+- Added `agentops/routing.py` with profiles, resolver, deterministic scoring router, explainable decisions, and input normalization.
+- Extended task capabilities, config/profile metadata, registry version/profile support, workflow routing-event persistence, routing switch, README documentation, and package exports.
+- Added `tests/test_routing.py` with 20 tests for all requested coverage categories plus registry/config compatibility.
+- Full suite: 309 passing, 3 environment skips; `git diff --check` clean.
+- Copilot snapshot review: fixed valid scalar-selector compatibility; rejected two snapshot-packaging artifacts with evidence.
+- OpenCode architecture review requested asynchronously; pending.
+- Backup: `/tmp/agentops-backup-b7-router-20260916-182309`; snapshot: `/tmp/agentops-review-router`.
+- No executable rebuild: packaging untouched.
 
-Support artifacts such as:
-
-plans
-diffs
-patches
-execution logs
-verification reports
-reviews
-failure analysis
-risk reports
-final workflow summaries
-
-Store metadata in SQLite and large file content outside SQLite where appropriate.
-
-Every artifact must have a content hash.
-
-Add:
-
-retention
-cleanup
-missing-artifact handling
-safe permissions
-redaction
-
-Expose artifacts through CLI and GUI.
-
-Add comprehensive persistence and concurrency tests.
-
-Run the complete test suite.
-
-
+---
 
 ## Plan (PHASE 3 re-audit + PHASE 4 build — 2026-09-15)
 

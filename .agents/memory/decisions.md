@@ -167,3 +167,11 @@
 - **Reason:** User directive: read the GitHub `.agents/plans/` documents and expand the roadmap into a practical, prioritized, execution-ready plan with objectives, owners, dependencies, risks, milestones, and opened decisions; horizon stays open-ended; UX items included.
 - **Alternatives considered:** Keeping the two parallel tracks (original 10 phases + separate ChatGPT-hardening track — rejected, overlaps/duplication); keeping UX in a separate document (rejected — user requested it in the roadmap).
 - **Agents involved:** pi-manager.
+
+## 2026-09-16 — B7 capability resolver and deterministic router
+
+- **Date:** 2026-09-16
+- **Decision:** Added `routing.py` with `AgentProfile`, `AgentCapabilityResolver`, deterministic `AgentRouter`, and explainable decisions. Extended `Capability` with the requested task-level values. Added additive config/profile fields, best-effort version detection, registry profiles, workflow routing-event persistence, and `runtime.routing_enabled`.
+- **Reason:** Task-header B7 requirements for capability-aware scoring, explicit preferences, historical performance, explainability, event persistence, and a routing switch, while preserving legacy role gates and fallback behavior.
+- **Alternatives considered:** Scoring inferred task wording as hard eligibility (rejected — ordinary descriptions could eliminate otherwise-eligible agents); defaulting workflow routing off (rejected for this task because routing decisions are a required behavior, while direct `select()` and the false switch remain available); per-agent adapter subclasses now (rejected — no CLI-specific routing behavior exists yet).
+- **Agents involved:** pi-manager (copilot snapshot review completed; opencode architecture review pending).

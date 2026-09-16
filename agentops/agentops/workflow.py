@@ -42,7 +42,9 @@ from .failure import (
     new_failure_id,
 )
 from .config import AppConfig
-from .registry import AgentRegistry
+from .events import Event, EventType
+from .registry import AgentRegistry, DetectedAgent
+from .routing import AgentRouter
 from .runner import AgentRunner, OperationCancelled, RunResult
 from .state import StateStore
 from .tasks import Task, TaskStatus, utc_now
@@ -104,7 +106,8 @@ class WorkflowEngine:
                  runner: AgentRunner, verifier: Verifier,
                  run_observer: AgentRunObserver | None = None,
                  metadata_collector: Callable[[str | Path], AgentRunMetadata] | None = None,
-                 verification_kernel: VerificationKernel | None = None):
+                 verification_kernel: VerificationKernel | None = None,
+                 router: AgentRouter | None = None):
         self.config = config
         self.state = state
         self.registry = registry
@@ -113,6 +116,9 @@ class WorkflowEngine:
         self.run_observer = run_observer
         self.metadata_collector = metadata_collector
         self.verification_kernel = verification_kernel
+        self.router = router
+        if self.router is None and getattr(config, "routing_enabled", True):
+            self.router = AgentRouter()
 
     @property
     def retry_policy(self) -> RetryPolicy:
@@ -338,6 +344,84 @@ class WorkflowEngine:
                 raise
         self.state.refresh_workflow_status(workflow_id)
 
+    def _historical_performance(self, workflow_id: str) -> dict[str, float]:
+        """Return deterministic recent success rates by agent identifier."""
+        try:
+            runs = self.state.list_agent_runs(workflow_id, limit=200)
+        except Exception:
+            return {}
+        totals: dict[str, int] = {}
+        successes: dict[str, int] = {}
+        try:
+            for run in runs:
+                if not run.agent:
+                    continue
+                totals[run.agent] = totals.get(run.agent, 0) + 1
+                if run.status is AgentRunStatus.COMPLETED and (
+                    run.exit_code is None or run.exit_code == 0
+                ):
+                    successes[run.agent] = successes.get(run.agent, 0) + 1
+        except Exception:
+            return {}
+        return {
+            agent: successes.get(agent, 0) / total
+            for agent, total in totals.items()
+            if total
+        }
+
+    def _select_agent(self, task: Task, excluded: set[str]) -> DetectedAgent | None:
+        """Select through the router when available, otherwise use legacy selection."""
+        router = getattr(self, "router", None)
+        if router is not None:
+            try:
+                profiles = self.registry.profiles()
+            except Exception:
+                profiles = None
+            if isinstance(profiles, dict):
+                try:
+                    decision = router.route(
+                        role=task.role,
+                        task_description=task.description,
+                        repository_characteristics={},
+                        # No hard capability filter here: the router still scores
+                        # role/task fit, while role gates, availability, explicit
+                        # user preferences, and exclusions preserve the legacy path.
+                        required_capabilities=(),
+                        available_agents=tuple(profiles.values()),
+                        user_preferences=self.config.role_preferences.get(task.role, ()),
+                        historical_performance=self._historical_performance(task.workflow_id),
+                        excluded=excluded,
+                    )
+                except Exception:
+                    return self.registry.select(task.role, excluded)
+                self._record_routing_decision(task, decision)
+                selected = getattr(decision, "selected_agent", None)
+                identifier = getattr(selected, "identifier", None)
+                if identifier:
+                    try:
+                        return self.registry.get(identifier)
+                    except (KeyError, TypeError):
+                        return None
+        return self.registry.select(task.role, excluded)
+
+    def _record_routing_decision(self, task: Task, decision) -> None:
+        """Persist an explainable routing decision without leaking metadata."""
+        try:
+            payload = decision.to_dict()
+            selected_profile = payload.get("selected_profile")
+            if isinstance(selected_profile, dict):
+                selected_profile["metadata"] = {}
+            self.state.record_typed_event(Event(
+                workflow_id=task.workflow_id,
+                task_id=task.id,
+                type=EventType.ROUTING_DECISION,
+                message=f"Routed {task.role} to {payload.get('selected_agent') or 'no agent'}",
+                payload=payload,
+            ))
+        except Exception:
+            # Selection must not be blocked by an unavailable event store.
+            pass
+
     async def _execute_task(
         self,
         task: Task,
@@ -395,7 +479,7 @@ class WorkflowEngine:
                         )
             else:
                 excluded = {task.assigned_agent} if task.assigned_agent and task.attempts > 1 else set()
-                agent = self.registry.select(task.role, excluded)
+                agent = self._select_agent(task, excluded)
                 if agent is None:
                     task.status = TaskStatus.FAILED
                     if excluded:

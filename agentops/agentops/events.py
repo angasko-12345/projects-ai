@@ -43,6 +43,7 @@ class EventType(StrEnum):
     TASK_COMPLETED = "task.completed"
     TASK_FAILED = "task.failed"
     AGENT_SELECTED = "agent.selected"
+    ROUTING_DECISION = "routing.decision"
     AGENT_STARTED = "agent.started"
     AGENT_FINISHED = "agent.finished"
     VERIFICATION_STARTED = "verification.started"

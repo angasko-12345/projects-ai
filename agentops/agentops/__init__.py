@@ -67,10 +67,19 @@ from .failure import (
 from .agent_adapter import (
     KNOWN_CAPABILITIES,
     AgentAdapter,
+    AgentCapability,
     Capability,
     CliAdapter,
     adapter_for,
     capabilities_for_roles,
+)
+from .routing import (
+    AgentCapabilityResolver,
+    AgentProfile,
+    AgentRouter,
+    RoutingAlternative,
+    RoutingDecision,
+    RoutingRejection,
 )
 from .execution_model import (
     StateTransitionError,
@@ -143,8 +152,15 @@ __all__ = [
     "WorktreeRef",
     "KNOWN_CAPABILITIES",
     "AgentAdapter",
+    "AgentCapability",
+    "AgentCapabilityResolver",
+    "AgentProfile",
+    "AgentRouter",
     "Capability",
     "CliAdapter",
+    "RoutingAlternative",
+    "RoutingDecision",
+    "RoutingRejection",
     "adapter_for",
     "capabilities_for_roles",
     "StateTransitionError",

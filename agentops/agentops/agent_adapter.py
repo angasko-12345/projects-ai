@@ -37,7 +37,10 @@ from .config import AgentConfig
 
 
 class Capability(StrEnum):
-    """Fixed capability vocabulary (D1). Unknown strings stay free-form extras."""
+    """Fixed capability vocabulary (D1 plus task-level B7 capabilities).
+
+    Unknown strings remain free-form extras for forward compatibility.
+    """
 
     CODING = "coding"
     PLANNING = "planning"
@@ -48,6 +51,17 @@ class Capability(StrEnum):
     MODEL_SELECTION = "model_selection"
     READ_ONLY = "read_only"
     NON_INTERACTIVE = "non_interactive"
+
+    # Task-level capabilities used by AgentCapabilityResolver and AgentRouter.
+    ARCHITECTURE = "architecture"
+    IMPLEMENTATION = "implementation"
+    DEBUGGING = "debugging"
+    REFACTORING = "refactoring"
+    TESTING = "testing"
+    CODE_REVIEW = "code review"
+    SECURITY_REVIEW = "security review"
+    DOCUMENTATION = "documentation"
+    REPOSITORY_EXPLORATION = "repository exploration"
 
 
 KNOWN_CAPABILITIES: frozenset[str] = frozenset(item.value for item in Capability)
@@ -138,9 +152,14 @@ def adapter_for(config: AgentConfig, executable: str | None = None) -> CliAdapte
     return CliAdapter(config, executable, tuple(config.capabilities))
 
 
+# Public alias for callers that use the B7 terminology.
+AgentCapability = Capability
+
+
 __all__ = [
     "KNOWN_CAPABILITIES",
     "AgentAdapter",
+    "AgentCapability",
     "Capability",
     "CliAdapter",
     "adapter_for",
