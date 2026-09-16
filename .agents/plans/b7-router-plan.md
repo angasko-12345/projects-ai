@@ -1,7 +1,7 @@
 # Plan — B7 Capability Resolver and Deterministic Router
 
 > Owner: pi (sole writer); copilot (test review); opencode (architecture review).
-> Status: implementation and both reviews complete; full suite 315 OK.
+> Status: implementation and both reviews complete; full suite 336 OK (4 skips).
 
 ## Objective
 

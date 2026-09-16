@@ -4,7 +4,7 @@
 
 ## Current system architecture
 
-- AgentOps v0.1.2 (`D:/admin/code/projects/agentops`): layered local-first orchestrator. Entry points (`cli.py`, `gui.py`+`gui_controller.py`) compose an injected `WorkflowEngine`; GUI never imports service modules directly — all Tk updates marshalled via `root.after()`, work runs on controller background threads. Audited 2026-09-13.
+- AgentOps v0.1.3 (`D:/admin/code/projects/agentops`): layered local-first orchestrator. Entry points (`cli.py`, `gui.py`+`gui_controller.py`) compose an injected `WorkflowEngine`; GUI never imports service modules directly — all Tk updates marshalled via `root.after()`, work runs on controller background threads. Audited 2026-09-13.
 
 ## A2 adapter boundary 2026-09-15
 
@@ -65,9 +65,9 @@
 
 ## Important technical implementation details
 
-- Constructor injection across engine/registry/runner/verifier/state — fully fakeable; 122 tests, mocked subprocesses except one real-git lifecycle test; headless GUI tests.
+- Constructor injection across engine/registry/runner/verifier/state — fully fakeable; 336 tests, mocked subprocesses except one real-git lifecycle test plus real-process runtime smoke coverage; headless GUI tests.
 - SQLite `claim_task` conditional UPDATE is the cross-process atomicity guarantee.
-- Worktree base branch/commit metadata is memory-only (known risk — roadmap Phase 3: persist worktree refs).
+- Worktree base branch/commit metadata was memory-only (resolved by roadmap Phase 3: persisted worktree refs).
 - Polling is the event bus (roadmap Phase 2: subscriptions); single in-flight op per controller (roadmap Phase 4: queue).
 
 ## Integration points
@@ -85,5 +85,5 @@
 - 2026-09-14: Fixed relayed opencode review findings (fail-fast cancels only on terminal failures; `CancelledError` finalizes CANCELLED reports; enum rehydration; verification repair loop; duplicate-name and source-run validation); 122 tests passing.
 - 2026-09-14: Added first-class Failure/Repair/Recovery Kernel (deterministic classification, bounded retries with backoff + inherited context, parent-linked retry/repair AgentRuns, crash recovery for 6 interruption contexts, failures/recover CLI, controller/GUI views); 146 tests passing (24 new).
 - 2026-09-15: Added versioned Structured Results (`agent_result.py` leaf: schema v1, total parser/coercion, five-way outcome distinction); runner/workflow persist envelopes with warnings+parse_mode (no DB migration); 184 tests passing (34 new).
-- 2026-09-16: Added B7 capability profiles and deterministic routing (`routing.py`); registry profile/version support; workflow routing-event persistence; routing switch; 25 routing tests plus one adapter regression test; suite 315 OK. OpenCode review adjudicated: canonical adapter task mapping, UTF-8 version decoding, executed-agent tracking, and single-profile input.
-- 2026-09-16: Added A3 shared ProcessRuntime (`runtime.py`); runner/kernel/legacy-verifier delegation; unified spawn policy; CancelledError termination; thread-free cancel polling; duplicate-name validation before persistence; fail-fast evidence-dominated overall status; 16 new tests; suite 335 OK; exe rebuilt + smoke-tested.
+- 2026-09-16: Added B7 capability profiles and deterministic routing (`routing.py`); registry profile/version support; workflow routing-event persistence; routing switch; 25 routing tests plus one adapter regression test; suite 336 OK. OpenCode review adjudicated: canonical adapter task mapping, UTF-8 version decoding, executed-agent tracking, and single-profile input.
+- 2026-09-16: Added A3 shared ProcessRuntime (`runtime.py`); runner/kernel/legacy-verifier delegation; unified spawn policy; CancelledError termination; thread-free cancel polling; duplicate-name validation before persistence; fail-fast evidence-dominated overall status; 16 new tests; suite 336 OK; exe rebuilt + smoke-tested.

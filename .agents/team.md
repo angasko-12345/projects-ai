@@ -58,11 +58,11 @@ Rules: single writer, always; reviewers never touch the repo (snapshots only); v
 
 Never allow an old memory to override current code or explicit instructions.
 
-## Intercom targets (current, verified 2026-09-13)
+## Intercom targets (current, verified 2026-09-16)
 
-- Allowed + live: `copilot`, `opencode-projects-6896`. Allowed via CLI snapshots: `fcc-claude` (needs `fcc-server`), `opencode` (needs backend auth).
+- Observed live: `opencode-projects-20740` (idle). `copilot` was not observed live; reach it via `agentops run copilot` snapshots instead. Allowed via CLI snapshots: `fcc-claude` (needs `fcc-server`), `opencode` (needs backend auth).
 - Never task: `claude` (live but out of scope), `codex-builder` / `agy-reviewer` / `opencode-arch` (retired names — no such live sessions).
-- Display names may truncate — always resolve the exact live name from `intercom_list` before messaging.
+- Session names are ephemeral — always resolve the exact live name from `intercom_list` before messaging; never message remembered names.
 
 ## History (superseded, preserved)
 

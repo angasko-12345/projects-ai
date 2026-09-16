@@ -42,8 +42,8 @@
 
 ## A3 Shared ProcessRuntime — ✅ COMPLETE 2026-09-16
 
-**Status:** Done, suite 335 OK. Copilot review closed. OpenCode architecture reply pending. Plan: `plans/a3-runtime-plan.md`. Output: `outputs/a3-runtime.md`.
+**Status:** Done, suite 336 OK. Copilot and OpenCode reviews closed. Plan: `plans/a3-runtime-plan.md`. Output: `outputs/a3-runtime.md`.
 
 ## B7 Capability Resolver and Deterministic Router — ✅ COMPLETE 2026-09-16
 
-**Status:** Done, suite 315 OK. Copilot and OpenCode reviews closed. Plan: `plans/b7-router-plan.md`. Output: `outputs/b7-router.md`.
+**Status:** Done, suite 336 OK. Copilot and OpenCode reviews closed. Plan: `plans/b7-router-plan.md`. Output: `outputs/b7-router.md`.

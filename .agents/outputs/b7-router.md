@@ -1,6 +1,6 @@
 # Output — B7 Capability Resolver and Deterministic Router
 
-> Implementation and both requested reviews complete. Full suite 315 OK.
+> Implementation and both requested reviews complete. Full suite 336 OK (4 skips).
 
 ## What was built
 

@@ -37,7 +37,7 @@ capture) without changing public APIs or execution outcomes.
 - `tests/test_runner.py`: +1 running-before-finish regression.
 - `tests/test_verification_kernel.py`: +2 regressions (no stranded RUNNING run,
   fail-fast overall FAILED).
-- Full suite: 335 passing, 4 environment skips.
+- Full suite: 336 passing, 4 environment skips.
 - Copilot review: 6 findings, 5 fixed, 1 deferred to A8 with rationale.
 - Exe rebuilt (14,851,920 bytes), archive-inspected, smoke-tested.
 - Backup: `/tmp/agentops-backup-a3-runtime-20260916-203040`.
