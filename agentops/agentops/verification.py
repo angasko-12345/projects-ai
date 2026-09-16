@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-import subprocess
-import sys
 import threading
 from dataclasses import dataclass
 from pathlib import Path
 from time import monotonic
 
-from .runner import AgentRunner, OperationCancelled
+from .runtime import OperationCancelled, ProcessRuntime
 
 
 @dataclass(frozen=True)
@@ -28,11 +26,13 @@ class CheckResult:
 
 class Verifier:
     def __init__(self, commands: tuple[tuple[str, ...], ...], timeout_seconds: int = 300,
-                 pass_env_names: tuple[str, ...] = (), pass_env_prefixes: tuple[str, ...] = ()):
+                 pass_env_names: tuple[str, ...] = (), pass_env_prefixes: tuple[str, ...] = (),
+                 runtime: ProcessRuntime | None = None):
         self.commands = commands
         self.timeout_seconds = timeout_seconds
         self.pass_env_names = pass_env_names
         self.pass_env_prefixes = pass_env_prefixes
+        self._runtime = runtime or ProcessRuntime(pass_env_names, pass_env_prefixes)
 
     async def run(
         self,
@@ -42,26 +42,18 @@ class Verifier:
         results: list[CheckResult] = []
         for command in self.commands:
             started = monotonic()
-            process = await asyncio.create_subprocess_exec(
-                *command, cwd=str(working_directory),
-                env=AgentRunner._environment(self.pass_env_names, self.pass_env_prefixes),
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
-                # Same no-flash rule as the agent runner (windowed builds).
-                **({"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}),
+            completed = await self._runtime.run_process(
+                command, cwd=working_directory,
+                env=self._runtime.environment(),
+                timeout=self.timeout_seconds,
+                cancel_event=cancel_event,
+                stderr=asyncio.subprocess.STDOUT,
             )
-            timed_out = False
-            try:
-                output, _ = await asyncio.wait_for(
-                    AgentRunner._communicate_with_cancel(process, cancel_event),
-                    timeout=self.timeout_seconds,
-                )
-            except TimeoutError:
-                timed_out = True
-                output, _ = await AgentRunner.terminate(process)
-            except OperationCancelled:
-                output, _ = await AgentRunner.terminate(process)
-                raise
-            result = CheckResult(command, None if timed_out else process.returncode,
+            if completed.cancelled:
+                raise OperationCancelled
+            output = completed.stdout
+            timed_out = completed.timed_out
+            result = CheckResult(command, completed.exit_code,
                                  output.decode("utf-8", errors="replace"), timed_out, monotonic() - started)
             results.append(result)
             if not result.succeeded:

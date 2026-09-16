@@ -4,13 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
-import signal
-import subprocess
-import sys
 import threading
 from collections.abc import Callable
-from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from time import monotonic
@@ -26,12 +21,9 @@ from .agent_run import (
 from .agent_adapter import adapter_for
 from .agent_result import parse_agent_result
 from .config import AgentConfig
+from .runtime import OperationCancelled, ProcessRuntime
 from .logging import LogManager, RunLogArtifacts
 from .registry import DetectedAgent
-
-
-class OperationCancelled(RuntimeError):
-    """Raised when a running agent observes a cancellation request."""
 
 
 def _safe_structured_result(stdout: object) -> object | None:
@@ -86,72 +78,26 @@ class AgentRunner:
         pass_env_prefixes: tuple[str, ...] = (),
         run_observer: AgentRunObserver | None = None,
         metadata_collector: Callable[[str | Path], AgentRunMetadata] | None = None,
+        runtime: ProcessRuntime | None = None,
     ):
         self.logs = logs
         self.pass_env_names = pass_env_names
         self.pass_env_prefixes = pass_env_prefixes
         self.run_observer = run_observer
         self.metadata_collector = metadata_collector
+        self._runtime = runtime or ProcessRuntime(pass_env_names, pass_env_prefixes)
 
     @staticmethod
     def _environment(pass_env_names: tuple[str, ...] = (), pass_env_prefixes: tuple[str, ...] = ()) -> dict[str, str]:
-        allowed = {
-            "PATH", "PATHEXT", "SystemRoot", "WINDIR", "COMSPEC", "TEMP", "TMP",
-            "USERPROFILE", "APPDATA", "LOCALAPPDATA", "HOME", "LANG", "LC_ALL",
-        }
-        # Windows environment variables are case-insensitive, but iterating
-        # os.environ yields the parent's raw casing (e.g. SYSTEMROOT, PATH).
-        # A case-sensitive allowlist check would then silently drop them and
-        # launch agents without PATH or %SystemRoot% (fatal to Bun-based CLIs).
-        fold = (lambda name: name.upper()) if os.name == "nt" else (lambda name: name)
-        allowed_folded = {fold(name) for name in allowed}
-        canonical = {}
-        for name in allowed:
-            canonical.setdefault(fold(name), name)
-        pass_names_folded = {fold(name) for name in pass_env_names}
-        pass_prefixes_folded = tuple(fold(prefix) for prefix in pass_env_prefixes)
-        env: dict[str, str] = {}
-        for name, value in os.environ.items():
-            folded = fold(name)
-            if folded in allowed_folded:
-                env.setdefault(canonical[folded], value)
-            elif folded in pass_names_folded or any(folded.startswith(prefix) for prefix in pass_prefixes_folded):
-                env.setdefault(name, value)
-        if os.name == "nt":
-            # Bun-based agent CLIs (e.g. claude) require %SystemRoot% for
-            # network requests and die instantly without it. The parent
-            # process normally provides it, but when AgentOps itself is
-            # launched from a scrubbed environment (sandbox, clean-env tool),
-            # fall back to the standard location instead of failing cryptically.
-            system_root = env.get("SystemRoot") or r"C:\WINDOWS"
-            env.setdefault("SystemRoot", system_root)
-            env.setdefault("WINDIR", env.get("WINDIR") or system_root)
-        return env
+        # Compatibility seam: the runtime owns environment policy. Existing
+        # tests and the legacy verifier call this historical entry point.
+        return ProcessRuntime.build_environment(pass_env_names, pass_env_prefixes)
 
     @staticmethod
     async def terminate(process: asyncio.subprocess.Process) -> tuple[bytes, bytes]:
         """Terminate a timed out process group and bound cleanup waits."""
-        if process.returncode is None:
-            try:
-                if sys.platform == "win32" and isinstance(process.pid, int):
-                    cleanup = await asyncio.create_subprocess_exec(
-                        "taskkill", "/PID", str(process.pid), "/T", "/F",
-                        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
-                    )
-                    await asyncio.wait_for(cleanup.wait(), timeout=10)
-                elif sys.platform != "win32" and isinstance(process.pid, int):
-                    os.killpg(process.pid, signal.SIGKILL)
-                else:
-                    process.kill()
-            except (ProcessLookupError, OSError, TimeoutError):
-                try:
-                    process.kill()
-                except ProcessLookupError:
-                    pass
-        try:
-            return await asyncio.wait_for(process.communicate(), timeout=10)
-        except TimeoutError:
-            return b"", b"Process did not exit within the cleanup timeout."
+        # Compatibility seam: termination policy lives in ProcessRuntime.
+        return await ProcessRuntime().terminate_process(process)
 
     @staticmethod
     def build_command(agent: DetectedAgent | AgentConfig, prompt: str) -> tuple[str, ...]:
@@ -168,28 +114,8 @@ class AgentRunner:
         cancel_event: threading.Event | None,
     ) -> tuple[bytes, bytes]:
         """Wait for process output while allowing a thread-owned cancel event."""
-        if cancel_event is None:
-            stdout, stderr = await process.communicate()
-            return stdout, stderr
-        if cancel_event.is_set():
-            raise OperationCancelled
-        communicate = asyncio.create_task(process.communicate())
-        wait_for_cancel = asyncio.create_task(asyncio.to_thread(cancel_event.wait))
-        try:
-            done, _ = await asyncio.wait({communicate, wait_for_cancel}, return_when=asyncio.FIRST_COMPLETED)
-            if communicate in done:
-                stdout, stderr = communicate.result()
-                return stdout, stderr
-            communicate.cancel()
-            with suppress(asyncio.CancelledError):
-                await communicate
-            raise OperationCancelled
-        finally:
-            for pending_task in (communicate, wait_for_cancel):
-                if not pending_task.done():
-                    pending_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await asyncio.gather(communicate, wait_for_cancel)
+        # Compatibility seam: cancellation-aware waiting lives in ProcessRuntime.
+        return await ProcessRuntime().communicate_with_cancel(process, cancel_event)
 
     @staticmethod
     def _notify_create(observer: AgentRunObserver | None, context: AgentRunContext) -> str | None:
@@ -269,40 +195,25 @@ class AgentRunner:
         run_id = self._notify_create(observer, context)
         self._notify_starting(observer, run_id)
         started = monotonic()
-        process: asyncio.subprocess.Process | None = None
         try:
-            if cancel_event is not None and cancel_event.is_set():
-                raise OperationCancelled
-            process = await asyncio.create_subprocess_exec(
-                *command,
-                cwd=str(working_directory),
-                env=self._environment(self.pass_env_names, self.pass_env_prefixes),
-                stdout=asyncio.subprocess.PIPE,
+            execution = await self._runtime.run_process(
+                command,
+                cwd=working_directory,
+                env=self._runtime.environment(),
+                timeout=timeout,
+                cancel_event=cancel_event,
                 stderr=asyncio.subprocess.PIPE,
-                # CREATE_NO_WINDOW keeps windowed GUI builds from flashing
-                # a console per agent spawn; NEW_PROCESS_GROUP preserves the
-                # existing cleanup semantics (A3 will unify this in runtime).
-                **({"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {"start_new_session": True}),
+                on_running=lambda _process: self._notify_running(observer, run_id),
             )
-            self._notify_running(observer, run_id)
-            timed_out = False
+            if execution.cancelled:
+                raise OperationCancelled
+            timed_out = execution.timed_out
             cancelled = False
-            try:
-                stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                    self._communicate_with_cancel(process, cancel_event),
-                    timeout=timeout,
-                )
-            except TimeoutError:
-                timed_out = True
-                stdout_bytes, stderr_bytes = await self.terminate(process)
-            except OperationCancelled:
-                cancelled = True
-                stdout_bytes, stderr_bytes = await self.terminate(process)
-                raise
+            stdout_bytes, stderr_bytes = execution.stdout, execution.stderr
             duration = monotonic() - started
             stdout = stdout_bytes.decode("utf-8", errors="replace")
             stderr = stderr_bytes.decode("utf-8", errors="replace")
-            exit_code = None if timed_out else process.returncode
+            exit_code = execution.exit_code
             terminated = not timed_out and not cancelled and exit_code is not None and exit_code < 0
             collector = metadata_collector or self.metadata_collector
             metadata = AgentRunMetadata()

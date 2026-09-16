@@ -176,3 +176,11 @@
 - **Alternatives considered:** Scoring inferred task wording as hard eligibility (rejected — ordinary descriptions could eliminate otherwise-eligible agents); defaulting workflow routing off (rejected for this task because routing decisions are a required behavior, while direct `select()` and the false switch remain available); per-agent adapter subclasses now (rejected — no CLI-specific routing behavior exists yet).
 - **Agents involved:** pi-manager (copilot snapshot review completed; opencode architecture review completed 2026-09-16).
 - **OpenCode adjudication:** Fixed 1 (UTF-8/replacement version decoding), 2 (canonical role-derived task capabilities shared by adapter/resolver), 3 (removed split coding/review aliases), 5 (routing event now records executed agent and falls back on stale mappings), and 7 (single-profile router input). Rejected 4 and the route-exception half of 5 as stale against the reviewed commit; retained 6 (full-vocabulary empty-role profiles) by design; swept 8 (`AppConfig` constructions use compatible keyword/positional forms).
+
+## 2026-09-16 — A3 shared ProcessRuntime
+
+- **Date:** 2026-09-16
+- **Decision:** Added `agentops/runtime.py` (`ProcessRuntime`, `ProcessResult`, `OperationCancelled`, `SpawnFactory`); `AgentRunner`, `VerificationKernel`, and legacy `Verifier` delegate to it. Unified default spawn policy (Windows no-window + process group, POSIX new session); custom factories keep spawn behavior with direct-kill cleanup; `CancelledError` terminates the child; cooperative cancellation polls instead of parking threads; `on_running` preserves RUNNING timing.
+- **Reason:** Roadmap A3: one process layer instead of kernel→runner coupling; fixes POSIX killpg parent-group hazard and windowed-build taskkill flash as found during implementation/review.
+- **Alternatives considered:** Leaving legacy `Verifier` on runner internals (rejected — runner would remain the implicit process layer); forcing platform flags into custom factories (rejected — breaks the injectable-factory contract; direct kill instead); changing state-error swallowing in the kernel (deferred to A8 — failure-semantics change outside the process layer).
+- **Agents involved:** pi-manager (copilot snapshot review completed; opencode architecture review pending).

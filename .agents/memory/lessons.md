@@ -282,6 +282,20 @@
 - **Solution:** Record selection together with the executed agent and use legacy fallback for stale mappings.
 - **Remember:** Persisted automation decisions should distinguish intended selection from actual execution.
 
+### 2026-09-16 — Cancelling a `to_thread` wait leaks the worker thread
+
+- **Symptom:** Copilot review showed every `run_process` with a cancel event parked a thread in `Event.wait()` that survived normal completion when the event was never set.
+- **Root cause:** Cancelling the `to_thread` task does not interrupt the underlying blocking wait.
+- **Solution:** Poll the threading event on a 50ms cadence against the communicate task; no worker thread is created.
+- **Remember:** Never bridge a threading.Event into asyncio with `to_thread` per operation — poll or use a threadsafe `asyncio.Event` set path.
+
+### 2026-09-16 — `killpg` needs a process-group guarantee, not just a PID
+
+- **Symptom:** Copilot review showed custom process factories bypass session creation, so `terminate_process` could `killpg` a PID that is not a group leader — potentially the parent group.
+- **Root cause:** Cleanup assumed every child owned its process group.
+- **Solution:** Track spawn ownership (`process_group=self.spawn is None`); custom-factory children get direct `kill()`; document the flag on `terminate_process`.
+- **Remember:** Process-group signals require proof of group ownership at spawn time; otherwise kill only the child.
+
 ### 2026-09-16 — Snapshot-review packaging can create false findings
 
 - **Symptom:** Copilot correctly read a partial review tree and reported missing package modules plus a missing default config path.

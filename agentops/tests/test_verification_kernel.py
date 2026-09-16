@@ -432,6 +432,51 @@ class KernelExecutionTests(unittest.TestCase):
             finally:
                 state.close()
 
+    def test_duplicate_names_fail_before_persisting_a_run(self):
+        async def factory(*command, **kwargs):
+            return FakeProcess(b"ok", b"", 0)
+
+        profile = VerificationProfile(
+            name="dup",
+            checks=(
+                VerificationCheckSpec("same", VerificationCheckClass.TESTS, ("a",)),
+                VerificationCheckSpec("same", VerificationCheckClass.LINT, ("b",)),
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            state, kernel = _harness(directory, profile, process_factory=factory)
+            try:
+                with self.assertRaises(ValueError):
+                    asyncio.run(kernel.run_verification(None, None, directory))
+                self.assertEqual(state.list_verification_runs(), [])
+            finally:
+                state.close()
+
+    def test_fail_fast_failure_beats_cancelled_siblings(self):
+        async def factory(*command, **kwargs):
+            if command == ("slow",):
+                await asyncio.sleep(0.2)
+                return FakeProcess(b"ok", b"", 0)
+            return FakeProcess(b"boom", b"", 1)
+
+        profile = _profile(
+            checks=(
+                VerificationCheckSpec("fast", VerificationCheckClass.TESTS, ("fast",),
+                                      policy=VerificationExecutionPolicy.PARALLEL),
+                VerificationCheckSpec("slow", VerificationCheckClass.LINT, ("slow",),
+                                      policy=VerificationExecutionPolicy.PARALLEL),
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            state, kernel = _harness(directory, profile, process_factory=factory)
+            try:
+                report = asyncio.run(kernel.run_verification(None, None, directory))
+                self.assertEqual(report.overall_status, VerificationReportStatus.FAILED)
+                statuses = {check.name: check.status for check in report.checks}
+                self.assertEqual(statuses["fast"], VerificationCheckStatus.FAILED)
+            finally:
+                state.close()
+
     def test_legacy_commands_become_default_profile(self):
         async def factory(*command, **kwargs):
             return FakeProcess(b"legacy ok", b"", 0)

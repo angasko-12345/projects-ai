@@ -89,3 +89,9 @@
 - Implementation complete: `routing.py`, registry profiles/version detection, workflow routing with exclusions/history, `routing.decision` events with executed-agent tracking, routing switch, README/package exports, 25 routing tests plus one adapter regression test. Suite 315 OK (3 skips). Backup: `/tmp/agentops-backup-b7-router-20260916-182309`.
 - Reviews: copilot and opencode reviews complete. Fixed scalar-selector compatibility, non-ASCII version decoding, role-derived selector capabilities, legacy-capability consolidation, executed-agent/event agreement, and single-profile input; rejected stale/harness observations with evidence.
 - No executable rebuild: packaging untouched.
+
+## A3 shared ProcessRuntime 2026-09-16
+
+- Implementation complete: `runtime.py`, runner/kernel/legacy-verifier delegation, unified spawn policy, CancelledError termination, thread-free cancel polling, duplicate-name validation before persistence, fail-fast evidence-dominated overall status. 16 new tests; suite 335 OK (4 skips). Exe rebuilt (14,851,920 bytes), archive-inspected, smoke-tested.
+- Reviews: copilot snapshot review completed (5 fixed, 1 deferred to A8 with rationale); opencode architecture review requested asynchronously and pending.
+- Backup: `/tmp/agentops-backup-a3-runtime-20260916-203040`.

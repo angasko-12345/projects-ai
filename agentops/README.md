@@ -76,6 +76,10 @@ AgentRun metadata includes the resolved executable, role, optional configured mo
 
 The registry exposes capability-rich `AgentProfile` records containing identifier, display name, executable path, detected version, availability, roles, capabilities, structured-output support, cancellation/timeout support, interactive/non-interactive support, configured priority, and optional metadata. Workflows use a deterministic `AgentRouter` by default: explicit role, availability, and required-capability constraints gate eligibility, while explicit user preferences, inferred task fit, historical success, configured priority, and a stable identifier tie-breaker determine ranking. Each decision is persisted as a `routing.decision` event with the selected agent, executed agent, score, alternatives, reasons, rejected candidates, and constraints. Set `runtime.routing_enabled` (or `runtime.routing.enabled`) to `false` to preserve the previous static preference/fallback selection behavior.
 
+## Process runtime
+
+`agentops/runtime.py` is the single shared process layer for agent runs, kernel verification checks, and legacy verification commands. It owns the reduced process environment, one cross-platform spawn policy (Windows `CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP`, POSIX `start_new_session=True`), cancellation-aware output collection, timeouts, and process-group termination with bounded cleanup. Custom process factories keep their existing spawn behavior and are cleaned up with direct kills rather than process-group signals. Cooperative cancellation, timeouts, and external task cancellation all terminate the child before reporting; cancellation never strands a running process.
+
 ## Verification Kernel
 
 Verification is a deterministic kernel over explicitly configured profiles. Each check records its class, command, contained working directory, timeout, required/optional flag, execution policy, lifecycle status, exit code, timing, stdout/stderr artifact references, and failure reason. Profiles support sequential checks, safe parallel independent checks, fail-fast and continue-on-failure modes, per-check timeouts, and cancellation.

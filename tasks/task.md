@@ -324,6 +324,84 @@ Structured-results upgrade complete. `agentops/agent_result.py` (leaf): versione
 
 ---
 
+## Plan (A3 Shared ProcessRuntime — 2026-09-16)
+
+### Objective
+Agent: pi (sole writer)
+Depends on: none
+Status: in progress
+
+Implement roadmap A3 as a behavior-preserving shared process layer used by `AgentRunner`, `VerificationKernel`, and legacy `Verifier`. Remove kernel/verifier dependence on runner internals while keeping all public APIs, outcomes, timeouts, cancellation behavior, logging, and persistence integration unchanged except for explicitly documented safety fixes.
+
+---
+
+### Subtask 1 — Audit current process paths
+Agent: pi
+Depends on: none
+Status: done
+
+Audit `runner.py`, `verification_kernel.py`, `verification.py`, environment handling, Windows spawn flags, POSIX process-group behavior, cancellation/timeout paths, injectable factories, and existing tests. Backup: `/tmp/agentops-backup-a3-runtime-20260916-203040`.
+
+---
+
+### Subtask 2 — Improve the A3 design
+Agent: pi
+Depends on: Subtask 1
+Status: done
+
+Improvements over the roadmap paragraph:
+
+- Include legacy `Verifier` in the shared runtime so runner stops being the implicit process layer for all three execution paths.
+- Give every default runtime spawn one cross-platform policy: Windows `CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP`; POSIX `start_new_session=True`.
+- Route Windows `taskkill` cleanup through the same no-window spawn path.
+- Preserve injectable process factories; custom factories retain their existing spawn behavior.
+- Preserve `AgentRunner._environment`, `AgentRunner.terminate`, `AgentRunner._communicate_with_cancel`, `OperationCancelled`, and `VerificationKernel(process_factory=...)` as compatibility seams.
+- Terminate the child process for cooperative cancellation, timeouts, and `asyncio.CancelledError` before propagating cancellation.
+
+---
+
+### Subtask 3 — Implement `ProcessRuntime`
+Agent: pi
+Depends on: Subtask 2
+Status: done
+
+Add `agentops/runtime.py` with environment construction, unified spawn flags, cancellation-aware communication, timeout handling, process-group termination, byte-level result capture, and an injectable spawn factory. Refactor runner, kernel, and legacy verifier to delegate without changing their public signatures.
+
+---
+
+### Subtask 4 — Add regression and parity tests
+Agent: pi
+Depends on: Subtask 3
+Status: done
+
+Add `tests/test_runtime.py` for environment policy, spawn flags, timeout/cancellation, process-group cleanup, custom factories, and real agent-plus-verification smoke coverage. Extend existing runner/kernel/legacy coverage only where needed to lock behavior.
+
+---
+
+### Subtask 5 — Reviews, full suite, packaging, and records
+Agent: pi; reviewers: copilot (tests), opencode (architecture)
+Depends on: Subtask 4
+Status: done (copilot closed; opencode async reply pending)
+
+Run read-only snapshot reviews, address valid findings, run the full suite from `agentops/`, rebuild/archive-inspect/smoke-test the Windows executable because the new runtime module affects the frozen bundle, update canonical memory and task output, then commit and push.
+
+---
+
+## Output (A3 Shared ProcessRuntime — 2026-09-16)
+
+- New `agentops/runtime.py`: `ProcessRuntime` (reduced env, unified Windows/POSIX spawn policy, cancellation-aware wait, timeouts, process-group termination, byte-level results), `ProcessResult`, `OperationCancelled`, `SpawnFactory`.
+- `AgentRunner`, `VerificationKernel`, and legacy `Verifier` delegate to the runtime; public APIs unchanged; `AgentRunner._environment`/`.terminate`/compat helpers and `VerificationKernel(process_factory=...)` preserved.
+- Safety fixes beyond the roadmap paragraph: POSIX `start_new_session` for all default spawns (killpg can no longer target the parent group), no-window `taskkill` cleanup, child termination on `asyncio.CancelledError`, thread-free cooperative cancellation polling, direct-kill cleanup for custom factories, executed `on_running` lifecycle preserved.
+- Kernel setup fix: duplicate check names fail before a persisted run is started.
+- Kernel semantics fix: required FAILED/TIMED_OUT evidence dominates fail-fast sibling cancellation in the overall report.
+- Tests: `tests/test_runtime.py` (13 tests) + `tests/test_runner.py` running-lifecycle regression + 2 kernel regressions; full suite 335 passing, 4 environment skips.
+- Copilot snapshot review: 6 findings — 5 fixed with regressions (thread leak, custom-factory killpg, on_running orphan, stranded RUNNING run, fail-fast overall), 1 deferred to A8 (state-error swallowing) with rationale.
+- OpenCode architecture review requested asynchronously; pending.
+- Packaging: `dist/AgentOps.exe` rebuilt (14,851,920 bytes), archive-inspected (`agentops.runtime` bundled), startup/shutdown smoke-tested with process-exit verification. Exe stays out of git.
+- Backup: `/tmp/agentops-backup-a3-runtime-20260916-203040`; snapshot: `/tmp/agentops-review-a3-runtime`.
+
+---
+
 # USER NOTE TO AGENT: Put everything below this point into dedicated files in "D:\admin\code\projects\.agents\...". Use this as a replaceable, updated summary of recent projects/prompts.
 
 ## Recent summary (replaceable — details live in .agents/)

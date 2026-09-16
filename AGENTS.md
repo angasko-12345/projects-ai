@@ -11,7 +11,7 @@ AgentOps — local-first orchestrator for coding-agent CLIs (worktrees + SQLite 
 ## Commands (run from agentops/)
 
 - Tests: `python -m unittest discover -s tests` — **must** run from the `agentops/` dir. Root-level invocation shadows the package and produces false import errors.
-- Current baseline: 289 passing, 3 environment skips. A new failure/skip is yours until proven otherwise.
+- Current baseline: 335 passing, 4 environment skips. A new failure/skip is yours until proven otherwise.
 - CLI: `python -m agentops <cmd>` (agent, run, task, workflow, status, logs, runs, verify, failures, recover, events, artifacts, gui).
 
 ## Non-negotiable conventions
@@ -29,6 +29,7 @@ AgentOps — local-first orchestrator for coding-agent CLIs (worktrees + SQLite 
 - `state.py` owns all SQLite (WAL, busy-timeout, RLock): workflows/tasks/events plus additive `agent_runs`, `verification_runs`/`_checks`/`_reports`, `failures` (FK-free TEXT refs), `typed_events`, `artifacts`, `worktree_refs`. Schema versions are bumped additively (currently v6).
 - Data flow: workflow → isolated `agentops/<slug>-<rand>` worktree → plan→implement→verify→review (repair loop) → `finalize.py` commit/merge (conflict → preserved worktree + debugging task).
 - Verification: kernel (`verification_kernel.py`) over configured profiles; an agent reporting success never marks a task verified — only a passed report does.
+- Process execution: `runtime.py` owns spawn/cancel/timeout/termination for `runner.py`, `verification_kernel.py`, and legacy `verification.py`. Runner/kernel keep their public APIs; custom process factories keep their spawn behavior and get direct-kill cleanup.
 
 ## Windows / packaging gotchas
 

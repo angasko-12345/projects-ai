@@ -83,6 +83,12 @@ from .routing import (
     RoutingDecision,
     RoutingRejection,
 )
+from .runtime import (
+    OperationCancelled,
+    ProcessResult,
+    ProcessRuntime,
+    SpawnFactory,
+)
 from .execution_model import (
     StateTransitionError,
     assert_agent_run_transition,
@@ -167,6 +173,10 @@ __all__ = [
     "RoutingRejection",
     "adapter_for",
     "capabilities_for_roles",
+    "OperationCancelled",
+    "ProcessResult",
+    "ProcessRuntime",
+    "SpawnFactory",
     "StateTransitionError",
     "assert_agent_run_transition",
     "assert_no_fabricated_success",

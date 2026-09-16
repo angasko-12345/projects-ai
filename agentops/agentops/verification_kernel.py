@@ -9,8 +9,6 @@ working directory.
 from __future__ import annotations
 
 import asyncio
-import subprocess
-import sys
 import threading
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -19,7 +17,7 @@ from typing import Any
 from uuid import uuid4
 
 from .logging import LogManager
-from .runner import AgentRunner, OperationCancelled
+from .runtime import OperationCancelled, ProcessRuntime
 from .tasks import utc_now
 from .verification_model import (
     VerificationCheck,
@@ -41,11 +39,8 @@ ProcessFactory = Callable[..., Awaitable[Any]]
 
 
 async def _default_spawn(*args: object, **kwargs: object) -> asyncio.subprocess.Process:
-    """Default process factory with the no-flash rule for windowed builds."""
-    if sys.platform == "win32":
-        flags = int(kwargs.get("creationflags", 0))  # type: ignore[arg-type]
-        kwargs["creationflags"] = flags | subprocess.CREATE_NO_WINDOW
-    return await asyncio.create_subprocess_exec(*args, **kwargs)  # type: ignore[arg-type]
+    """Compatibility default factory backed by the shared runtime policy."""
+    return await ProcessRuntime().spawn_process(*args, **kwargs)  # type: ignore[arg-type]
 
 _MAX_TRANSCRIPT_OUTPUT = 8000
 
@@ -101,7 +96,7 @@ class VerificationKernel:
         self._pass_env_prefixes = pass_env_prefixes
         self._logs = logs
         self._state = state
-        self._spawn = process_factory or _default_spawn
+        self._runtime = ProcessRuntime(pass_env_names, pass_env_prefixes, spawn=process_factory)
         if default_profile is not None and default_profile not in self._profiles:
 
             raise ValueError(f"Unknown verification profile: {default_profile}.")
@@ -180,16 +175,17 @@ class VerificationKernel:
         base = Path(working_directory).resolve()
         snapshot = profile_to_dict(profile)
         started = monotonic()
+        specs = list(profile.checks)
+        names = [spec.name for spec in specs]
+        if len(set(names)) != len(names):
+            # Validate before touching persistence: a malformed profile must
+            # not leave a stranded RUNNING run behind.
+            raise ValueError("Verification profile checks need unique names.")
         run_id = str(uuid4())
         if self._state is not None:
             record = self._state.create_verification_run(workflow_id, task_id, profile, source_agent_run_id)
             run_id = record.id
             self._state.start_verification_run(run_id)
-
-        specs = list(profile.checks)
-        names = [spec.name for spec in specs]
-        if len(set(names)) != len(names):
-            raise ValueError("Verification profile checks need unique names.")
         checks: dict[str, VerificationCheck] = {}
         texts: dict[str, dict[str, str]] = {}
         if self._state is not None:
@@ -264,21 +260,26 @@ class VerificationKernel:
         cancelled = (cancel_event is not None and cancel_event.is_set()) or any(
             check.status is VerificationCheckStatus.CANCELLED for check in ordered
         )
-        if cancelled:
+        # Failure evidence dominates sibling cancellation: a fail-fast run
+        # that produced a required FAILED/TIMED_OUT check reports that
+        # outcome, not CANCELLED.  (Cancelled checks also count toward
+        # required_failures, so pure cancellation still falls through to
+        # CANCELLED below.)
+        required_failed = any(
+            check.required and check.status is VerificationCheckStatus.FAILED for check in ordered
+        )
+        required_timed_out = any(
+            check.required and check.status is VerificationCheckStatus.TIMED_OUT for check in ordered
+        )
+        if required_failed:
+            overall = VerificationReportStatus.FAILED
+            run_status = VerificationRunStatus.FAILED
+        elif required_timed_out:
+            overall = VerificationReportStatus.TIMED_OUT
+            run_status = VerificationRunStatus.TIMED_OUT
+        elif cancelled:
             overall = VerificationReportStatus.CANCELLED
             run_status = VerificationRunStatus.CANCELLED
-        elif counts["required_failures"]:
-            required_failed = any(
-                check.required and check.status is VerificationCheckStatus.FAILED for check in ordered
-            )
-            overall = (
-                VerificationReportStatus.FAILED if required_failed
-                else VerificationReportStatus.TIMED_OUT
-            )
-            run_status = (
-                VerificationRunStatus.FAILED if required_failed
-                else VerificationRunStatus.TIMED_OUT
-            )
         else:
             overall = VerificationReportStatus.PASSED
             run_status = VerificationRunStatus.COMPLETED
@@ -403,44 +404,33 @@ class VerificationKernel:
                          b"", b"", f"invalid_working_directory: {error}")
             return
         timeout = spec.timeout_seconds or profile.default_timeout_seconds
-        process = None
         started = monotonic()
         timed_out = False
         cancelled = False
         raw_stdout, raw_stderr = b"", b""
         try:
-            process = await self._spawn(
-                *spec.command,
-                cwd=str(check_dir),
-                env=AgentRunner._environment(self._pass_env_names, self._pass_env_prefixes),
-                stdout=asyncio.subprocess.PIPE,
+            completed = await self._runtime.run_process(
+                spec.command,
+                cwd=check_dir,
+                env=self._runtime.environment(),
+                timeout=timeout,
+                cancel_event=cancel_event,
                 stderr=asyncio.subprocess.PIPE,
             )
-            try:
-                raw_stdout, raw_stderr = await asyncio.wait_for(
-                    AgentRunner._communicate_with_cancel(process, cancel_event),
-                    timeout=timeout,
-                )
-            except TimeoutError:
-                timed_out = True
-                raw_stdout, raw_stderr = await AgentRunner.terminate(process)
-            except OperationCancelled:
-                cancelled = True
-                raw_stdout, raw_stderr = await AgentRunner.terminate(process)
+            timed_out = completed.timed_out
+            cancelled = completed.cancelled
+            raw_stdout, raw_stderr = completed.stdout, completed.stderr
+            exit_code = completed.exit_code
         except OperationCancelled:
+            # Defensive compatibility: the runtime normally reports
+            # cooperative cancellation as a result rather than raising it.
             cancelled = True
-            if process is not None:
-                try:
-                    raw_stdout, raw_stderr = await AgentRunner.terminate(process)
-                except Exception:
-                    pass
+            exit_code = None
         except asyncio.CancelledError:
+            # The runtime terminates the child before propagating external
+            # cancellation; preserve the kernel's cancelled-check contract.
             cancelled = True
-            if process is not None:
-                try:
-                    raw_stdout, raw_stderr = await AgentRunner.terminate(process)
-                except Exception:
-                    pass
+            exit_code = None
             self._finish(checks, texts, spec, VerificationCheckStatus.CANCELLED, None,
                          monotonic() - started, raw_stdout, raw_stderr, "cancelled")
             raise
@@ -449,7 +439,6 @@ class VerificationKernel:
                          monotonic() - started, b"", b"", f"process_error: {error}")
             return
         duration = monotonic() - started
-        exit_code = None if timed_out else (process.returncode if process is not None else None)
         status, reason = parse_check_outcome(exit_code, timed_out, cancelled, raw_stdout, raw_stderr)
         self._finish(checks, texts, spec, status, exit_code, duration, raw_stdout, raw_stderr, reason)
 

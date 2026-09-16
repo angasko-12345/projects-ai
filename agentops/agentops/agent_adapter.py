@@ -7,13 +7,13 @@ Adapters own what is ACTUALLY agent-specific in AgentOps today:
 - role support (which workflow roles an agent may take),
 - capability reporting (what an agent demonstrably provides).
 
-Deliberately OUT of scope for A2 (stays in the runner until A3 builds the
-shared ProcessRuntime): environment construction (generic allowlist today,
-nothing agent-specific), output parsing (generic JSON scan + ``AgentResult``
-coercion, identical for every CLI), cancellation (runner-level tokens and
-process groups).  The roadmap's ``build_environment`` / ``parse_output`` /
-cancellation hooks belong to adapters only once A3 gives them a runtime to
-target — adding them now would invent seams with a single caller.
+Deliberately OUT of scope for A2 (stays in the shared ProcessRuntime after
+A3): environment construction (generic allowlist, nothing agent-specific),
+output parsing (generic JSON scan + ``AgentResult`` coercion, identical for
+every CLI), cancellation (runtime-level tokens and process groups).  Adapter
+``build_environment`` / ``parse_output`` / cancellation hooks belong here
+only once a CLI demonstrably diverges — adding them now would invent seams
+with a single caller.
 
 Honesty rule: baseline capabilities are derived ONLY from configured roles
 (implementation/debugging -> coding, architecture -> planning,

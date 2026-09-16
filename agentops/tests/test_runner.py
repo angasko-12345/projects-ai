@@ -38,6 +38,21 @@ class AgentRunnerTests(unittest.TestCase):
             self.assertTrue(flags & stdlib_subprocess.CREATE_NEW_PROCESS_GROUP)
 
     @patch("agentops.runner.asyncio.create_subprocess_exec", new_callable=AsyncMock)
+    def test_marks_running_before_finish(self, create_process):
+        logs = MagicMock()
+        logs.write_run.return_value = Path("task-1.meta.log")
+        process = MagicMock()
+        process.communicate = AsyncMock(return_value=(b"hello\n", b""))
+        process.returncode = 0
+        create_process.return_value = process
+        observer = MagicMock()
+        config = AgentConfig("python", sys.executable, ("-c", "print('{prompt}')"))
+        agent = DetectedAgent(config, True, sys.executable)
+        asyncio.run(AgentRunner(logs, run_observer=observer).run_agent(agent, "hello", Path.cwd(), "task-1"))
+        names = [call[0] for call in observer.mock_calls]
+        self.assertLess(names.index("mark_running"), names.index("finish_run"))
+
+    @patch("agentops.runner.asyncio.create_subprocess_exec", new_callable=AsyncMock)
     def test_captures_output_and_writes_logs(self, create_process):
         logs = MagicMock()
         logs.write_run.return_value = Path("task-1.meta.log")
