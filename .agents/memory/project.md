@@ -101,3 +101,10 @@
 - Implementation complete: `FailureEvidence`, structured-first classifier, evidence at agent/verification/legacy recording sites, executable-only agent commands, redacted/scrubbed evidence, schema v7 column. 17 new tests; suite 353 OK (4 skips).
 - Reviews: copilot and opencode reviews complete and adjudicated (suite 356 OK). Opencode: fixed legacy-evidence redaction, timeout precedence, broader token patterns; command-field finding rebutted with scrub evidence.
 - Backup: `/tmp/agentops-backup-a4-evidence-20260916-211809`.
+
+## Temp artifact archive 2026-09-17
+
+- Safely moved 27 top-level Temp entries whose names contain `agent-intercom` or `agentops` into `.local-temp-archive/agent-intercom/` and `.local-temp-archive/agentops/`.
+- Archive verification: 30,476 files, 314,882,683 bytes; staged copies were SHA-256 verified before Temp source deletion, and final files were reverified against `move-manifest.json`.
+- No matching Temp entries remain. The machine-local archive is excluded via `.git/info/exclude`; no product code or packaging files changed.
+- Full suite from `agentops/`: 357 passing, 4 environment skips.

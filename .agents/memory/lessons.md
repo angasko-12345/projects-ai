@@ -324,6 +324,13 @@
 - **Solution:** Rejected those two findings with evidence; fixed the one genuine API inconsistency.
 - **Remember:** Review-harness limitations are not product bugs, but every reviewer-identified API inconsistency still deserves a regression test before dismissal.
 
+### 2026-09-17 — Safe Temp archival must account for read-only Git metadata
+
+- **Symptom:** A hash-verified staged archive could not be finalized because Windows returned `WinError 5` while deleting read-only `.git/objects/pack/*.idx` files from a Temp Git worktree.
+- **Root cause:** `shutil.copy2` preserves read-only metadata; Windows requires writable attributes before deleting those Git pack files.
+- **Solution:** Keep the verified staging copy, clear the write bit recursively only on matching Temp paths, delete sources, then atomically rename the staging directory and reverify the final archive against its manifest.
+- **Remember:** For cross-volume moves of Git metadata, stage and hash-verify first; normalize read-only attributes before source deletion, and retain the staged copy until final verification passes.
+
 ## Environment-specific problems
 
 - Repo root `D:/admin/code/projects`; no stack/test runner configured yet — record pitfalls here once encountered.

@@ -51,3 +51,15 @@
 ## B7 Capability Resolver and Deterministic Router — ✅ COMPLETE 2026-09-16
 
 **Status:** Done, suite 336 OK. Copilot and OpenCode reviews closed. Plan: `plans/b7-router-plan.md`. Output: `outputs/b7-router.md`.
+
+---
+
+## AgentOps / Agent Intercom Temp Artifact Archive — ✅ COMPLETE 2026-09-17
+
+**Status:** Complete and verified.
+
+- Moved 27 name-matched Temp entries into `.local-temp-archive/` under `agent-intercom/` and `agentops/`.
+- Archive contains 30,476 files totaling 314,882,683 bytes; no matching entries remain in `C:\Users\admin\AppData\Local\Temp`.
+- Staged copies were hash-verified before source deletion; final files were reverified against `.local-temp-archive/move-manifest.json`.
+- The machine-local archive is excluded through `.git/info/exclude`; no product code or packaging files changed.
+- Full suite from `agentops/`: 357 passing, 4 environment skips.
