@@ -106,5 +106,12 @@
 
 - Safely moved 27 top-level Temp entries whose names contain `agent-intercom` or `agentops` into `.local-temp-archive/agent-intercom/` and `.local-temp-archive/agentops/`.
 - Archive verification: 30,476 files, 314,882,683 bytes; staged copies were SHA-256 verified before Temp source deletion, and final files were reverified against `move-manifest.json`.
-- No matching Temp entries remain. The machine-local archive is excluded via `.git/info/exclude`; no product code or packaging files changed.
-- Full suite from `agentops/`: 357 passing, 4 environment skips.
+- At archive time, no name-matched Temp entries remained. The two Agent Intercom trees were later restored to Temp; the 25 AgentOps entries remain archived. The machine-local archive is excluded via `.git/info/exclude`; no product code or packaging files changed.
+- Full suite from `agentops/` at archive time: 357 passing, 4 environment skips.
+
+## Agent Intercom Temp restore 2026-09-17
+
+- Restored `agent-intercom-opencode-test` (4,208 files, 97,542,276 bytes) and `agent-intercom-pi-test` (26,056 files, 212,548,349 bytes) from `.local-temp-archive/agent-intercom/` to their original Temp directories.
+- Verification: staged copies were SHA-256 verified before the Temp rename; final Temp trees reverified. The AgentOps archive stayed untouched (212 files, 4,792,058 bytes; tree digest unchanged). Restore manifest: `.local-temp-archive/agent-intercom-restore-manifest.json`.
+- Restored working-tree Git deltas are preserved (`dist/broker.mjs`, `dist/plugin.mjs`, `dist/tui.mjs` in the opencode tree; `provider/provider.mjs` in the pi tree).
+- Full suite from `agentops/` after restore: 357 passing, 4 environment skips.

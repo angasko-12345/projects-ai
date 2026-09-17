@@ -61,5 +61,18 @@
 - Moved 27 name-matched Temp entries into `.local-temp-archive/` under `agent-intercom/` and `agentops/`.
 - Archive contains 30,476 files totaling 314,882,683 bytes; no matching entries remain in `C:\Users\admin\AppData\Local\Temp`.
 - Staged copies were hash-verified before source deletion; final files were reverified against `.local-temp-archive/move-manifest.json`.
+- At archive time, no name-matched Temp entries remained. The two Agent Intercom trees were later restored; the 25 AgentOps entries remain archived.
 - The machine-local archive is excluded through `.git/info/exclude`; no product code or packaging files changed.
-- Full suite from `agentops/`: 357 passing, 4 environment skips.
+- Full suite from `agentops/` at archive time: 357 passing, 4 environment skips.
+
+---
+
+## Agent Intercom Temp Restore — ✅ COMPLETE 2026-09-17
+
+**Status:** Complete and verified.
+
+- Restored `C:\Users\admin\AppData\Local\Temp\agent-intercom-opencode-test` and `C:\Users\admin\AppData\Local\Temp\agent-intercom-pi-test` from the machine-local archive.
+- Restore totals: 30,264 files, 310,090,625 bytes; final Temp trees hash-verified.
+- The AgentOps archive was not modified: 212 files, 4,792,058 bytes, tree digest unchanged.
+- Restore manifest: `.local-temp-archive/agent-intercom-restore-manifest.json`.
+- Full suite from `agentops/` after restore: 357 passing, 4 environment skips.

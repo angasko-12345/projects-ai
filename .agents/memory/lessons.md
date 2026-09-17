@@ -331,6 +331,13 @@
 - **Solution:** Keep the verified staging copy, clear the write bit recursively only on matching Temp paths, delete sources, then atomically rename the staging directory and reverify the final archive against its manifest.
 - **Remember:** For cross-volume moves of Git metadata, stage and hash-verify first; normalize read-only attributes before source deletion, and retain the staged copy until final verification passes.
 
+### 2026-09-17 — Reverse archive moves must isolate the untouched category
+
+- **Symptom:** A restore request required returning only Agent Intercom trees to Temp while proving the AgentOps archive stayed unchanged.
+- **Root cause:** A shared archive manifest/tree makes it easy to accidentally read, hash, move, or delete the wrong category during reversal.
+- **Solution:** Digest the untouched AgentOps subtree before and after the restore, stage/verify only the requested Agent Intercom entries, remove only that category, and write a separate restore manifest without touching AgentOps files.
+- **Remember:** For partial reversals, freeze an integrity digest of every out-of-scope archive category first and verify it again before deleting anything.
+
 ## Environment-specific problems
 
 - Repo root `D:/admin/code/projects`; no stack/test runner configured yet — record pitfalls here once encountered.
