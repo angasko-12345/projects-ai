@@ -4,7 +4,7 @@
 >
 > Status tracking lives here. Mark phases `PROPOSED` / `IN PROGRESS` / `DONE` with date + verification. Per-phase rule: regression test → implement → full suite → exe rebuild + smoke if packaging affected. DB changes are additive only (`CREATE TABLE IF NOT EXISTS`); new behavior behind `runtime.*` config flags defaulting to current semantics. Controller stays the only service boundary for GUI/API.
 
-## Current status snapshot (verified 2026-09-16)
+## Current status snapshot (verified 2026-09-20)
 
 | Item | Status | Evidence |
 |---|---|---|
@@ -14,7 +14,7 @@
 | Phase 4 — Structured agent results | ✅ DONE | Delivered via Phase 4 task header: `agent_result.py` (schema v1, total parser/coercion) |
 | Phase 5 — Artifacts registry | ✅ DONE | Delivered via Phase 4 task header: `artifacts.py` (schema v5) |
 | Phases 6–10 | ⏳ PROPOSED | Restructured into Track B below; B7 is DONE |
-| Version | 0.1.3, exe rebuilt | `dist/AgentOps.exe`, suite 336 OK |
+| Version | 0.1.3, exe rebuilt | `dist/AgentOps.exe`; latest recorded suite baseline 357 passing, 4 environment skips |
 
 **Standing constraints that govern everything below:**
 - Additive DB schema changes only (`CREATE TABLE IF NOT EXISTS`); no destructive migrations.

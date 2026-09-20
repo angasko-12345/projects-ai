@@ -194,3 +194,10 @@
 - **Alternatives considered:** Threading evidence fields through runner/kernel outputs (rejected — churns A3 contracts for no gain); persisting full agent argv (rejected — argv embeds the raw prompt); changing legacy classification to AGENT_ERROR on nonzero exit (rejected — invents retryability without check-class authority).
 - **Agents involved:** pi-manager (copilot snapshot review completed; opencode architecture review completed 2026-09-16).
 - **OpenCode adjudication:** Fixed unredacted legacy `failure.evidence` (redact in `record_failure` + recovery path), specified timeout-over-dependency precedence in code+test, broadened `redact_text` (AKIA/Bearer/`gho|u|s|r_`); rebutted command-field finding (persisted commands already scrubbed via `_scrub_structured`).
+
+## 2026-09-20 — Canonical instruction location
+
+- **Decision:** Make `.agents/AGENTS.md` and `.agents/pi_AGENTS.md` the canonical repository and Pi-specific instruction files while retaining root `AGENTS.md` and `pi_AGENTS.md` as explicit compatibility entrypoints.
+- **Reason:** Centralizes the source of truth for project memory and agent-specific guidance while preserving tools that only discover root-level instruction files.
+- **Alternatives considered:** Keep root files as full duplicates (rejected because duplicated guidance drifts); remove root files entirely (rejected because root-only loaders would lose the compatibility path).
+- **Agents involved:** pi-manager.

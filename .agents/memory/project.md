@@ -8,11 +8,18 @@
 
 ## Current project state
 
+- Current verified state (2026-09-20): AgentOps v0.1.3, additive schema v7, A3/A4/B7 complete, and the latest full-suite result is 357 passing with 4 environment skips. The canonical instruction layout is `.agents/AGENTS.md` plus `.agents/pi_AGENTS.md`, with root compatibility shims.
 - AgentOps v0.1.2 at `D:/admin/code/projects/agentops` (bumped 2026-09-14). AgentRun support implemented 2026-09-14 (95 tests passing). Verification Kernel implemented 2026-09-14: 122-test suite passing (1 Windows-platform skip), including 27 kernel tests; relayed opencode review findings fixed and rebuilt. `dist/AgentOps.exe` rebuilt (~14.7 MB, PyInstaller one-file windowed), archive-inspected (15 `agentops.*` modules), and startup/shutdown smoke-tested.
 - Working tree carries uncommitted feature work (do not assume HEAD == working state): GUI (`gui.py`, `gui_controller.py`), packaging (`AgentOps.spec`, `agentops_gui.py`, `scripts/build_windows_exe.py`), History/Logs/Worktrees tabs, cancellation tokens, operation-ID staleness guard, shared `finalize.py`, AgentRun lifecycle, Verification Kernel, Failure/Repair/Recovery Kernel (backed up to `/tmp/agentops-backup-failure-kernel/` before work began), and now the Structured Results upgrade (backed up to `/tmp/agentops-backup-structured-results/`; 184-test suite passing, 1 platform skip).
 - Milestones 1–2 complete: workflow history + task inspector, safe log browser, worktree inspect/cleanup/retry-merge. Full architecture audit completed 2026-09-13 with a 10-phase roadmap (in session, not yet user-approved).
 - Historical 2026-09-12 note: repo root was greenfield (memory scaffold only); product work lives in `agentops/`.
 - Shared memory scaffolding created 2026-09-12; full memory system initialized same day per user directive (Parts 1–7).
+
+## Canonical instruction layout — 2026-09-20
+
+- `.agents/AGENTS.md` and `.agents/pi_AGENTS.md` are the canonical repository and Pi-specific instruction files; `.agents/ohmypiagents.md` is the Oh My Pi-specific supplement.
+- Root `AGENTS.md` and `pi_AGENTS.md` remain compatibility entrypoints for tools that only discover instructions at the repository root. They redirect readers to `.agents/` and are not independent sources of truth.
+- The canonical repository instructions record the current schema-v7 state and the latest recorded 357-passing/4-skip test baseline.
 
 ## Requirements
 
@@ -34,7 +41,7 @@
 ## Technologies
 
 - Python >= 3.11, runtime dependencies: stdlib only (Tkinter, sqlite3, asyncio, unittest). Optional: PyYAML (`.[yaml]`), PyInstaller >= 6 (`.[windows]`).
-- Test runner: `python -m unittest discover -s tests` (336 tests across 20 files as of 2026-09-16).
+- Test runner: `python -m unittest discover -s tests` (latest recorded baseline: 357 passing, 4 environment skips).
 - Packaging: PyInstaller 6.22 one-file windowed exe; package-aware `agentops_gui.py` launcher (entry script must not be `agentops/gui.py` — relative imports break frozen).
 
 ## Important conventions

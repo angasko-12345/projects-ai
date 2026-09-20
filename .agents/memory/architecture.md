@@ -6,6 +6,11 @@
 
 - AgentOps v0.1.3 (`D:/admin/code/projects/agentops`): layered local-first orchestrator. Entry points (`cli.py`, `gui.py`+`gui_controller.py`) compose an injected `WorkflowEngine`; GUI never imports service modules directly — all Tk updates marshalled via `root.after()`, work runs on controller background threads. Audited 2026-09-13.
 
+## Canonical instruction layout — 2026-09-20
+
+- `.agents/AGENTS.md` is the canonical repository instruction file; `.agents/pi_AGENTS.md` is the canonical Pi-specific file.
+- Root `AGENTS.md` and `pi_AGENTS.md` are compatibility shims for root-only discovery. They point readers to the canonical files and must not drift into separate instruction sets.
+
 ## A2 adapter boundary 2026-09-15
 
 - New `agentops/agent_adapter.py` leaf: `Capability` (9 values) + extras passthrough, `AgentAdapter` Protocol (runtime_checkable), `CliAdapter` wrapping `AgentConfig`, `adapter_for` factory, role-derived honesty baseline. `AgentConfig.capabilities` additive tuple (default empty; positional construction preserved). Registry: cached `adapters()`/`adapter(name)` + `select(role, excluded, required_capabilities=())` (empty = legacy path). Runner `build_command` delegates, signature/output unchanged. Engine confirmed flag-free. Tests: `test_agent_adapter.py` (14) + config/registry/runner additions (8). Suite 278 OK.
@@ -65,7 +70,7 @@
 
 ## Important technical implementation details
 
-- Constructor injection across engine/registry/runner/verifier/state — fully fakeable; 336 tests, mocked subprocesses except one real-git lifecycle test plus real-process runtime smoke coverage; headless GUI tests.
+- Constructor injection across engine/registry/runner/verifier/state — fully fakeable; latest recorded suite baseline is 357 passing with 4 environment skips, mocked subprocesses except one real-git lifecycle test plus real-process runtime smoke coverage; headless GUI tests.
 - SQLite `claim_task` conditional UPDATE is the cross-process atomicity guarantee.
 - Worktree base branch/commit metadata was memory-only (resolved by roadmap Phase 3: persisted worktree refs).
 - Polling is the event bus (roadmap Phase 2: subscriptions); single in-flight op per controller (roadmap Phase 4: queue).
