@@ -1,6 +1,6 @@
 # Lessons Learned (canonical, append-only)
 
-> Bugs, root causes, solutions, environment problems, recurring mistakes. Keep concise. Never store secrets.
+> Bugs, root causes, solutions, environment problems, recurring mistakes. Keep concise. Never store secrets or read .env.
 
 ### 2026-09-14 — Windows EPERM fsync in Agent Intercom durable-json.ts
 

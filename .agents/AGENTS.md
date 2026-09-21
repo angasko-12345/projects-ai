@@ -50,7 +50,7 @@ python -m agentops <command>
 ## Non-negotiable conventions
 
 - Pi is the sole writer in the dirty AgentOps tree. Reviewers work read-only in `/tmp/agentops-review-*` snapshots and never edit the repository directly.
-- Allowed review collaborators are OpenCode, free-claude-code (`fcc-claude`), and Copilot. Do not task Codex, Claude, or Antigravity as review collaborators.
+- Allowed review collaborators are OpenCode, free-claude-code (`fcc-claude`), Copilot, Antigravity, and Oh-My-Pi. Do not task Codex or Claude as review collaborators.
 - SQLite changes are additive only: use `CREATE TABLE IF NOT EXISTS`, explicit column names on migrated-table inserts, and `INSERT OR IGNORE` for migration versions. Never rewrite an existing table or rely on positional inserts.
 - After touching migrations, update migration-version assertions in `tests/test_events.py`.
 - Every bug fix gets a regression test first, following `tests/test_review_regressions.py`.
