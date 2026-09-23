@@ -1,0 +1,37 @@
+# Reproducible PPO validation on the pixel-only toy game.
+# Run: python -m training.experiment --config experiments/exp_toy_ppo_01.yaml
+# Chain under test: pixels -> preprocessing -> CNN -> GRU -> policy ->
+# action -> game -> reward -> PPO -> updated network.
+env:
+  width: 64
+  height: 48
+  max_steps: 500
+  obs_size: 84
+  num_stack: 4
+  skip: 1
+
+model:
+  in_channels: 4
+  frame_size: 84
+  feature_dim: 256
+  hidden_size: 128
+  num_layers: 1
+
+ppo:
+  total_timesteps: 30000
+  rollout_length: 128
+  minibatch_size: 32
+  update_epochs: 4
+  learning_rate: 0.00025
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  entropy_coef: 0.01
+  value_coef: 0.5
+  max_grad_norm: 0.5
+  seed: 0
+  checkpoint_dir: "checkpoints"
+  checkpoint_every_updates: 50
+
+eval:
+  episodes: 20

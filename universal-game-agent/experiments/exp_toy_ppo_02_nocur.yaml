@@ -1,0 +1,39 @@
+# A/B comparison, arm A: PPO without curiosity.
+# Run: python -m training.experiment --config experiments/exp_toy_ppo_02_nocur.yaml
+# Same env, seed strategy, and budget as the curiosity arm.
+env:
+  width: 64
+  height: 48
+  max_steps: 500
+  obs_size: 84
+  num_stack: 4
+  skip: 1
+
+model:
+  in_channels: 4
+  frame_size: 84
+  feature_dim: 256
+  hidden_size: 128
+  num_layers: 1
+
+ppo:
+  total_timesteps: 30000
+  rollout_length: 128
+  minibatch_size: 32
+  update_epochs: 4
+  learning_rate: 0.00025
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  entropy_coef: 0.01
+  value_coef: 0.5
+  max_grad_norm: 0.5
+  seed: 1
+  checkpoint_dir: "checkpoints/exp02_nocur"
+  checkpoint_every_updates: 1000
+
+curiosity:
+  enabled: false
+
+eval:
+  episodes: 20

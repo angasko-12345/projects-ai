@@ -1,0 +1,34 @@
+# Default configuration for universal-game-agent.
+# Stage 0 scaffold: values are placeholders consumed by main.py only.
+# No learning hyperparameter is acted on yet (no network/PPO implemented).
+
+env:
+  name: "CartPole-v1"      # placeholder Gymnasium env for later pixel smoke tests
+  render_mode: "rgb_array" # pixels-only observation path (not enforced yet)
+  frame_stack: 4
+
+agent:
+  visual_encoder: "none"   # future: cnn | vit
+  memory: "none"           # future: none | lstm | transformer
+  policy: "none"           # future: ppo (stable-baselines3)
+
+training:
+  total_timesteps: 10000
+  rollout_length: 128
+  minibatch_size: 32
+  update_epochs: 4
+  learning_rate: 0.00025
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  entropy_coef: 0.01
+  value_coef: 0.5
+  max_grad_norm: 0.5
+  seed: 0
+  checkpoint_dir: "checkpoints"
+  checkpoint_every_updates: 10
+  experiment_dir: "experiments"
+
+logging:
+  level: "INFO"
+  dir: "logs"

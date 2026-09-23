@@ -1,0 +1,8 @@
+# Universal Game Agent — runtime dependencies (Python 3.11+).
+# Install:  python -m venv .venv && .venv/Scripts/activate && pip install -r requirements.txt
+torch
+gymnasium
+stable-baselines3
+numpy
+pyyaml
+mss             # real screen capture (interface.capture.MSSBackend)

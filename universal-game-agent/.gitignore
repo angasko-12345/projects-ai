@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+# Virtual environments
+.venv/
+venv/
+# Checkpoints / experiment output (kept as empty dirs via .gitkeep)
+checkpoints/*.pt
+checkpoints/*.zip
+checkpoints/*.pkl
+experiments/*/
+!experiments/.gitkeep
+logs/*.log
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
