@@ -196,7 +196,8 @@ def cmd_train(args) -> int:
         except (ValueError, RuntimeError, OSError) as exc:
             return _fail(f"cannot build environment: {exc}")
         trainer = PPOTrainer(make_env(), model, ppo_config,
-                             curiosity=_build_curiosity(cfg, num_actions))
+                             curiosity=_build_curiosity(cfg, num_actions),
+                             env_config=cfg.get("env"))
     history = trainer.train()
     print(f"train done: steps={trainer.num_timesteps} "
           f"mean_reward_100={history['mean_reward'][-1]:.2f} "

@@ -92,7 +92,7 @@ class TestCuriosityModule(unittest.TestCase):
 
     def test_enabled_splits_rewards(self):
         trainer = self._trainer()
-        buf, rewards, lengths, ext, intr = trainer.collect_rollout()
+        buf, rewards, lengths, ext, intr, _ = trainer.collect_rollout()
         self.assertEqual(len(buf["rewards"]), 32)
         self.assertTrue(bool((buf["int_rewards"] >= 0).all()))
         self.assertTrue(torch.allclose(buf["rewards"], buf["ext"] + buf["int_rewards"]))

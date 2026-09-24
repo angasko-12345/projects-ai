@@ -19,6 +19,14 @@ __all__ = [
     "RewardProvider",
     "NullReward",
     "NullRewardProvider",
+    "RewardResult",
+    "EventReward",
+    "TerminalPenalty",
+    "SurvivalReward",
+    "ProgressReward",
+    "CompositeReward",
+    "make_reward_from_config",
+    "make_detector",
     "TerminationProvider",
     "NaturalTerminationProvider",
     "NeverTerminateProvider",
@@ -31,6 +39,9 @@ __all__ = [
 _TOY_PONG = {"ToyPongEnv", "NOOP", "LEFT", "RIGHT"}
 _PREPROCESSING = {"FrameStack", "PreprocessingWrapper", "preprocess_frame"}
 _EXTERN_PONG = {"ExternPongReward", "ExternPongTermination"}
+_REWARD = {"RewardProvider", "NullReward", "NullRewardProvider", "RewardResult",
+           "EventReward", "TerminalPenalty", "SurvivalReward", "ProgressReward",
+           "CompositeReward", "make_reward_from_config", "make_detector"}
 
 
 def __getattr__(name: str):
@@ -49,6 +60,10 @@ def __getattr__(name: str):
         from . import extern_pong_rewards
 
         return getattr(extern_pong_rewards, name)
+    if name in _REWARD:
+        from . import reward
+
+        return getattr(reward, name)
     if name in __all__:
         from . import external_game
 

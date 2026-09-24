@@ -94,12 +94,14 @@ class PPOTrainer:
     Clean rollout boundary: (obs, hidden) carried verbatim; replay continues
     across chunks with detached carry and never resets mid-episode.
     """
-    def __init__(self, env, model: ActorCritic, config: PPOConfig, device="cpu", curiosity=None):
+    def __init__(self, env, model: ActorCritic, config: PPOConfig, device="cpu", curiosity=None,
+                 env_config=None):
         self.env, self.model, self.config = env, model, config
         self.device = torch.device(device)
         self.model.to(self.device)
         self.optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
         self.curiosity = curiosity
+        self.env_config = dict(env_config) if env_config is not None else None
         self.num_timesteps = 0
         self.num_updates = 0
         self._reward_window: deque[float] = deque(maxlen=100)
@@ -109,7 +111,9 @@ class PPOTrainer:
             "timesteps": [], "fps": [], "policy_loss": [], "value_loss": [],
             "entropy": [], "mean_reward": [], "mean_ext_reward": [],
             "mean_int_reward": [], "predictor_loss": [], "pixel_change": [],
-            "episodes": [],
+            "episodes": [], "upd_episodes": [], "upd_mean_length": [],
+            "upd_terminated": [], "upd_truncated": [], "upd_mean_ext": [],
+            "upd_mean_int": [], "upd_mean_total": [], "components": [],
         }
 
     # -- rollout ---------------------------------------------------------
@@ -127,6 +131,7 @@ class PPOTrainer:
         buf["h0"] = hidden.clone()
         hidden_traj = []  # post-step hidden per timestep (pre-reset), for timeout bootstrap
         next_list = []  # true post-step frame per timestep (pre-reset)
+        comp_sums: dict = {}  # per-component external reward sums (diagnostics only)
         for _ in range(cfg.rollout_length):
             t = torch.from_numpy(np.ascontiguousarray(obs, dtype=np.float32)).unsqueeze(0).to(self.device)
             logits, value, hidden = self.model(t, hidden)
@@ -143,6 +148,10 @@ class PPOTrainer:
             buf["terminated"].append(bool(terminated))
             buf["truncated"].append(bool(truncated))
             buf["dones"].append(bool(terminated or truncated))
+            breakdown = getattr(self.env, "last_breakdown", None)
+            if breakdown is not None:
+                for key, value in breakdown.components.items():
+                    comp_sums[key] = comp_sums.get(key, 0.0) + float(value)
             self.num_timesteps += 1
             if terminated or truncated:
                 obs, _ = self.env.reset()
@@ -178,7 +187,7 @@ class PPOTrainer:
         acc_e = getattr(self, "_ep_ext", 0.0)
         acc_i = getattr(self, "_ep_int", 0.0)
         acc_l = getattr(self, "_ep_len", 0)
-        ep_rewards, ep_lengths, ep_ext, ep_int = [], [], [], []
+        ep_rewards, ep_lengths, ep_ext, ep_int, ep_term = [], [], [], [], []
         for t in range(cfg.rollout_length):
             acc_e, acc_i, acc_l = acc_e + float(buf["ext"][t]), acc_i + float(int_scaled[t]), acc_l + 1
             if buf["dones"][t]:
@@ -186,6 +195,7 @@ class PPOTrainer:
                 ep_ext.append(acc_e)
                 ep_int.append(acc_i)
                 ep_lengths.append(acc_l)
+                ep_term.append(bool(buf["terminated"][t]))
                 acc_e, acc_i, acc_l = 0.0, 0.0, 0
         self._ep_ext, self._ep_int, self._ep_len = acc_e, acc_i, acc_l
         # Bootstrap semantics (see class docstring): terminated -> 0;
@@ -203,7 +213,9 @@ class PPOTrainer:
                 hidden,
             )[1].squeeze(0).cpu()
         buf["int_raw_mean"] = float(int_raw.mean())
-        return buf, ep_rewards, ep_lengths, ep_ext, ep_int
+        buf["comp_sums"] = {k: float(v) for k, v in comp_sums.items()}
+        buf["comp_steps"] = cfg.rollout_length
+        return buf, ep_rewards, ep_lengths, ep_ext, ep_int, ep_term
 
     # -- update ----------------------------------------------------------
     def update(self, buf) -> dict[str, float]:
@@ -286,6 +298,7 @@ class PPOTrainer:
             "num_timesteps": self.num_timesteps,
             "num_updates": self.num_updates,
             "curiosity": self.curiosity.state_dict() if self.curiosity is not None else None,
+            "env_config": self.env_config,
         }, path)
         return path
 
@@ -298,6 +311,7 @@ class PPOTrainer:
         trainer.model.load_state_dict(ckpt["model"])
         trainer.optimizer.load_state_dict(ckpt["optimizer"])
         trainer.num_timesteps, trainer.num_updates = ckpt["num_timesteps"], ckpt["num_updates"]
+        trainer.env_config = ckpt.get("env_config")
         if ckpt.get("curiosity") is not None:
             cur_state = ckpt["curiosity"]
             module = CuriosityModule(
@@ -318,7 +332,7 @@ class PPOTrainer:
         start = time.perf_counter()
         episodes_seen = 0
         while self.num_timesteps < cfg.total_timesteps:
-            buf, ep_rewards, ep_lengths, ep_ext, ep_int = self.collect_rollout()
+            buf, ep_rewards, ep_lengths, ep_ext, ep_int, ep_term = self.collect_rollout()
             stats = self.update(buf)
             for r in ep_rewards:
                 self._reward_window.append(r)
@@ -329,6 +343,8 @@ class PPOTrainer:
             episodes_seen += len(ep_rewards)
             fps = self.num_timesteps / max(time.perf_counter() - start, 1e-6)
             mean = lambda w: float(np.mean(w)) if w else 0.0
+            n_ep = len(ep_rewards)
+            upd_terminated = sum(1 for t in ep_term if t)
             self.history["timesteps"].append(self.num_timesteps)
             self.history["fps"].append(fps)
             self.history["policy_loss"].append(stats["policy_loss"])
@@ -340,6 +356,16 @@ class PPOTrainer:
             self.history["predictor_loss"].append(stats.get("predictor_loss", 0.0))
             self.history["pixel_change"].append(buf["pixel_change"])
             self.history["episodes"].append(episodes_seen)
+            self.history["upd_episodes"].append(n_ep)
+            self.history["upd_mean_length"].append(float(np.mean(ep_lengths)) if ep_lengths else 0.0)
+            self.history["upd_terminated"].append(upd_terminated)
+            self.history["upd_truncated"].append(n_ep - upd_terminated)
+            self.history["upd_mean_ext"].append(float(np.mean(ep_ext)) if ep_ext else 0.0)
+            self.history["upd_mean_int"].append(float(np.mean(ep_int)) if ep_int else 0.0)
+            self.history["upd_mean_total"].append(float(np.mean(ep_rewards)) if ep_rewards else 0.0)
+            steps = buf.get("comp_steps", cfg.rollout_length)
+            self.history["components"].append(
+                {k: float(v) / steps for k, v in buf.get("comp_sums", {}).items()})
             print(
                 f"update {self.num_updates}: steps={self.num_timesteps} "
                 f"episodes={episodes_seen} mean_total_100={self.history['mean_reward'][-1]:.2f} "

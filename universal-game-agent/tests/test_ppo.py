@@ -342,7 +342,7 @@ class TestBoundarySemantics(unittest.TestCase):
         script = [(0.0, False, False), (1.0, True, False), (0.0, False, False),
                   (1.0, True, False)] + [(0.0, False, False)] * 6
         trainer = self._trainer(script, rollout_length=5)
-        _, rewards, lengths, ext, intr = trainer.collect_rollout()
+        _, rewards, lengths, ext, intr, _ = trainer.collect_rollout()
         self.assertEqual(lengths, [2, 2])
         self.assertEqual(rewards, [1.0, 1.0])
         self.assertEqual(ext, [1.0, 1.0])
@@ -350,7 +350,7 @@ class TestBoundarySemantics(unittest.TestCase):
     def test_rollout_ends_exactly_at_boundary(self):
         script = [(0.0, False, False), (0.0, False, False), (1.0, True, False)]
         trainer = self._trainer(script, rollout_length=3)
-        buf, rewards, lengths, _, _ = trainer.collect_rollout()
+        buf, rewards, lengths, _, _, _ = trainer.collect_rollout()
         self.assertEqual(lengths, [3])
         self.assertTrue(bool((trainer._carry_hidden == 0).all()))
         self.assertTrue(bool((trainer._carry_obs == ScriptedEnv.RESET_VAL).all()))

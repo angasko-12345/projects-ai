@@ -191,6 +191,7 @@ class ExternalGameEnv(_Base):
         self._episode_start = 0.0
         self._started = False
         self._last_raw: np.ndarray | None = None
+        self.last_breakdown = None  # latest RewardResult (or None for scalar providers)
 
     @staticmethod
     def _discrete(n: int):
@@ -250,6 +251,9 @@ class ExternalGameEnv(_Base):
         self._steps = 0
         self._episode_start = self.clock.now()
         self._last_raw = raw
+        reset_hook = getattr(self.reward_provider, "reset", None)
+        if callable(reset_hook):
+            reset_hook()  # stateful components must not leak across episodes
         return self.stack.reset(raw), {}
 
     def step(self, action):
@@ -261,6 +265,9 @@ class ExternalGameEnv(_Base):
         self._validate_raw(raw)
         self._steps += 1
         reward = float(self.reward_provider.reward(self._last_raw, raw, int(action)))
+        breakdown = getattr(self.reward_provider, "breakdown", None)
+        self.last_breakdown = (breakdown(self._last_raw, raw, int(action))
+                               if callable(breakdown) else None)
         terminated, truncated = (bool(v) for v in
                                  self.termination_provider.done(self._last_raw, raw, int(action), self._steps))
         if not terminated and self._timed_out():
@@ -349,9 +356,12 @@ def make_external_env_from_config(env_cfg: dict, clock=None):
         )
     if mode not in ("synthetic", "region", "window"):
         raise ValueError(f"unknown capture.mode {mode!r}: expected synthetic|region|window")
+    from environment.reward import make_reward_from_config
+
     reward_name = str((cfg.get("reward", {}) or {}).get("provider", "null"))
-    if reward_name not in ("null", "extern_pong"):
-        raise ValueError(f"unknown reward.provider {reward_name!r}: expected null|extern_pong")
+    if reward_name not in ("null", "composite", "extern_pong"):
+        raise ValueError(
+            f"unknown reward.provider {reward_name!r}: expected null|composite|extern_pong")
     term_cfg = cfg.get("termination", {}) or {}
     term_name = str(term_cfg.get("provider", "never"))
     if term_name not in ("never", "step_limit", "extern_pong"):
@@ -394,9 +404,14 @@ def make_external_env_from_config(env_cfg: dict, clock=None):
             raise ValueError(f"unknown actions.backend {backend_name!r}: expected recording|sendinput")
         controller = ActionMapper(input_backend, _build_action_table(actions_cfg.get("table", "default")))
         game = GameInterface(capture, controller, manager)
-        from environment.extern_pong_rewards import ExternPongReward, ExternPongTermination
+        from environment.extern_pong_rewards import ExternPongTermination
 
-        reward_provider = ExternPongReward() if reward_name == "extern_pong" else NullRewardProvider()
+        if reward_name == "extern_pong":
+            from environment.extern_pong_rewards import ExternPongReward
+
+            reward_provider = ExternPongReward()
+        else:
+            reward_provider = make_reward_from_config(cfg.get("reward", {}))
         if term_name == "step_limit":
             term_provider = StepLimitTermination(int(term_cfg.get("max_steps", 500)))
         elif term_name == "extern_pong":
