@@ -105,7 +105,10 @@ def cmd_smoke_test(args) -> int:
     for name in ("torch", "gymnasium", "pyyaml"):
         if deps.get(name) in (None, "missing"):
             return _fail(f"missing required dependency for smoke-test: {name}")
-    make_env, model, _ = _build_env_model(cfg, base_seed=0)
+    try:
+        make_env, model, _ = _build_env_model(cfg, base_seed=0)
+    except (ValueError, RuntimeError, OSError) as exc:
+        return _fail(f"cannot build environment: {exc}")
 
     env = make_env()  # env reset/step path
     obs, _ = env.reset(seed=0)
@@ -168,13 +171,19 @@ def cmd_train(args) -> int:
     if args.resume is not None:
         if not Path(args.resume).is_file():
             return _fail(f"checkpoint not found: {args.resume} (--resume PATH)")
-        trainer = PPOTrainer.load_checkpoint(args.resume, make_env_from_config(cfg.get("env", {}))())
+        try:
+            trainer = PPOTrainer.load_checkpoint(args.resume, make_env_from_config(cfg.get("env", {}))())
+        except (ValueError, RuntimeError, OSError) as exc:
+            return _fail(f"cannot resume training: {exc}")
         trainer.config = ppo_config  # overrides (timesteps/seed/dir) apply to resumed run
         _sync_optimizer_lr(trainer, ppo_config.learning_rate)
         print(f"resumed from {args.resume} at step {trainer.num_timesteps}")
     else:
         seed = int(ppo_kwargs.get("seed", 0))
-        make_env, model, num_actions = _build_env_model(cfg, seed)
+        try:
+            make_env, model, num_actions = _build_env_model(cfg, seed)
+        except (ValueError, RuntimeError, OSError) as exc:
+            return _fail(f"cannot build environment: {exc}")
         trainer = PPOTrainer(make_env(), model, ppo_config,
                              curiosity=_build_curiosity(cfg, num_actions))
     history = trainer.train()
@@ -201,7 +210,10 @@ def cmd_evaluate(args) -> int:
     if episodes <= 0:
         return _fail(f"--episodes must be positive, got {args.episodes}")
     seed = args.seed if args.seed is not None else 0
-    make_env = make_env_from_config(cfg.get("env", {}))
+    try:
+        make_env = make_env_from_config(cfg.get("env", {}))
+    except (ValueError, RuntimeError, OSError) as exc:
+        return _fail(f"cannot build environment: {exc}")
     if args.checkpoint is not None:
         if not Path(args.checkpoint).is_file():
             return _fail(f"checkpoint not found: {args.checkpoint} (--checkpoint PATH)")

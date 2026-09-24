@@ -510,3 +510,132 @@ class TestTimingAndLifecycle(unittest.TestCase):
         with self.assertRaises(ValueError):
             ExternalGameEnv(game, NullReward(), StepLimitTermination(max_steps=10),
                             max_episode_seconds=-2.0)
+
+
+class TestExternalFactory(unittest.TestCase):
+    def _synthetic_cfg(self, **overrides):
+        cfg = {"type": "external",
+               "num_stack": 4, "obs_size": 84,
+               "capture": {"mode": "synthetic", "out_width": 64, "out_height": 48,
+                           "frame_value": 100},
+               "actions": {"backend": "recording", "table": "default"},
+               "timing": {},
+               "reward": {"provider": "null"},
+               "termination": {"provider": "step_limit", "max_steps": 4}}
+        cfg.update(overrides)
+        return cfg
+
+    def test_full_flow_to_model_obs(self):
+        import importlib.util
+
+        if importlib.util.find_spec("torch") is None:
+            self.skipTest("torch not installed")
+        import torch
+        from agent.model import ActorCritic
+        from environment.external_game import make_external_env_from_config
+
+        env = make_external_env_from_config(self._synthetic_cfg())()
+        obs, info = env.reset(seed=0)
+        self.assertEqual(obs.shape, (4, 84, 84))
+        self.assertEqual(obs.dtype, np.float32)
+        self.assertEqual(info, {})
+        model = ActorCritic(num_actions=int(env.action_space.n)).eval()
+        with torch.no_grad():
+            logits, value, _ = model(torch.from_numpy(obs).unsqueeze(0),
+                                     model.initial_state(1))
+        self.assertEqual(tuple(logits.shape), (1, int(env.action_space.n)))
+        self.assertEqual(tuple(value.shape), (1,))
+        acted, total = [], 0.0
+        while True:
+            obs, reward, terminated, truncated, _ = env.step(0)
+            acted.append(True)
+            total += reward
+            self.assertEqual(obs.shape, (4, 84, 84))
+            if terminated or truncated:
+                break
+            self.assertLess(len(acted), 10)
+        self.assertEqual(len(acted), 4)  # step_limit max_steps
+        self.assertEqual(total, 0.0)  # null reward throughout
+
+    def test_toy_default_unchanged(self):
+        from training.experiment import make_env_from_config
+
+        env = make_env_from_config({})()
+        obs, _ = env.reset(seed=0)
+        self.assertEqual(obs.shape, (4, 84, 84))
+        type_name = type(env).__name__
+        self.assertEqual(type_name, "PreprocessingWrapper")
+
+    def test_safeguard_blocks_live_capture(self):
+        from environment.external_game import make_external_env_from_config
+
+        cfg = self._synthetic_cfg(capture={"mode": "region", "out_width": 32,
+                                           "out_height": 32})
+        with self.assertRaises(RuntimeError):
+            make_external_env_from_config(cfg)
+        cfg["allow_live_capture"] = True
+        env = make_external_env_from_config(cfg)()  # builds; captures nothing
+        self.assertEqual(tuple(env.observation_space.shape), (4, 84, 84))
+
+    def test_window_needs_title(self):
+        from environment.external_game import make_external_env_from_config
+
+        cfg = self._synthetic_cfg(capture={"mode": "window", "out_width": 32,
+                                           "out_height": 32},
+                                  allow_live_capture=True)
+        with self.assertRaises(ValueError):
+            make_external_env_from_config(cfg)()
+
+    def test_custom_action_table_from_config(self):
+        from environment.external_game import make_external_env_from_config
+
+        table = [{"name": "NOOP", "kind": "noop"},
+                 {"name": "FIRE", "kind": "key", "vk": 32, "hold_ms": 0}]
+        cfg = self._synthetic_cfg(actions={"backend": "recording", "table": table})
+        env = make_external_env_from_config(cfg)()
+        self.assertEqual(env.action_space.n, 2)
+        env.reset(seed=0)
+        env.step(1)
+        with self.assertRaises(ValueError):
+            env.step(2)
+        with self.assertRaises(ValueError):
+            make_external_env_from_config(
+                self._synthetic_cfg(actions={"backend": "smoke-signals"}))()
+        with self.assertRaises(ValueError):
+            make_external_env_from_config(self._synthetic_cfg(capture={"mode": "lidar"}))
+        with self.assertRaises(ValueError):
+            make_external_env_from_config(
+                self._synthetic_cfg(reward={"provider": "score-reader"}))
+        with self.assertRaises(ValueError):
+            make_external_env_from_config(
+                self._synthetic_cfg(termination={"provider": "vibes"}))
+
+    def test_cli_trains_external_synthetic(self):
+        import importlib.util
+        import tempfile
+        from pathlib import Path
+
+        if importlib.util.find_spec("torch") is None:
+            self.skipTest("torch not installed")
+        import yaml
+
+        import main as cli_main
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = self._synthetic_cfg()
+            cfg["termination"] = {"provider": "step_limit", "max_steps": 8}
+            cfg["timing"] = {}
+            full = {
+                "env": cfg,
+                "model": {"in_channels": 4, "frame_size": 84, "feature_dim": 32,
+                          "hidden_size": 16, "num_layers": 1},
+                "ppo": {"total_timesteps": 8, "rollout_length": 8, "minibatch_size": 8,
+                        "update_epochs": 1, "learning_rate": 1e-3, "seed": 0,
+                        "checkpoint_dir": str(Path(tmp) / "ckpt"),
+                        "checkpoint_every_updates": 100},
+                "eval": {"episodes": 1},
+            }
+            cfg_path = str(Path(tmp) / "ext.yaml")
+            Path(cfg_path).write_text(yaml.safe_dump(full), encoding="utf-8")
+            self.assertEqual(cli_main.main(["train", "--config", cfg_path]), 0)
+            self.assertTrue((Path(tmp) / "ckpt" / "ppo_final.pt").exists())

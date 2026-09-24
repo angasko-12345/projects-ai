@@ -14,14 +14,23 @@ __all__ = [
     "ExternalGameEnv",
     "GameLifecycle",
     "WindowLifecycle",
+    "Clock",
+    "SystemClock",
     "RewardProvider",
     "NullReward",
+    "NullRewardProvider",
     "TerminationProvider",
+    "NaturalTerminationProvider",
+    "NeverTerminateProvider",
     "StepLimitTermination",
+    "make_external_env_from_config",
+    "ExternPongReward",
+    "ExternPongTermination",
 ]
 
 _TOY_PONG = {"ToyPongEnv", "NOOP", "LEFT", "RIGHT"}
 _PREPROCESSING = {"FrameStack", "PreprocessingWrapper", "preprocess_frame"}
+_EXTERN_PONG = {"ExternPongReward", "ExternPongTermination"}
 
 
 def __getattr__(name: str):
@@ -36,6 +45,10 @@ def __getattr__(name: str):
         from . import preprocessing
 
         return getattr(preprocessing, name)
+    if name in _EXTERN_PONG:
+        from . import extern_pong_rewards
+
+        return getattr(extern_pong_rewards, name)
     if name in __all__:
         from . import external_game
 

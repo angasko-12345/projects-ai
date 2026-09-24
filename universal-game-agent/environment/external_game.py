@@ -23,6 +23,13 @@ except ImportError:  # pragma: no cover - only on minimal installs
     _Base = object
 
 from environment.preprocessing import FrameStack
+from environment.reward import NullReward, NullRewardProvider, RewardProvider
+from environment.termination import (
+    NaturalTerminationProvider,
+    NeverTerminateProvider,
+    StepLimitTermination,
+    TerminationProvider,
+)
 
 
 class Clock(ABC):
@@ -107,42 +114,20 @@ class WindowLifecycle(GameLifecycle):
     def close(self) -> None:
         self.manager.detach()
 
-
-class RewardProvider(ABC):
-    """Pixels + action -> scalar reward. No game internals allowed in."""
-
-    @abstractmethod
-    def reward(self, previous_pixels: np.ndarray, pixels: np.ndarray, action: int) -> float:
-        """Reward for the transition. Both frames are uint8 HxWx3 RGB."""
-
-
-class NullReward(RewardProvider):
-    """Zero reward baseline (e.g. pure exploration / smoke runs)."""
-
-    def reward(self, previous_pixels, pixels, action: int) -> float:
-        return 0.0
-
-
-class TerminationProvider(ABC):
-    """Pixels + bookkeeping -> episode end. Returns (terminated, truncated)."""
-
-    @abstractmethod
-    def done(self, previous_pixels: np.ndarray, pixels: np.ndarray, action: int, steps: int):
-        """Decide the boundary. Must not consult game internals."""
-
-
-class StepLimitTermination(TerminationProvider):
-    """Truncate after max_steps decisions (never a true termination)."""
-
-    def __init__(self, max_steps: int):
-        if max_steps <= 0:
-            raise ValueError(f"max_steps must be positive, got {max_steps!r}")
-        self.max_steps = max_steps
-
-    def done(self, previous_pixels, pixels, action: int, steps: int):
-        over = steps >= self.max_steps
-        return False, bool(over)
-
+__all__ = [
+    "ExternalGameEnv",
+    "GameLifecycle",
+    "WindowLifecycle",
+    "RewardProvider",
+    "NullReward",
+    "NullRewardProvider",
+    "TerminationProvider",
+    "NaturalTerminationProvider",
+    "NeverTerminateProvider",
+    "StepLimitTermination",
+    "Clock",
+    "SystemClock",
+]
 
 class ExternalGameEnv(_Base):
     """External PC game as a Gymnasium env of stacked pixel frames.
@@ -305,3 +290,121 @@ class ExternalGameEnv(_Base):
             raise ValueError(f"capture must return HxWx3 RGB, got {type(raw)} {getattr(raw, 'shape', None)}")
         if raw.dtype != np.uint8:
             raise ValueError(f"capture must return uint8, got {raw.dtype}")
+
+
+def _build_action_table(table_cfg) -> list:
+    """Action table from config: 'default' or a list of ActionDef dicts."""
+    from interface.controller import ActionDef, pc_action_table
+
+    if table_cfg is None or table_cfg == "default":
+        return pc_action_table()
+    if not isinstance(table_cfg, list) or not table_cfg:
+        raise ValueError("actions.table must be 'default' or a non-empty list")
+    table = []
+    for entry in table_cfg:
+        if not isinstance(entry, dict):
+            raise ValueError(f"action entries must be mappings, got {entry!r}")
+        table.append(ActionDef(
+            name=str(entry["name"]),
+            kind=str(entry.get("kind", "key")),
+            vk=int(entry.get("vk", 0)),
+            button=str(entry.get("button", "left")),
+            dx=int(entry.get("dx", 0)),
+            dy=int(entry.get("dy", 0)),
+            hold_ms=int(entry.get("hold_ms", 0)),
+        ))
+    return table
+
+
+def make_external_env_from_config(env_cfg: dict, clock=None):
+    """Build an ExternalGameEnv factory from config (no game hardcoded).
+
+    ``type: external`` selects this path; every component below maps to a
+    real constructor argument -- nothing here names a specific game.
+    Live capture (region/window) additionally requires
+    ``allow_live_capture: true`` as an explicit safeguard; without it only
+    the display-free ``synthetic`` source is built.
+    Returns a zero-arg factory like ``make_env_from_config``.
+    """
+    from interface.adapter import GameInterface
+    from interface.capture import MSSBackend, ScreenCapture, SyntheticBackend, WindowCapture
+    from interface.controller import ActionMapper, RecordingBackend
+
+    cfg = dict(env_cfg or {})
+    cap_cfg = cfg.get("capture", {}) or {}
+    mode = str(cap_cfg.get("mode", "synthetic"))
+    out_w, out_h = int(cap_cfg.get("out_width", 64)), int(cap_cfg.get("out_height", 64))
+    if out_w <= 0 or out_h <= 0:
+        raise ValueError(f"capture out size must be positive, got {(out_w, out_h)!r}")
+    timing = cfg.get("timing", {}) or {}
+    life_cfg = cfg.get("lifecycle", {}) or {}
+    actions_cfg = cfg.get("actions", {}) or {}
+    backend_name = str(actions_cfg.get("backend", "recording"))
+
+    live = mode in ("region", "window")
+    if live and not cfg.get("allow_live_capture", False):
+        raise RuntimeError(
+            "refusing live screen capture without explicit 'allow_live_capture: true' "
+            "in the env config (no game launches or input happens otherwise)"
+        )
+    if mode not in ("synthetic", "region", "window"):
+        raise ValueError(f"unknown capture.mode {mode!r}: expected synthetic|region|window")
+    reward_name = str((cfg.get("reward", {}) or {}).get("provider", "null"))
+    if reward_name != "null":
+        raise ValueError(f"unknown reward.provider {reward_name!r}: expected null")
+    term_cfg = cfg.get("termination", {}) or {}
+    term_name = str(term_cfg.get("provider", "never"))
+    if term_name not in ("never", "step_limit"):
+        raise ValueError(f"unknown termination.provider {term_name!r}: expected never|step_limit")
+
+    def _timeout(value, cast):
+        return None if value is None else cast(value)
+
+    def make():
+        manager, lifecycle = None, None
+        if mode == "synthetic":
+            frames = [np.full((out_h, out_w, 3), int(cap_cfg.get("frame_value", 0)), dtype=np.uint8)]
+            capture = ScreenCapture(SyntheticBackend(frames), 0, 0, out_w, out_h, out_w, out_h)
+        else:
+            from interface.window import WindowManager
+
+            backend = MSSBackend()
+            if mode == "region":
+                region = cap_cfg.get("region", {}) or {}
+                capture = ScreenCapture(backend, int(region.get("x", 0)), int(region.get("y", 0)),
+                                        int(region.get("width", out_w)), int(region.get("height", out_h)),
+                                        out_w, out_h)
+            else:
+                title = str(cap_cfg.get("title", "") or life_cfg.get("title", ""))
+                if not title:
+                    raise ValueError("capture.mode 'window' needs capture.title (or lifecycle.title)")
+                manager = WindowManager(title)
+                capture = WindowCapture(manager, backend, out_w, out_h)
+            if life_cfg.get("mode", "none") == "window" or mode == "window":
+                if manager is None:
+                    raise ValueError("lifecycle.mode 'window' needs a window target")
+                lifecycle = WindowLifecycle(manager, life_cfg.get("launch_command"))
+        if backend_name == "recording":
+            input_backend = RecordingBackend()
+        elif backend_name == "sendinput":
+            from interface.controller import SendInputBackend
+
+            input_backend = SendInputBackend()
+        else:
+            raise ValueError(f"unknown actions.backend {backend_name!r}: expected recording|sendinput")
+        controller = ActionMapper(input_backend, _build_action_table(actions_cfg.get("table", "default")))
+        game = GameInterface(capture, controller, manager)
+        term_provider = (StepLimitTermination(int(term_cfg.get("max_steps", 500)))
+                         if term_name == "step_limit" else NeverTerminateProvider())
+        return ExternalGameEnv(
+            game, NullRewardProvider(), term_provider, lifecycle,
+            num_stack=int(cfg.get("num_stack", 4)), size=int(cfg.get("obs_size", 84)),
+            post_action_delay_ms=float(timing.get("post_action_delay_ms", 0.0)),
+            startup_delay_ms=float(timing.get("startup_delay_ms", 0.0)),
+            reset_delay_ms=float(timing.get("reset_delay_ms", 0.0)),
+            max_episode_steps=_timeout(timing.get("max_episode_steps"), int),
+            max_episode_seconds=_timeout(timing.get("max_episode_seconds"), float),
+            clock=clock,
+        )
+
+    return make

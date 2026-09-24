@@ -151,6 +151,16 @@ python -m unittest discover -s tests -v
 | Vision pipeline demo | `python -m environment.preprocessing --episodes 3 --seed 0 --skip 2` |
 | Random-obs forward pass (torch) | `python -m agent.model --batch-size 4 --steps 3` |
 | Short PPO run, module form (torch) | `python -m training.ppo --total-timesteps 2048 --rollout-length 128 --seed 0` |
+| Standalone Pong test game | `python games/extern_pong.py --title ExternPong --seed 0` |
+| External-window OS-loop smoke (no learning) | `python -m training.external_smoke --title ExternPongSmoke --steps 50 --mode random` |
+
+## Standalone test game (`games/`, not connected to PPO)
+
+`games/extern_pong.py` is an independent tkinter process (own window,
+pixels + keyboard only) for testing the external-game boundary. Controls:
+Left/Right or A/D move, P pause, R re-serve, Q/Escape quit. Flags:
+`--title`, `--seed`, `--fps`, `--auto-quit SEC`. No sockets, files, or
+state API cross the process boundary.
 
 ## Configuration
 
@@ -158,7 +168,17 @@ python -m unittest discover -s tests -v
 `make_env_from_config`, `model` feeds `ActorCritic` (plus `num_actions`
 from the env), `ppo` feeds `PPOConfig`, `curiosity` feeds
 `CuriosityConfig`, `eval` sets eval episodes, `logging` sets log level/dir.
-`PPOConfig.from_dict` / `CuriosityConfig.from_dict` ignore unknown keys.
+`from_dict` loaders warn on unknown keys instead of silently dropping them.
+
+External games (`env.type: external`, default is `toy`) are built by
+`make_external_env_from_config` from `capture` (synthetic|region|window),
+`lifecycle`, `actions` (`default` table or explicit `ActionDef` list,
+`recording|sendinput` backend), `timing` (delays, step/timeout limits),
+`reward` (`null`), `termination` (`never|step_limit`), `num_stack`,
+`obs_size`. Live capture additionally requires the explicit safeguard
+`allow_live_capture: true`; without it only display-free `synthetic`
+capture is built, and no game launches or input can happen from config
+alone. `train`/`evaluate`/`smoke-test` select the env through `--config`.
 
 ## Dependencies
 
