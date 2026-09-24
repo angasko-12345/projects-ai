@@ -11,9 +11,17 @@ __all__ = [
     "FrameStack",
     "PreprocessingWrapper",
     "preprocess_frame",
+    "ExternalGameEnv",
+    "GameLifecycle",
+    "WindowLifecycle",
+    "RewardProvider",
+    "NullReward",
+    "TerminationProvider",
+    "StepLimitTermination",
 ]
 
 _TOY_PONG = {"ToyPongEnv", "NOOP", "LEFT", "RIGHT"}
+_PREPROCESSING = {"FrameStack", "PreprocessingWrapper", "preprocess_frame"}
 
 
 def __getattr__(name: str):
@@ -24,8 +32,13 @@ def __getattr__(name: str):
         from . import toy_pong
 
         return getattr(toy_pong, name)
-    if name in __all__:
+    if name in _PREPROCESSING:
         from . import preprocessing
 
         return getattr(preprocessing, name)
+    if name in __all__:
+        from . import external_game
+
+        return getattr(external_game, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
