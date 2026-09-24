@@ -1,7 +1,6 @@
-"""Universal Game Agent — stage 0 entry point.
+"""Universal Game Agent — sanity-check entry point.
 
-Loads configs/default.yaml, sets up logging, reports optional ML
-dependency status. No learning happens here yet (by design).
+Loads configs/default.yaml, sets up logging, reports ML dependency status.
 """
 from __future__ import annotations
 
@@ -19,7 +18,7 @@ def check_dependencies() -> dict[str, str]:
     for mod, label in (
         ("torch", "torch"),
         ("gymnasium", "gymnasium"),
-        ("stable_baselines3", "stable-baselines3"),
+        ("mss", "mss"),
         ("yaml", "pyyaml"),
     ):
         spec = importlib.util.find_spec(mod)
@@ -35,7 +34,7 @@ def check_dependencies() -> dict[str, str]:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Universal Game Agent (stage 0 scaffold)")
+    parser = argparse.ArgumentParser(description="Universal Game Agent sanity check")
     parser.add_argument("--config", default=str(ROOT / "configs" / "default.yaml"))
     parser.add_argument("--log-level", default=None, help="override logging.level from config")
     return parser.parse_args(argv)
@@ -60,16 +59,15 @@ def main(argv: list[str] | None = None) -> int:
     log = setup_logging(log_dir=ROOT / log_dir, level=log_level)
 
     deps = check_dependencies()
-    log.info("universal-game-agent stage 0 scaffold starting")
+    log.info("universal-game-agent starting")
     log.info("config: %s", args.config)
     for name, version in deps.items():
         log.info("dependency %-18s %s", name, version)
     missing = [k for k, v in deps.items() if v == "missing"]
     if missing:
         log.warning("missing dependencies: %s (pip install -r requirements.txt)", ", ".join(missing))
-    log.info("STAGE 0 complete: structure + config + logging only. "
-             "Next: pixel env wrapper -> encoder -> PPO smoke test.")
-    print("universal-game-agent OK (stage 0 scaffold, no learning implemented yet)")
+    log.info("config and logging OK; see README for training/eval entry points.")
+    print("universal-game-agent OK")
     return 0
 
 

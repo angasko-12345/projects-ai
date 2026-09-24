@@ -1,18 +1,23 @@
-# Default configuration for universal-game-agent.
-# Stage 0 scaffold: values are placeholders consumed by main.py only.
-# No learning hyperparameter is acted on yet (no network/PPO implemented).
+# Baseline configuration for universal-game-agent (matches the implementation).
+# Sections map onto: make_env_from_config (env), ActorCritic (model),
+# PPOConfig (ppo), CuriosityConfig (curiosity), evaluate (eval).
 
 env:
-  name: "CartPole-v1"      # placeholder Gymnasium env for later pixel smoke tests
-  render_mode: "rgb_array" # pixels-only observation path (not enforced yet)
-  frame_stack: 4
+  width: 64
+  height: 48
+  max_steps: 500
+  obs_size: 84
+  num_stack: 4
+  skip: 1
 
-agent:
-  visual_encoder: "none"   # future: cnn | vit
-  memory: "none"           # future: none | lstm | transformer
-  policy: "none"           # future: ppo (stable-baselines3)
+model:
+  in_channels: 4
+  frame_size: 84
+  feature_dim: 256
+  hidden_size: 128
+  num_layers: 1
 
-training:
+ppo:
   total_timesteps: 10000
   rollout_length: 128
   minibatch_size: 32
@@ -27,7 +32,18 @@ training:
   seed: 0
   checkpoint_dir: "checkpoints"
   checkpoint_every_updates: 10
-  experiment_dir: "experiments"
+
+curiosity:
+  enabled: false
+  scale: 0.1
+  lr: 0.00025
+  feature_dim: 128
+  forward_hidden: 256
+  normalize: true
+  reward_clip: 5.0
+
+eval:
+  episodes: 20
 
 logging:
   level: "INFO"

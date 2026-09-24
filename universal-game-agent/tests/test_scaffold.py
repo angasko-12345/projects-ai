@@ -20,7 +20,7 @@ class TestScaffold(unittest.TestCase):
         from configs import load_config
 
         cfg = load_config(ROOT / "configs" / "default.yaml")
-        for key in ("env", "agent", "training", "logging"):
+        for key in ("env", "model", "ppo", "curiosity", "eval", "logging"):
             self.assertIn(key, cfg)
 
     def test_logger_writes_file(self):
