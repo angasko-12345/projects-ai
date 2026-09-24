@@ -22,6 +22,7 @@ def _run(argv):
 class FakeTrainer:
     def __init__(self, *args, **kwargs):
         self.num_timesteps = 0
+        self.curiosity = None
         self.optimizer = type("Opt", (), {"param_groups": [{"lr": 1e-3}]})()
 
     def train(self):
@@ -233,3 +234,38 @@ class TestCLIValidation(unittest.TestCase):
                         self.assertEqual(a[k], b[k])
             for a, b in zip(before_params, resumed.model.parameters()):
                 self.assertTrue(torch.equal(a, b))
+
+    def test_resume_syncs_curiosity_scale(self):
+        import tempfile
+
+        import torch
+        from agent.model import ActorCritic
+        from environment.preprocessing import PreprocessingWrapper
+        from environment.toy_pong import ToyPongEnv
+        from main import _sync_curiosity_scale
+        from training.curiosity import CuriosityConfig, CuriosityModule
+        from training.ppo import PPOConfig, PPOTrainer
+
+        with tempfile.TemporaryDirectory() as tmp:
+            torch.manual_seed(1)
+            env = PreprocessingWrapper(ToyPongEnv(max_steps=16))
+            model = ActorCritic(num_actions=3, feature_dim=32, hidden_size=16)
+            curiosity = CuriosityModule(num_actions=3, in_channels=4,
+                                        config=CuriosityConfig(scale=0.1))
+            trainer = PPOTrainer(env, model, PPOConfig(rollout_length=8, minibatch_size=8,
+                                                      update_epochs=1, total_timesteps=8,
+                                                      checkpoint_dir=tmp),
+                                 curiosity=curiosity)
+            before_encoder = [p.clone() for p in curiosity.encoder.parameters()]
+            path = trainer.save_checkpoint(str(Path(tmp) / "ckpt.pt"))
+            resumed = PPOTrainer.load_checkpoint(path, PreprocessingWrapper(ToyPongEnv(max_steps=16)))
+            self.assertAlmostEqual(resumed.curiosity.config.scale, 0.1)
+            _sync_curiosity_scale(resumed, {"curiosity": {"scale": 0.7}})
+            self.assertAlmostEqual(resumed.curiosity.config.scale, 0.7)
+            for a, b in zip(before_encoder, resumed.curiosity.encoder.parameters()):
+                self.assertTrue(torch.equal(a, b))
+            _sync_curiosity_scale(resumed, {})  # absent section leaves scale alone
+            self.assertAlmostEqual(resumed.curiosity.config.scale, 0.7)
+            _sync_curiosity_scale(PPOTrainer(env, model, PPOConfig(
+                rollout_length=8, minibatch_size=8, update_epochs=1,
+                total_timesteps=8, checkpoint_dir=tmp)), {})  # no module: no-op

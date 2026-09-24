@@ -54,36 +54,43 @@ def launch_game(title: str, seed: int, fps: int) -> subprocess.Popen:
 def drive_loop(env: ExternalGameEnv, model: ActorCritic, steps: int,
                mode: str = "random", seed: int = 0) -> dict:
     """Run the sense-infer-act loop over any ExternalGameEnv. No OS calls here."""
+    if steps <= 0:
+        raise ValueError(f"steps must be positive, got {steps!r}")
     rng = random.Random(seed)
     fixed = [0, 1, 1, 2, 0, 2, 1, 0]
+    was_training = model.training
     model = model.eval()
     device = next(model.parameters()).device
-    obs, _ = env.reset(seed=seed)
-    hidden = model.initial_state(1, device)
-    counts: dict[int, int] = {}
-    episodes = terminated = truncated = 0
-    pixel_delta = 0.0
-    prev = obs.copy()
-    start = time.perf_counter()
-    with torch.no_grad():
-        for t in range(steps):
-            frame = torch.from_numpy(np.ascontiguousarray(obs, dtype=np.float32))
-            logits, _, hidden = model(frame.unsqueeze(0).to(device), hidden)
-            action = rng.randrange(int(logits.shape[1])) if mode == "random" else fixed[t % len(fixed)]
-            obs, _, term, trunc, _ = env.step(int(action))
-            counts[int(action)] = counts.get(int(action), 0) + 1
-            pixel_delta += float(np.abs(obs.astype(np.float64) - prev.astype(np.float64)).mean())
-            prev = obs.copy()
-            if term or trunc:
-                episodes += 1
-                terminated += term
-                truncated += trunc
-                if t + 1 < steps:
-                    obs, _ = env.reset()
-                    hidden = model.initial_state(1, device)
-                    prev = obs.copy()
-    elapsed = time.perf_counter() - start
-    decisions = sum(counts.values())
+    try:
+        obs, _ = env.reset(seed=seed)
+        hidden = model.initial_state(1, device)
+        counts: dict[int, int] = {}
+        episodes = terminated = truncated = 0
+        pixel_delta = 0.0
+        prev = obs.copy()
+        start = time.perf_counter()
+        with torch.no_grad():
+            for t in range(steps):
+                frame = torch.from_numpy(np.ascontiguousarray(obs, dtype=np.float32))
+                logits, _, hidden = model(frame.unsqueeze(0).to(device), hidden)
+                action = rng.randrange(int(logits.shape[1])) if mode == "random" else fixed[t % len(fixed)]
+                obs, _, term, trunc, _ = env.step(int(action))
+                counts[int(action)] = counts.get(int(action), 0) + 1
+                pixel_delta += float(np.abs(obs.astype(np.float64) - prev.astype(np.float64)).mean())
+                prev = obs.copy()
+                if term or trunc:
+                    episodes += 1
+                    terminated += term
+                    truncated += trunc
+                    if t + 1 < steps:
+                        obs, _ = env.reset()
+                        hidden = model.initial_state(1, device)
+                        prev = obs.copy()
+        elapsed = time.perf_counter() - start
+        decisions = sum(counts.values())
+    finally:
+        if was_training:
+            model.train()
     return {
         "steps": steps,
         "decisions": decisions,

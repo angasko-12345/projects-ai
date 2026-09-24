@@ -88,6 +88,38 @@ class TestDriveLoop(unittest.TestCase):
         self.assertEqual([a.name for a in table], ["NOOP", "PRESS_LEFT", "PRESS_RIGHT"])
         self.assertEqual((table[1].vk, table[2].vk), (0x25, 0x27))
 
+    @_needs_torch
+    def test_drive_loop_restores_train_mode(self):
+        import torch
+        from agent.model import ActorCritic
+        from environment.external_game import ExternalGameEnv, NullRewardProvider, StepLimitTermination
+        from training.external_smoke import drive_loop
+
+        torch.manual_seed(0)
+        env = ExternalGameEnv(
+            FakeInterface([_frame(10), _frame(200)]),
+            NullRewardProvider(), StepLimitTermination(max_steps=10),
+            lifecycle=None)
+        model = ActorCritic(num_actions=3, in_channels=4, feature_dim=32, hidden_size=16)
+        model.train()
+        drive_loop(env, model, steps=2, mode="fixed", seed=0)
+        self.assertTrue(model.training)
+
+    @_needs_torch
+    def test_drive_loop_rejects_nonpositive_steps(self):
+        import torch
+        from agent.model import ActorCritic
+        from environment.external_game import ExternalGameEnv, NullRewardProvider, StepLimitTermination
+        from training.external_smoke import drive_loop
+
+        torch.manual_seed(0)
+        env = ExternalGameEnv(
+            FakeInterface([_frame(10)]),
+            NullRewardProvider(), StepLimitTermination(max_steps=10),
+            lifecycle=None)
+        model = ActorCritic(num_actions=3, in_channels=4, feature_dim=32, hidden_size=16)
+        with self.assertRaises(ValueError):
+            drive_loop(env, model, steps=0)
 
 if __name__ == "__main__":
     unittest.main()

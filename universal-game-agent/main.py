@@ -147,6 +147,16 @@ def _sync_optimizer_lr(trainer, learning_rate: float) -> None:
         group["lr"] = float(learning_rate)
 
 
+def _sync_curiosity_scale(trainer, cfg: dict) -> None:
+    """Point a restored curiosity module at the resumed config's scale."""
+    if trainer.curiosity is None:
+        return
+    cur_cfg = cfg.get("curiosity") or {}
+    if "scale" in cur_cfg:
+        trainer.curiosity.config.scale = float(cur_cfg["scale"])
+
+
+
 def cmd_train(args) -> int:
     cfg, err = _load_config(args.config)
     if err is not None:
@@ -177,6 +187,7 @@ def cmd_train(args) -> int:
             return _fail(f"cannot resume training: {exc}")
         trainer.config = ppo_config  # overrides (timesteps/seed/dir) apply to resumed run
         _sync_optimizer_lr(trainer, ppo_config.learning_rate)
+        _sync_curiosity_scale(trainer, cfg)
         print(f"resumed from {args.resume} at step {trainer.num_timesteps}")
     else:
         seed = int(ppo_kwargs.get("seed", 0))
