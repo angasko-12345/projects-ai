@@ -64,3 +64,18 @@ class TestEvaluate(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(_HAS_TORCH, "torch not installed")
+class TestEvalMode(unittest.TestCase):
+    def test_mode_preserved(self):
+        from training.evaluate import evaluate as evaluate_fn
+
+        torch.manual_seed(0)
+        model = ActorCritic()
+        model.train()
+        evaluate_fn(model, _make_env, episodes=2, seeds=[0, 1])
+        self.assertTrue(model.training)
+        model.eval()
+        evaluate_fn(model, _make_env, episodes=2, seeds=[0, 1])
+        self.assertFalse(model.training)

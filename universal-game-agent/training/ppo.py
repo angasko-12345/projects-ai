@@ -76,6 +76,17 @@ def compute_gae(rewards, values, terminated, next_value, gamma, gae_lambda):
 
 
 class PPOTrainer:
+    """Single-env recurrent PPO with explicit boundary semantics.
+
+    Termination (absorbing): value 0, GAE masks, next episode from zeros,
+    replay restarts segments from zeros.
+    Truncation (time limit): bootstrap V(final pre-reset obs, its hidden
+    state); GAE continues; next episode still starts from zeros because the
+    environment itself resets (no continuation exists); replay restarts
+    segments from zeros exactly like rollout.
+    Clean rollout boundary: (obs, hidden) carried verbatim; replay continues
+    across chunks with detached carry and never resets mid-episode.
+    """
     def __init__(self, env, model: ActorCritic, config: PPOConfig, device="cpu", curiosity=None):
         self.env, self.model, self.config = env, model, config
         self.device = torch.device(device)
@@ -105,8 +116,10 @@ class PPOTrainer:
             hidden = self.model.initial_state(1, self.device)
         else:
             obs, hidden = self._carry_obs, self._carry_hidden
-        buf = {k: [] for k in ("obs", "actions", "logprobs", "values", "ext", "terminated", "dones")}
+        buf = {k: [] for k in ("obs", "actions", "logprobs", "values", "ext", "terminated", "truncated", "dones")}
         buf["h0"] = hidden.clone()
+        hidden_traj = []  # post-step hidden per timestep (pre-reset), for timeout bootstrap
+        next_list = []  # true post-step frame per timestep (pre-reset)
         for _ in range(cfg.rollout_length):
             t = torch.from_numpy(np.ascontiguousarray(obs, dtype=np.float32)).unsqueeze(0).to(self.device)
             logits, value, hidden = self.model(t, hidden)
@@ -117,8 +130,11 @@ class PPOTrainer:
             buf["actions"].append(action.cpu())
             buf["logprobs"].append(dist.log_prob(action).cpu())
             buf["values"].append(value.squeeze(0).cpu())
+            hidden_traj.append(hidden.clone())
+            next_list.append(np.ascontiguousarray(next_obs, dtype=np.float32))
             buf["ext"].append(float(reward))
             buf["terminated"].append(bool(terminated))
+            buf["truncated"].append(bool(truncated))
             buf["dones"].append(bool(terminated or truncated))
             self.num_timesteps += 1
             if terminated or truncated:
@@ -127,13 +143,15 @@ class PPOTrainer:
             else:
                 obs = next_obs
         self._carry_obs, self._carry_hidden = obs, hidden
-        for name in ("actions", "logprobs", "values", "ext", "terminated", "dones"):
+        for name in ("actions", "logprobs", "values", "ext", "terminated", "truncated", "dones"):
             buf[name] = torch.stack(buf[name]) if isinstance(buf[name][0], torch.Tensor) else torch.tensor(buf[name])
+            if buf[name].dim() == 0:
+                buf[name] = buf[name].unsqueeze(0)  # rollout_length=1 stays time-major
         buf["obs"] = torch.stack(buf["obs"])  # (T, C, H, W), cpu
         buf["ext"] = buf["ext"].float()
-        # Next-obs per step (last = carry); invalid across episode boundaries.
-        buf["next_obs"] = torch.cat([buf["obs"][1:], torch.from_numpy(
-            np.ascontiguousarray(obs, dtype=np.float32)).unsqueeze(0)])
+        # True next frame per step (pre-reset); boundary steps are masked by
+        # callers via `dones`, so the reset frame never leaks in as a target.
+        buf["next_obs"] = torch.from_numpy(np.stack(next_list))
         valid = ~buf["dones"]
         if self.curiosity is not None:
             int_scaled, int_raw = self.curiosity.intrinsic(buf["obs"], buf["actions"], buf["next_obs"], valid)
@@ -157,22 +175,34 @@ class PPOTrainer:
                 ep_lengths.append(acc_l)
                 acc_e, acc_i, acc_l = 0.0, 0.0, 0
         self._ep_ext, self._ep_int, self._ep_len = acc_e, acc_i, acc_l
-        last_terminated = bool(buf["terminated"][-1])
-        buf["next_value"] = torch.zeros(()) if last_terminated else self.model(
-            torch.from_numpy(np.ascontiguousarray(obs, dtype=np.float32)).unsqueeze(0).to(self.device),
-            hidden,
-        )[1].squeeze(0).cpu()
+        # Bootstrap semantics (see class docstring): terminated -> 0;
+        # truncated -> V(final pre-reset obs, its hidden state); otherwise
+        # the carried (obs, hidden), which equal next_obs[-1]/traj[-1].
+        if bool(buf["terminated"][-1]):
+            buf["next_value"] = torch.zeros(())
+        elif bool(buf["truncated"][-1]):
+            bv_obs = buf["next_obs"][-1].unsqueeze(0).to(self.device)
+            bv_h = hidden_traj[-1].to(self.device)
+            buf["next_value"] = self.model(bv_obs, bv_h)[1].squeeze(0).cpu()
+        else:
+            buf["next_value"] = self.model(
+                torch.from_numpy(np.ascontiguousarray(obs, dtype=np.float32)).unsqueeze(0).to(self.device),
+                hidden,
+            )[1].squeeze(0).cpu()
         buf["int_raw_mean"] = float(int_raw.mean())
         return buf, ep_rewards, ep_lengths, ep_ext, ep_int
 
     # -- update ----------------------------------------------------------
     def update(self, buf) -> dict[str, float]:
         cfg = self.config
+        values = buf["values"].float().reshape(-1)
         rewards = buf["rewards"].float()
-        values = buf["values"].float().squeeze(-1)
         terminated = buf["terminated"].float()
         advantages, returns = compute_gae(rewards, values, terminated, buf["next_value"].float(), cfg.gamma, cfg.gae_lambda)
-        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        adv_std = advantages.std()
+        if not torch.isfinite(adv_std):
+            adv_std = torch.ones(())  # single-sample rollout: center only
+        advantages = (advantages - advantages.mean()) / (adv_std + 1e-8)
         old_logprobs = buf["logprobs"].float()
         metrics: dict[str, list[float]] = {"policy_loss": [], "value_loss": [], "entropy": [], "predictor_loss": []}
         t0 = self.num_timesteps
@@ -180,11 +210,29 @@ class PPOTrainer:
             hidden = buf["h0"].to(self.device)  # (L,1,H): rollout-start state
             for start in range(0, cfg.rollout_length, cfg.minibatch_size):
                 end = min(start + cfg.minibatch_size, cfg.rollout_length)
-                chunk_obs = buf["obs"][start:end].to(self.device)
-                # Time-major chunk: recurrence flows within it; the end state
-                # (detached) seeds the next chunk.
-                logits, value, hidden = self.model.forward_sequence(chunk_obs, hidden)
-                hidden = hidden.detach()
+                # Replay in segments split at done (= terminated or truncated)
+                # boundaries: the env resets in both cases and rollout ran
+                # post-done steps from zeroed hidden, so replay must too.
+                # Detached end state seeds the next chunk/segment.
+                seg_logits, seg_values = [], []
+                seg_start = start
+                while seg_start < end:
+                    done_idx = next(
+                        (i for i in range(seg_start, end) if buf["dones"][i]), None
+                    )
+                    seg_end = done_idx + 1 if done_idx is not None else end
+                    chunk_obs = buf["obs"][seg_start:seg_end].to(self.device)
+                    seg_l, seg_v, hidden = self.model.forward_sequence(chunk_obs, hidden.detach())
+                    seg_logits.append(seg_l)
+                    seg_values.append(seg_v)
+                    hidden = (
+                        self.model.initial_state(1, self.device)
+                        if done_idx is not None
+                        else hidden.detach()
+                    )
+                    seg_start = seg_end
+                logits = torch.cat(seg_logits)
+                value = torch.cat(seg_values)
                 dist = Categorical(logits=logits)
                 logprobs = dist.log_prob(buf["actions"][start:end].to(self.device))
                 entropy = dist.entropy().mean()
@@ -192,7 +240,7 @@ class PPOTrainer:
                 adv = advantages[start:end].to(self.device)
                 policy_loss = -torch.min(ratio * adv, torch.clamp(ratio, 1 - cfg.clip_range, 1 + cfg.clip_range) * adv).mean()
                 ret = returns[start:end].to(self.device)
-                v = value.squeeze(-1)
+                v = value.reshape(-1)
                 v_old = values[start:end].to(self.device)
                 v_clipped = v_old + torch.clamp(v - v_old, -cfg.clip_range, cfg.clip_range)
                 value_loss = 0.5 * torch.max((v - ret) ** 2, (v_clipped - ret) ** 2).mean()
