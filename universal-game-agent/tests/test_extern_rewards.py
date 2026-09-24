@@ -88,3 +88,51 @@ class TestExternPongReward(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestExternTerminationIntegration(unittest.TestCase):
+    def _env(self, frames, termination, **overrides):
+        from interface.adapter import GameInterface
+        from interface.capture import ScreenCapture, SyntheticBackend
+        from interface.controller import ActionDef, ActionMapper, RecordingBackend
+        from environment.external_game import ExternalGameEnv
+        from environment.reward import NullRewardProvider
+
+        capture = ScreenCapture(SyntheticBackend(frames), 0, 0, 64, 48, 64, 48)
+        game = GameInterface(capture, ActionMapper(RecordingBackend(), [ActionDef("NOOP")]))
+        args = {"interface": game, "reward_provider": NullRewardProvider(),
+                "termination_provider": termination, "lifecycle": None}
+        args.update(overrides)
+        return ExternalGameEnv(**args)
+
+    def test_termination_beats_timeout(self):
+        from environment.extern_pong_rewards import ExternPongTermination
+
+        env = self._env([_ball(), _banner()], ExternPongTermination(), max_episode_steps=1)
+        env.reset(seed=0)
+        _, _, terminated, truncated, _ = env.step(0)
+        self.assertTrue(terminated)
+        self.assertFalse(truncated)  # distinction preserved, not converted
+
+    def test_timeout_without_termination(self):
+        from environment.extern_pong_rewards import ExternPongTermination
+
+        env = self._env([_ball(), _ball()], ExternPongTermination(), max_episode_steps=1)
+        env.reset(seed=0)
+        _, _, terminated, truncated, _ = env.step(0)
+        self.assertFalse(terminated)
+        self.assertTrue(truncated)
+
+    def test_factory_extern_pong_providers(self):
+        from environment.external_game import make_external_env_from_config
+        from environment.extern_pong_rewards import ExternPongReward, ExternPongTermination
+
+        cfg = {"capture": {"mode": "synthetic", "out_width": 64, "out_height": 48},
+               "reward": {"provider": "extern_pong"},
+               "termination": {"provider": "extern_pong"}}
+        env = make_external_env_from_config(cfg)()
+        self.assertIsInstance(env.reward_provider, ExternPongReward)
+        self.assertIsInstance(env.termination_provider, ExternPongTermination)
+        env.reset(seed=0)
+        obs, _, _, _, _ = env.step(0)
+        self.assertEqual(obs.shape, (4, 84, 84))

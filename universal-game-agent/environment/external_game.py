@@ -350,12 +350,12 @@ def make_external_env_from_config(env_cfg: dict, clock=None):
     if mode not in ("synthetic", "region", "window"):
         raise ValueError(f"unknown capture.mode {mode!r}: expected synthetic|region|window")
     reward_name = str((cfg.get("reward", {}) or {}).get("provider", "null"))
-    if reward_name != "null":
-        raise ValueError(f"unknown reward.provider {reward_name!r}: expected null")
+    if reward_name not in ("null", "extern_pong"):
+        raise ValueError(f"unknown reward.provider {reward_name!r}: expected null|extern_pong")
     term_cfg = cfg.get("termination", {}) or {}
     term_name = str(term_cfg.get("provider", "never"))
-    if term_name not in ("never", "step_limit"):
-        raise ValueError(f"unknown termination.provider {term_name!r}: expected never|step_limit")
+    if term_name not in ("never", "step_limit", "extern_pong"):
+        raise ValueError(f"unknown termination.provider {term_name!r}: expected never|step_limit|extern_pong")
 
     def _timeout(value, cast):
         return None if value is None else cast(value)
@@ -394,10 +394,17 @@ def make_external_env_from_config(env_cfg: dict, clock=None):
             raise ValueError(f"unknown actions.backend {backend_name!r}: expected recording|sendinput")
         controller = ActionMapper(input_backend, _build_action_table(actions_cfg.get("table", "default")))
         game = GameInterface(capture, controller, manager)
-        term_provider = (StepLimitTermination(int(term_cfg.get("max_steps", 500)))
-                         if term_name == "step_limit" else NeverTerminateProvider())
+        from environment.extern_pong_rewards import ExternPongReward, ExternPongTermination
+
+        reward_provider = ExternPongReward() if reward_name == "extern_pong" else NullRewardProvider()
+        if term_name == "step_limit":
+            term_provider = StepLimitTermination(int(term_cfg.get("max_steps", 500)))
+        elif term_name == "extern_pong":
+            term_provider = ExternPongTermination()
+        else:
+            term_provider = NeverTerminateProvider()
         return ExternalGameEnv(
-            game, NullRewardProvider(), term_provider, lifecycle,
+            game, reward_provider, term_provider, lifecycle,
             num_stack=int(cfg.get("num_stack", 4)), size=int(cfg.get("obs_size", 84)),
             post_action_delay_ms=float(timing.get("post_action_delay_ms", 0.0)),
             startup_delay_ms=float(timing.get("startup_delay_ms", 0.0)),
