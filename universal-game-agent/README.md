@@ -78,11 +78,13 @@ toy pixels -> grayscale/84x84/normalize -> frame stack (4,84,84)
 
 ## Checkpoints and resume
 
-- `PPOTrainer.save_checkpoint(path)` stores model, optimizer,
-  timestep/update counters, both configs, and curiosity state.
-- `PPOTrainer.load_checkpoint(path, env)` restores everything and can
-  keep training (new episode started; counters preserved). No CLI;
-  use from Python.
+`PPOTrainer.save_checkpoint(path)` stores model, optimizer,
+timestep/update counters, both configs, and curiosity state.
+`PPOTrainer.load_checkpoint(path, env)` restores everything and can
+keep training (new episode started; counters preserved). Via CLI:
+`main.py train --resume <ckpt> [--timesteps N]` or
+`main.py evaluate --checkpoint <ckpt>` (accepts PPO-trainer and
+`ActorCritic.save` formats).
 
 ## Windows interface (`interface/`, infrastructure only)
 
@@ -130,24 +132,25 @@ cd universal-game-agent
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
-python main.py
+python main.py smoke-test
 python -m unittest discover -s tests -v
 ```
 
 ## Commands
 
+`main.py` subcommands (thin wrappers over the modules below):
+
 | Purpose | Command |
 |---|---|
-| Sanity check | `python main.py` |
+| Pipeline smoke test | `python main.py smoke-test [--config CONFIG]` |
+| Train (PPO) | `python main.py train [--config CONFIG] [--timesteps N] [--seed S] [--checkpoint-dir DIR] [--resume CKPT]` |
+| Evaluate | `python main.py evaluate [--config CONFIG] [--checkpoint CKPT] [--episodes N] [--seed S] [--sampled]` |
+| Full experiment | `python main.py experiment --config experiments/exp_toy_ppo_01.yaml` |
 | Full test suite | `python -m unittest discover -s tests` |
 | Toy env demo (pixels-only policy) | `python -m environment.toy_pong --episodes 5 --seed 0` |
 | Vision pipeline demo | `python -m environment.preprocessing --episodes 3 --seed 0 --skip 2` |
 | Random-obs forward pass (torch) | `python -m agent.model --batch-size 4 --steps 3` |
-| Short PPO run (torch) | `python -m training.ppo --total-timesteps 2048 --rollout-length 128 --seed 0` |
-| Full experiment | `python -m training.experiment --config experiments/exp_toy_ppo_01.yaml` |
-
-`training/evaluate.py` and checkpoint resume (`PPOTrainer.load_checkpoint`)
-are Python APIs without CLIs.
+| Short PPO run, module form (torch) | `python -m training.ppo --total-timesteps 2048 --rollout-length 128 --seed 0` |
 
 ## Configuration
 
