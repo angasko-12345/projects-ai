@@ -22,6 +22,7 @@ def _run(argv):
 class FakeTrainer:
     def __init__(self, *args, **kwargs):
         self.num_timesteps = 0
+        self.optimizer = type("Opt", (), {"param_groups": [{"lr": 1e-3}]})()
 
     def train(self):
         self.num_timesteps = 5
@@ -168,3 +169,67 @@ class TestCLIIntegration(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(__import__("importlib").util.find_spec("torch"), "torch not installed")
+class TestCLIValidation(unittest.TestCase):
+    def test_negative_seed_rejected_cleanly(self):
+        code, _ = _run(["train", "--config", str(ROOT / "configs" / "default.yaml"),
+                        "--seed", "-1", "--timesteps", "8"])
+        self.assertEqual(code, 2)
+
+    def test_malformed_episodes_rejected_cleanly(self):
+        import tempfile
+
+        import yaml
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg_path = str(Path(tmp) / "bad.yaml")
+            Path(cfg_path).write_text(yaml.safe_dump({"eval": {"episodes": "many"}}),
+                                      encoding="utf-8")
+            code, _ = _run(["evaluate", "--config", cfg_path])
+            self.assertEqual(code, 2)
+
+    def test_resume_syncs_optimizer_lr(self):
+        import tempfile
+
+        import torch
+        from agent.model import ActorCritic
+        from environment.preprocessing import PreprocessingWrapper
+        from environment.toy_pong import ToyPongEnv
+        from main import _sync_optimizer_lr
+        from training.ppo import PPOConfig, PPOTrainer
+
+        with tempfile.TemporaryDirectory() as tmp:
+            torch.manual_seed(0)
+            env = PreprocessingWrapper(ToyPongEnv(max_steps=16))
+            model = ActorCritic(num_actions=3, feature_dim=32, hidden_size=16)
+            trainer = PPOTrainer(env, model, PPOConfig(rollout_length=8, minibatch_size=8,
+                                                      update_epochs=1, total_timesteps=8,
+                                                      learning_rate=1e-3,
+                                                      checkpoint_dir=tmp))
+            buf, *_ = trainer.collect_rollout()
+            trainer.update(buf)  # populate momentum state before saving
+            path = trainer.save_checkpoint(str(Path(tmp) / "ckpt.pt"))
+            resumed = PPOTrainer.load_checkpoint(path, PreprocessingWrapper(ToyPongEnv(max_steps=16)))
+            before_params = [p.clone() for p in resumed.model.parameters()]
+            before_momentum = [{k: (v.clone() if torch.is_tensor(v) else v)
+                                for k, v in per.items()}
+                               for per in resumed.optimizer.state_dict()["state"].values()]
+            self.assertTrue(before_momentum)  # setup: nonempty optimizer state
+            _sync_optimizer_lr(resumed, 0.05)
+            after = resumed.optimizer.state_dict()
+            self.assertAlmostEqual(after["param_groups"][0]["lr"], 0.05)
+            after_momentum = [{k: (v.clone() if torch.is_tensor(v) else v)
+                               for k, v in per.items()}
+                              for per in after["state"].values()]
+            self.assertEqual(len(after_momentum), len(before_momentum))
+            for a, b in zip(before_momentum, after_momentum):
+                self.assertEqual(set(a.keys()), set(b.keys()))
+                for k in a:
+                    if torch.is_tensor(a[k]):
+                        self.assertTrue(torch.equal(a[k], b[k]))
+                    else:
+                        self.assertEqual(a[k], b[k])
+            for a, b in zip(before_params, resumed.model.parameters()):
+                self.assertTrue(torch.equal(a, b))

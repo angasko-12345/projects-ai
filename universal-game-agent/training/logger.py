@@ -8,9 +8,12 @@ from pathlib import Path
 
 def setup_logging(log_dir: str | Path = "logs", level: str = "INFO") -> logging.Logger:
     """Configure root logger once; return the project logger."""
+    upper = str(level).upper()
+    if upper not in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
+        raise ValueError(f"unknown logging level {level!r}: expected DEBUG/INFO/WARNING/ERROR/CRITICAL")
     Path(log_dir).mkdir(parents=True, exist_ok=True)
     logger = logging.getLogger("universal_game_agent")
-    logger.setLevel(getattr(logging, level.upper(), logging.INFO))
+    logger.setLevel(getattr(logging, upper))
     if logger.handlers:
         return logger
     fmt = logging.Formatter("%(asctime)s | %(levelname)-7s | %(name)s | %(message)s")

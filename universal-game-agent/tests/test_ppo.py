@@ -115,8 +115,13 @@ class TestPPOTrainer(unittest.TestCase):
             PPOConfig(rollout_length=0)
         with self.assertRaises(ValueError):
             PPOConfig(gamma=1.5)
-        cfg = PPOConfig.from_dict({"learning_rate": 1e-3, "unknown_key": 1})
+        with self.assertWarnsRegex(UserWarning, "unknown_key"):
+            cfg = PPOConfig.from_dict({"learning_rate": 1e-3, "unknown_key": 1})
         self.assertAlmostEqual(cfg.learning_rate, 1e-3)
+        with self.assertRaises(ValueError):
+            PPOConfig(seed=-1)
+        with self.assertRaises(ValueError):
+            PPOConfig.from_dict({"seed": -1})
 
 
 if __name__ == "__main__":

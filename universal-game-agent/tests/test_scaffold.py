@@ -44,3 +44,27 @@ class TestScaffold(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestLoggingValidation(unittest.TestCase):
+    def test_unknown_level_rejected(self):
+        from training.logger import setup_logging
+
+        with self.assertRaises(ValueError):
+            setup_logging(level="DEBG")
+
+    def test_known_levels_accepted(self):
+        import logging
+        import tempfile
+
+        from training.logger import setup_logging
+
+        for level in ("debug", "INFO", "Warning"):
+            with tempfile.TemporaryDirectory() as tmp:
+                log = setup_logging(log_dir=tmp, level=level)
+                try:
+                    self.assertEqual(log.level, getattr(logging, level.upper()))
+                finally:
+                    for handler in log.handlers[:]:
+                        log.removeHandler(handler)
+                        handler.close()

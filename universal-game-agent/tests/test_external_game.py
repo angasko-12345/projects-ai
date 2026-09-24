@@ -264,3 +264,249 @@ class TestCapturePipeline(unittest.TestCase):
             self.assertTrue(np.allclose(obs[i], preprocess_frame(frame), atol=1e-6),
                             f"channel {i}")
         self.assertGreater(obs[-1].mean(), obs[0].mean())
+
+
+class TestActionMapping(unittest.TestCase):
+    """Policy index -> GameInterface -> ActionMapper -> backend. No SendInput here."""
+
+    def _game(self, table, frames=None):
+        from interface.adapter import GameInterface
+        from interface.capture import ScreenCapture, SyntheticBackend
+        from interface.controller import ActionMapper, RecordingBackend
+
+        backend = RecordingBackend()
+        frames = frames or [_frame(10), _frame(20)]
+        capture = ScreenCapture(SyntheticBackend(frames), 0, 0, 64, 48, 64, 48)
+        return GameInterface(capture, ActionMapper(backend, table)), backend
+
+    def test_custom_table_without_rl_changes(self):
+        from interface.controller import ActionDef
+
+        game, backend = self._game([ActionDef("NOOP"),
+                                    ActionDef("JUMP", kind="key", vk=0x20, hold_ms=0)])
+        env = ExternalGameEnv(game, NullReward(), StepLimitTermination(max_steps=10),
+                              lifecycle=None)
+        self.assertEqual(env.action_space.n, 2)
+        env.reset(seed=0)
+        env.step(1)
+        self.assertEqual(backend.calls, [("key_down", 0x20), ("key_up", 0x20)])
+        env.step(0)
+        self.assertEqual(len(backend.calls), 2)  # NOOP emits nothing
+
+    def test_default_table_index_routes_to_key(self):
+        from interface.controller import VK, pc_action_table
+
+        game, backend = self._game(pc_action_table(hold_ms=0))
+        env = ExternalGameEnv(game, NullReward(), StepLimitTermination(max_steps=10),
+                              lifecycle=None)
+        self.assertEqual(env.action_space.n, 10)
+        env.reset(seed=0)
+        names = [a.name for a in game.controller.table]
+        env.step(names.index("PRESS_W"))
+        self.assertEqual(backend.calls, [("key_down", VK["W"]), ("key_up", VK["W"])])
+
+    def test_hold_sleeps_exactly_once(self):
+        from unittest.mock import patch
+
+        from interface.controller import ActionDef
+
+        game, _ = self._game([ActionDef("HIT", kind="key", vk=0x57, hold_ms=50)])
+        env = ExternalGameEnv(game, NullReward(), StepLimitTermination(max_steps=10),
+                              lifecycle=None, post_action_delay_ms=0.0)
+        env.reset(seed=0)
+        with patch("time.sleep") as asleep:
+            env.step(0)
+        self.assertEqual([c.args[0] for c in asleep.call_args_list], [0.05])
+
+    def test_post_action_delay_sleeps_once(self):
+        from unittest.mock import patch
+
+        from interface.controller import ActionDef
+
+        game, _ = self._game([ActionDef("NOOP")])
+        env = ExternalGameEnv(game, NullReward(), StepLimitTermination(max_steps=10),
+                              lifecycle=None, post_action_delay_ms=25.0)
+        env.reset(seed=0)
+        with patch("time.sleep") as asleep:
+            env.step(0)
+        self.assertEqual([c.args[0] for c in asleep.call_args_list], [0.025])
+
+    def test_no_hidden_delays_by_default(self):
+        from unittest.mock import patch
+
+        from interface.controller import ActionDef
+
+        game, _ = self._game([ActionDef("NOOP")])
+        env = ExternalGameEnv(game, NullReward(), StepLimitTermination(max_steps=10),
+                              lifecycle=None)
+        env.reset(seed=0)
+        with patch("time.sleep") as asleep:
+            env.step(0)
+        asleep.assert_not_called()
+
+    def test_negative_delay_rejected(self):
+        from interface.controller import ActionDef
+
+        game, _ = self._game([ActionDef("NOOP")])
+        with self.assertRaises(ValueError):
+            ExternalGameEnv(game, NullReward(), StepLimitTermination(max_steps=10),
+                            post_action_delay_ms=-1.0)
+
+
+class FakeClock:
+    def __init__(self):
+        self.now_t = 100.0
+        self.sleeps = []
+
+    def now(self):
+        return self.now_t
+
+    def sleep(self, seconds):
+        self.sleeps.append(seconds)
+
+    def advance(self, seconds):
+        self.now_t += seconds
+
+
+class TestTimingAndLifecycle(unittest.TestCase):
+    def _game(self):
+        from interface.adapter import GameInterface
+        from interface.capture import ScreenCapture, SyntheticBackend
+        from interface.controller import ActionDef, ActionMapper, RecordingBackend
+
+        capture = ScreenCapture(SyntheticBackend([_frame(10), _frame(20)]), 0, 0, 64, 48, 64, 48)
+        table = [ActionDef("NOOP", hold_ms=0), ActionDef("GO", kind="key", vk=0x57, hold_ms=0)]
+        return GameInterface(capture, ActionMapper(RecordingBackend(), table))
+
+    def _env(self, clock=None, **overrides):
+        args = {"interface": self._game(),
+                "reward_provider": NullReward(),
+                "termination_provider": StepLimitTermination(max_steps=1000),
+                "lifecycle": FakeLifecycle(),
+                "clock": clock or FakeClock()}
+        args.update(overrides)
+        return ExternalGameEnv(**args)
+
+    def test_normal_step_no_timeouts(self):
+        env = self._env()
+        env.reset(seed=0)
+        _, _, terminated, truncated, _ = env.step(0)
+        self.assertEqual((terminated, truncated), (False, False))
+
+    def test_startup_once_reset_every_time(self):
+        clock = FakeClock()
+        env = self._env(clock, lifecycle=FakeLifecycle(available=False),
+                        startup_delay_ms=100.0, reset_delay_ms=50.0)
+        env.reset(seed=0)  # attach runs -> startup + reset sleeps
+        env.reset(seed=1)  # attached already -> reset sleep only
+        self.assertEqual(clock.sleeps, [0.1, 0.05, 0.05])
+
+    def test_timeout_by_steps(self):
+        env = self._env(max_episode_steps=2)
+        env.reset(seed=0)
+        _, _, term1, trunc1, _ = env.step(0)
+        _, _, term2, trunc2, _ = env.step(0)
+        self.assertEqual((term1, trunc1), (False, False))
+        self.assertEqual((term2, trunc2), (False, True))
+
+    def test_timeout_by_duration(self):
+        clock = FakeClock()
+        env = self._env(clock, max_episode_seconds=10.0)
+        env.reset(seed=0)
+        clock.advance(5.0)
+        _, _, _, trunc1, _ = env.step(0)
+        clock.advance(6.0)
+        _, _, term2, trunc2, _ = env.step(0)
+        self.assertFalse(trunc1)
+        self.assertFalse(term2)
+        self.assertTrue(trunc2)
+
+    def test_timeout_never_reports_termination(self):
+        env = self._env(termination_provider=ScriptedTermination([(False, False)] * 5),
+                        max_episode_steps=1)
+        env.reset(seed=0)
+        _, _, terminated, truncated, _ = env.step(0)
+        self.assertFalse(terminated)
+        self.assertTrue(truncated)
+
+    def test_reset_clears_state(self):
+        env = self._env(termination_provider=StepLimitTermination(max_steps=2))
+        env.reset(seed=0)
+        env.step(0)
+        env.reset(seed=1)  # step counter cleared: next step is step 1 again
+        _, _, _, trunc, _ = env.step(0)
+        self.assertFalse(trunc)
+        env.reset(seed=2)  # repeated resets stay valid
+        obs, info = env.reset(seed=3)
+        self.assertEqual(obs.shape, (4, 84, 84))
+        self.assertEqual(info, {})
+
+    def test_lost_window_mid_episode_raises(self):
+        from interface.adapter import GameInterface
+        from interface.capture import ScreenCapture
+        from interface.controller import ActionDef, ActionMapper, RecordingBackend
+
+        class DyingBackend:
+            def __init__(self):
+                self.calls = 0
+
+            def grab(self, bbox):
+                self.calls += 1
+                if self.calls > 1:
+                    raise RuntimeError("window gone")
+                return _frame(10)
+
+        capture = ScreenCapture(DyingBackend(), 0, 0, 64, 48, 64, 48)
+        game = GameInterface(capture, ActionMapper(RecordingBackend(), [ActionDef("NOOP", hold_ms=0)]))
+        env = ExternalGameEnv(game, NullReward(), StepLimitTermination(max_steps=10),
+                              lifecycle=None, clock=FakeClock())
+        env.reset(seed=0)
+        with self.assertRaises(RuntimeError):
+            env.step(0)
+
+    def test_lifecycle_failure_and_restart(self):
+        from interface.window import WindowNotFoundError
+
+        class FlakyManager:
+            def __init__(self):
+                self.attaches = 0
+                self.restarts = []
+                self.live = False
+
+            def attach(self):
+                self.attaches += 1
+                if not self.live:
+                    raise WindowNotFoundError("not yet")
+
+            def focus(self):
+                return True
+
+            def is_alive(self):
+                return self.live
+
+            def detach(self):
+                self.live = False
+
+            def restart(self, command):
+                self.restarts.append(command)
+                self.live = True
+
+        from environment.external_game import WindowLifecycle
+
+        lifecycle = WindowLifecycle(FlakyManager(), launch_command=["game.exe"])
+        self.assertFalse(lifecycle.is_available())
+        self.assertTrue(lifecycle.attach())  # attach fails -> restart -> reattach works
+        self.assertTrue(lifecycle.is_available())
+        self.assertTrue(lifecycle.reset_session())
+
+    def test_bad_timing_config_rejected(self):
+        game = self._game()
+        with self.assertRaises(ValueError):
+            ExternalGameEnv(game, NullReward(), StepLimitTermination(max_steps=10),
+                            startup_delay_ms=-1.0)
+        with self.assertRaises(ValueError):
+            ExternalGameEnv(game, NullReward(), StepLimitTermination(max_steps=10),
+                            max_episode_steps=0)
+        with self.assertRaises(ValueError):
+            ExternalGameEnv(game, NullReward(), StepLimitTermination(max_steps=10),
+                            max_episode_seconds=-2.0)

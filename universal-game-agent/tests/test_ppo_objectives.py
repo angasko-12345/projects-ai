@@ -207,17 +207,22 @@ class TestOptimizationBehavior(unittest.TestCase):
                 self.assertTrue(abs(stats[key]) != float("inf") and stats[key] == stats[key], (reward, key))
 
     def test_minibatch_one_and_counters(self):
+        import tempfile
+        from pathlib import Path as _Path
+
         torch.manual_seed(8)
-        tr = _trainer(ConstEnv(), rollout_length=4, minibatch_size=1, update_epochs=2,
-                      total_timesteps=8)
-        buf, *_ = tr.collect_rollout()
-        stats = tr.update(buf)
-        self.assertTrue(all(abs(v) != float("inf") for v in stats.values() if isinstance(v, float)))
-        n0, u0 = tr.num_timesteps, tr.num_updates
-        tr.train()
-        self.assertEqual(tr.num_timesteps, 8)
-        self.assertEqual(tr.num_updates, u0 + 1)  # 4 more steps / rollout 4 = exactly 1 update
-        self.assertEqual(n0, 4)
+        with tempfile.TemporaryDirectory() as tmp:
+            tr = _trainer(ConstEnv(), rollout_length=4, minibatch_size=1, update_epochs=2,
+                          total_timesteps=8, checkpoint_dir=str(_Path(tmp) / "ckpt"))
+            buf, *_ = tr.collect_rollout()
+            stats = tr.update(buf)
+            self.assertTrue(all(abs(v) != float("inf") for v in stats.values() if isinstance(v, float)))
+            n0, u0 = tr.num_timesteps, tr.num_updates
+            tr.train()
+            self.assertEqual(tr.num_timesteps, 8)
+            self.assertEqual(tr.num_updates, u0 + 1)  # 4 more steps / rollout 4 = exactly 1 update
+            self.assertEqual(n0, 4)
+            self.assertTrue((_Path(tmp) / "ckpt" / "ppo_final.pt").exists())
 
 
 if __name__ == "__main__":

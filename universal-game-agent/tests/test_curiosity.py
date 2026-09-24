@@ -115,3 +115,35 @@ class TestCuriosityModule(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(_HAS_TORCH, "torch not installed")
+class TestConfigWarnings(unittest.TestCase):
+    def test_curiosity_unknown_key_warns(self):
+        with self.assertWarnsRegex(UserWarning, "curiosity.*bogus"):
+            cfg = CuriosityConfig.from_dict({"scale": 0.2, "bogus": 1})
+        self.assertAlmostEqual(cfg.scale, 0.2)
+
+    def test_curiosity_valid_keys_silent(self):
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            cfg = CuriosityConfig.from_dict({"scale": 0.2})
+        self.assertAlmostEqual(cfg.scale, 0.2)
+
+    def test_env_unknown_key_warns(self):
+        from training.experiment import make_env_from_config
+
+        with self.assertWarnsRegex(UserWarning, "env.*bogus"):
+            make_env_from_config({"width": 64, "bogus": 1})
+
+    def test_ppo_valid_keys_silent(self):
+        import warnings
+
+        from training.ppo import PPOConfig
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            cfg = PPOConfig.from_dict({"learning_rate": 1e-3})
+        self.assertAlmostEqual(cfg.learning_rate, 1e-3)

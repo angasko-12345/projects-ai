@@ -10,6 +10,7 @@ window titles, rects, PIDs, and game internals never enter observations.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+import time
 
 import numpy as np
 
@@ -22,6 +23,26 @@ except ImportError:  # pragma: no cover - only on minimal installs
     _Base = object
 
 from environment.preprocessing import FrameStack
+
+
+class Clock(ABC):
+    """Injectable time source. Real runs use SystemClock; tests use fakes."""
+
+    @abstractmethod
+    def now(self) -> float:
+        """Monotonic seconds."""
+
+    @abstractmethod
+    def sleep(self, seconds: float) -> None:
+        """Wait. Must be a no-op-able mock point (never raw time.sleep)."""
+
+
+class SystemClock(Clock):
+    def now(self) -> float:
+        return time.monotonic()
+
+    def sleep(self, seconds: float) -> None:
+        time.sleep(seconds)
 
 
 class GameLifecycle(ABC):
@@ -136,16 +157,54 @@ class ExternalGameEnv(_Base):
     def __init__(self, interface, reward_provider: RewardProvider,
                  termination_provider: TerminationProvider,
                  lifecycle: GameLifecycle | None = None,
-                 num_stack: int = 4, size: int = 84):
+                 num_stack: int = 4, size: int = 84,
+                 post_action_delay_ms: float = 0.0,
+                 startup_delay_ms: float = 0.0,
+                 reset_delay_ms: float = 0.0,
+                 max_episode_steps: int | None = None,
+                 max_episode_seconds: float | None = None,
+                 clock: Clock | None = None):
+        """Timing semantics (separate concepts, no hidden stacking):
+
+        1. hold time: per ActionDef, applied once by ActionMapper.
+        2. post-action observation delay: slept once per step, after input
+           and before capture, so the game can react (default 0).
+        3. startup delay: slept once, right after the first successful
+           session attach, so a freshly started game can load.
+        4. reset delay: slept on every reset(), after the session check.
+        5. decision interval: the caller's stepping pace; nothing added.
+        Timeouts (env-level, in addition to the termination provider):
+        ``max_episode_steps`` / ``max_episode_seconds`` report
+        ``terminated=False, truncated=True``. A true termination simultaneous
+        with a timeout still reports ``terminated=True``.
+        All waiting goes through ``clock`` (SystemClock by default).
+        """
+        for name, value in (("post_action_delay_ms", post_action_delay_ms),
+                            ("startup_delay_ms", startup_delay_ms),
+                            ("reset_delay_ms", reset_delay_ms)):
+            if value < 0:
+                raise ValueError(f"{name} must be >= 0, got {value!r}")
+        if max_episode_steps is not None and max_episode_steps <= 0:
+            raise ValueError(f"max_episode_steps must be positive, got {max_episode_steps!r}")
+        if max_episode_seconds is not None and max_episode_seconds <= 0:
+            raise ValueError(f"max_episode_seconds must be positive, got {max_episode_seconds!r}")
         super().__init__()
         self.interface = interface
         self.reward_provider = reward_provider
         self.termination_provider = termination_provider
         self.lifecycle = lifecycle
+        self.clock = clock or SystemClock()
+        self.post_action_delay_ms = float(post_action_delay_ms)
+        self.startup_delay_ms = float(startup_delay_ms)
+        self.reset_delay_ms = float(reset_delay_ms)
+        self.max_episode_steps = max_episode_steps
+        self.max_episode_seconds = max_episode_seconds
         self.stack = FrameStack(num_stack=num_stack, size=size)
         self.action_space = self._discrete(interface.num_actions)
         self.observation_space = self._box((num_stack, size, size))
         self._steps = 0
+        self._episode_start = 0.0
+        self._started = False
         self._last_raw: np.ndarray | None = None
 
     @staticmethod
@@ -178,19 +237,33 @@ class ExternalGameEnv(_Base):
         return _Box(shape)
 
     # -- session ---------------------------------------------------------
-    def _ensure_session(self) -> None:
+    def _ensure_session(self) -> bool:
+        """Ensure a game is present. Returns True if attach() ran and worked."""
         if self.lifecycle is None:
-            return
-        if not self.lifecycle.is_available() and not self.lifecycle.attach():
-            raise RuntimeError("external game session unavailable and attach() failed")
+            return False
+        if not self.lifecycle.is_available():
+            if not self.lifecycle.attach():
+                raise RuntimeError("external game session unavailable and attach() failed")
+            self.lifecycle.focus()  # best-effort; False is tolerated
+            return True
         self.lifecycle.focus()  # best-effort; False is tolerated
+        return False
+
+    def _sleep_ms(self, milliseconds: float) -> None:
+        if milliseconds:
+            self.clock.sleep(milliseconds / 1000.0)
 
     # -- Gymnasium API ----------------------------------------------------
     def reset(self, *, seed=None, options=None):
-        self._ensure_session()
+        attached_now = self._ensure_session()
+        if attached_now and not self._started:
+            self._sleep_ms(self.startup_delay_ms)
+            self._started = True
+        self._sleep_ms(self.reset_delay_ms)
         raw = self.interface.capture()
         self._validate_raw(raw)
         self._steps = 0
+        self._episode_start = self.clock.now()
         self._last_raw = raw
         return self.stack.reset(raw), {}
 
@@ -198,14 +271,24 @@ class ExternalGameEnv(_Base):
         if self._last_raw is None:
             raise RuntimeError("step() before reset()")
         self.interface.execute(action)  # validates + performs OS input
+        self._sleep_ms(self.post_action_delay_ms)
         raw = self.interface.capture()
         self._validate_raw(raw)
         self._steps += 1
         reward = float(self.reward_provider.reward(self._last_raw, raw, int(action)))
         terminated, truncated = (bool(v) for v in
                                  self.termination_provider.done(self._last_raw, raw, int(action), self._steps))
+        if not terminated and self._timed_out():
+            truncated = True  # timeouts are truncations, never terminations
         self._last_raw = raw
         return self.stack.push(raw), reward, terminated, truncated, {}
+
+    def _timed_out(self) -> bool:
+        if self.max_episode_steps is not None and self._steps >= self.max_episode_steps:
+            return True
+        if self.max_episode_seconds is not None:
+            return (self.clock.now() - self._episode_start) >= self.max_episode_seconds
+        return False
 
     def render(self):
         if self._last_raw is None:

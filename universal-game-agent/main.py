@@ -138,6 +138,11 @@ def cmd_smoke_test(args) -> int:
     print("smoke-test OK")
     return 0
 
+def _sync_optimizer_lr(trainer, learning_rate: float) -> None:
+    """Point a resumed optimizer at the resumed run's LR; keep momentum state."""
+    for group in trainer.optimizer.param_groups:
+        group["lr"] = float(learning_rate)
+
 
 def cmd_train(args) -> int:
     cfg, err = _load_config(args.config)
@@ -165,6 +170,7 @@ def cmd_train(args) -> int:
             return _fail(f"checkpoint not found: {args.resume} (--resume PATH)")
         trainer = PPOTrainer.load_checkpoint(args.resume, make_env_from_config(cfg.get("env", {}))())
         trainer.config = ppo_config  # overrides (timesteps/seed/dir) apply to resumed run
+        _sync_optimizer_lr(trainer, ppo_config.learning_rate)
         print(f"resumed from {args.resume} at step {trainer.num_timesteps}")
     else:
         seed = int(ppo_kwargs.get("seed", 0))
@@ -188,7 +194,10 @@ def cmd_evaluate(args) -> int:
     from training.evaluate import evaluate
     from training.experiment import make_env_from_config
 
-    episodes = args.episodes if args.episodes is not None else int(cfg.get("eval", {}).get("episodes", 20))
+    try:
+        episodes = args.episodes if args.episodes is not None else int(cfg.get("eval", {}).get("episodes", 20))
+    except (ValueError, TypeError) as exc:
+        return _fail(f"invalid eval.episodes value: {exc}")
     if episodes <= 0:
         return _fail(f"--episodes must be positive, got {args.episodes}")
     seed = args.seed if args.seed is not None else 0
@@ -196,15 +205,12 @@ def cmd_evaluate(args) -> int:
     if args.checkpoint is not None:
         if not Path(args.checkpoint).is_file():
             return _fail(f"checkpoint not found: {args.checkpoint} (--checkpoint PATH)")
-        import torch
-
-        ckpt_kind = torch.load(args.checkpoint, map_location="cpu").keys()
-        if "model_config" in ckpt_kind:  # PPOTrainer checkpoint
+        try:
             from training.ppo import PPOTrainer
 
             model = PPOTrainer.load_checkpoint(args.checkpoint, make_env()).model
-        else:  # ActorCritic.save checkpoint
-            model = ActorCritic.load(args.checkpoint)
+        except KeyError:
+            model = ActorCritic.load(args.checkpoint)  # ActorCritic.save format
         print(f"loaded checkpoint {args.checkpoint}")
     else:
         probe = make_env()

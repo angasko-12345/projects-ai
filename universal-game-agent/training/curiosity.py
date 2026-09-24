@@ -35,7 +35,12 @@ class CuriosityConfig:
 
     @classmethod
     def from_dict(cls, data: dict) -> "CuriosityConfig":
+        import warnings
+
         known = {f for f in cls.__dataclass_fields__}
+        for key in (data or {}):
+            if key not in known:
+                warnings.warn(f"curiosity: ignoring unknown config key {key!r}", UserWarning, stacklevel=3)
         return cls(**{k: v for k, v in (data or {}).items() if k in known})
 
 

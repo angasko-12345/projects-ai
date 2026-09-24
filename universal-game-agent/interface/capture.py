@@ -99,7 +99,11 @@ class ScreenCapture:
 
 
 class WindowCapture:
-    """Target-window client area -> RGB pixels; rect re-read every frame."""
+    """Target top-level window -> RGB pixels; rect re-read every frame.
+
+    Uses the full window frame (GetWindowRect, including title bar and
+    borders), not the client area alone.
+    """
 
     def __init__(self, window, backend, out_width: int, out_height: int):
         self.window = window

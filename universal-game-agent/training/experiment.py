@@ -34,7 +34,16 @@ def load_experiment(path: str | Path) -> dict:
     return cfg
 
 
+_ENV_KEYS = {"width", "height", "max_steps", "obs_size", "num_stack", "skip"}
+
+
 def make_env_from_config(env_cfg: dict):
+    import warnings
+
+    for key in (env_cfg or {}):
+        if key not in _ENV_KEYS:
+            warnings.warn(f"env: ignoring unknown config key {key!r}", UserWarning, stacklevel=3)
+
     def make():
         return PreprocessingWrapper(
             ToyPongEnv(
@@ -46,7 +55,6 @@ def make_env_from_config(env_cfg: dict):
             num_stack=int(env_cfg.get("num_stack", 4)),
             skip=int(env_cfg.get("skip", 1)),
         )
-
     return make
 
 

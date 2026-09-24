@@ -134,7 +134,7 @@ class ActorCritic(nn.Module):
 
     @classmethod
     def load(cls, path, map_location="cpu") -> "ActorCritic":
-        ckpt = torch.load(path, map_location=map_location)
+        ckpt = torch.load(path, map_location=map_location, weights_only=True)
         model = cls(**ckpt["config"])
         model.load_state_dict(ckpt["state"])
         return model

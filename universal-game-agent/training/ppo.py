@@ -49,12 +49,19 @@ class PPOConfig:
         for name in ("rollout_length", "minibatch_size", "update_epochs", "total_timesteps"):
             if not isinstance(getattr(self, name), int) or getattr(self, name) <= 0:
                 raise ValueError(f"{name} must be a positive int, got {getattr(self, name)!r}")
+        if not isinstance(self.seed, int) or self.seed < 0:
+            raise ValueError(f"seed must be a non-negative int, got {self.seed!r}")
         if not 0 <= self.gamma <= 1 or not 0 <= self.gae_lambda <= 1:
             raise ValueError("gamma and gae_lambda must be in [0, 1]")
 
     @classmethod
     def from_dict(cls, data: dict) -> "PPOConfig":
+        import warnings
+
         known = {f.name for f in fields(cls)}
+        for key in data:
+            if key not in known:
+                warnings.warn(f"ppo: ignoring unknown config key {key!r}", UserWarning, stacklevel=3)
         return cls(**{k: v for k, v in data.items() if k in known})
 
 
@@ -286,7 +293,7 @@ class PPOTrainer:
     def load_checkpoint(cls, path, env, device="cpu") -> "PPOTrainer":
         from training.curiosity import CuriosityConfig, CuriosityModule
 
-        ckpt = torch.load(path, map_location=device)
+        ckpt = torch.load(path, map_location=device, weights_only=True)
         trainer = cls(env, ActorCritic(**ckpt["model_config"]), PPOConfig(**ckpt["ppo_config"]), device)
         trainer.model.load_state_dict(ckpt["model"])
         trainer.optimizer.load_state_dict(ckpt["optimizer"])
