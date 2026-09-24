@@ -160,7 +160,13 @@ class PPOTrainer:
             int_raw = torch.zeros(cfg.rollout_length)
         buf["int_rewards"] = int_scaled.float()
         buf["rewards"] = buf["ext"] + buf["int_rewards"]  # total drives GAE
-        buf["pixel_change"] = float(torch.abs(buf["obs"][1:] - buf["obs"][:-1]).mean())
+        # No frame pair exists for a one-step rollout: report 0.0 (no observed
+        # change) instead of NaN. Metric only; training is unaffected.
+        buf["pixel_change"] = (
+            float(torch.abs(buf["obs"][1:] - buf["obs"][:-1]).mean())
+            if buf["obs"].shape[0] > 1
+            else 0.0
+        )
         # Per-episode sums, spanning-aware via carry accumulators.
         acc_e = getattr(self, "_ep_ext", 0.0)
         acc_i = getattr(self, "_ep_int", 0.0)

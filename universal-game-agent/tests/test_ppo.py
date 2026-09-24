@@ -352,3 +352,15 @@ class TestBoundarySemantics(unittest.TestCase):
         buf2, *_ = trainer.collect_rollout()
         self.assertTrue(bool((buf2["h0"] == 0).all()))
         self.assertTrue(torch.equal(buf["next_value"], torch.zeros(())))
+
+
+@unittest.skipUnless(_HAS_TORCH, "torch not installed")
+class TestMetricsEdgeCases(unittest.TestCase):
+    def test_pixel_change_single_frame_is_zero_not_nan(self):
+        env = PreprocessingWrapper(ToyPongEnv(max_steps=64))
+        model = ActorCritic(num_actions=int(env.action_space.n))
+        config = PPOConfig(rollout_length=1, minibatch_size=1, update_epochs=1,
+                           total_timesteps=1, checkpoint_every_updates=100)
+        buf, *_ = PPOTrainer(env, model, config).collect_rollout()
+        self.assertEqual(buf["pixel_change"], 0.0)
+        self.assertTrue(buf["pixel_change"] == buf["pixel_change"])  # not NaN
