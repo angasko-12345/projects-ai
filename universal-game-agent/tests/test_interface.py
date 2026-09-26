@@ -57,6 +57,21 @@ class TestActionMapper(unittest.TestCase):
         self.assertEqual(mapper.execute(0), "NOOP")
         self.assertEqual(len(backend.calls), 2)  # noop emits nothing
 
+    def test_release_on_mid_hold_failure(self):
+        from unittest.mock import patch
+
+        backend = RecordingBackend()
+        table = [ActionDef("PRESS_W", kind="key", vk=VK["W"], hold_ms=50),
+                 ActionDef("CLICK", kind="mouse_button", button="left", hold_ms=50)]
+        mapper = ActionMapper(backend, table)
+        with patch("time.sleep", side_effect=RuntimeError("interrupted")):
+            with self.assertRaises(RuntimeError):
+                mapper.execute(0)
+            with self.assertRaises(RuntimeError):
+                mapper.execute(1)
+        self.assertEqual(backend.calls, [("key_down", VK["W"]), ("key_up", VK["W"]),
+                                         ("mouse_down", "left"), ("mouse_up", "left")])
+
     def test_mouse_actions(self):
         backend = RecordingBackend()
         table = [
@@ -194,7 +209,79 @@ class TestWindowManager(unittest.TestCase):
     def test_vk_table(self):
         self.assertEqual((VK["W"], VK["A"], VK["S"], VK["D"]), (0x57, 0x41, 0x53, 0x44))
         self.assertEqual(VK["SPACE"], 0x20)
+        self.assertEqual((VK["LEFT"], VK["RIGHT"], VK["UP"], VK["DOWN"]), (0x25, 0x27, 0x26, 0x28))
 
+
+class TestChordsAndCooldown(unittest.TestCase):
+    def test_chord_press_release_order(self):
+        backend = RecordingBackend()
+        table = [ActionDef("NOOP"),
+                 ActionDef("SPRINT", kind="chord", keys=(VK["SHIFT"], VK["W"]), hold_ms=0)]
+        mapper = ActionMapper(backend, table)
+        self.assertEqual(mapper.execute(1), "SPRINT")
+        self.assertEqual(backend.calls, [("key_down", VK["SHIFT"]), ("key_down", VK["W"]),
+                                         ("key_up", VK["W"]), ("key_up", VK["SHIFT"])])
+
+    def test_chord_failure_releases_all(self):
+        from unittest.mock import patch
+
+        backend = RecordingBackend()
+        table = [ActionDef("C3", kind="chord", keys=(0x10, 0x57, 0x41), hold_ms=50)]
+        mapper = ActionMapper(backend, table)
+        with patch("time.sleep", side_effect=RuntimeError("interrupted")):
+            with self.assertRaises(RuntimeError):
+                mapper.execute(0)
+        self.assertEqual(backend.calls, [("key_down", 0x10), ("key_down", 0x57), ("key_down", 0x41),
+                                         ("key_up", 0x41), ("key_up", 0x57), ("key_up", 0x10)])
+
+    def test_cooldown_throttles(self):
+        backend = RecordingBackend()
+        table = [ActionDef("TAP", kind="key", vk=VK["W"], hold_ms=0, cooldown_ms=60000)]
+        mapper = ActionMapper(backend, table)
+        self.assertEqual(mapper.execute(0), "TAP")
+        self.assertEqual(mapper.execute(0), "TAP")  # throttled: named no-op
+        self.assertEqual(backend.calls, [("key_down", VK["W"]), ("key_up", VK["W"])])
+
+    def test_cooldown_zero_always_fires(self):
+        backend = RecordingBackend()
+        mapper = ActionMapper(backend, [ActionDef("TAP", kind="key", vk=VK["W"], hold_ms=0)])
+        mapper.execute(0)
+        mapper.execute(0)
+        self.assertEqual(len(backend.calls), 4)
+
+    def test_invalid_definitions_rejected(self):
+        with self.assertRaises(ValueError):
+            ActionDef("", kind="key", vk=VK["W"])
+        with self.assertRaises(ValueError):
+            ActionDef("X", kind="key", vk=0)
+        with self.assertRaises(ValueError):
+            ActionDef("X", kind="key", vk=999)
+        with self.assertRaises(ValueError):
+            ActionDef("X", kind="key", vk=VK["W"], keys=(VK["A"],))
+        with self.assertRaises(ValueError):
+            ActionDef("X", kind="chord", keys=(VK["W"],))
+        with self.assertRaises(ValueError):
+            ActionDef("X", kind="chord", keys=(VK["W"], 0))
+        with self.assertRaises(ValueError):
+            ActionDef("X", kind="mouse_move", dx=1.5, dy=0)
+        with self.assertRaises(ValueError):
+            ActionDef("X", kind="mouse_button", button="wheel")
+        with self.assertRaises(ValueError):
+            ActionDef("X", cooldown_ms=-1)
+
+    def test_chord_from_config(self):
+        from environment.external_game import _build_action_table
+
+        table = _build_action_table([
+            {"name": "NOOP", "kind": "noop"},
+            {"name": "RUN", "kind": "chord", "keys": [16, 87], "hold_ms": 10, "cooldown_ms": 50},
+        ])
+        self.assertEqual(table[1].keys, (16, 87))
+        self.assertEqual(table[1].cooldown_ms, 50)
+        backend = RecordingBackend()
+        mapper = ActionMapper(backend, table)
+        mapper.execute(1)
+        self.assertEqual(backend.calls[0], ("key_down", 16))
 
 if __name__ == "__main__":
     unittest.main()

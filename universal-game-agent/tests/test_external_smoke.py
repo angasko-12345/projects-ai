@@ -121,5 +121,83 @@ class TestDriveLoop(unittest.TestCase):
         with self.assertRaises(ValueError):
             drive_loop(env, model, steps=0)
 
+    @_needs_torch
+    def test_policy_mode_greedy(self):
+        import torch
+        from agent.model import ActorCritic
+        from environment.external_game import ExternalGameEnv, NullRewardProvider, StepLimitTermination
+        from training.external_smoke import drive_loop
+
+        def run_once():
+            torch.manual_seed(0)
+            env = ExternalGameEnv(
+                FakeInterface([_frame(10), _frame(200)]),
+                NullRewardProvider(), StepLimitTermination(max_steps=10),
+                lifecycle=None)
+            model = ActorCritic(num_actions=3, in_channels=4, feature_dim=32, hidden_size=16)
+            return drive_loop(env, model, steps=4, mode="policy", seed=0)
+
+        first, second = run_once(), run_once()
+        self.assertEqual(first["actions_sent"], second["actions_sent"])
+        self.assertEqual(first["status"], "completed")
+
+    @_needs_torch
+    def test_failed_report_on_lost_window(self):
+        import torch
+        from agent.model import ActorCritic
+        from environment.external_game import ExternalGameEnv, NullRewardProvider, StepLimitTermination
+        from training.external_smoke import run_bounded
+
+        class DyingInterface(FakeInterface):
+            def capture(self):
+                raise RuntimeError("window gone")
+
+        torch.manual_seed(0)
+        env = ExternalGameEnv(
+            DyingInterface([_frame(10)]),
+            NullRewardProvider(), StepLimitTermination(max_steps=10),
+            lifecycle=None)
+        model = ActorCritic(num_actions=3, in_channels=4, feature_dim=32, hidden_size=16)
+        rep = run_bounded(env, model, steps=4, mode="fixed", seed=0)
+        self.assertEqual(rep["status"], "failed")
+        self.assertIn("window gone", rep["error"])
+
+    @_needs_torch
+    def test_timeout_status(self):
+        import torch
+        from agent.model import ActorCritic
+        from environment.external_game import ExternalGameEnv, NullRewardProvider, StepLimitTermination
+        from training.external_smoke import drive_loop, run_bounded
+
+        torch.manual_seed(0)
+        env = ExternalGameEnv(
+            FakeInterface([_frame(10)]),
+            NullRewardProvider(), StepLimitTermination(max_steps=1000),
+            lifecycle=None)
+        model = ActorCritic(num_actions=3, in_channels=4, feature_dim=32, hidden_size=16)
+        rep = drive_loop(env, model, steps=100, mode="fixed", seed=0, max_seconds=0.0)
+        self.assertEqual(rep["status"], "timeout")
+        self.assertLess(rep["decisions"], 100)
+        rep2 = run_bounded(env, model, steps=4, mode="fixed", seed=0)
+        self.assertEqual(rep2["status"], "completed")
+        self.assertIn("total_external_reward", rep2)
+
+    @_needs_torch
+    def test_invalid_mode_rejected(self):
+        import torch
+        from agent.model import ActorCritic
+        from environment.external_game import ExternalGameEnv, NullRewardProvider, StepLimitTermination
+        from training.external_smoke import drive_loop
+
+        torch.manual_seed(0)
+        env = ExternalGameEnv(
+            FakeInterface([_frame(10)]),
+            NullRewardProvider(), StepLimitTermination(max_steps=10),
+            lifecycle=None)
+        model = ActorCritic(num_actions=3, in_channels=4, feature_dim=32, hidden_size=16)
+        with self.assertRaises(ValueError):
+            drive_loop(env, model, steps=2, mode="telepathy", seed=0)
+
+
 if __name__ == "__main__":
     unittest.main()

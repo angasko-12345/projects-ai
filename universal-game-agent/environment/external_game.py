@@ -290,6 +290,10 @@ class ExternalGameEnv(_Base):
     def close(self):
         if self.lifecycle is not None:
             self.lifecycle.close()
+        backend = getattr(getattr(self.interface, "capture_source", None), "backend", None)
+        close = getattr(backend, "close", None)
+        if callable(close):
+            close()
 
     @staticmethod
     def _validate_raw(raw: np.ndarray) -> None:
@@ -311,14 +315,17 @@ def _build_action_table(table_cfg) -> list:
     for entry in table_cfg:
         if not isinstance(entry, dict):
             raise ValueError(f"action entries must be mappings, got {entry!r}")
+        keys = entry.get("keys", ())
         table.append(ActionDef(
             name=str(entry["name"]),
             kind=str(entry.get("kind", "key")),
             vk=int(entry.get("vk", 0)),
+            keys=tuple(int(v) for v in keys),
             button=str(entry.get("button", "left")),
             dx=int(entry.get("dx", 0)),
             dy=int(entry.get("dy", 0)),
             hold_ms=int(entry.get("hold_ms", 0)),
+            cooldown_ms=int(entry.get("cooldown_ms", 0)),
         ))
     return table
 

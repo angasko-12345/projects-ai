@@ -13,10 +13,12 @@ import time
 from ctypes import wintypes
 from dataclasses import dataclass, field
 
-# Virtual-key codes.
+# Virtual-key codes (common subset; raw ints 1..254 also accepted as vk).
 VK = {
     "W": 0x57, "A": 0x41, "S": 0x53, "D": 0x44,
     "SPACE": 0x20, "SHIFT": 0x10, "ESC": 0x1B,
+    "LEFT": 0x25, "UP": 0x26, "RIGHT": 0x27, "DOWN": 0x28,
+    "ENTER": 0x0D, "TAB": 0x09, "CTRL": 0x11, "ALT": 0x12,
 }
 MOUSE_BUTTONS = ("left", "right", "middle")
 
@@ -24,20 +26,42 @@ MOUSE_BUTTONS = ("left", "right", "middle")
 @dataclass(frozen=True)
 class ActionDef:
     name: str
-    kind: str = "noop"  # noop | key | mouse_button | mouse_move
+    kind: str = "noop"  # noop | key | chord | mouse_button | mouse_move
     vk: int = 0
+    keys: tuple = ()
     button: str = "left"
     dx: int = 0
     dy: int = 0
     hold_ms: int = 80
+    cooldown_ms: int = 0
 
     def __post_init__(self):
-        if self.kind not in ("noop", "key", "mouse_button", "mouse_move"):
+        if not self.name:
+            raise ValueError("action name must be non-empty")
+        if self.kind not in ("noop", "key", "chord", "mouse_button", "mouse_move"):
             raise ValueError(f"unknown action kind {self.kind!r}")
+        if self.kind == "key":
+            if not 1 <= self.vk <= 254:
+                raise ValueError(f"key action needs vk in 1..254, got {self.vk!r}")
+            if self.keys:
+                raise ValueError("key action takes vk, not keys (use kind 'chord')")
+        if self.kind == "chord":
+            if len(self.keys) < 2:
+                raise ValueError(f"chord needs 2+ keys, got {self.keys!r}")
+            for vk in self.keys:
+                if not isinstance(vk, int) or isinstance(vk, bool) or not 1 <= vk <= 254:
+                    raise ValueError(f"chord keys must be ints in 1..254, got {vk!r}")
         if self.kind == "mouse_button" and self.button not in MOUSE_BUTTONS:
             raise ValueError(f"unknown mouse button {self.button!r}")
+        if self.kind == "mouse_move" and (
+            not isinstance(self.dx, int) or not isinstance(self.dy, int)
+            or isinstance(self.dx, bool) or isinstance(self.dy, bool)
+        ):
+            raise ValueError(f"mouse_move needs int dx/dy, got {(self.dx, self.dy)!r}")
         if self.hold_ms < 0:
             raise ValueError(f"hold_ms must be >= 0, got {self.hold_ms!r}")
+        if self.cooldown_ms < 0:
+            raise ValueError(f"cooldown_ms must be >= 0, got {self.cooldown_ms!r}")
 
 
 def pc_action_table(mouse_move_delta: tuple[int, int] = (20, 0), hold_ms: int = 80) -> list[ActionDef]:
@@ -162,6 +186,7 @@ class ActionMapper:
         names = action_names(self.table)
         if len(set(names)) != len(names):
             raise ValueError(f"duplicate action names: {names}")
+        self._last_fired: dict = {}
 
     @property
     def num_actions(self) -> int:
@@ -174,16 +199,35 @@ class ActionMapper:
         spec = self.table[action]
         if spec.kind == "noop":
             return spec.name
+        if spec.cooldown_ms:
+            now = time.monotonic()
+            last = self._last_fired.get(action)
+            if last is not None and (now - last) * 1000.0 < spec.cooldown_ms:
+                return spec.name  # throttled: named no-op, nothing sent
+            self._last_fired[action] = now
         if spec.kind == "key":
             self.backend.key_down(spec.vk)
-            if spec.hold_ms:
-                time.sleep(spec.hold_ms / 1000.0)
-            self.backend.key_up(spec.vk)
+            try:
+                if spec.hold_ms:
+                    time.sleep(spec.hold_ms / 1000.0)
+            finally:
+                self.backend.key_up(spec.vk)  # never leave a key stuck down
+        elif spec.kind == "chord":
+            for vk in spec.keys:
+                self.backend.key_down(vk)
+            try:
+                if spec.hold_ms:
+                    time.sleep(spec.hold_ms / 1000.0)
+            finally:
+                for vk in reversed(spec.keys):  # release all, even on failure
+                    self.backend.key_up(vk)
         elif spec.kind == "mouse_button":
             self.backend.mouse_down(spec.button)
-            if spec.hold_ms:
-                time.sleep(spec.hold_ms / 1000.0)
-            self.backend.mouse_up(spec.button)
+            try:
+                if spec.hold_ms:
+                    time.sleep(spec.hold_ms / 1000.0)
+            finally:
+                self.backend.mouse_up(spec.button)
         elif spec.kind == "mouse_move":
             self.backend.mouse_move(spec.dx, spec.dy)
         return spec.name

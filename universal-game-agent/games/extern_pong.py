@@ -99,6 +99,8 @@ def main(argv=None) -> int:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--fps", type=int, default=60)
     parser.add_argument("--auto-quit", type=float, default=0.0)
+    parser.add_argument("--geometry", default=None,
+                        help="window placement, e.g. 336x279+100+100 (Tk geometry string)")
     args = parser.parse_args(argv)
     if tk is None:
         print("error: tkinter unavailable", file=sys.stderr)
@@ -109,6 +111,12 @@ def main(argv=None) -> int:
         print("error: no display available", file=sys.stderr)
         return 2
     root.title(args.title)
+    if args.geometry:
+        try:
+            root.geometry(args.geometry)
+        except tk.TclError as exc:
+            print(f"error: bad --geometry: {exc}", file=sys.stderr)
+            return 2
     PongApp(root, PongLogic(seed=args.seed), fps=args.fps, auto_quit=args.auto_quit)
     try:
         root.mainloop()

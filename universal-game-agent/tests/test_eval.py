@@ -124,7 +124,7 @@ def _tiny_model():
 class TestEvalCorrectness(unittest.TestCase):
     EXPECTED_KEYS = {"episodes", "greedy", "seeds", "mean_reward", "std_reward",
                      "min_reward", "max_reward", "mean_length",
-                     "episode_rewards", "episode_lengths"}
+                     "episode_rewards", "episode_lengths", "action_counts"}
 
     def test_attribution_and_schema(self):
         from training.evaluate import evaluate as evaluate_fn
