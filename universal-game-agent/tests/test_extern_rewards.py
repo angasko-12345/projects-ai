@@ -85,6 +85,16 @@ class TestExternPongReward(unittest.TestCase):
         with self.assertRaises(ValueError):
             ExternPongTermination(miss_min=0)
 
+    def test_hit_band_across_capture_sizes(self):
+        for size in (48, 96, 128):
+            frame = np.zeros((size, size, 3), dtype=np.uint8)
+            side = round(6 * size / 48)
+            frame[0:side, 0:side] = (255, 0, 0)
+            count = int(red_mask(frame).sum())
+            if size <= 96:
+                self.assertTrue(8 <= count <= 200, (size, count))
+            else:
+                self.assertGreater(count, 200)  # documents the upper limit
 
 if __name__ == "__main__":
     unittest.main()

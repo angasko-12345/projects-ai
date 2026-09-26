@@ -206,12 +206,43 @@ def cmd_train(args) -> int:
     return 0
 
 
+def _build_eval_model(cfg: dict, make_env, seed: int, checkpoint):
+    """Fresh random model, or a checkpoint in either supported format."""
+    from agent.model import ActorCritic
+
+    if checkpoint is not None:
+        if not Path(checkpoint).is_file():
+            raise FileNotFoundError(f"checkpoint not found: {checkpoint}")
+        try:
+            from training.ppo import PPOTrainer
+
+            return PPOTrainer.load_checkpoint(checkpoint, make_env()).model
+        except KeyError:
+            return ActorCritic.load(checkpoint)  # ActorCritic.save format
+    probe = make_env()
+    num_actions = int(probe.action_space.n)
+    probe.close()
+    import torch
+
+    torch.manual_seed(seed)
+    return ActorCritic(num_actions=num_actions, **cfg.get("model", {}))
+
+
+def _print_eval_report(title: str, rep: dict) -> None:
+    actions = rep["action_counts"]
+    total = sum(actions.values()) or 1
+    mix = ", ".join(f"{a}:{c} ({100.0 * c / total:.0f}%)" for a, c in sorted(actions.items()))
+    print(f"{title}: episodes={rep['episodes']} mean={rep['mean_reward']:.2f} "
+          f"total={sum(rep['episode_rewards']):.1f} hits/ep={rep['mean_hits']:.1f} "
+          f"misses/ep={rep['mean_misses']:.1f} len={rep['mean_length']:.1f} "
+          f"term={sum(1 for _ in rep['episode_rewards']):d} actions=[{mix}]")
+
+
 def cmd_evaluate(args) -> int:
     cfg, err = _load_config(args.config)
     if err is not None:
         return err
     _need_torch("evaluate")
-    from agent.model import ActorCritic
     from training.evaluate import evaluate
     from training.experiment import make_env_from_config
 
@@ -226,31 +257,62 @@ def cmd_evaluate(args) -> int:
         make_env = make_env_from_config(cfg.get("env", {}))
     except (ValueError, RuntimeError, OSError) as exc:
         return _fail(f"cannot build environment: {exc}")
+    try:
+        model = _build_eval_model(cfg, make_env, seed, args.checkpoint)
+    except (FileNotFoundError, KeyError, ValueError, RuntimeError, OSError) as exc:
+        return _fail(str(exc))
     if args.checkpoint is not None:
-        if not Path(args.checkpoint).is_file():
-            return _fail(f"checkpoint not found: {args.checkpoint} (--checkpoint PATH)")
-        try:
-            from training.ppo import PPOTrainer
-
-            model = PPOTrainer.load_checkpoint(args.checkpoint, make_env()).model
-        except KeyError:
-            model = ActorCritic.load(args.checkpoint)  # ActorCritic.save format
         print(f"loaded checkpoint {args.checkpoint}")
-    else:
-        probe = make_env()
-        num_actions = int(probe.action_space.n)
-        probe.close()
-        import torch
-
-        torch.manual_seed(seed)
-        model = ActorCritic(num_actions=num_actions, **cfg.get("model", {}))
     rep = evaluate(model, make_env, episodes=episodes,
                    seeds=[seed * 1000 + i for i in range(episodes)],
                    greedy=not args.sampled)
-    print(f"eval ({'sampled' if args.sampled else 'greedy'}, {episodes} episodes): "
-          f"mean={rep['mean_reward']:.2f} std={rep['std_reward']:.2f} "
-          f"min={rep['min_reward']:.1f} max={rep['max_reward']:.1f} "
-          f"mean_length={rep['mean_length']:.1f}")
+    _print_eval_report(f"eval ({'sampled' if args.sampled else 'greedy'}, {episodes} episodes)", rep)
+    return 0
+
+
+def cmd_compare(args) -> int:
+    """Evaluate a fresh model and a checkpoint on identical seeds and report the verdict."""
+    cfg, err = _load_config(args.config)
+    if err is not None:
+        return err
+    _need_torch("compare")
+    from training.evaluate import evaluate
+    from training.experiment import make_env_from_config
+
+    try:
+        episodes = args.episodes if args.episodes is not None else int(cfg.get("eval", {}).get("episodes", 20))
+    except (ValueError, TypeError) as exc:
+        return _fail(f"invalid eval.episodes value: {exc}")
+    if episodes <= 0:
+        return _fail(f"--episodes must be positive, got {args.episodes}")
+    seed = args.seed if args.seed is not None else 0
+    try:
+        make_env = make_env_from_config(cfg.get("env", {}))
+    except (ValueError, RuntimeError, OSError) as exc:
+        return _fail(f"cannot build environment: {exc}")
+    seeds = [seed * 1000 + i for i in range(episodes)]
+    try:
+        fresh = _build_eval_model(cfg, make_env, seed, None)
+        trained = _build_eval_model(cfg, make_env, seed, args.checkpoint)
+    except (FileNotFoundError, KeyError, ValueError, RuntimeError, OSError) as exc:
+        return _fail(str(exc))
+    print(f"loaded checkpoint {args.checkpoint}")
+    rep_fresh = evaluate(fresh, make_env, episodes=episodes, seeds=seeds,
+                         greedy=not args.sampled)
+    rep_trained = evaluate(trained, make_env, episodes=episodes, seeds=seeds,
+                           greedy=not args.sampled)
+    _print_eval_report("untrained", rep_fresh)
+    _print_eval_report("trained  ", rep_trained)
+    diff = rep_trained["mean_reward"] - rep_fresh["mean_reward"]
+    if diff > 0:
+        verdict = "trained performance > untrained performance"
+    elif diff < 0:
+        verdict = "trained performance < untrained performance"
+    else:
+        verdict = "trained performance ~= untrained performance"
+    print(f"difference (trained-untrained): {diff:+.2f} -> {verdict}")
+    print(f"weights/policy/behavior check: action mix fresh={rep_fresh['action_counts']} "
+          f"vs trained={rep_trained['action_counts']}")
     return 0
 
 
@@ -307,6 +369,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_eval.add_argument("--sampled", action="store_true",
                         help="sample actions instead of greedy argmax")
     p_eval.set_defaults(func=cmd_evaluate)
+
+    p_cmp = sub.add_parser("compare", help="evaluate fresh vs checkpoint model on identical seeds")
+    p_cmp.add_argument("--config", default=DEFAULT_CONFIG)
+    p_cmp.add_argument("--checkpoint", required=True, metavar="PATH",
+                       help="trained checkpoint to compare against a fresh model")
+    p_cmp.add_argument("--episodes", type=_positive_int, default=None,
+                       help="override eval.episodes")
+    p_cmp.add_argument("--seed", type=int, default=None, help="seed base for eval episode seeds")
+    p_cmp.add_argument("--sampled", action="store_true",
+                       help="sample actions instead of greedy argmax")
+    p_cmp.set_defaults(func=cmd_compare)
 
     p_exp = sub.add_parser("experiment", help="run a baseline -> train -> eval experiment YAML")
     p_exp.add_argument("--config", required=True, help="experiment YAML (see experiments/)")

@@ -124,7 +124,8 @@ def _tiny_model():
 class TestEvalCorrectness(unittest.TestCase):
     EXPECTED_KEYS = {"episodes", "greedy", "seeds", "mean_reward", "std_reward",
                      "min_reward", "max_reward", "mean_length",
-                     "episode_rewards", "episode_lengths", "action_counts"}
+                     "episode_rewards", "episode_lengths", "action_counts",
+                     "episode_hits", "episode_misses", "mean_hits", "mean_misses"}
 
     def test_attribution_and_schema(self):
         from training.evaluate import evaluate as evaluate_fn
@@ -219,7 +220,15 @@ class TestEvalCorrectness(unittest.TestCase):
         self.assertEqual(rep["episode_rewards"], [5.0])
         self.assertEqual(rep["episode_lengths"], [1])
         self.assertEqual(rep["std_reward"], 0.0)
-    def test_zero_episodes_rejected(self):
+
+    def test_hits_and_misses_counted(self):
+        from training.evaluate import evaluate as evaluate_fn
+
+        rep = evaluate_fn(_tiny_model(), ScriptedEvalEnv, episodes=2, seeds=[0, 1])
+        self.assertEqual(rep["episode_hits"], [2, 1])
+        self.assertEqual(rep["episode_misses"], [0, 0])
+        self.assertEqual(rep["mean_hits"], 1.5)
+        self.assertEqual(rep["mean_misses"], 0.0)
         from training.evaluate import evaluate as evaluate_fn
 
         with self.assertRaises(ValueError):

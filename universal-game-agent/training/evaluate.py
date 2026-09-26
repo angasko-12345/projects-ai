@@ -22,6 +22,7 @@ def evaluate(model: ActorCritic, make_env, episodes: int = 20, seeds=None, greed
     model.eval()
     device = next(model.parameters()).device
     rewards, lengths, action_counts = [], [], []
+    episode_hits, episode_misses = [], []
     try:
         for ep in range(episodes):
             env = make_env()
@@ -29,6 +30,7 @@ def evaluate(model: ActorCritic, make_env, episodes: int = 20, seeds=None, greed
             hidden = model.initial_state(1, device)
             total, steps = 0.0, 0
             counts: dict = {}
+            hits = misses = 0
             while True:
                 t = torch.from_numpy(np.ascontiguousarray(obs, dtype=np.float32)).unsqueeze(0).to(device)
                 logits, _, hidden = model(t, hidden)
@@ -36,11 +38,17 @@ def evaluate(model: ActorCritic, make_env, episodes: int = 20, seeds=None, greed
                 counts[action] = counts.get(action, 0) + 1
                 obs, reward, terminated, truncated, _ = env.step(action)
                 total, steps = total + float(reward), steps + 1
+                if float(reward) > 0:
+                    hits += 1
+                elif float(reward) < 0:
+                    misses += 1
                 if terminated or truncated:
                     break
             rewards.append(total)
             lengths.append(steps)
             action_counts.append(counts)
+            episode_hits.append(hits)
+            episode_misses.append(misses)
             env.close()
     finally:
         if was_training:
@@ -62,4 +70,8 @@ def evaluate(model: ActorCritic, make_env, episodes: int = 20, seeds=None, greed
         "episode_rewards": [float(r) for r in rewards],
         "episode_lengths": [int(s) for s in lengths],
         "action_counts": total_counts,
+        "episode_hits": [int(h) for h in episode_hits],
+        "episode_misses": [int(m) for m in episode_misses],
+        "mean_hits": float(np.mean(episode_hits)),
+        "mean_misses": float(np.mean(episode_misses)),
     }

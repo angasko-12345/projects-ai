@@ -52,7 +52,9 @@ class TestCLIDispatch(unittest.TestCase):
 
     def test_evaluate_dispatch(self):
         fake = {"mean_reward": 1.0, "std_reward": 0.0, "min_reward": 1.0,
-                "max_reward": 1.0, "mean_length": 10.0}
+                "max_reward": 1.0, "mean_length": 10.0, "episodes": 2,
+                "episode_rewards": [1.0, 1.0], "action_counts": {0: 20},
+                "mean_hits": 0.0, "mean_misses": 0.0}
         with patch("training.evaluate.evaluate", return_value=fake):
             code, out = _run(["evaluate", "--config", str(ROOT / "configs" / "default.yaml"),
                               "--episodes", "2"])
@@ -62,6 +64,30 @@ class TestCLIDispatch(unittest.TestCase):
     def test_evaluate_missing_checkpoint(self):
         code, _ = _run(["evaluate", "--config", str(ROOT / "configs" / "default.yaml"),
                         "--checkpoint", "nope.pt"])
+        self.assertEqual(code, 2)
+
+    def test_compare_dispatch(self):
+        import main as cli_main
+
+        def _rep(mean, actions, rewards, hits, misses):
+            return {"mean_reward": mean, "std_reward": 0.0, "min_reward": mean,
+                    "max_reward": mean, "mean_length": 10.0, "episodes": 1,
+                    "episode_rewards": rewards, "action_counts": actions,
+                    "mean_hits": hits, "mean_misses": misses}
+
+        fresh = _rep(0.0, {0: 10}, [0.0], 0.0, 1.0)
+        trained = _rep(2.0, {1: 10}, [2.0], 2.0, 0.0)
+        with patch("training.evaluate.evaluate", side_effect=[fresh, trained]):
+            with patch.object(cli_main, "_build_eval_model", return_value=object()):
+                code, out = _run(["compare", "--config", str(ROOT / "configs" / "default.yaml"),
+                                  "--checkpoint", "ckpt.pt", "--episodes", "1"])
+        self.assertEqual(code, 0)
+        self.assertIn("trained performance > untrained performance", out)
+        self.assertIn("action mix", out)
+
+    def test_compare_missing_checkpoint(self):
+        code, _ = _run(["compare", "--config", str(ROOT / "configs" / "default.yaml"),
+                        "--checkpoint", "nope.pt", "--episodes", "1"])
         self.assertEqual(code, 2)
 
     def test_experiment_dispatch(self):
@@ -89,9 +115,10 @@ class TestCLIHelpAndErrors(unittest.TestCase):
         self.assertEqual(code, 0)
         for cmd in ("smoke-test", "train", "evaluate", "experiment"):
             self.assertIn(cmd, out)
+        self.assertIn("compare", out)
 
     def test_subcommand_helps(self):
-        for cmd in ("smoke-test", "train", "evaluate", "experiment"):
+        for cmd in ("smoke-test", "train", "evaluate", "experiment", "compare"):
             code, out = _run([cmd, "--help"])
             self.assertEqual(code, 0, cmd)
             self.assertIn("--config", out)
@@ -99,6 +126,8 @@ class TestCLIHelpAndErrors(unittest.TestCase):
     def test_help_mentions_options(self):
         _, out = _run(["train", "--help"])
         self.assertIn("--timesteps", out)
+        _, out = _run(["compare", "--help"])
+        self.assertIn("--checkpoint", out)
     def test_invalid_numerics(self):
         code, _ = _run(["train", "--timesteps", "0"])
         self.assertEqual(code, 2)
