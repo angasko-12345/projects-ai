@@ -252,3 +252,13 @@
 - **Alternatives considered:** Leaving the two inline writes and only adding a `degradation.record(...)` line to each (rejected — keeps the duplication that caused the bug and leaves the behavior untestable). Making `worktree_ref.create` MUST_FAIL_CLOSED (rejected — the row is written after the workflow finishes, so failing closed would abort completed work; losing it degrades a later merge retry rather than falsifying a recorded outcome, and the warning makes that visible). Testing the controller's `_run_task_operation` end-to-end (rejected — a dozen mocks for one `except` clause; the shared helper gives the same coverage in three lines).
 - **Correction to the record:** the A8 commit message stated "Every store write that has a fallback is now classified." That was false. The reviewer's section-3 claim that the recorder is protected by an `_operation_lock` was also false — no lock existed, and `_operation_lock` belongs to `AgentOpsController`. Both corrections stand in the code and memory.
 - **Agents involved:** pi-manager (opencode architecture review).
+
+## 2026-09-26 - Root .gitignore restored, superseding the 2026-09-15 removal
+
+- **Decision:** Commit a root .gitignore containing the patterns from .git/info/exclude plus standard Python/OS/editor ignores. Supersedes the 2026-09-15 decision to remove the root .gitignore.
+
+- **Reason:** All ignore rules lived only in .git/info/exclude (machine-local, never committed). Fresh clones had zero ignore rules, exposing .agentops/state.sqlite (196 KB), .playwright-mcp/ (~5 MB of PNGs), .misc/, small-projects/, agent-intercom-fix/, and other scratch to git add -A. The subproject .gitignore files already cover product-specific patterns (agentops/.agentops/, checkpoints/**/*.pt, logs/*.log, experiments/*/, __pycache__, .venv, etc.); the root file covers container-level patterns only. The prior decision rationale (product-scoped problems should stay in subproject .gitignore) still holds; the root file adds protection the subproject files cannot provide.
+
+- **Alternatives considered:** Keeping machine-local .git/info/exclude only (rejected — fresh clones unprotected). Adding a root .gitignore without superseding the recorded decision (rejected — creates a contradiction in decisions.md).
+
+- **Agents involved:** opencode (this session).
