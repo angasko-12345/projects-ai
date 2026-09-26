@@ -1,6 +1,7 @@
 # Runbook: pi ↔ OpenCode free-tier fix (FreeTierError 403)
 
 > Last verified working: 2026-09-17 (config-only static headers; pi `-p` run returned `OK` on `opencode/mimo-v2.5-free`).
+> ✅ 2026-09-22: gate now fully pinned (details in `omp-opencode-free-tier-403.md#resolved-2026-09-22`). Free tier works only on `/zen/v1/responses` (chat/completions → 503). Header check is format-only (UA starts `opencode/`, `x-opencode-session: ses_`+26), NO Authorization required. omp fixed via mirror provider `omp-zen` (auth: none). Pi/chat-completions path below is historical — a pi revival would need `/zen/v1/responses` + static `ses_` headers + stream:true + real tools + config-header merging (pi's merge order already allows static header override, unlike omp).
 > ⚠️ 2026-09-20: header-format-only combos are **no longer sufficient** for chat — even `ses_`+26 + `opencode/1.18.31` UA + real key now returns 403 FreeTierError. See `omp-opencode-free-tier-403.md` for the repro matrix and current status.
 > Applies to: pi (`@earendil-works/pi-coding-agent`) using free OpenCode Zen models (`opencode/*-free`, `big-pickle`, etc.).
 
@@ -20,7 +21,7 @@ Live probes (2026-09-17) against `https://opencode.ai/zen/v1/chat/completions` p
 | `User-Agent` | MUST contain opencode signature (`opencode/1.18.31` passes; `MyCustomClient/9.9`, curl/undici default FAIL). |
 | `x-opencode-client` | Any value OK (even `pi`). |
 | `x-opencode-request` / `x-opencode-project` | Optional. |
-| `Authorization` | Real key (`sk-S9Qo3TmE1DMBGg4rf0jILuDdX8qbwzpugsbc5Lte8ClSrk2570zP0AMrkw4f42j4` in `~/.pi/agent/auth.json`). |
+| `Authorization` | A real key stored in `~/.pi/agent/auth.json`. **Never inline the value in this file** — read it in-memory at probe time and report only the HTTP status. (A plaintext key was redacted from this line on 2026-09-26; it is still in git history, so that key must be treated as compromised and rotated.) |
 
 Why pi breaks: pi's bundled `getSessionHeaders()` sends `x-opencode-session: <uuidv7>` and `getDefaultAttributionHeaders()` sets a `User-Agent` **only for Cloudflare models** — opencode requests ship with uuid session + undici UA.
 
