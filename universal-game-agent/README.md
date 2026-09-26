@@ -153,6 +153,7 @@ python -m unittest discover -s tests -v
 | Short PPO run, module form (torch) | `python -m training.ppo --total-timesteps 2048 --rollout-length 128 --seed 0` |
 | Standalone Pong test game | `python games/extern_pong.py --title ExternPong --seed 0` |
 | External-window OS-loop smoke (no learning) | `python -m training.external_smoke --title ExternPongSmoke --steps 50 --mode random` |
+| Live reward-detector diagnostic (no input) | `python -m training.reward_diagnostic --launch --title DiagGame --seed 3 --captures 300` |
 
 ## Standalone test game (`games/`, not connected to PPO)
 

@@ -136,3 +136,16 @@ class TestExternTerminationIntegration(unittest.TestCase):
         env.reset(seed=0)
         obs, _, _, _, _ = env.step(0)
         self.assertEqual(obs.shape, (4, 84, 84))
+
+
+class TestClassifyHelper(unittest.TestCase):
+    def test_classify_boundaries(self):
+        from training.reward_diagnostic import classify
+
+        detector = ExternPongReward()
+        self.assertEqual(classify(0, detector), "normal")
+        self.assertEqual(classify(7, detector), "normal")
+        self.assertEqual(classify(8, detector), "hit")
+        self.assertEqual(classify(200, detector), "hit")
+        self.assertEqual(classify(299, detector), "normal")
+        self.assertEqual(classify(300, detector), "terminal")
