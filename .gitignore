@@ -1,0 +1,36 @@
+# Container-level ignores.
+#
+# Every ignore rule lives here instead of .git/info/exclude so that fresh
+# clones are protected too. See .agents/memory/decisions.md for the decision
+# that superseded the prior root .gitignore removal.
+#
+# Subproject .gitignore files (agentops/, universal-game-agent/) own
+# product-specific patterns such as __pycache__, .venv, checkpoints/**/*.pt,
+# logs/*.log, and experiments/*/. This file covers the container root only.
+
+.misc/
+.playwright-mcp/
+.playwright_mcp/
+agent-intercom-fix/
+.agentops/
+.local-temp-archive/
+.pi/
+small-projects/
+orchestrator.py
+omniroute-model-results.csv
+working_models.txt
+
+# Common
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
