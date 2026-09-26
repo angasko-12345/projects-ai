@@ -54,7 +54,8 @@ class TestCLIDispatch(unittest.TestCase):
         fake = {"mean_reward": 1.0, "std_reward": 0.0, "min_reward": 1.0,
                 "max_reward": 1.0, "mean_length": 10.0, "episodes": 2,
                 "episode_rewards": [1.0, 1.0], "action_counts": {0: 20},
-                "mean_hits": 0.0, "mean_misses": 0.0}
+                "mean_hits": 0.0, "mean_misses": 0.0,
+                "terminated_episodes": 0, "truncated_episodes": 2}
         with patch("training.evaluate.evaluate", return_value=fake):
             code, out = _run(["evaluate", "--config", str(ROOT / "configs" / "default.yaml"),
                               "--episodes", "2"])
@@ -73,7 +74,8 @@ class TestCLIDispatch(unittest.TestCase):
             return {"mean_reward": mean, "std_reward": 0.0, "min_reward": mean,
                     "max_reward": mean, "mean_length": 10.0, "episodes": 1,
                     "episode_rewards": rewards, "action_counts": actions,
-                    "mean_hits": hits, "mean_misses": misses}
+                    "mean_hits": hits, "mean_misses": misses,
+                    "terminated_episodes": 0, "truncated_episodes": 1}
 
         fresh = _rep(0.0, {0: 10}, [0.0], 0.0, 1.0)
         trained = _rep(2.0, {1: 10}, [2.0], 2.0, 0.0)

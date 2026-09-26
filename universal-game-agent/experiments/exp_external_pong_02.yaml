@@ -1,0 +1,67 @@
+# Second real external-game RL experiment: validation run at a real training budget.
+# Run: python -m training.external_experiment --config experiments/exp_external_pong_02.yaml
+# Identical env/model/hyperparameters to exp 01; only budget, eval size, and
+# checkpoint dir differ. The agent never imports the game; pixels in, arrow keys out.
+game:
+  title: "ExternPongExp2"
+  seed: 0
+  fps: 60
+
+env:
+  type: external
+  allow_live_capture: true
+  capture:
+    mode: window
+    title: "ExternPongExp2"
+    out_width: 96
+    out_height: 96
+  lifecycle:
+    mode: window
+    title: "ExternPongExp2"
+  actions:
+    backend: sendinput
+    table:
+      - {name: NOOP, kind: noop}
+      - {name: PRESS_LEFT, kind: key, vk: 37, hold_ms: 60}
+      - {name: PRESS_RIGHT, kind: key, vk: 39, hold_ms: 60}
+  timing:
+    post_action_delay_ms: 80.0
+    startup_delay_ms: 0.0
+    reset_delay_ms: 0.0
+    max_episode_steps: 200
+    max_episode_seconds: 120.0
+  reward:
+    provider: extern_pong
+  termination:
+    provider: extern_pong
+  num_stack: 4
+  obs_size: 84
+
+model:
+  in_channels: 4
+  frame_size: 84
+  feature_dim: 256
+  hidden_size: 128
+  num_layers: 1
+
+ppo:
+  total_timesteps: 4096
+  rollout_length: 128
+  minibatch_size: 32
+  update_epochs: 2
+  learning_rate: 0.00025
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  entropy_coef: 0.01
+  value_coef: 0.5
+  max_grad_norm: 0.5
+  seed: 0
+  checkpoint_dir: "checkpoints/extern_pong_02"
+  checkpoint_every_updates: 1000
+
+curiosity:
+  enabled: false
+
+eval:
+  episodes: 100

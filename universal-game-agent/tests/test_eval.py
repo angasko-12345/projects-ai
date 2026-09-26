@@ -125,8 +125,9 @@ class TestEvalCorrectness(unittest.TestCase):
     EXPECTED_KEYS = {"episodes", "greedy", "seeds", "mean_reward", "std_reward",
                      "min_reward", "max_reward", "mean_length",
                      "episode_rewards", "episode_lengths", "action_counts",
-                     "episode_hits", "episode_misses", "mean_hits", "mean_misses"}
-
+                     "episode_hits", "episode_misses", "mean_hits", "mean_misses",
+                     "episode_terminated", "episode_truncated",
+                     "terminated_episodes", "truncated_episodes"}
     def test_attribution_and_schema(self):
         from training.evaluate import evaluate as evaluate_fn
 
@@ -229,10 +230,37 @@ class TestEvalCorrectness(unittest.TestCase):
         self.assertEqual(rep["episode_misses"], [0, 0])
         self.assertEqual(rep["mean_hits"], 1.5)
         self.assertEqual(rep["mean_misses"], 0.0)
+
+    def test_terminated_truncated_counts(self):
         from training.evaluate import evaluate as evaluate_fn
 
-        with self.assertRaises(ValueError):
-            evaluate_fn(_tiny_model(), ScriptedEvalEnv, episodes=0)
+        # seed 0 ends terminated, seed 1 ends truncated (see SCRIPTS above).
+        rep = evaluate_fn(_tiny_model(), ScriptedEvalEnv, episodes=2, seeds=[0, 1])
+        self.assertEqual(rep["episode_terminated"], [True, False])
+        self.assertEqual(rep["episode_truncated"], [False, True])
+        self.assertEqual(rep["terminated_episodes"], 1)
+        self.assertEqual(rep["truncated_episodes"], 1)
+        rep2 = evaluate_fn(_tiny_model(), ScriptedEvalEnv, episodes=2, seeds=[0, 0])
+        self.assertEqual(rep2["terminated_episodes"], 2)
+        self.assertEqual(rep2["truncated_episodes"], 0)
+
+    def test_comparison_summaries_and_difference(self):
+        from training.evaluate import evaluate as evaluate_fn
+        from training.external_experiment import summarize_difference, summarize_eval
+
+        base = summarize_eval(evaluate_fn(_tiny_model(), ScriptedEvalEnv, episodes=2, seeds=[0, 1]))
+        for key in ("mean_reward", "std_reward", "mean_hits", "mean_misses",
+                    "mean_length", "terminated_episodes", "truncated_episodes",
+                    "action_counts"):
+            self.assertIn(key, base)
+        self.assertEqual(base["terminated_episodes"], 1)
+        self.assertEqual(base["truncated_episodes"], 1)
+        self.assertAlmostEqual(sum(base["action_share"].values()), 1.0)
+        diff = summarize_difference(base, base)
+        for key in ("mean_reward", "mean_hits", "mean_misses", "mean_length",
+                    "terminated_episodes", "truncated_episodes"):
+            self.assertEqual(diff[key], 0.0)
+        self.assertTrue(all(v == 0 for v in diff["action_counts"].values()))
 
 
 @unittest.skipUnless(_HAS_TORCH, "torch not installed")

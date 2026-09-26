@@ -18,15 +18,24 @@
   latched once-only edges; live-verified Diag320 11/11 + Diag96 6/6 terminal.
 
 ## Next (proposed, in order)
-- [ ] Complete one full external 3-phase run with results JSON (~6 min free desktop).
-      Requires: nothing new — `training.external_experiment` is ready.
-- [ ] Commit pending work (see git status; `universal-game-agent/` only).
-- [ ] Make the external task learnable WITHOUT touching model/algorithm:
-      faster ball / narrower paddle / off-center serves in `games/`,
-      and/or a small per-step survival penalty via the existing composite
-      reward config. Re-run A/B; judge by eval miss-rate, not vibes.
-- [ ] Longer external training budgets once the task discriminates skill.
+- [x] Complete one full external 3-phase run with results JSON (exp02: 4096 steps,
+  exit 0, comparison block verified; verdict no-learning, see project.md).
+- [ ] STEP 1 — diagnose 3-step episode deaths (the blocker for everything else):
+  trace first ~10 agent steps of fresh episodes (native red counts, detector
+  signature, terminated flag per step, serve position from screen only).
+  Candidates: serve x=center+/-40 vs 48px paddle (~half DOA); post-reset banner
+  still latched; reset cadence vs re-serve timing. No code changes until the
+  trace names the cause.
+- [ ] STEP 2 — one minimal task-side fix from the diagnosis (e.g. serve spread
+  +/-40->+/-15, or BALL_SPEED 4->3, or survival shaping via existing composite
+  reward config). ONE variable; model/PPO/rewards otherwise identical.
+- [ ] STEP 3 — re-run exp02 config (4096 first; 30k once stable) with the same
+  untrained/trained/delta comparison. Judge by miss-rate + episode length.
+- [ ] Reliability: window-death mid-training ("target window is gone", empty game
+  log, killed a 30k run at step 6144). Consider relaunch-and-resume or
+  checkpoint-every-N-updates so partial runs stay usable.
 - [ ] Curiosity enabled on the external game (config flag exists).
+- [ ] Commit pending work (`universal-game-agent/` + `.agents/memory/oh-my-pi/` only).
 
 ## Explicitly not planned
 - LSTM/Transformer swap, SB3 adoption, continuous-action PPO, model-size scaling

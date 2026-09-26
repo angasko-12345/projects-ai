@@ -107,6 +107,37 @@ def _unique_title(base: str) -> str:
     return f"{base}-{os.getpid()}"
 
 
+COMPARISON_METRICS = ("mean_reward", "std_reward", "mean_hits", "mean_misses",
+                      "mean_length", "terminated_episodes", "truncated_episodes")
+
+
+def summarize_eval(rep: dict) -> dict:
+    """Flat comparable summary of one evaluate() report (no verdict attached)."""
+    total_actions = sum(rep["action_counts"].values()) or 1
+    return {
+        "episodes": int(rep["episodes"]),
+        "mean_reward": float(rep["mean_reward"]),
+        "std_reward": float(rep["std_reward"]),
+        "mean_hits": float(rep["mean_hits"]),
+        "mean_misses": float(rep["mean_misses"]),
+        "mean_length": float(rep["mean_length"]),
+        "terminated_episodes": int(rep["terminated_episodes"]),
+        "truncated_episodes": int(rep["truncated_episodes"]),
+        "action_counts": {str(a): int(c) for a, c in rep["action_counts"].items()},
+        "action_share": {str(a): float(c) / float(total_actions)
+                         for a, c in rep["action_counts"].items()},
+    }
+
+
+def summarize_difference(untrained: dict, trained: dict) -> dict:
+    """Trained-minus-untrained deltas over the comparison metrics (descriptive only)."""
+    diff = {m: float(trained[m]) - float(untrained[m]) for m in COMPARISON_METRICS}
+    actions = sorted(set(untrained["action_counts"]) | set(trained["action_counts"]))
+    diff["action_counts"] = {a: int(trained["action_counts"].get(a, 0))
+                             - int(untrained["action_counts"].get(a, 0)) for a in actions}
+    return diff
+
+
 def _run_checkpoint_dir(ppo_cfg_raw: dict) -> str:
     """Per-run checkpoint dir so concurrent runs never share checkpoints."""
     return str(Path(ppo_cfg_raw.get("checkpoint_dir", "checkpoints")) / f"run-{os.getpid()}")
@@ -200,6 +231,12 @@ def run_external_experiment(config_path) -> dict:
         stop(proc)
     print(f"final mean={final['mean_reward']:.2f} len={final['mean_length']:.1f}")
     out_path = _results_path(config_path)
+    untrained_summary = summarize_eval(baseline)
+    trained_summary = summarize_eval(final)
+    difference = summarize_difference(untrained_summary, trained_summary)
+    print(f"untrained: {untrained_summary}")
+    print(f"trained:   {trained_summary}")
+    print(f"delta (trained - untrained): {difference}")
 
     report = {
         "config_file": str(config_path),
@@ -212,8 +249,12 @@ def run_external_experiment(config_path) -> dict:
         "metric_definitions": METRIC_DEFINITIONS,
         "baseline_eval": baseline,
         "final_eval": final,
+        "comparison": {
+            "untrained": untrained_summary,
+            "trained": trained_summary,
+            "difference_trained_minus_untrained": difference,
+        },
         "initial_mean_episode_reward": baseline["mean_reward"],
-        "final_eval_mean_reward": final["mean_reward"],
         "final_train_rolling_mean_reward": history["mean_reward"][-1],
         "final_train_rolling_mean_ext_reward": history["mean_ext_reward"][-1],
         "train_mean_episode_length": float(np.mean(history["upd_mean_length"])),

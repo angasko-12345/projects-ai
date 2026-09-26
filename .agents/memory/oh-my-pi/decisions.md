@@ -47,3 +47,10 @@
   `frame` (network); captures default to native passthrough with resize only on the
   observation path. Toggle-edge rewards replaced by latched signature transitions
   (hit->hit, miss->miss, either->anything all pay 0). Falling hit edge no longer pays.
+
+## 2026-09-26: Shortened exp02 to 4096 steps after 30k attempt died environmentally
+- Rationale: window vanished at step 6144 ("target window is gone", empty game log);
+  shorter run limits exposure while still testing the full report pipeline. Budget
+  cut is runtime risk management, not a hyperparameter change.
+- Consequence: exp_external_pong_02.yaml now 4096 steps / 100 eval eps; 30k stays
+  open for when the task is discriminative and the window is stable.

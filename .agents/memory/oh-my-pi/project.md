@@ -35,8 +35,16 @@
   Note: no live ball-hit caught in 600 captures (flashes brief); +1 covered by
   synthetic 320x240 test only. One normal frame hit 207 red px — outside band, no
   event either way, but the loud-normal vs hit-band margin is thin.
+- exp02 validation run DONE (4096 steps, 100+100 fixed-seed evals, exit 0, 605 s):
+  untrained -0.15 vs trained -0.11 (d+0.04); length 2.47 -> 3.81; policy collapsed
+  to always-PRESS_LEFT; all 200 eval episodes terminated, 0 truncated. Verdict:
+  no learning — episodes die in ~3 steps with ~0.17 misses/ep, so PPO sees almost
+  no signal. Suspect: serve x = center +/-40 vs 48px paddle (~half serves DOA) or
+  reset/banner timing; NOT yet proven. 30k attempt died at step 6144 on window loss
+  (flaky env, empty game log). Results: experiments/exp_external_pong_02-15516_results.json.
 
 ## Open threads
-- Full external 3-phase experiment with results JSON (needs ~6 min free desktop).
-- Uncommitted work: check `git status` at session start; commit `universal-game-agent/` only.
+- NEXT: diagnose why external episodes terminate in ~3 steps with ~0 events (see roadmap).
+- Uncommitted: exp02 code (eval term/trunc, comparison report, exp_02 yaml) + these
+  memory files; commit `universal-game-agent/` + `.agents/memory/oh-my-pi/` only.
 - `checkpoints/extern_pong_01/ppo_final.pt` (12 MB) deliberately uncommitted; nested path dodges `checkpoints/*.pt` ignore.

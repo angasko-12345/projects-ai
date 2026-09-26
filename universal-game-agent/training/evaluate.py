@@ -23,6 +23,7 @@ def evaluate(model: ActorCritic, make_env, episodes: int = 20, seeds=None, greed
     device = next(model.parameters()).device
     rewards, lengths, action_counts = [], [], []
     episode_hits, episode_misses = [], []
+    episode_terminated, episode_truncated = [], []
     try:
         for ep in range(episodes):
             env = make_env()
@@ -49,6 +50,8 @@ def evaluate(model: ActorCritic, make_env, episodes: int = 20, seeds=None, greed
             action_counts.append(counts)
             episode_hits.append(hits)
             episode_misses.append(misses)
+            episode_terminated.append(bool(terminated))
+            episode_truncated.append(bool(truncated))
             env.close()
     finally:
         if was_training:
@@ -74,4 +77,8 @@ def evaluate(model: ActorCritic, make_env, episodes: int = 20, seeds=None, greed
         "episode_misses": [int(m) for m in episode_misses],
         "mean_hits": float(np.mean(episode_hits)),
         "mean_misses": float(np.mean(episode_misses)),
+        "episode_terminated": [bool(t) for t in episode_terminated],
+        "episode_truncated": [bool(t) for t in episode_truncated],
+        "terminated_episodes": int(sum(1 for t in episode_terminated if t)),
+        "truncated_episodes": int(sum(1 for t in episode_truncated if t)),
     }

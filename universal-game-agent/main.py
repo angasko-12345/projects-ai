@@ -235,7 +235,7 @@ def _print_eval_report(title: str, rep: dict) -> None:
     print(f"{title}: episodes={rep['episodes']} mean={rep['mean_reward']:.2f} "
           f"total={sum(rep['episode_rewards']):.1f} hits/ep={rep['mean_hits']:.1f} "
           f"misses/ep={rep['mean_misses']:.1f} len={rep['mean_length']:.1f} "
-          f"term={sum(1 for _ in rep['episode_rewards']):d} actions=[{mix}]")
+          f"term={rep['terminated_episodes']:d} trunc={rep['truncated_episodes']:d} actions=[{mix}]")
 
 
 def cmd_evaluate(args) -> int:

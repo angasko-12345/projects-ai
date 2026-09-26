@@ -51,3 +51,8 @@
 - Edit-tool gap PUTs can silently drop neighboring lines (lost the diagnostic's label
   computation and half of `WindowCapture.__init__`); re-read the touched region after
   every edit and treat tool-echo content as unverified until a fresh read confirms it.
+- Background `bash` services run in WSL (/bin/bash, cwd /mnt/d/...): `D:/` and `/d/`
+  paths both fail there — use `/mnt/d/...` for the venv python and repo paths.
+  Foreground calls accept `D:/...`. Exit 127 = path convention, not a real failure.
+- Line-targeted yaml edits eat mapping headers (`ppo:` vanished, PPO keys merged
+  under `model:` -> `error: 'ppo'`); always re-parse the config after editing it.
