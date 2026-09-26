@@ -639,3 +639,67 @@ class TestExternalFactory(unittest.TestCase):
             Path(cfg_path).write_text(yaml.safe_dump(full), encoding="utf-8")
             self.assertEqual(cli_main.main(["train", "--config", cfg_path]), 0)
             self.assertTrue((Path(tmp) / "ckpt" / "ppo_final.pt").exists())
+
+
+class AdvancingClock(FakeClock):
+    """FakeClock whose sleep advances time (for settle-poll tests)."""
+
+    def sleep(self, seconds):
+        super().sleep(seconds)
+        self.advance(seconds)
+
+
+def _banner_frame():
+    return np.full((48, 64, 3), (255, 0, 0), dtype=np.uint8)
+
+
+class TestResetSettle(unittest.TestCase):
+    def _env(self, frames, provider, clock=None, **overrides):
+        from environment.external_game import ExternalGameEnv
+
+        args = {"lifecycle": None, "clock": clock or AdvancingClock()}
+        args.update(overrides)
+        return ExternalGameEnv(FakeInterface(frames), NullReward(), provider, **args)
+
+    def test_settle_skips_banner(self):
+        from environment.extern_pong_rewards import ExternPongTermination, red_mask
+
+        plain = _frame(0)
+        env = self._env([_banner_frame(), _banner_frame(), plain],
+                        ExternPongTermination(), reset_settle_timeout_s=10.0)
+        env.reset(seed=0)
+        self.assertEqual(int(red_mask(env.render()).sum()), 0)  # settled on live play
+        self.assertEqual(env.interface.captures, 3)
+
+    def test_settle_timeout_best_effort(self):
+        from environment.extern_pong_rewards import ExternPongTermination, red_mask
+
+        env = self._env([_banner_frame()], ExternPongTermination(),
+                        reset_settle_timeout_s=0.12)
+        env.reset(seed=0)  # banner never clears: proceeds anyway, no hang
+        self.assertGreater(int(red_mask(env.render()).sum()), 300)
+        self.assertGreater(env.interface.captures, 1)
+
+    def test_settle_disabled(self):
+        from environment.extern_pong_rewards import ExternPongTermination, red_mask
+
+        for timeout in (None, 0.0):
+            env = self._env([_banner_frame(), _frame(0)], ExternPongTermination(),
+                            reset_settle_timeout_s=timeout)
+            env.reset(seed=0)
+            self.assertGreater(int(red_mask(env.render()).sum()), 300)
+            self.assertEqual(env.interface.captures, 1)
+
+    def test_settle_skipped_without_frame_signal(self):
+        env = self._env([_banner_frame(), _frame(0)], StepLimitTermination(max_steps=10),
+                        reset_settle_timeout_s=10.0)
+        env.reset(seed=0)  # step limits have no per-frame signal: single capture
+        self.assertEqual(env.interface.captures, 1)
+
+    def test_negative_settle_timeout_rejected(self):
+        from environment.external_game import ExternalGameEnv
+
+        with self.assertRaises(ValueError):
+            ExternalGameEnv(FakeInterface([_frame(0)]), NullReward(),
+                            StepLimitTermination(max_steps=10),
+                            reset_settle_timeout_s=-1.0)

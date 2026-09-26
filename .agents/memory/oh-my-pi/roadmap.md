@@ -20,17 +20,14 @@
 ## Next (proposed, in order)
 - [x] Complete one full external 3-phase run with results JSON (exp02: 4096 steps,
   exit 0, comparison block verified; verdict no-learning, see project.md).
-- [ ] STEP 1 — diagnose 3-step episode deaths (the blocker for everything else):
-  trace first ~10 agent steps of fresh episodes (native red counts, detector
-  signature, terminated flag per step, serve position from screen only).
-  Candidates: serve x=center+/-40 vs 48px paddle (~half DOA); post-reset banner
-  still latched; reset cadence vs re-serve timing. No code changes until the
-  trace names the cause.
-- [ ] STEP 2 — one minimal task-side fix from the diagnosis (e.g. serve spread
-  +/-40->+/-15, or BALL_SPEED 4->3, or survival shaping via existing composite
-  reward config). ONE variable; model/PPO/rewards otherwise identical.
-- [ ] STEP 3 — re-run exp02 config (4096 first; 30k once stable) with the same
-  untrained/trained/delta comparison. Judge by miss-rate + episode length.
+- [x] STEP 1 — diagnose 3-step episode deaths: CAUSE = reset() lands mid-banner
+  (1.0s persistence) -> 1-step phantom terminations; live rally dies honestly.
+- [x] STEP 2 — reset() polls for a non-banner frame (reset_settle_timeout_s,
+  default 5.0s; screen-only; best-effort). Live: 0/6 phantoms. Suite 273 OK.
+- [ ] STEP 3 — pre-flight: check live-play baseline reds in the exp window
+  (59-red chrome seen in verify window could mask hit edges); then re-run exp02
+  config (4096 first; 30k once stable) with the same untrained/trained/delta
+  comparison. Judge by miss-rate + episode length.
 - [ ] Reliability: window-death mid-training ("target window is gone", empty game
   log, killed a 30k run at step 6144). Consider relaunch-and-resume or
   checkpoint-every-N-updates so partial runs stay usable.

@@ -56,3 +56,5 @@
   Foreground calls accept `D:/...`. Exit 127 = path convention, not a real failure.
 - Line-targeted yaml edits eat mapping headers (`ppo:` vanished, PPO keys merged
   under `model:` -> `error: 'ppo'`); always re-parse the config after editing it.
+- `pkill -f <pattern>` matches its own command line: the shell SIGTERMs itself
+  (exit 15, no output). Use a self-excluding pattern (`pkill -f "Trace[D]eaths"`).

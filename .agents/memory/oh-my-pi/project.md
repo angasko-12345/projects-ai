@@ -39,12 +39,24 @@
   untrained -0.15 vs trained -0.11 (d+0.04); length 2.47 -> 3.81; policy collapsed
   to always-PRESS_LEFT; all 200 eval episodes terminated, 0 truncated. Verdict:
   no learning — episodes die in ~3 steps with ~0.17 misses/ep, so PPO sees almost
-  no signal. Suspect: serve x = center +/-40 vs 48px paddle (~half serves DOA) or
-  reset/banner timing; NOT yet proven. 30k attempt died at step 6144 on window loss
-  (flaky env, empty game log). Results: experiments/exp_external_pong_02-15516_results.json.
+  no signal. Results: experiments/exp_external_pong_02-15516_results.json.
+- CAUSE FOUND (Step-1 trace, 6 NOOP episodes): `reset()` captures whatever is on
+  screen with no game sync; the MISS banner persists 1.0s, so post-miss resets land
+  mid-banner -> 1-step phantom episodes (prev=607 cur=607, reward 0, terminated).
+  Live rally (ep 0) missed honestly at step 9 with -1. So ~5/6 traced episodes were
+  phantoms: mean length 2.47 and 0.17 misses/ep explained.
+- FIX APPLIED (Step 2, uncommitted): `ExternalGameEnv.reset_settle_timeout_s`
+  (default 5.0s, None/<=0 disables); reset captures until the termination
+  provider's per-frame `terminated` is false. Providers without that signal
+  (step limits) settle at once. Suite 273 OK (5 new settle tests).
+  Live re-trace: PHANTOM RESETS 0/6 (was ~5/6); all episodes start live,
+  misses pay -1 honestly. CAVEAT: verify window showed a constant 59-red
+  baseline (likely ClearType title-bar fringing) — inside the 8-200 hit band,
+  so ball flashes may not create a pay edge there. MUST check baseline reds
+  in the real exp window before the next training run.
 
 ## Open threads
-- NEXT: diagnose why external episodes terminate in ~3 steps with ~0 events (see roadmap).
-- Uncommitted: exp02 code (eval term/trunc, comparison report, exp_02 yaml) + these
-  memory files; commit `universal-game-agent/` + `.agents/memory/oh-my-pi/` only.
+- NEXT (Step 3 pre-flight): check live-play baseline reds in the exp window
+  (59-red chrome caveat above); then re-run exp02. Uncommitted: Step-2 code
+  (external_game settle + factory + exp02 yaml + 5 tests) + these memory files.
 - `checkpoints/extern_pong_01/ppo_final.pt` (12 MB) deliberately uncommitted; nested path dodges `checkpoints/*.pt` ignore.

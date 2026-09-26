@@ -28,6 +28,7 @@ env:
     post_action_delay_ms: 80.0
     startup_delay_ms: 0.0
     reset_delay_ms: 0.0
+    reset_settle_timeout_s: 5.0
     max_episode_steps: 200
     max_episode_seconds: 120.0
   reward:

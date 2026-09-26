@@ -139,6 +139,8 @@ class ExternalGameEnv(_Base):
 
     metadata = {"render_modes": ["rgb_array"]}
 
+    _SETTLE_POLL_S = 0.05
+
     def __init__(self, interface, reward_provider: RewardProvider,
                  termination_provider: TerminationProvider,
                  lifecycle: GameLifecycle | None = None,
@@ -146,6 +148,7 @@ class ExternalGameEnv(_Base):
                  post_action_delay_ms: float = 0.0,
                  startup_delay_ms: float = 0.0,
                  reset_delay_ms: float = 0.0,
+                 reset_settle_timeout_s: float | None = 5.0,
                  max_episode_steps: int | None = None,
                  max_episode_seconds: float | None = None,
                  clock: Clock | None = None):
@@ -157,7 +160,14 @@ class ExternalGameEnv(_Base):
         3. startup delay: slept once, right after the first successful
            session attach, so a freshly started game can load.
         4. reset delay: slept on every reset(), after the session check.
-        5. decision interval: the caller's stepping pace; nothing added.
+        5. reset settle: after the reset delay, captures repeat until the
+           termination provider reports a non-terminal frame (or the timeout
+           elapses) — a reset landing on a lingering MISS banner must not
+           start a 1-step phantom episode. Providers without a per-frame
+           ``terminated`` signal (e.g. step limits) settle at once. ``None``
+           (or <= 0) disables settling. Best-effort: a still-terminal frame
+           after the timeout starts the episode anyway.
+        6. decision interval: the caller's stepping pace; nothing added.
         Timeouts (env-level, in addition to the termination provider):
         ``max_episode_steps`` / ``max_episode_seconds`` report
         ``terminated=False, truncated=True``. A true termination simultaneous
@@ -169,6 +179,8 @@ class ExternalGameEnv(_Base):
                             ("reset_delay_ms", reset_delay_ms)):
             if value < 0:
                 raise ValueError(f"{name} must be >= 0, got {value!r}")
+        if reset_settle_timeout_s is not None and reset_settle_timeout_s < 0:
+            raise ValueError(f"reset_settle_timeout_s must be >= 0 or None, got {reset_settle_timeout_s!r}")
         if max_episode_steps is not None and max_episode_steps <= 0:
             raise ValueError(f"max_episode_steps must be positive, got {max_episode_steps!r}")
         if max_episode_seconds is not None and max_episode_seconds <= 0:
@@ -182,6 +194,8 @@ class ExternalGameEnv(_Base):
         self.post_action_delay_ms = float(post_action_delay_ms)
         self.startup_delay_ms = float(startup_delay_ms)
         self.reset_delay_ms = float(reset_delay_ms)
+        self.reset_settle_timeout_s = (None if reset_settle_timeout_s is None
+                                       else float(reset_settle_timeout_s))
         self.max_episode_steps = max_episode_steps
         self.max_episode_seconds = max_episode_seconds
         self.stack = FrameStack(num_stack=num_stack, size=size)
@@ -239,6 +253,23 @@ class ExternalGameEnv(_Base):
         if milliseconds:
             self.clock.sleep(milliseconds / 1000.0)
 
+    def _settle_playable(self) -> np.ndarray:
+        """Capture until the frame is non-terminal (best-effort, clock-bounded)."""
+        raw = self.interface.capture()
+        self._validate_raw(raw)
+        timeout = self.reset_settle_timeout_s
+        signal = getattr(self.termination_provider, "terminated", None)
+        if timeout is None or timeout <= 0 or not callable(signal):
+            return raw
+        deadline = self.clock.now() + timeout
+        while bool(signal(raw, 0)):
+            if self.clock.now() >= deadline:
+                break
+            self.clock.sleep(self._SETTLE_POLL_S)
+            raw = self.interface.capture()
+            self._validate_raw(raw)
+        return raw
+
     # -- Gymnasium API ----------------------------------------------------
     def reset(self, *, seed=None, options=None):
         attached_now = self._ensure_session()
@@ -246,8 +277,7 @@ class ExternalGameEnv(_Base):
             self._sleep_ms(self.startup_delay_ms)
             self._started = True
         self._sleep_ms(self.reset_delay_ms)
-        raw = self.interface.capture()
-        self._validate_raw(raw)
+        raw = self._settle_playable()
         self._steps = 0
         self._episode_start = self.clock.now()
         self._last_raw = raw
@@ -426,12 +456,14 @@ def make_external_env_from_config(env_cfg: dict, clock=None):
             term_provider = ExternPongTermination()
         else:
             term_provider = NeverTerminateProvider()
+        settle = timing.get("reset_settle_timeout_s", 5.0)
         return ExternalGameEnv(
             game, reward_provider, term_provider, lifecycle,
             num_stack=int(cfg.get("num_stack", 4)), size=int(cfg.get("obs_size", 84)),
             post_action_delay_ms=float(timing.get("post_action_delay_ms", 0.0)),
             startup_delay_ms=float(timing.get("startup_delay_ms", 0.0)),
             reset_delay_ms=float(timing.get("reset_delay_ms", 0.0)),
+            reset_settle_timeout_s=None if settle is None else float(settle),
             max_episode_steps=_timeout(timing.get("max_episode_steps"), int),
             max_episode_seconds=_timeout(timing.get("max_episode_seconds"), float),
             clock=clock,
