@@ -49,12 +49,33 @@ class TestExternPongReward(unittest.TestCase):
         self.assertEqual(self.detector.reward(_ball(), _ball(), 0), 0.0)
         self.assertEqual(self.detector.reward(_frame(), _frame(), 2), 0.0)
 
-    def test_hit_rising_and_falling_edges(self):
+    def test_hit_rising_edge_only(self):
         white, red = _ball(), _ball((255, 0, 0))
-        self.assertEqual(self.detector.reward(white, red, 1), 1.0)   # toggle on
-        self.assertEqual(self.detector.reward(red, white, 1), 1.0)   # toggle off
+        self.assertEqual(self.detector.reward(white, red, 1), 1.0)   # hit: exactly once
         self.assertEqual(self.detector.reward(red, red, 1), 0.0)     # latched: no farm
+        self.assertEqual(self.detector.reward(red, white, 1), 0.0)   # serve clears latch: no event
         self.assertEqual(self.detector.reward(white, white, 1), 0.0)
+
+    def test_miss_edge_exactly_once(self):
+        white, banner = _ball(), _banner()
+        self.assertEqual(self.detector.reward(white, banner, 0), -1.0)  # rising edge pays
+        self.assertEqual(self.detector.reward(banner, banner, 0), 0.0)  # held banner pays nothing
+        self.assertEqual(self.detector.reward(banner, white, 0), 0.0)   # reset pays nothing
+
+    def test_native_frames_hit_and_miss(self):
+        # Native 320x240 game frames: 6px ball in band, banner terminal (never hit).
+        plain = np.zeros((240, 320, 3), dtype=np.uint8)
+        hit = plain.copy()
+        hit[100:106, 100:106] = (255, 0, 0)
+        banner = plain.copy()
+        banner[100:130, 60:260] = (255, 0, 0)
+        self.assertEqual(self.detector.reward(plain, hit, 0), 1.0)
+        self.assertEqual(self.detector.reward(hit, hit, 0), 0.0)
+        self.assertEqual(self.detector.reward(plain, banner, 0), -1.0)
+        term = ExternPongTermination()
+        self.assertTrue(term.terminated(banner, 0))
+        self.assertFalse(term.terminated(hit, 0))
+        self.assertFalse(term.terminated(plain, 0))
 
     def test_miss(self):
         self.assertEqual(self.detector.reward(_ball(), _banner(), 0), -1.0)
@@ -65,6 +86,28 @@ class TestExternPongReward(unittest.TestCase):
     def test_reset_after_banner(self):
         self.assertEqual(self.detector.reward(_banner(), _frame(), 0), 0.0)
         self.assertFalse(ExternPongTermination().terminated(_frame(), 0))
+
+    def test_env_native_banner_terminates_once(self):
+        from environment.external_game import ExternalGameEnv
+        from interface.adapter import GameInterface
+        from interface.capture import ScreenCapture, SyntheticBackend
+        from interface.controller import ActionDef, ActionMapper, RecordingBackend
+
+        plain = np.zeros((240, 320, 3), dtype=np.uint8)
+        banner = plain.copy()
+        banner[100:130, 60:260] = (255, 0, 0)
+        capture = ScreenCapture(SyntheticBackend([plain, banner, plain]), 0, 0, 320, 240)
+        game = GameInterface(capture, ActionMapper(RecordingBackend(), [ActionDef("NOOP")]))
+        env = ExternalGameEnv(game, ExternPongReward(), ExternPongTermination(), lifecycle=None)
+        env.reset(seed=0)
+        _, reward, terminated, truncated, _ = env.step(0)
+        self.assertEqual(reward, -1.0)
+        self.assertTrue(terminated)
+        self.assertFalse(truncated)
+        env.reset(seed=1)  # new episode: no stale termination or reward
+        _, reward2, terminated2, _, _ = env.step(0)
+        self.assertEqual(reward2, 0.0)
+        self.assertFalse(terminated2)
 
     def test_noise_ignored(self):
         noisy = _paint(_frame(), 0, 0, 1, 3, (255, 0, 0))  # 3 px < hit_min

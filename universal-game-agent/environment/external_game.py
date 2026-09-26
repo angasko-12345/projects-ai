@@ -389,14 +389,15 @@ def make_external_env_from_config(env_cfg: dict, clock=None):
             if mode == "region":
                 region = cap_cfg.get("region", {}) or {}
                 capture = ScreenCapture(backend, int(region.get("x", 0)), int(region.get("y", 0)),
-                                        int(region.get("width", out_w)), int(region.get("height", out_h)),
-                                        out_w, out_h)
+                                        int(region.get("width", out_w)), int(region.get("height", out_h)))
             else:
                 title = str(cap_cfg.get("title", "") or life_cfg.get("title", ""))
                 if not title:
                     raise ValueError("capture.mode 'window' needs capture.title (or lifecycle.title)")
                 manager = WindowManager(title)
-                capture = WindowCapture(manager, backend, out_w, out_h)
+                # Native frames: reward/termination detectors need full detail;
+                # the model observation path resizes downstream to obs_size.
+                capture = WindowCapture(manager, backend)
             if life_cfg.get("mode", "none") == "window" or mode == "window":
                 if manager is None:
                     raise ValueError("lifecycle.mode 'window' needs a window target")

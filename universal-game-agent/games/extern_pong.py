@@ -76,7 +76,7 @@ class PongApp:
         if not self.paused:
             event = self.logic.step(self._action())
             if event == "hit":
-                self.red_on = not self.red_on
+                self.red_on = True  # latched until serve: rising edge == exactly one hit
             elif event == "miss":
                 self.banner_until = time.monotonic() + 1.0
         g = self.logic

@@ -84,35 +84,47 @@ def _check_pixels(frame: np.ndarray) -> np.ndarray:
 
 
 class ScreenCapture:
-    """Fixed screen region -> RGB pixels at the configured resolution."""
+    """Fixed screen region -> RGB pixels.
 
-    def __init__(self, backend, x: int, y: int, width: int, height: int, out_width: int, out_height: int):
+    With out_width/out_height set, frames are resized to that resolution;
+    with both None (default), native-resolution frames pass through so
+    downstream detectors see full detail.
+    """
+
+    def __init__(self, backend, x: int, y: int, width: int, height: int,
+                 out_width: int | None = None, out_height: int | None = None):
         if width <= 0 or height <= 0:
             raise ValueError(f"region must be positive, got {(width, height)!r}")
+        if (out_width is None) != (out_height is None):
+            raise ValueError("out_width and out_height must both be set or both None")
         self.backend = backend
         self.region = (int(x), int(y), int(width), int(height))
-        self.out_size = (int(out_width), int(out_height))
+        self.out_size = None if out_width is None else (int(out_width), int(out_height))
 
     def capture(self) -> np.ndarray:
         frame = _check_pixels(self.backend.grab(self.region))
-        return resize_rgb(frame, *self.out_size)
+        return frame if self.out_size is None else resize_rgb(frame, *self.out_size)
 
 
 class WindowCapture:
     """Target top-level window -> RGB pixels; rect re-read every frame.
 
     Uses the full window frame (GetWindowRect, including title bar and
-    borders), not the client area alone.
+    borders), not the client area alone. With out size unset, native
+    frames pass through for full-detail reward/termination detection;
+    the model observation path resizes downstream.
     """
 
-    def __init__(self, window, backend, out_width: int, out_height: int):
+    def __init__(self, window, backend, out_width: int | None = None, out_height: int | None = None):
+        if (out_width is None) != (out_height is None):
+            raise ValueError("out_width and out_height must both be set or both None")
         self.window = window
         self.backend = backend
-        self.out_size = (int(out_width), int(out_height))
+        self.out_size = None if out_width is None else (int(out_width), int(out_height))
 
     def capture(self) -> np.ndarray:
         left, top, width, height = self.window.rect()  # raises if the window is gone
         if width <= 0 or height <= 0:
             raise CaptureError(f"window has no area: {(width, height)!r}")
         frame = _check_pixels(self.backend.grab((left, top, width, height)))
-        return resize_rgb(frame, *self.out_size)
+        return frame if self.out_size is None else resize_rgb(frame, *self.out_size)

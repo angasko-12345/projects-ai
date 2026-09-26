@@ -60,7 +60,11 @@ def diagnose(title: str, captures: int, capture_size: int = 96,
                 if time.monotonic() > deadline:
                     raise RuntimeError(f"could not attach to window {title!r}")
                 time.sleep(0.3)
-        capture = WindowCapture(manager, backend, capture_size, capture_size)
+        # Native frames for detection (same as the RL env); the small column
+        # shows what the old downscaled path would have counted.
+        from interface.capture import resize_rgb
+
+        capture = WindowCapture(manager, backend)
         reward_fn = ExternPongReward()
         term_fn = ExternPongTermination()
         ranges: dict[str, list] = {"normal": [], "hit": [], "terminal": []}
@@ -70,13 +74,16 @@ def diagnose(title: str, captures: int, capture_size: int = 96,
         for i in range(captures):
             frame = capture.capture()
             reds = int(red_mask(frame).sum())
-            label = classify(reds, reward_fn)
-            ranges[label].append(reds)
+            small = resize_rgb(frame, capture_size, capture_size)
+            small_reds = int(red_mask(small).sum())
             if prev is None:
                 reward, terminated = 0.0, term_fn.terminated(frame, 0)
             else:
                 reward = reward_fn.reward(prev, frame, 0)
                 terminated = term_fn.terminated(frame, 0)
+            label = ("terminal" if term_fn.terminated(frame, 0)
+                     else "hit" if reward > 0 else "normal")
+            ranges[label].append(reds)
             if reward > 0:
                 hits += 1
             if reward < 0:
@@ -86,8 +93,8 @@ def diagnose(title: str, captures: int, capture_size: int = 96,
                       f"(reward={reward:+.1f} terminated={terminated})", flush=True)
                 prev_label = label
             else:
-                print(f"[{i}] {frame.shape} reds={reds:5d} {label:8s} "
-                      f"reward={reward:+.1f} terminated={terminated}", flush=True)
+                print(f"[{i}] {frame.shape} reds={reds:5d} (downscaled@{capture_size}: {small_reds}) "
+                      f"{label:8s} reward={reward:+.1f} terminated={terminated}", flush=True)
             prev = frame
             time.sleep(interval_s)
         summary = {k: (min(v), max(v), len(v)) if v else None for k, v in ranges.items()}

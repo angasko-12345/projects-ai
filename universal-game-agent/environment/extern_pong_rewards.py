@@ -2,15 +2,20 @@
 
 Reads rendered frames only -- never imports the game, never touches
 coordinates, scores, or flags. Visual protocol (see games/extern_pong.py):
-the ball toggles white<->red on every paddle hit (6x6 px), and a large red
-MISS banner appears on terminal states. Detection is edge-based:
+the ball latches red on a paddle hit (cleared on serve) and a large red
+MISS banner appears on terminal states. Detection is strictly edge-based:
 
-* banner visible now            -> miss (-1), terminated
-* small-red present now XOR before (no banner either side) -> hit (+1)
-* otherwise                     -> 0, not terminated
+* normal -> MISS banner = -1 (exactly once), terminated
+* MISS -> MISS          =  0 (no repeated penalty)
+* MISS -> normal        =  0 (reset produces nothing)
+* normal -> small red   = +1 (exactly one hit reward)
+* small red -> small red =  0 (latched state pays nothing)
+* small red -> normal   =  0 (serve clearing the latch is not an event)
+* otherwise             =  0, not terminated
 
-A latched ball that stays red across captures yields exactly one hit
-reward (the rising edge); the falling edge on the next hit yields the next.
+Detection runs on native-resolution capture frames: the 6px ball and the
+banner are distinguished by red-pixel-count bands (hit_min..hit_max vs
+miss_min) that only hold when the frame is NOT aggressively downscaled.
 Sizes in red-pixel counts; thresholds are constructor parameters.
 """
 from __future__ import annotations
@@ -49,11 +54,14 @@ class ExternPongReward(RewardProvider):
     def reward(self, previous_frame: np.ndarray, current_frame: np.ndarray, context: int) -> float:
         prev_n = self._red_count(previous_frame)
         cur_n = self._red_count(current_frame)
-        if self._is_banner(cur_n):
+        prev_banner, cur_banner = self._is_banner(prev_n), self._is_banner(cur_n)
+        if cur_banner and not prev_banner:
             return self.miss_reward
-        if self._is_banner(prev_n):
-            return 0.0  # banner just cleared (reset): no event
-        if self._is_ball_flash(cur_n) != self._is_ball_flash(prev_n):
+        if cur_banner or prev_banner:
+            return 0.0
+        prev_small = self._is_ball_flash(prev_n)
+        cur_small = self._is_ball_flash(cur_n)
+        if cur_small and not prev_small:
             return self.hit_reward
         return 0.0
 

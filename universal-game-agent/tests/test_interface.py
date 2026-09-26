@@ -141,6 +141,18 @@ class TestCapture(unittest.TestCase):
         self.assertIsInstance(frame, np.ndarray)
         self.assertEqual(frame.ndim, 3)
 
+    def test_native_capture_passthrough(self):
+        raw = _rgb(48, 64, color=(10, 200, 30))
+        frame = ScreenCapture(SyntheticBackend([raw]), 0, 0, 64, 48).capture()
+        self.assertEqual(frame.shape, (48, 64, 3))
+        self.assertTrue(np.array_equal(frame, raw))
+
+    def test_mixed_out_size_rejected(self):
+        with self.assertRaises(ValueError):
+            ScreenCapture(SyntheticBackend([_rgb()]), 0, 0, 64, 48, 64, None)
+        with self.assertRaises(ValueError):
+            WindowCapture(FakeWindow(), SyntheticBackend([_rgb()]), None, 48)
+
 
 class TestObservationPipeline(unittest.TestCase):
     def test_capture_to_network_obs(self):
