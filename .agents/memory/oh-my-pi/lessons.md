@@ -9,8 +9,9 @@
 - Windows `FileHandler` locks block `TemporaryDirectory` cleanup — tests must
   close/remove handlers in `finally`.
 - YAML edits: verify key uniqueness after line-targeted edits.
-- Commit `universal-game-agent/` only; `.agents/`, `tasks/`, `small-projects/`,
-  root strays change under us — leave them alone.
+- Commit `universal-game-agent/` + `.agents/memory/oh-my-pi/` only; other
+  `.agents/` peers, `tasks/`, `small-projects/`, root strays change under
+  us — leave them alone.
 - Full suite (`python -m unittest discover -s tests`, ~25 s) after every change set;
   then remove `__pycache__`. Suite must leave `checkpoints/` with only `.gitkeep`.
 

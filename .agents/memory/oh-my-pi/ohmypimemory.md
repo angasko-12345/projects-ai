@@ -1,3 +1,10 @@
+# SUPERSEDED 2026-09-26 — this 09-24 handoff snapshot is stale. Live here only
+# for its incident log (§4) and conventions (§5). Current truth: `project.md`.
+# Load-bearing corrections: the external experiment HAS since completed (exp02,
+# verdict suspended — phantom confound); suite is 278/278 (not 246); HEAD has
+# moved past b77bf4d/d15c02b/6890c42/f751d73; §1's uncommitted list is long
+# committed. The 09-25 no-learning verdict recorded in decisions.md is suspended.
+
 # Universal-Game-Agent — Engineering Handoff (2026-09-24 ~21:45 UTC+8)
 
 ## 1. Status snapshot

@@ -54,3 +54,12 @@
   cut is runtime risk management, not a hyperparameter change.
 - Consequence: exp_external_pong_02.yaml now 4096 steps / 100 eval eps; 30k stays
   open for when the task is discriminative and the window is stable.
+
+## 2026-09-26: 2026-09-25 no-learning verdict SUPERSEDED (phantom confound)
+- The 09-25 verdict ("task rewards survival, not skill") rested on pre-fix runs:
+  the 96x96 MISS-as-hit bug inflated rewards and suppressed termination (episodes
+  pinned at the 200-step cap), and exp02 later showed ~5/6 episodes were phantom
+  resets. None of that evidence measures the task. The verdict is suspended, not
+  inverted: no claim about learnability stands until a post-fix re-run (Step 3).
+- Consequence: task-side levers (serve spread, ball speed, survival shaping) stay
+  proposals, not conclusions. Judge the re-run by miss-rate + episode length.

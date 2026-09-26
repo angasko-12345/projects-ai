@@ -16,23 +16,22 @@
 - [x] Docs/config sync; two full audit passes (PPO/GAE, general)
 - [x] Extern-Pong reward/termination fix (b77bf4d): native-frame detection,
   latched once-only edges; live-verified Diag320 11/11 + Diag96 6/6 terminal.
+- [x] Honest eval reporting: real terminated/truncated counts + untrained/trained/
+  delta comparison block, no auto-verdict (d15c02b). Suite 268 at the time.
+- [x] exp02 validation run (4096 steps, exit 0) — verdict later suspended
+  (phantom confound); results JSON kept as pre-fix artifact.
+- [x] Phantom-reset diagnosis (Step 1) + reset-settle fix (Step 2, 6890c42):
+  live 0/6 phantoms. Suite 273 at the time.
+- [x] Phase-2 window-loss tolerance (Step 4, f751d73): relaunch-and-resume
+  (max 3) + ckpts every 25 updates. Suite 278.
 
 ## Next (proposed, in order)
-- [x] Complete one full external 3-phase run with results JSON (exp02: 4096 steps,
-  exit 0, comparison block verified; verdict no-learning, see project.md).
-- [x] STEP 1 — diagnose 3-step episode deaths: CAUSE = reset() lands mid-banner
-  (1.0s persistence) -> 1-step phantom terminations; live rally dies honestly.
-- [x] STEP 2 — reset() polls for a non-banner frame (reset_settle_timeout_s,
-  default 5.0s; screen-only; best-effort). Live: 0/6 phantoms. Suite 273 OK.
 - [ ] STEP 3 — pre-flight: check live-play baseline reds in the exp window
   (59-red chrome seen in verify window could mask hit edges); then re-run exp02
   config (4096 first; 30k once stable) with the same untrained/trained/delta
   comparison. Judge by miss-rate + episode length.
-- [x] Reliability: relaunch-and-resume in phase 2 (max 3) + periodic ckpts every
-  25 updates. A repeat of the step-6144 window death now costs one relaunch,
-  not the run. Suite 278 OK.
 - [ ] Curiosity enabled on the external game (config flag exists).
-- [ ] Commit pending work (`universal-game-agent/` + `.agents/memory/oh-my-pi/` only).
+- [ ] Commit pending work (memory files only right now).
 
 ## Explicitly not planned
 - LSTM/Transformer swap, SB3 adoption, continuous-action PPO, model-size scaling
