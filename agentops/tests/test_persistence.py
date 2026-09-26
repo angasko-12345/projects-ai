@@ -11,13 +11,14 @@ import asyncio
 import sqlite3
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from agentops.config import AppConfig, AgentConfig
 from agentops.events import Event, EventSeverity, EventType
 from agentops.failure import FailureClassifier, FailureSource
-from agentops.finalize import finalize_worktree
+from agentops.finalize import finalize_worktree, record_worktree_provenance
 from agentops.git import GitError, Worktree
 from agentops.logging import LogManager
 from agentops.persistence import (
@@ -32,7 +33,7 @@ from agentops.registry import DetectedAgent
 from agentops.runner import AgentRunner
 from agentops.runtime import ProcessRuntime
 from agentops.state import StateStore
-from agentops.tasks import Task
+from agentops.tasks import Task, TaskStatus
 from agentops.verification_kernel import VerificationKernel
 from agentops.verification_model import (
     VerificationCheckClass,
@@ -121,6 +122,41 @@ class DegradationRecorderTests(unittest.TestCase):
         recorder.clear()
         self.assertEqual(recorder.degradations, ())
 
+    def test_recorder_trims_to_its_limit(self):
+        recorder = DegradationRecorder(limit=3)
+        for index in range(6):
+            recorder.record("failure.create", RuntimeError(f"boom {index}"))
+        self.assertEqual(len(recorder.degradations), 3)
+        # Oldest entries are evicted first.
+        self.assertEqual(
+            [item.message for item in recorder.degradations],
+            ["boom 3", "boom 4", "boom 5"],
+        )
+
+    def test_recorder_concurrent_records_do_not_lose_entries(self):
+        """The GUI controller records from background threads."""
+        import threading
+
+        recorder = DegradationRecorder(limit=1000)
+        errors: list[BaseException] = []
+
+        def worker(offset: int) -> None:
+            try:
+                for index in range(50):
+                    recorder.record("failure.create", RuntimeError(f"{offset}-{index}"))
+            except BaseException as error:  # pragma: no cover - failure path
+                errors.append(error)
+
+        threads = [threading.Thread(target=worker, args=(n,)) for n in range(4)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        self.assertEqual(errors, [])
+        self.assertEqual(len(recorder.degradations), 200)
+        self.assertEqual(
+            len({item.message for item in recorder.degradations}), 200)
+
     def test_degradation_is_json_shaped(self):
         payload = Degradation("task.update", PersistencePolicy.MUST_FAIL_CLOSED,
                               "sqlite3.OperationalError", "locked").to_dict()
@@ -160,6 +196,10 @@ class PersistencePolicyTests(unittest.TestCase):
 
     def test_unknown_operation_is_treated_as_fail_closed(self):
         self.assertIs(policy_for("something.new"), PersistencePolicy.MUST_FAIL_CLOSED)
+
+    def test_worktree_provenance_is_classified_safe_to_degrade(self):
+        self.assertIs(
+            policy_for("worktree_ref.create"), PersistencePolicy.SAFE_TO_DEGRADE)
 
 
 class KernelFailClosedTests(unittest.TestCase):
@@ -335,6 +375,92 @@ class SafeToDegradeTests(unittest.TestCase):
         operations = [item.operation for item in recorder.degradations]
         self.assertIn("agent_run.create", operations)
         self.assertFalse(recorder.has_fail_closed)
+
+    def test_runner_records_a_lost_run_transition(self):
+        """A stranded RUNNING run is recoverable, so it degrades — loudly."""
+        recorder = DegradationRecorder()
+        with tempfile.TemporaryDirectory() as directory:
+            async def factory(*command, **kwargs):
+                return FakeProcess(b"done", b"", 0)
+
+            observer = MagicMock()
+            observer.mark_running.side_effect = sqlite3.OperationalError("locked")
+            runner = AgentRunner(
+                LogManager(Path(directory) / "logs"),
+                run_observer=observer,
+                runtime=ProcessRuntime(spawn=factory),
+                degradation=recorder,
+            )
+            agent = DetectedAgent(
+                AgentConfig("pi", "pi", ("--print", "{prompt}"), ("implementation",)),
+                True, "pi", "1.0.0")
+            result = asyncio.run(
+                runner.run_agent(agent, "hello", directory, task_id="t-1"))
+            self.assertEqual(result.exit_code, 0)
+        operations = [item.operation for item in recorder.degradations]
+        self.assertIn("agent_run.transition", operations)
+
+    def test_workflow_records_a_lost_recovery_failure_row(self):
+        """recover_incomplete bypasses record_failure and needs its own record."""
+        recorder = DegradationRecorder()
+        state = StateStore(":memory:")
+        try:
+            workflow_id = state.create_workflow("recovery degradation")
+            task = state.add_task(
+                Task("do", "implementation", workflow_id, max_attempts=1))
+            # A stranded task: FAILED with an interrupted result is what
+            # recover_incomplete actually looks for.
+            state.update_task(replace(
+                task, status=TaskStatus.FAILED,
+                result="Task execution was interrupted before completion."))
+            engine = WorkflowEngine(
+                AppConfig({}, {}), state, MagicMock(), MagicMock(), MagicMock(),
+                degradation=recorder,
+            )
+            with patch.object(
+                state, "create_failure",
+                side_effect=sqlite3.OperationalError("locked"),
+            ):
+                engine.recover_incomplete(workflow_id)
+            operations = [item.operation for item in recorder.degradations]
+            self.assertIn("failure.create", operations)
+        finally:
+            state.close()
+
+    def test_worktree_provenance_loss_is_reported(self):
+        """A lost base-commit row must not be silent: retry_merge depends on it."""
+        recorder = DegradationRecorder()
+        state = StateStore(":memory:")
+        try:
+            workflow_id = state.create_workflow("provenance")
+            worktree = Worktree(
+                Path("C:/repo"), Path("C:/wt"), "agentops/demo-12345678", "main", "abc123")
+            with patch.object(state, "record_worktree_ref",
+                              side_effect=sqlite3.OperationalError("locked")):
+                stored = record_worktree_provenance(
+                    state, worktree, workflow_id, recorder)
+            self.assertFalse(stored)
+            self.assertEqual(
+                [item.operation for item in recorder.degradations],
+                ["worktree_ref.create"])
+        finally:
+            state.close()
+
+    def test_worktree_provenance_is_stored_on_success(self):
+        recorder = DegradationRecorder()
+        state = StateStore(":memory:")
+        try:
+            workflow_id = state.create_workflow("provenance ok")
+            worktree = Worktree(
+                Path("C:/repo"), Path("C:/wt"), "agentops/demo-87654321", "main", "abc123")
+            self.assertTrue(
+                record_worktree_provenance(state, worktree, workflow_id, recorder))
+            self.assertEqual(recorder.degradations, ())
+            refs = state.list_worktree_refs(workflow_id)
+            self.assertEqual(len(refs), 1)
+            self.assertEqual(refs[0].base_commit, "abc123")
+        finally:
+            state.close()
 
     def test_workflow_records_a_lost_failure_row(self):
         recorder = DegradationRecorder()

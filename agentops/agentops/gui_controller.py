@@ -17,7 +17,7 @@ from typing import Callable
 from .agent_run import AgentRun, AgentRunStatus, GitRunMetadataCollector
 from .artifacts import ArtifactError, ArtifactStore
 from .config import AppConfig, load_config
-from .finalize import finalize_worktree
+from .finalize import finalize_worktree, record_worktree_provenance
 from .git import GitError, GitWorktreeManager, Worktree, WorktreeRef
 from .tasks import Task, Workflow
 from .logging import LogManager
@@ -393,16 +393,8 @@ class AgentOpsController:
             result = asyncio.run(engine.run_high_level(description, worktree.path, cancel_event=cancel_event))
             # Phase 3: persist provenance against the real workflow id so
             # retry/merge validate against stored base even after restart.
-            try:
-                from uuid import uuid4 as _uuid4b
-                from .tasks import utc_now as _utc_nowb
-                state.record_worktree_ref(WorktreeRef(
-                    id=str(_uuid4b()), workflow_id=result.workflow_id, path=str(worktree.path),
-                    branch=worktree.branch, base_branch=worktree.base_branch,
-                    base_commit=worktree.base_commit, created_at=_utc_nowb(),
-                ))
-            except Exception:
-                pass
+            record_worktree_provenance(state, worktree, result.workflow_id,
+                                       engine.degradation)
             if cancel_event.is_set():
                 raise OperationCancelled
             changed = False

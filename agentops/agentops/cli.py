@@ -11,10 +11,11 @@ from . import __version__
 from .agent_run import AgentRunStatus, GitRunMetadataCollector
 from .artifacts import ArtifactError
 from .config import _load_data, load_config
-from .finalize import WorktreeFinalization, finalize_worktree
-from .git import GitError, GitWorktreeManager, WorktreeRef
+from .finalize import WorktreeFinalization, finalize_worktree, record_worktree_provenance
+from .git import GitError, GitWorktreeManager
 from .registry import AgentRegistry
 from .logging import LogManager
+from .persistence import DegradationRecorder, event_emitter
 from .runner import AgentRunner
 from .state import StateStore
 from .verification import Verifier
@@ -402,17 +403,8 @@ def main(argv: list[str] | None = None) -> int:
         workflow_id = result.workflow_id
         # Phase 3: persist provenance so retry/merge validate against the
         # stored base even after restart (never memory-only).
-        try:
-            from uuid import uuid4 as _uuid4
-            from .tasks import utc_now as _utc_now
-            if worktree is not None and workflow_id is not None:
-                state.record_worktree_ref(WorktreeRef(
-                    id=str(_uuid4()), workflow_id=workflow_id, path=str(worktree.path),
-                    branch=worktree.branch, base_branch=worktree.base_branch,
-                    base_commit=worktree.base_commit, created_at=_utc_now(),
-                ))
-        except Exception:
-            pass
+        record_worktree_provenance(state, worktree, workflow_id, DegradationRecorder(
+            emit=event_emitter(state.record_typed_event)))
         finalization = WorktreeFinalization(changed=False, merged=False, conflict_error=None)
         if result.ready:
             finalization = finalize_worktree(manager, state, worktree, description, workflow_id,

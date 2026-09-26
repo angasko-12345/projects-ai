@@ -288,8 +288,13 @@ class WorkflowEngine:
             )
             try:
                 self.state.create_failure(failure)
-            except Exception:
-                pass
+            except Exception as error:
+                # A8: this path bypasses record_failure(), so it needs its own
+                # degradation record or a lost recovery row stays invisible.
+                self.degradation.record(
+                    "failure.create", error,
+                    workflow_id=failure.workflow_id, task_id=failure.task_id,
+                )
         summary["recovery_states"] = states
         return summary
 
@@ -853,11 +858,34 @@ class WorkflowEngine:
             relationship=relationship,
         )
 
+    def _note_run_degradation(
+        self,
+        error: BaseException,
+        *,
+        run_id: str | None = None,
+        task: Task | None = None,
+        context: AgentRunContext | None = None,
+    ) -> None:
+        """A8: a post-hoc run record that could not be stored is a lost run.
+
+        The runner's own observer notifications are covered in ``runner.py``;
+        these are the engine-side fallbacks used when the runner did not create
+        the run itself.  Without them the loss was completely silent.
+        """
+        self.degradation.record(
+            "agent_run.create" if run_id is None else "agent_run.transition",
+            error,
+            run_id=run_id,
+            workflow_id=getattr(context, "workflow_id", None) or getattr(task, "workflow_id", None),
+            task_id=getattr(context, "task_id", None) or getattr(task, "id", None),
+        )
+
     def _record_no_agent_run(self, task: Task, working_directory: str | Path) -> None:
         observer = self._run_observer_for_task()
         if observer is None:
             return
         context = self._agent_run_context(task, "", working_directory)
+        run_id: str | None = None
         try:
             created = observer.create_run(context)
             run_id = created.id if isinstance(created, AgentRun) else str(created)
@@ -871,8 +899,8 @@ class WorkflowEngine:
                     failure_classification="no_agent",
                 ),
             )
-        except Exception:
-            pass
+        except Exception as error:
+            self._note_run_degradation(error, run_id=run_id, task=task, context=context)
 
     def _record_completed_run(
         self,
@@ -881,6 +909,7 @@ class WorkflowEngine:
         result: RunResult,
         working_directory: str | Path,
     ) -> None:
+        run_id: str | None = None
         try:
             collector = self.metadata_collector or GitRunMetadataCollector()
             try:
@@ -918,12 +947,13 @@ class WorkflowEngine:
                     or _safe_workflow_structured(stdout),
                 ),
             )
-        except Exception:
-            pass
+        except Exception as error:
+            self._note_run_degradation(error, run_id=run_id, context=context)
 
     def _record_cancelled_run(
         self, observer: AgentRunObserver, context: AgentRunContext, duration: float | None
     ) -> None:
+        run_id: str | None = None
         try:
             created = observer.create_run(context)
             run_id = created.id if isinstance(created, AgentRun) else str(created)
@@ -936,18 +966,19 @@ class WorkflowEngine:
                     failure_classification="cancelled",
                 ),
             )
-        except Exception:
-            pass
+        except Exception as error:
+            self._note_run_degradation(error, run_id=run_id, context=context)
 
     def _record_failed_run(
         self, observer: AgentRunObserver, context: AgentRunContext, error: BaseException, classification: str
     ) -> None:
+        run_id: str | None = None
         try:
             created = observer.create_run(context)
             run_id = created.id if isinstance(created, AgentRun) else str(created)
             observer.fail_run(run_id, error, classification)
-        except Exception:
-            pass
+        except Exception as persist_error:
+            self._note_run_degradation(persist_error, run_id=run_id, context=context)
 
     def _supported_runner_kwargs(self) -> dict[str, object]:
         try:

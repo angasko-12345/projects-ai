@@ -559,3 +559,39 @@ Status: done
 - **Not done:** no reviewer pass yet (opencode/copilot read-only snapshot review
   not run). No exe rebuild — packaging untouched.
 - **Backup:** `/tmp/agentops-backup-a8-persistence-20260926-174814`.
+
+---
+
+## Plan (A8 review follow-up — 2026-09-26)
+
+Six items from the opencode architecture review of `ff03eea`. Adjudicated every
+claim against the committed code first: three findings confirmed, one additional
+confirmed finding the reviewer listed in its body but never elevated, and one
+reviewer error (a cited `_operation_lock` that does not exist on the recorder —
+it belongs to `AgentOpsController`).
+
+### Status: all six done
+
+1. `threading.Lock` on `DegradationRecorder` — the controller records from
+   background threads; emit happens outside the lock so a slow store cannot stall.
+2. `worktree_ref.create` added as `SAFE_TO_DEGRADE`.
+3. Four engine observer fallbacks + `recover_incomplete` wired to the recorder.
+4. `record_worktree_ref` wired in the CLI and the controller — and **extracted
+   into `finalize.record_worktree_provenance`**, because both had hand-rolled the
+   same row with shadowed local imports, which is why one missed pattern was two
+   identical holes. Extraction also made it testable.
+5. Seven new tests (recorder limit eviction, threaded concurrent records, runner
+   transition degradation, recovery failure row, provenance loss and success).
+   Suite 382 passing, 4 skips.
+6. Corrected the overstated completeness claim in the module docstring and the
+   commit record; added the audit-scope lesson to `lessons.md`.
+
+### Adjudication notes
+
+- The reviewer cited `_operation_lock` as the reason recorder mutation is safe
+  across threads. No such lock existed; it is on `AgentOpsController`. The
+  conclusion (safe) held for the single-threaded asyncio kernel, but the stated
+  mechanism was wrong — and it pointed at a real gap, since the controller *is*
+  threaded. Item 1 closes that for the right reason.
+- The reviewer flagged the CLI copy of the provenance write as out of scope; it
+  is the same defect and was fixed alongside the controller copy.

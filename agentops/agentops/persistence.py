@@ -24,6 +24,15 @@ This module gives every such write one classification:
 Unknown operations default to ``MUST_FAIL_CLOSED``: an unclassified write is a
 policy hole, and the safe default for a new write is the strict one.
 
+Scope note: an earlier revision of this table claimed to cover every store write
+in the product.  That claim was wrong.  The first pass audited only ``runner``,
+``workflow``, and ``verification_kernel`` and missed ``record_worktree_ref``,
+which the CLI and the desktop client each implemented inline.  Both copies
+swallowed the error silently, so the same hole existed twice.  That write is now
+centralized in ``finalize.record_worktree_provenance`` and the table covers all
+four entry points.  When you add a store write with a fallback, grep for the
+store method across the whole package, not only the orchestration modules.
+
 This module is a leaf.  It imports no SQLite, subprocess, or GUI layer; the
 optional warning-event emitter is injected by the caller.
 """
@@ -33,6 +42,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
+import threading
 
 from .events import Event, EventSeverity, EventType
 from .logging import redact_text
@@ -47,6 +57,12 @@ class PersistencePolicy(StrEnum):
 
 # Every persistence write that currently has a fallback.  Keep this table
 # exhaustive: adding a `except` around a store call means adding a row here.
+# Re-grep these store methods package-wide when adding a fallback:
+#   record_worktree_ref, create_failure, update_task, refresh_workflow_status,
+#   claim_task, add_task, create_agent_run, start_agent_run, finish_agent_run,
+#   fail_agent_run, create_verification_run, start_verification_run,
+#   finish_verification_run, create_verification_check,
+#   start_verification_check, finish_verification_check, create_verification_report
 PERSISTENCE_POLICIES: Mapping[str, PersistencePolicy] = {
     # Diagnostics: the operation is still correct without the row, but the
     # loss must be visible instead of silent.
@@ -57,6 +73,11 @@ PERSISTENCE_POLICIES: Mapping[str, PersistencePolicy] = {
     # left silently unrecorded.
     "agent_run.create": PersistencePolicy.SAFE_TO_DEGRADE,
     "agent_run.transition": PersistencePolicy.SAFE_TO_DEGRADE,
+    # Worktree provenance.  Losing this row does not make any terminal state
+    # untrue — the worktree and its commits still exist — but `retry_merge`
+    # then has no stored base commit to validate against and falls back to the
+    # base branch's current HEAD, so the degradation must be reported loudly.
+    "worktree_ref.create": PersistencePolicy.SAFE_TO_DEGRADE,
     # Critical transitions: these are what make a reported outcome true.
     # A report whose checks were not stored must not claim `passed`, a task
     # must not be marked COMPLETED unpersisted, and a merge conflict must
@@ -128,6 +149,11 @@ def event_emitter(record: Callable[..., object]) -> Callable[[Degradation], None
 class DegradationRecorder:
     """Collect persistence degradations and surface them as warnings.
 
+    Thread-safe: the GUI controller records degradations from background
+    operation threads while the workflow's own asyncio loop may record at the
+    same time.  Mutation and reads take a lock; the warning emitter is called
+    outside it so a slow or blocking store cannot stall unrelated callers.
+
     The recorder never raises: a failure to report a failed write must not
     become a second failure.  ``emit`` is injected by the caller (normally a
     thin wrapper over ``StateStore.record_typed_event``) so this module stays
@@ -138,18 +164,21 @@ class DegradationRecorder:
         self._emit = emit
         self._limit = max(1, int(limit))
         self._degradations: list[Degradation] = []
+        self._lock = threading.Lock()
 
     @property
     def degradations(self) -> tuple[Degradation, ...]:
-        return tuple(self._degradations)
+        with self._lock:
+            return tuple(self._degradations)
 
     @property
     def has_fail_closed(self) -> bool:
         """True when a must-fail-closed write was lost."""
-        return any(
-            item.policy is PersistencePolicy.MUST_FAIL_CLOSED
-            for item in self._degradations
-        )
+        with self._lock:
+            return any(
+                item.policy is PersistencePolicy.MUST_FAIL_CLOSED
+                for item in self._degradations
+            )
 
     def record(
         self,
@@ -176,9 +205,10 @@ class DegradationRecorder:
             task_id=task_id,
             run_id=run_id,
         )
-        self._degradations.append(entry)
-        if len(self._degradations) > self._limit:
-            del self._degradations[: len(self._degradations) - self._limit]
+        with self._lock:
+            self._degradations.append(entry)
+            if len(self._degradations) > self._limit:
+                del self._degradations[: len(self._degradations) - self._limit]
         if self._emit is not None:
             try:
                 self._emit(entry)
@@ -188,7 +218,8 @@ class DegradationRecorder:
         return entry
 
     def clear(self) -> None:
-        self._degradations.clear()
+        with self._lock:
+            self._degradations.clear()
 
 
 __all__ = [
