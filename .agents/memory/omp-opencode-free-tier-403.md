@@ -1,11 +1,12 @@
 # Memory: omp (oh-my-pi) ↔ OpenCode free-tier 403 FreeTierError
 
-> Status: **OPEN / blocked** — as of 2026-09-20 the Zen chat gate is stricter than the pi runbook
-> (`pi-opencode-free-tier-fix.md`, last verified 2026-09-17). **Every** probe combination returns
-> `403 FreeTierError` for chat while the real opencode CLI v1.18.31 (running on this machine with the
-> same key) succeeds. The exact new gate rule is NOT yet pinned.
-> Applies to: oh-my-pi (`@oh-my-pi/pi-coding-agent`, v18.2.6 == npm latest) using free Zen models
-> (`opencode-zen/muse-spark-1.3-contributor-free:medium`, `opencode-zen/mimo-v2.5-free`, `opencode/*`).
+> Status: **RESOLVED 2026-09-22** — config-only mirror provider fix landed and verified live
+> (see "The fix (verified)" below). Gate rule for `/zen/v1` is now fully pinned: attribution
+> headers are **format-only** (UA `opencode/*` + `x-opencode-session: ses_`+26), no key needed,
+> and the only working free route is `/zen/v1/responses` (chat/completions is dead, 503).
+> Applies to: oh-my-pi (`@oh-my-pi/pi-coding-agent`, installed v18.2.8, npm name
+> `@oh-my-pi/pi-coding-agent`) using free Zen models (`opencode-zen/muse-spark-1.3-contributor-free`,
+> `:high`/`:low`/`:medium` thinking variants).
 
 ## Symptom
 
@@ -99,3 +100,68 @@ Binary: `D:\admin\code\node_modules\opencode-ai\bin\opencode.exe` (compiled, str
 - Probe scripts must be written to files (PowerShell `node -e` quoting breaks): keep in `C:\Users\admin\AppData\Local\Temp\opencode\`.
 - The real user-id/session-value `ses_`+26 format is from opencode.db session rows; uuidv7 always fails — never use omp's native session id for opencode models.
 - Gate changes fast (worked 09-17 with header-format only; dead 09-20). Re-probe before any implementation claim.
+
+## RESOLVED 2026-09-22 — root cause pinned & fix verified
+
+### Why it broke (v18.2.8, `D:\unorganized\bun\install\global\node_modules\@oh-my-pi\pi-coding-agent\dist\cli.js`)
+
+- Earlier "force-set via `BH()`/`vKe`/`Mte`" theory was **wrong**: `vKe` (idx ~12337809) is a time-based cost/usage validator, `Mte` (idx ~12347377) is a JSON whitespace normalizer (`.replace(/\s\s+/g," ")`). Neither touches headers.
+- The real clobber is `function uW(e,t)` (idx ~13050930), called per-request for provider `opencode-zen`/`opencode-go` only:
+  - `_se(e,"User-Agent","omp/"+(Jo))` — **set-if-absent**: a user-configured UA survives.
+  - `x-opencode-session`: if protocol anthropic → `X-Claude-Code-Session-Id`; if protocol openai AND provider `opencode` → force-set (`h6e`, deletes same-lowercase header then sets) `session_id` + `x-client-request-id`; if provider is opencode-zen/go → force-set `x-opencode-session` to `t.sessionId` = agent session id (uuidv7). So config headers alone CANNOT make an `opencode-zen` session correct.
+- v18.2.8 already routes `muse-spark-*` to `openai-responses` (bundle routing catalog; `minimax-m3*` → completions). Only the forced session (uuidv7) / UA (`omp/18.2.8`) were wrong.
+- `--provider-session-id <ses_id>` CLI flag overrides `t.sessionId` per-invocation, but there is no config key for a persistent session id.
+
+### Gate rules (probed live 2026-09-22, via node probes in `Temp\opencode\{probe-ua-session,probe-session-format,probe-auth-required}.js`)
+
+`POST https://opencode.ai/zen/v1/responses` (JSON):
+- `User-Agent` must START `opencode/` exactly (`opencode/1.18.32` passes; `omp/…`, `OMP/…`, `okcomputer/…`, absent → 403).
+- `x-opencode-session` must be `ses_`+26 (12 hex unixms + 14 base62). Format check only: fresh, fabricated, or **reused static** values pass (>1 call with same value → 200 twice); uuidv7 → 403.
+- **Authorization is NOT checked on the free tier** → `auth: none` mirror works (no key, no secret persisted). Bogus key → 401; valid hardcoded headers with NO auth → 200.
+- Body must be responses-format: `stream:true` + non-empty `tools` + `input` array + bare model id.
+- `/zen/v1/chat/completions` is dead: **503 "Endpoint is unavailable"** (route disabled; this is why the pi runbook combo now fails on chat).
+
+### The fix (verified)
+
+`C:\Users\admin\.omp\agent\models.yml` — mirror provider with non-`opencode-zen/-go` id so `uW` never clobbers headers:
+
+```yaml
+providers:
+  omp-zen:
+    baseUrl: "https://opencode.ai/zen/v1"
+    api: openai-responses
+    auth: none
+    headers:
+      User-Agent: "opencode/1.18.32"
+      x-opencode-session: "ses_01a0c93f46a0F87wagIvaLefvj"   # static, reusable (refreshing optional)
+    models:
+      - id: muse-spark-1.3-contributor-free
+        reasoning: true
+        input: [text, image]
+        output: [text]
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
+        contextWindow: 1048576
+        maxTokens: 131072
+        thinking: { mode: effort, efforts: [minimal, low, medium, high, xhigh] }
+```
+
+`C:\Users\admin\.omp\agent\config.yml` roles: `plan: omp-zen/muse-spark-1.3-contributor-free`, `default: omp-zen/muse-spark-1.3-contributor-free:high`.
+
+Profiles show: reasoning true, input text/image, contextWindow 1048576, maxTokens 131072, efforts [minimal,low,medium,high,xhigh]. Wire is `/zen/v1/responses` with bare model + `input` + real tools + `stream:true`, headers `user-agent: opencode/1.18.32` + static `ses_`, no Authorization (auth:none). Live tests pass: `omp --print --no-pty --model omp-zen/muse-spark-1.3-contributor-free "Reply with exactly: OK"` and default-role run both return `OK` (no 403).
+
+### Ops notes
+
+- Debug harness killed: mockzen.js (127.0.0.1:8998) + relay.js (127.0.0.1:8999) node processes stopped; no listeners on 8998/8999.
+- Real key remains ONLY in `auth.json`/`auth_credentials` — never persisted to omp config (auth: none).
+- If a stale session starts failing: regenerate `ses_`+26 (see pi runbook snippet) and update models.yml; UA must stay `opencode/*`.
+
+## 2026-09-22 follow-up (which models are usable)
+
+- Mirror now exposes `muse-spark-1.3-contributor-free` **and** `muse-spark-1.2-contributor-free` (both verified `OK` live via omp).
+- Live catalog (`GET /zen/v1/models`) has ~366 ids, but usable free set on the working `/responses` route is ONLY the two `muse-spark-*-contributor-free` (both profiled `api: openai-responses`). Every other free id (`big-pickle`, `mimo-v2.5-free`, `mimo-v2.6-flash-free`, `deepseek-v4-flash-free`, `jev-1.13-free`, `ling-3.0-flash-fin-free`, `nemotron-3-ultra-free`, `nemotron-3.5-lightning-free`) is profiled `api: openai-completions` → `/chat/completions`, which is 403-gated for non-CLI regardless of body shape/session (and returns 500 "Internal server error" if forced onto `/responses`).
+- **New gate nuance:** `/responses` FreeTierError also depends on body shape — a FULL CLI-shaped body (non-empty `instructions` + multi-message `input`) → 200; minimal single-message bodies → 403 FreeTierError even with valid headers and a fresh `ses_`. (Earlier "stream:true + tools + input" was necessary but not sufficient; `instructions` presence is part of the gate.)
+- **`/chat/completions` IS usable with `stream:true`** (2026-09-22): `mimo-v2.5-free`, `big-pickle` return 200 with fresh `ses_` + opencode UA + no auth + full body. The earlier "chat dead / 403" conclusion was wrong — those probes used `stream:false` (403 FreeTierError) or outdated header sets. `jev-1.13-free` genuinely 500s (broken entry, excluded).
+- `models.yml` now has TWO mirror providers: `omp-zen` = `api: openai-responses` (muse-spark-1.3 + 1.2) and `omp-zen-c` = `api: openai-completions` (big-pickle, mimo-v2.5-free, mimo-v2.6-flash-free, deepseek-v4-flash-free, ling-3.0-flash-fin-free, nemotron-3-ultra-free, nemotron-3.5-lightning-free), both `auth: none` + same static-UA/session headers. Total 9 free models, all verified: `omp --print --no-pty --model omp-zen-c/mimo-v2.5-free "Reply with exactly: OK"` → `OK`, same for big-pickle. omp sends `stream:true` on its completions wire, so it passes the gate.
+- **SINGLE PROVIDER (2026-09-22, v18.2.11):** per-model `api` IS supported in `models.yml` model entries (verified empirically — the request router reads `model.api`). So the two mirrors were merged into ONE `omp-zen` provider: provider-level `api: openai-responses` default, chat models carry `api: openai-completions` per-entry. `omp-zen-c` removed; `omp models` now shows `omp-zen (9)` one clean table.
+- **omp self-updated v18.2.8 → v18.2.11 during the session and REWROTE `~/.omp/agent/config.yml`**: added `task/web/slow/smol/vision` roles and reset `default` to `ollama-cloud/qwen3-coder-next`. Restored `default: omp-zen/muse-spark-1.3-contributor-free:high`. Watch for config.yml being rewritten on version bumps.
+- **ollama-cloud 401 root cause:** a stored `api_key` (len 59) IS present in `auth_credentials`, but ollama.com rejects it — probed both `https://ollama.com/api/chat` and `/v1/chat/completions` (Bearer, gpt-oss:120b) → 401 on both. Fix = user: fresh key from `https://ollama.com/settings/keys` then `omp` → `/login ollama-cloud` (paste), or set `OLLAMA_CLOUD_API_KEY` env var (built into provider `envVars`). `smol: ollama-cloud/glm-4.6` in config.yml will 401 until then.

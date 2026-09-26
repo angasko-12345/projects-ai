@@ -1,0 +1,378 @@
+{
+  "config_file": "experiments\\exp_external_pong_01.yaml",
+  "timestamp_utc": "2026-09-26T07:04:24.271623+00:00",
+  "seed": 0,
+  "model_config": {
+    "num_actions": 3,
+    "in_channels": 4,
+    "frame_size": 84,
+    "feature_dim": 256,
+    "hidden_size": 128,
+    "num_layers": 1
+  },
+  "ppo_config": {
+    "total_timesteps": 1024,
+    "rollout_length": 128,
+    "minibatch_size": 32,
+    "update_epochs": 2,
+    "learning_rate": 0.00025,
+    "gamma": 0.99,
+    "gae_lambda": 0.95,
+    "clip_range": 0.2,
+    "entropy_coef": 0.01,
+    "value_coef": 0.5,
+    "max_grad_norm": 0.5,
+    "seed": 0,
+    "checkpoint_dir": "checkpoints/extern_pong_01",
+    "checkpoint_every_updates": 1000
+  },
+  "env_config": {
+    "type": "external",
+    "allow_live_capture": true,
+    "capture": {
+      "mode": "window",
+      "title": "ExternPongExp1-14676",
+      "out_width": 96,
+      "out_height": 96
+    },
+    "lifecycle": {
+      "mode": "window",
+      "title": "ExternPongExp1-14676"
+    },
+    "actions": {
+      "backend": "sendinput",
+      "table": [
+        {
+          "name": "NOOP",
+          "kind": "noop"
+        },
+        {
+          "name": "PRESS_LEFT",
+          "kind": "key",
+          "vk": 37,
+          "hold_ms": 60
+        },
+        {
+          "name": "PRESS_RIGHT",
+          "kind": "key",
+          "vk": 39,
+          "hold_ms": 60
+        }
+      ]
+    },
+    "timing": {
+      "post_action_delay_ms": 80.0,
+      "startup_delay_ms": 0.0,
+      "reset_delay_ms": 0.0,
+      "max_episode_steps": 200,
+      "max_episode_seconds": 120.0
+    },
+    "reward": {
+      "provider": "extern_pong"
+    },
+    "termination": {
+      "provider": "extern_pong"
+    },
+    "num_stack": 4,
+    "obs_size": 84
+  },
+  "game": {
+    "title": "ExternPongExp1-14676",
+    "fps": 60
+  },
+  "metric_definitions": {
+    "episode_reward": "sum of external rewards in one episode (greedy eval) or PPO rollout accounting (train)",
+    "mean_episode_reward": "mean over evaluated episodes, or rolling mean over last <=100 training episodes",
+    "mean_episode_length": "mean decisions per episode",
+    "terminated": "episodes ended by the game's own terminal signal (red MISS banner)",
+    "truncated": "episodes ended by a step/time budget, not by the game",
+    "external_reward": "reward from screen pixels via the configured provider (no game internals)",
+    "intrinsic_reward": "curiosity bonus (0.0 here: curiosity disabled for this run)",
+    "total_training_reward": "external + intrinsic per training episode",
+    "decision_fps": "agent decisions per wall-clock second during training"
+  },
+  "baseline_eval": {
+    "episodes": 8,
+    "greedy": true,
+    "seeds": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "mean_reward": -0.125,
+    "std_reward": 0.33071891388307384,
+    "min_reward": -1.0,
+    "max_reward": 0.0,
+    "mean_length": 4.625,
+    "episode_rewards": [
+      -1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "episode_lengths": [
+      6,
+      1,
+      1,
+      1,
+      1,
+      1,
+      25,
+      1
+    ],
+    "action_counts": {
+      "2": 37
+    },
+    "episode_hits": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0
+    ],
+    "episode_misses": [
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0
+    ],
+    "mean_hits": 0.125,
+    "mean_misses": 0.25
+  },
+  "final_eval": {
+    "episodes": 8,
+    "greedy": true,
+    "seeds": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "mean_reward": -0.125,
+    "std_reward": 0.33071891388307384,
+    "min_reward": -1.0,
+    "max_reward": 0.0,
+    "mean_length": 1.625,
+    "episode_rewards": [
+      -1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "episode_lengths": [
+      6,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "action_counts": {
+      "2": 9,
+      "0": 4
+    },
+    "episode_hits": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "episode_misses": [
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "mean_hits": 0.0,
+    "mean_misses": 0.125
+  },
+  "initial_mean_episode_reward": -0.125,
+  "final_eval_mean_reward": -0.125,
+  "final_train_rolling_mean_reward": -0.13,
+  "final_train_rolling_mean_ext_reward": -0.13,
+  "train_mean_episode_length": 2.7201002813518462,
+  "train_terminated_episodes": 386,
+  "train_truncated_episodes": 0,
+  "train_component_means": {},
+  "training_steps": 1024,
+  "training_seconds": 153.24867079999967,
+  "decision_fps": 6.681950288080425,
+  "checkpoint": "checkpoints\\extern_pong_01\\run-14676\\ppo_final.pt",
+  "dependencies": {
+    "python": "3.14.7",
+    "torch": "2.14.0+cpu",
+    "gymnasium": "1.3.0",
+    "numpy": "2.5.3",
+    "mss": "10.2.0",
+    "yaml": "6.0.3"
+  },
+  "history_tail": {
+    "timesteps": [
+      512,
+      640,
+      768,
+      896,
+      1024
+    ],
+    "fps": [
+      6.845288690417652,
+      6.831033245277965,
+      6.835668306098688,
+      6.849606319182538,
+      6.794029818748746
+    ],
+    "policy_loss": [
+      -0.0001034960150718689,
+      0.00010710768401622772,
+      -0.00018030195496976376,
+      -0.00041291676461696625,
+      -0.000519756693392992
+    ],
+    "value_loss": [
+      0.06541573815047741,
+      0.05138154188171029,
+      0.0365347305778414,
+      0.0487062125466764,
+      0.038517667911946774
+    ],
+    "entropy": [
+      1.0985910892486572,
+      1.0985741913318634,
+      1.0985482931137085,
+      1.0985383838415146,
+      1.0983415842056274
+    ],
+    "mean_reward": [
+      -0.1,
+      -0.09,
+      -0.11,
+      -0.13,
+      -0.13
+    ],
+    "mean_ext_reward": [
+      -0.1,
+      -0.09,
+      -0.11,
+      -0.13,
+      -0.13
+    ],
+    "mean_int_reward": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "predictor_loss": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "pixel_change": [
+      0.0014624821487814188,
+      0.0013625908177345991,
+      0.0015026413602754474,
+      0.0014569732593372464,
+      0.0017094495706260204
+    ],
+    "episodes": [
+      186,
+      225,
+      283,
+      325,
+      386
+    ],
+    "upd_episodes": [
+      49,
+      39,
+      58,
+      42,
+      61
+    ],
+    "upd_mean_length": [
+      2.795918367346939,
+      3.641025641025641,
+      2.0517241379310347,
+      3.261904761904762,
+      2.098360655737705
+    ],
+    "upd_terminated": [
+      49,
+      39,
+      58,
+      42,
+      61
+    ],
+    "upd_truncated": [
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "upd_mean_ext": [
+      -0.10204081632653061,
+      -0.07692307692307693,
+      -0.13793103448275862,
+      -0.11904761904761904,
+      -0.14754098360655737
+    ],
+    "upd_mean_int": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "upd_mean_total": [
+      -0.10204081632653061,
+      -0.07692307692307693,
+      -0.13793103448275862,
+      -0.11904761904761904,
+      -0.14754098360655737
+    ],
+    "components": [
+      {},
+      {},
+      {},
+      {},
+      {}
+    ]
+  }
+}
