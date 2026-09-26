@@ -8,11 +8,11 @@
 - Live: https://github.com/angasko-12345/projects-ai/tree/main/universal-game-agent
 - NOTE: `small-projects/universal-game-agent/` is an unrelated EMPTY dir — leave alone.
 ## Current state (2026-09-26)
-- Full suite: **266/266 passing** under the project venv.
-- Commits through `b77bf4d` (extern-Pong reward/termination fix: native-frame
-  detection + edge-triggered once-only rewards; live-verified at 96 and 320).
+- Full suite: **268/268 passing** under the project venv.
+- Commits through `d15c02b` (exp02: term/trunc reporting, comparison block,
+  exp_02 yaml + results JSON; verdict no-learning, 3-step deaths unexplained).
 - Toy Pong: fully validated (see results below). External Pong: reward/termination
-  now correct at the real RL config; no completed full experiment yet.
+  correct at the real RL config; full 3-phase comparison pipeline proven (exp02).
 
 ## Environment (non-negotiable)
 - Interpreter for ALL runs: `D:\Users\admin\Python\Python314\.venv\Scripts\python.exe`
