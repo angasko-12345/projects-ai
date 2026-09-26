@@ -4,20 +4,26 @@ This is the canonical repository instruction file. The root `AGENTS.md` is only 
 
 ## Project identity and scope
 
-- AgentOps is a local-first orchestrator for installed coding-agent CLIs. It plans, implements, verifies, reviews, persists, and merges work in isolated Git worktrees.
-- The product is the Python package in `agentops/`. The repository root is a container for the package, `.agents/` process material, and task records.
-- Runtime target: Python 3.11 or newer. Runtime dependencies are standard-library only; PyYAML and PyInstaller are optional.
+- This repository is a container for two independent Python products plus the process material agents use to work on them. The products do not depend on each other, and a change in one is not a change in the other.
+  - `agentops/` — a local-first orchestrator for installed coding-agent CLIs. It plans, implements, verifies, reviews, persists, and merges work in isolated Git worktrees. See `agentops/AGENTS.md`.
+  - `universal-game-agent/` — a reinforcement-learning agent that plays Pong, including a Windows-only path that plays a real external game window through screen capture and real keyboard input. See `universal-game-agent/AGENTS.md`.
+- **Product facts do not belong in this file.** Test commands, runtime targets, dependencies, architecture, and packaging rules live in the two local files above. Do not assume they are the same for both products: they have different dependency sets, different test commands, and only one ships a packaged executable. A single repository-wide test command does not exist.
 - Keep task scope narrow. Do not add unrelated features, migrations, configuration, packaging work, or repository cleanup.
 
 ## Canonical locations
 
-- Repository instructions: `.agents/AGENTS.md`
+- Repository instructions: `.agents/AGENTS.md` (this file — universal contract)
+- AgentOps product instructions: `agentops/AGENTS.md`
+- universal-game-agent product instructions: `universal-game-agent/AGENTS.md`
 - Pi-specific instructions: `.agents/pi_AGENTS.md`
 - Oh My Pi instructions: `.agents/ohmypiagents.md`
 - Team and collaboration policy: `.agents/team.md`
 - Canonical memory: `.agents/memory/`
 - Plans and outputs: `.agents/plans/` and `.agents/outputs/`
+- Agent skills: `.agents/skills/`
 - Root `AGENTS.md` and `pi_AGENTS.md` are compatibility shims and must not be treated as independent sources of truth.
+
+Read the local `AGENTS.md` for whichever product the task touches, in addition to this file.
 
 ## Startup checklist
 
@@ -27,64 +33,75 @@ Before substantial work:
 2. Read the relevant files under `.agents/memory/`, especially `project.md`, `architecture.md`, `roadmap.md`, `decisions.md`, and `lessons.md`.
 3. Inspect current source, tests, `git status`, and the current diff. Current source, tests, and explicit user instructions outrank memory.
 4. Back up the dirty tree before substantial work, including relevant untracked files.
-5. Identify the package directory and test command. Python commands run from `agentops/`, never from the repository root.
+5. Identify which product the task touches, read that product's `AGENTS.md`, and use its test command. There is no single repository-wide test command; the two products differ.
 6. If using Intercom, resolve the exact live session name before messaging. A failed delivery is a disconnect signal.
 
 ## Commands
 
-Run tests from `agentops/`:
+There is no single repository-wide test command. Each product has its own, and both run
+from their own directory rather than from the repository root. Read the local
+`AGENTS.md` before running anything. The baselines below are dated observations recorded
+at commit `a03e907` on 2026-09-26, not contracts; tests get added, so run the suite for
+current truth.
 
-```bat
-cd agentops
-python -m unittest discover -s tests
-```
+| Product | Test command | Recorded baseline |
+|---|---|---|
+| `agentops/` | `cd agentops` then `python -m unittest discover -s tests` | 357 tests total, 4 skipped by environment, so 353 passed |
+| `universal-game-agent/` | `cd universal-game-agent` then `python -m unittest discover -s tests` | 261 tests, no skips |
 
-The latest recorded baseline is 357 passing with 4 environment skips. Treat any new failure or skip as attributable to the current work until proven otherwise.
+Treat any new failure or skip as attributable to the current work until proven otherwise,
+and do not rely on remembered counts — run the suite. An empty, interrupted, all-skipped,
+or unknown run is never a pass. Do not invent lint, formatter, type-check, or coverage
+commands; neither product configures one.
 
-CLI entry point:
-
-```bat
-python -m agentops <command>
-```
+CLI entry points are also per-product and are documented in the local files.
 
 ## Non-negotiable conventions
 
-- Pi is the sole writer in the dirty AgentOps tree. Reviewers work read-only in `/tmp/agentops-review-*` snapshots and never edit the repository directly.
+- Either Pi or Oh-My-Pi is the sole writer in a dirty tree. Never run two writers concurrently in the same tree, and do not make uncoordinated edits to files another session owns. Reviewers work read-only in `/tmp/agentops-review-*` snapshots and never edit the repository directly.
 - Allowed review collaborators are OpenCode, free-claude-code (`fcc-claude`), Copilot, Antigravity, and Oh-My-Pi. Do not task Codex or Claude as review collaborators.
-- SQLite changes are additive only: use `CREATE TABLE IF NOT EXISTS`, explicit column names on migrated-table inserts, and `INSERT OR IGNORE` for migration versions. Never rewrite an existing table or rely on positional inserts.
-- After touching migrations, update migration-version assertions in `tests/test_events.py`.
-- Every bug fix gets a regression test first, following `tests/test_review_regressions.py`.
-- Do not persist raw prompts, secrets, credentials, tokens, private keys, or sensitive environment values. Reuse existing redaction and prompt-hash mechanisms.
+- Antigravity may be tasked as a reviewer only while its quota has remaining capacity. If its quota is fully used up, do not task it: pick another allowed reviewer, or proceed without a review and say so in the report.
+- Do not persist raw prompts, secrets, credentials, tokens, private keys, or sensitive environment values in any product, log, artifact, or memory file. Reuse existing redaction and prompt-hash mechanisms.
+- Write a regression test before fixing a bug, and follow the pattern the product's local `AGENTS.md` names.
 - Keep deterministic classification, parsing, and verification logic in leaf modules without SQLite, subprocess, or GUI I/O.
-- Keep GUI updates on the Tk thread through `root.after()` and keep long-running work on controller/background threads.
-- On Windows, use the shared no-console-window helpers for subprocesses and avoid raw Unicode writes that can fail in legacy console encodings.
-- Normalize paths to `as_posix()` when crossing a UI or persistence boundary.
+- On Windows, use the shared no-console-window helpers for subprocesses and avoid raw Unicode writes that can fail in legacy console encodings. (agentops)
+- Normalize paths to `as_posix()` when crossing a UI or persistence boundary. (agentops)
+- Agent-reported success is never verification evidence. A task is verified by a passed verification command or a passed verification report.
 - Do not reinstall or reconfigure Agent Intercom and do not change its scope.
 - Leave externally rewritten files such as `tasks/task-ignorethis.md` alone. Do not stage unrelated changes.
+- Product-specific rules — migration and test-file conventions, GUI threading, packaging, and anything tagged `(agentops)` — are stated in each product's local `AGENTS.md` and apply only to that product.
 
-## Architecture map
+## Product architecture and packaging
 
-- Entry points: `agentops/cli.py`, `agentops/gui.py`, and threaded `agentops/gui_controller.py`.
-- Orchestration: `agentops/workflow.py` runs the standard plan -> implementation -> verification -> review flow and custom dependency DAGs.
-- Agent selection: `agentops/registry.py`, `agentops/agent_adapter.py`, and `agentops/routing.py` provide detection, roles, capabilities, deterministic routing, fallback, and explainable decisions.
-- Execution: `agentops/runner.py` delegates process lifecycle behavior to the shared `agentops/runtime.py` layer.
-- Verification: `agentops/verification_kernel.py` executes configured profiles; `agentops/verification.py` preserves the legacy allowlisted command path.
-- Failure handling: `agentops/failure.py` provides deterministic classification, bounded repair, and recovery decisions.
-- Persistence: `agentops/state.py` is the sole SQLite owner. The current additive schema is v7, including the `structured_evidence` column on failures.
-- Git integration: `agentops/git.py` and `agentops/finalize.py` manage isolated worktrees, commit/merge behavior, provenance, and conflict preservation.
-- Observability: `agentops/events.py` and `agentops/artifacts.py` provide versioned timeline and artifact records.
-- Domain/model and kernel modules should remain leaves: pure validation and deterministic rules belong in modules such as `tasks.py`, `execution_model.py`, `verification_model.py`, `failure.py`, `agent_result.py`, and `events.py`.
+Architecture maps, data flow, and packaging rules are product-specific and are documented
+in each product's local `AGENTS.md`:
 
-## Data flow
+- `agentops/AGENTS.md` — entry points, orchestration, agent selection, execution,
+  verification, failure handling, persistence, Git integration, observability, the leaf-module
+  rule, the task-to-merge data flow, and the Windows PyInstaller packaging and
+  archive-inspection procedure.
+- `universal-game-agent/AGENTS.md` — the deliberate layer dependency direction, the
+  Gymnasium toy path versus the Windows-only external path, configuration and checkpoint
+  handling, and the CLI entry points.
 
-Task or workflow -> isolated `agentops/<slug>-<rand>` worktree -> plan -> implement -> verify -> review -> `finalize.py` commit/merge. A conflict creates a debugging task and preserves the worktree. Verification evidence, not agent-reported success, marks a task verified.
+Read the relevant local file before changing code in a product. Do not add product
+architecture back into this file.
 
-## Windows and packaging
+<!-- antislop:start -->
+## antislop
 
-- Packaged executable: `agentops/dist/AgentOps.exe` (gitignored; ship as a release asset, never commit).
-- Build from `agentops/` with `python scripts/build_windows_exe.py` after installing the Windows extras.
-- Every build must be archive-inspected. A successful PyInstaller build is not proof of a working bundle; verify `agentops.*`, Tk, SQLite, and `agents.yaml`, then smoke-test startup/shutdown and verify process exit.
-- Before rebuilding on Windows, stop lingering `AgentOps.exe` processes; a locked executable causes rebuild failures.
+For UI, copy, people, mobile layout, or code comments work, load the antislop skill for the
+task. These skills live in `.agents/skills/` and are tracked in git:
+
+- Core filter, always on: `antislop`
+- UI / visual: `antislop-ui`
+- Copy & text: `antislop-copywriting`
+- People: `antislop-human`
+- Mobile / responsive: `antislop-layoutmobile`
+- Code comments: `antislop-code`
+
+Before starting, ask the user when antislop applies: during the work, or after it is done.
+<!-- antislop:end -->
 
 ## Memory and completion
 

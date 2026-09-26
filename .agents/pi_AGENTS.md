@@ -6,7 +6,7 @@ This file applies when AgentOps selects the `pi` agent or when Pi creates, modif
 
 ## 1. Role and scope
 
-- Pi is the lead implementer and the only writer in the dirty AgentOps tree. Other agents review; they do not edit this repository.
+- Pi is a lead implementer. Either Pi or Oh-My-Pi acts as sole writer in a dirty tree; never run two writers concurrently in the same tree. Other agents review; they do not edit this repository.
 - Work only in the workspace or AgentOps worktree assigned to the task. Do not alter unrelated files, AgentOps configuration, or externally managed task files.
 - Treat the task description as the scope. Do not add features, migrations, configuration, packaging work, or unrelated cleanup that the request does not require.
 - Do not make concurrent uncoordinated edits to files owned by another session.
@@ -20,7 +20,7 @@ Before substantial work:
 2. Read `.agents/team.md` and the relevant files under `.agents/memory/`, especially `project.md`, `architecture.md`, `roadmap.md`, `decisions.md`, and `lessons.md`.
 3. Inspect the current source, tests, `git status`, and current diff. Current code and tests outrank memory.
 4. Back up the dirty tree before substantial work, including untracked files that belong to the task.
-5. Identify the exact package directory and test command. Python commands run from `agentops/`, never from the repository root.
+5. Identify which product the task touches, read that product's local `AGENTS.md` (`agentops/AGENTS.md` or `universal-game-agent/AGENTS.md`), and use its test command. There is no single repository-wide test command; the two products differ.
 6. If using Intercom, resolve the exact live session name with `intercom_list` before sending a message. Never assume a remembered display name is still live.
 
 ## 3. Implementation rules
@@ -32,7 +32,7 @@ Before substantial work:
 - Do not use an LLM for basic classification, parsing, verification, or success decisions. Agent-reported success is not verification evidence.
 - Do not persist raw prompts, secrets, credentials, tokens, private keys, or sensitive environment values. Reuse the existing redaction and prompt-hash mechanisms.
 - For SQLite changes, migrate additively: use `CREATE TABLE IF NOT EXISTS`, named columns on every migrated-table insert, and `INSERT OR IGNORE` for migration versions. Never rewrite an existing table or rely on positional inserts.
-- After touching migrations, update the migration-version assertions in `tests/test_events.py`.
+- After touching migrations, update the hardcoded `[1..7]` migration-version assertions in both `tests/test_events.py:276` and `tests/test_failure_kernel.py:588`.
 - Add a regression test before fixing a bug, following `tests/test_review_regressions.py`.
 - Preserve legacy behavior and compatibility unless the request explicitly changes it. Keep public constructors and persisted fields backward-compatible where practical.
 - Keep GUI updates on the Tk thread through `root.after()` and keep long-running work on controller/background threads.
@@ -43,11 +43,21 @@ Before substantial work:
 
 ## 4. Verification
 
-Run commands from `agentops/`:
+There is no single repository-wide test command. Read the local `AGENTS.md` for the
+product you are changing and run the command it gives. Both products use the form below and
+both run from their own directory, never from the repository root. Run exactly one block,
+starting from the repository root.
+
+`agentops/`:
 
 ```bat
-cd agentops
-python -m unittest discover -s tests
+cd agentops && python -m unittest discover -s tests
+```
+
+`universal-game-agent/`:
+
+```bat
+cd universal-game-agent && python -m unittest discover -s tests
 ```
 
 - Run focused tests while developing, then run the full suite after implementation changes and after addressing review findings.
@@ -59,7 +69,9 @@ python -m unittest discover -s tests
 
 ## 5. Review and collaboration
 
-Allowed review collaborators are OpenCode, free-claude-code (`fcc-claude`), and Copilot. Do not task Codex, Claude, or Antigravity as review collaborators.
+Allowed review collaborators are OpenCode, free-claude-code (`fcc-claude`), Copilot, Antigravity, and Oh-My-Pi. Do not task Codex or Claude as review collaborators.
+
+- Antigravity may be tasked only while its quota has remaining capacity. If its quota is fully used up, do not task it: pick another allowed reviewer, or proceed without a review and say so in the report.
 
 - Reviewers work read-only in `/tmp/agentops-review-*` snapshots through `agentops run`; they never edit the repository directly.
 - For Intercom-based review, confirm the reviewer is live with `intercom_list` first. A failed delivery is a disconnect signal: inspect status/logs before retrying.
