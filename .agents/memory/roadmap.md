@@ -129,16 +129,13 @@
 - **Risks:** low functional risk, high churn. Mitigate: pure move (no SQL changes) verified by the suite.
 - **Success criteria:** `state.py` ≤ ~500 lines; suite green; no SQLite behavior change.
 
-### A8 — Persistence failure policy (P1/P2)
+### A8 — Persistence failure policy (P1/P2) ✅ DONE 2026-09-26
+
+> Delivered: `agentops/persistence.py` leaf (`PersistencePolicy`, exhaustive `PERSISTENCE_POLICIES`, `Degradation`, `DegradationRecorder`, `event_emitter`); every store write with a fallback is now classified `SAFE_TO_DEGRADE` or `MUST_FAIL_CLOSED`, degrading writes emit a `persistence.degraded` WARNING event plus an in-memory entry, and critical transitions fail closed. Real defect fixed: a swallowed `finish_verification_check` error let a report claim `passed` while the stored check was still `running` — the workflow then marked the task verified on fabricated evidence. Same class of hole closed in `start_verification_check`. 18 new tests; suite 375 OK (4 skips). No exe rebuild (packaging untouched).
 
 - **Objective:** Surface degraded persistence explicitly instead of silent fallbacks; never let a persistence failure fabricate an unsafe terminal state.
-- **Concrete actions:**
-  1. Audit `_safe_*` persistence fallbacks in runner/workflow; tag each as "safe-to-degrade" vs "must-fail-closed".
-  2. Emit a WARNING event + degraded-state marker when an operation succeeds but persistence fails.
-  3. Make critical transitions (task COMPLETED, merge MERGED) fail-closed on persistence error.
-- **Owner:** pi (writer); copilot (test review).
-- **Dependencies:** A1.
-- **Risk:** overtightening causes spurious failures — keep the fatal set minimal (the audit explicitly calls this out).
+- **What shipped:** policy table + recorder (`persistence.py`); kernel fail-closed on lost check start/finish; runner observer notifications and workflow `failure.create` / `routing.decision` degrade with a warning; `task.update` and `merge.conflict_task` verified already fail-closed (regression-locked). Unknown operations default to `MUST_FAIL_CLOSED` so a new write cannot silently degrade.
+- **Deliberate boundary:** only the previously-swallowed `(KeyError, ValueError)` is caught. A real SQLite error still propagates and aborts the run, which was already fail-closed — A8 did not widen the catch.
 - **Success criteria:** test matrix for each degradation path; no silent persistence loss.
 
 ### A9 — Artifact lifecycle + orphan recovery (P2)

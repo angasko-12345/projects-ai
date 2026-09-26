@@ -43,6 +43,7 @@ from .failure import (
     new_failure_id,
 )
 from .logging import redact_text
+from .persistence import DegradationRecorder, event_emitter
 
 
 def _scrub_structured(value: object) -> object:
@@ -127,7 +128,8 @@ class WorkflowEngine:
                  run_observer: AgentRunObserver | None = None,
                  metadata_collector: Callable[[str | Path], AgentRunMetadata] | None = None,
                  verification_kernel: VerificationKernel | None = None,
-                 router: AgentRouter | None = None):
+                 router: AgentRouter | None = None,
+                 degradation: DegradationRecorder | None = None):
         self.config = config
         self.state = state
         self.registry = registry
@@ -139,6 +141,13 @@ class WorkflowEngine:
         self.router = router
         if self.router is None and getattr(config, "routing_enabled", True):
             self.router = AgentRouter()
+        # A8: persistence failures are classified instead of swallowed.  The
+        # recorder emits a WARNING event through the same store it watches, so
+        # it degrades to an in-memory entry when the store is the thing that broke.
+        if degradation is None and getattr(state, "record_typed_event", None) is not None:
+            degradation = DegradationRecorder(
+                emit=event_emitter(state.record_typed_event))
+        self.degradation = degradation if degradation is not None else DegradationRecorder()
 
     @property
     def retry_policy(self) -> RetryPolicy:
@@ -209,7 +218,13 @@ class WorkflowEngine:
         )
         try:
             return self.state.create_failure(failure)
-        except Exception:
+        except Exception as error:
+            # A8 SAFE_TO_DEGRADE: the failure row is diagnostics. Losing it must
+            # not mask the task outcome, but the loss is now visible.
+            self.degradation.record(
+                "failure.create", error,
+                workflow_id=failure.workflow_id, task_id=failure.task_id,
+            )
             return failure
 
     def recover_incomplete(self, workflow_id: str | None = None) -> dict[str, object]:
@@ -458,9 +473,13 @@ class WorkflowEngine:
                 message=f"Routed {task.role} to {detail}",
                 payload=payload,
             ))
-        except Exception:
-            # Selection must not be blocked by an unavailable event store.
-            pass
+        except Exception as error:
+            # A8 SAFE_TO_DEGRADE: selection already happened and the run must
+            # proceed. The explainability record is reported as degraded.
+            self.degradation.record(
+                "event.routing_decision", error,
+                workflow_id=task.workflow_id, task_id=task.id,
+            )
 
     async def _execute_task(
         self,

@@ -376,3 +376,10 @@
 ## Environment-specific problems
 
 - Repo root `D:/admin/code/projects`; no stack/test runner configured yet — record pitfalls here once encountered.
+
+### 2026-09-26 - A swallowed write can certify an outcome that never happened (A8)
+
+- **Symptom:** A verification profile with one passing check reported `passed` while the check row in SQLite was still `running`. Confirmed by direct probe: `overall_status = passed`, `report check status = running`, `DB check status = running`, `DB run overall = passed`. The workflow then set `task.verified = True` on the strength of that report.
+- **Root cause:** `except (KeyError, ValueError): pass` around `finish_verification_check`. The report is assembled from the in-memory `VerificationCheck` objects, so swallowing the write left a stale non-terminal object that the summary then counted as a legitimate non-failure — and `assert_report_consistent` could not catch it because it only constrains `PASSED` reports against their own counters, not against what was actually stored. The same hole existed one step earlier: a failed `start_verification_check` returned early, leaving the check PENDING and still allowing a `passed` profile.
+- **Solution:** Classify every persistence fallback. Evidence-producing writes fail closed (degraded run => report FAILED, with a `persistence degraded` transcript line); diagnostic writes degrade but emit a `persistence.degraded` WARNING event. Per-run degradation is threaded explicitly instead of stored on the shared kernel object.
+- **Remember:** A `try/except` around a write that produces a *claim* is not a safety net, it is a forgery. When a report or flag is assembled from in-memory objects, the write that makes those objects durable is part of the claim, and its failure must change the claim. Regression-test it by patching the store method to raise the exact exception the handler swallows — a `sqlite3` error there would pass the test for the wrong reason, because it was never caught.

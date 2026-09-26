@@ -23,6 +23,7 @@ from .agent_result import parse_agent_result
 from .config import AgentConfig
 from .runtime import OperationCancelled, ProcessRuntime
 from .logging import LogManager, RunLogArtifacts
+from .persistence import DegradationRecorder
 from .registry import DetectedAgent
 
 
@@ -79,6 +80,7 @@ class AgentRunner:
         run_observer: AgentRunObserver | None = None,
         metadata_collector: Callable[[str | Path], AgentRunMetadata] | None = None,
         runtime: ProcessRuntime | None = None,
+        degradation: DegradationRecorder | None = None,
     ):
         self.logs = logs
         self.pass_env_names = pass_env_names
@@ -86,6 +88,10 @@ class AgentRunner:
         self.run_observer = run_observer
         self.metadata_collector = metadata_collector
         self._runtime = runtime or ProcessRuntime(pass_env_names, pass_env_prefixes)
+        # A8: an AgentRun notification that cannot be stored is a lost record,
+        # not a reason to abandon a run the user asked for.  `recover_agent_runs`
+        # reaps stranded runs, so these degrade — but they are no longer silent.
+        self._degradation = degradation if degradation is not None else DegradationRecorder()
 
     @staticmethod
     def _environment(pass_env_names: tuple[str, ...] = (), pass_env_prefixes: tuple[str, ...] = ()) -> dict[str, str]:
@@ -117,44 +123,47 @@ class AgentRunner:
         # Compatibility seam: cancellation-aware waiting lives in ProcessRuntime.
         return await ProcessRuntime().communicate_with_cancel(process, cancel_event)
 
-    @staticmethod
-    def _notify_create(observer: AgentRunObserver | None, context: AgentRunContext) -> str | None:
+    def _notify_create(self, observer: AgentRunObserver | None, context: AgentRunContext) -> str | None:
         if observer is None:
             return None
         try:
             created = observer.create_run(context)
             return created.id if hasattr(created, "id") else str(created)
-        except Exception:
+        except Exception as error:
             # Persistence must not prevent a configured local agent from
-            # running.  The caller can still report the process outcome.
+            # running.  The caller can still report the process outcome, and
+            # the lost run row is recorded as a degradation.
+            self._degradation.record(
+                "agent_run.create", error,
+                task_id=context.task_id, workflow_id=context.workflow_id,
+            )
             return None
 
-    @staticmethod
-    def _notify_starting(observer: AgentRunObserver | None, run_id: str | None) -> None:
+    def _notify_starting(self, observer: AgentRunObserver | None, run_id: str | None) -> None:
         if observer is not None and run_id is not None:
             try:
                 observer.mark_starting(run_id)
-            except Exception:
-                pass
+            except Exception as error:
+                self._degradation.record("agent_run.transition", error, run_id=run_id)
 
-    @staticmethod
-    def _notify_running(observer: AgentRunObserver | None, run_id: str | None) -> None:
+    def _notify_running(self, observer: AgentRunObserver | None, run_id: str | None) -> None:
         if observer is not None and run_id is not None:
             try:
                 observer.mark_running(run_id)
-            except Exception:
-                pass
+            except Exception as error:
+                self._degradation.record("agent_run.transition", error, run_id=run_id)
 
-    @staticmethod
-    def _notify_finish(observer: AgentRunObserver | None, run_id: str | None, outcome: AgentRunOutcome) -> None:
+    def _notify_finish(self, observer: AgentRunObserver | None, run_id: str | None, outcome: AgentRunOutcome) -> None:
         if observer is not None and run_id is not None:
             try:
                 observer.finish_run(run_id, outcome)
-            except Exception:
-                pass
+            except Exception as error:
+                # The run stays RUNNING in the store; recovery reaps it.  It
+                # must never look like a finished run that failed to close.
+                self._degradation.record("agent_run.transition", error, run_id=run_id)
 
-    @staticmethod
     def _notify_failure(
+        self,
         observer: AgentRunObserver | None,
         run_id: str | None,
         error: BaseException,
@@ -163,8 +172,8 @@ class AgentRunner:
         if observer is not None and run_id is not None:
             try:
                 observer.fail_run(run_id, error, classification)
-            except Exception:
-                pass
+            except Exception as persist_error:
+                self._degradation.record("agent_run.transition", persist_error, run_id=run_id)
 
     async def run_agent(
         self,

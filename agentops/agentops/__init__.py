@@ -84,6 +84,14 @@ from .routing import (
     RoutingDecision,
     RoutingRejection,
 )
+from .persistence import (
+    PERSISTENCE_POLICIES,
+    Degradation,
+    DegradationRecorder,
+    PersistencePolicy,
+    event_emitter,
+    policy_for,
+)
 from .runtime import (
     OperationCancelled,
     ProcessResult,
@@ -173,6 +181,12 @@ __all__ = [
     "RoutingAlternative",
     "RoutingDecision",
     "RoutingRejection",
+    "PERSISTENCE_POLICIES",
+    "Degradation",
+    "DegradationRecorder",
+    "PersistencePolicy",
+    "event_emitter",
+    "policy_for",
     "adapter_for",
     "capabilities_for_roles",
     "OperationCancelled",

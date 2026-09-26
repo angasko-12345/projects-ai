@@ -62,6 +62,7 @@ class EventType(StrEnum):
     MERGE_STARTED = "merge.started"
     MERGE_COMPLETED = "merge.completed"
     MERGE_CONFLICT = "merge.conflict"
+    PERSISTENCE_DEGRADED = "persistence.degraded"
     NOTE = "note"
 
 

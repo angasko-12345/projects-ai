@@ -488,3 +488,74 @@ Run read-only snapshot reviews, address valid findings, run the full suite from 
 - **A3 Shared ProcessRuntime: DONE 2026-09-16.** `runtime.py` shared by runner/kernel/legacy verifier; unified spawn policy; 16 new tests; suite 336 OK; exe rebuilt + smoke-tested; copilot + opencode reviews closed. Details: `.agents/outputs/a3-runtime.md`.
 - **Pending follow-ups:** A8 persistence failure policy (deferred kernel state-error handling); `SpawnFactory` Protocol typing; repository characteristics for routing; pending OpenCode architecture reply on A4 (see `## Output (A4 ...)` above).
 - **Pi invocation fix 2026-09-16:** bundled `agents.yaml` passed `--prompt` (rejected by installed pi CLI); now `args: ["--print", "{prompt}"]` with a regression test locking the built command; verified with a real `agentops run pi` round-trip; suite 357 OK; copilot snapshot review clean.
+
+---
+
+## Plan (A8 Persistence Failure Policy — 2026-09-26)
+
+### Subtask 1 — Audit every persistence fallback
+Agent: pi (sole writer)
+Depends on: none
+Status: done
+
+Enumerated every store write wrapped in a swallowing `except`. Classified each as
+safe-to-degrade or must-fail-closed. Probed the deferred A3 item and confirmed it
+was a real fabrication bug, not cosmetic.
+
+### Subtask 2 — Leaf policy module and regression test
+Agent: pi
+Depends on: Subtask 1
+Status: done
+
+`agentops/persistence.py` (policy enum, exhaustive table, `Degradation`,
+`DegradationRecorder`, `event_emitter`) + `EventType.PERSISTENCE_DEGRADED`.
+Regression test written first: patching `finish_verification_check` to raise the
+swallowed `KeyError` must not yield a `passed` report.
+
+### Subtask 3 — Kernel fail-closed + visible degradation
+Agent: pi
+Depends on: Subtask 2
+Status: done
+
+Kernel fails closed on lost check start/finish (per-run state threaded, not
+instance state). Runner observer notifications and workflow `failure.create` /
+`routing.decision` degrade with a recorded warning.
+
+### Subtask 4 — Full suite
+Agent: pi
+Depends on: Subtask 3
+Status: done
+
+---
+
+## Output (A8 Persistence Failure Policy — 2026-09-26)
+
+- **Real defect fixed, confirmed by probe before and after:** a swallowed
+  `finish_verification_check` error produced `overall_status = passed` while the
+  stored check was still `running`; the workflow then set `task.verified = True`
+  on evidence no durable record supported. `assert_report_consistent` could not
+  catch it — it validates a report against its own counters, not against what was
+  actually stored. The same hole existed at `start_verification_check`.
+- **New leaf** `agentops/persistence.py`: `PersistencePolicy`, an exhaustive
+  `PERSISTENCE_POLICIES` table, `Degradation`, `DegradationRecorder` (never
+  raises; falls back to an in-memory entry when the emitter is what broke),
+  `event_emitter` (store injected, so the leaf stays SQLite-free). Unknown
+  operations default to `MUST_FAIL_CLOSED` so a new write cannot silently degrade.
+- **New event type** `PERSISTENCE_DEGRADED` (additive, WARNING severity).
+- **Fail-closed set kept minimal, as the roadmap requires.** Only the
+  previously-swallowed `(KeyError, ValueError)` is caught; a real SQLite error
+  still propagates and aborts the run, which was already fail-closed. Verified
+  end-to-end that a `failure.create` failure persists a WARNING event through a
+  real `StateStore`.
+- **Already-correct paths regression-locked:** `task.update` and
+  `finalize_worktree`'s conflict task were already unguarded (fail-closed); both
+  now have tests so a future refactor cannot quietly add a swallow.
+- **Tests:** `tests/test_persistence.py`, 18 tests (recorder, policy table,
+  fail-closed kernel paths, optional-check case, healthy-run non-regression,
+  unclassified-error propagation, and the three degradation sites). Full suite
+  **375 passing, 4 environment skips** (baseline was 357 + 4).
+- **Files:** `agentops/persistence.py` (new), `tests/test_persistence.py` (new),
+  `verification_kernel.py`, `runner.py`, `workflow.py`, `events.py`, `__init__.py`.
+- **Not done:** no reviewer pass yet (opencode/copilot read-only snapshot review
+  not run). No exe rebuild — packaging untouched.
+- **Backup:** `/tmp/agentops-backup-a8-persistence-20260926-174814`.

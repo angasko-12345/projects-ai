@@ -109,6 +109,12 @@
 - Reviews: copilot and opencode reviews complete and adjudicated (suite 356 OK). Opencode: fixed legacy-evidence redaction, timeout precedence, broader token patterns; command-field finding rebutted with scrub evidence.
 - Backup: `/tmp/agentops-backup-a4-evidence-20260916-211809`.
 
+## A8 persistence failure policy 2026-09-26
+
+- Delivered: `agentops/persistence.py` (policy table + degradation recorder + `event_emitter`), `EventType.PERSISTENCE_DEGRADED`, verification-kernel fail-closed on lost check state, visible degradation in the runner and workflow. Real defect fixed (a `passed` report backed by a `running` check row). 18 new tests; suite 375 OK (4 skips).
+- Backup: `/tmp/agentops-backup-a8-persistence-20260926-174814`. No exe rebuild: packaging untouched.
+- Pending follow-ups: `SpawnFactory` Protocol typing; repository characteristics for routing (`workflow.py` still passes `{}`).
+
 ## Temp artifact archive 2026-09-17
 
 - Safely moved 27 top-level Temp entries whose names contain `agent-intercom` or `agentops` into `.local-temp-archive/agent-intercom/` and `.local-temp-archive/agentops/`.

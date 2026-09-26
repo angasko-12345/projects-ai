@@ -76,3 +76,20 @@
 - The AgentOps archive was not modified: 212 files, 4,792,058 bytes, tree digest unchanged.
 - Restore manifest: `.local-temp-archive/agent-intercom-restore-manifest.json`.
 - Full suite from `agentops/` after restore: 357 passing, 4 environment skips.
+
+## A8 Persistence Failure Policy — ✅ COMPLETE 2026-09-26
+
+**Status:** Done, suite 375 OK (4 skips).
+
+- `agentops/persistence.py`: every store write with a fallback classified `SAFE_TO_DEGRADE` or `MUST_FAIL_CLOSED` (unknown defaults to fail-closed); degradations emit a `persistence.degraded` WARNING event.
+- Fixed a real defect: a swallowed `finish_verification_check` error let a report claim `passed` while the check row stayed `running`, and the workflow marked the task verified on it. Same class of hole closed in `start_verification_check`.
+- `task.update` and the merge conflict task were already fail-closed; now regression-locked.
+- Backup: `/tmp/agentops-backup-a8-persistence-20260926-174814`. No exe rebuild (packaging untouched).
+- Open: no reviewer pass yet (opencode/copilot read-only snapshot review not run for this change).
+
+## Still Open (AgentOps)
+
+- `SpawnFactory` Protocol typing (deferred from the A3 review).
+- Repository characteristics for routing: `workflow.py:417` still passes `{}`, so the router's repository-derived signals are inert.
+- A5 WorkflowEngine decomposition, A6 ReviewRun/MergeRun, A7 StateStore split, A9 artifact lifecycle, A10 CI gating.
+- B6 policy gates, B8 approvals, B9 project memory, B10 REST API; Track C UX.
