@@ -115,5 +115,120 @@ def _env_fresh():
                            StepLimitTermination(max_steps=16), lifecycle=None)
 
 
+class _StubEnv:
+    def __init__(self):
+        self.closed = 0
+
+    def close(self):
+        self.closed += 1
+
+
+class _StubTrainer:
+    """Scripted train(): history dicts succeed, exceptions propagate."""
+
+    def __init__(self, script, env=None):
+        self._script = list(script)
+        self.env = env or _StubEnv()
+        self.trains = 0
+
+    def train(self):
+        self.trains += 1
+        item = self._script.pop(0)
+        if isinstance(item, BaseException):
+            raise item
+        return item
+
+
+def _launcher():
+    calls = {"launches": 0, "cleanups": 0}
+
+    def launch_session():
+        calls["launches"] += 1
+
+        def cleanup():
+            calls["cleanups"] += 1
+
+        return cleanup
+
+    return launch_session, calls
+
+
+@unittest.skipUnless(_HAS_TORCH, "torch not installed")
+class TestWindowRelaunch(unittest.TestCase):
+    def test_concat_histories(self):
+        from training.external_experiment import _concat_histories
+
+        merged = _concat_histories([{"a": [1, 2], "b": []}, {"a": [3]}])
+        self.assertEqual(merged, {"a": [1, 2, 3], "b": []})
+
+    def test_success_first_try(self):
+        from training.external_experiment import train_with_window_relaunch
+
+        trainer = _StubTrainer([{"a": [1]}])
+        launch, calls = _launcher()
+        got, merged, relaunches = train_with_window_relaunch(
+            lambda: trainer, lambda: None, launch,
+            resume=lambda t, mk: t)
+        self.assertIs(got, trainer)
+        self.assertEqual(merged, {"a": [1]})
+        self.assertEqual(relaunches, 0)
+        self.assertEqual(calls, {"launches": 1, "cleanups": 1})
+        self.assertEqual(trainer.env.closed, 1)
+
+    def test_relaunch_then_success(self):
+        from interface.window import WindowLostError
+        from training.external_experiment import train_with_window_relaunch
+
+        first = _StubTrainer([WindowLostError("target window is gone")])
+        second = _StubTrainer([{"a": [2]}])
+        resumed = []
+        launch, calls = _launcher()
+        got, merged, relaunches = train_with_window_relaunch(
+            lambda: first, lambda: None, launch,
+            resume=lambda t, mk: resumed.append(t) or second)
+        self.assertIs(got, second)
+        self.assertEqual(resumed, [first])  # in-memory state carried over
+        self.assertEqual(merged, {"a": [2]})
+        self.assertEqual(relaunches, 1)
+        self.assertEqual(calls, {"launches": 2, "cleanups": 2})
+        self.assertEqual(first.env.closed, 1)
+        self.assertEqual(second.env.closed, 1)
+
+    def test_gives_up_after_max(self):
+        from interface.window import WindowLostError
+        from training.external_experiment import train_with_window_relaunch
+
+        trainer = _StubTrainer([WindowLostError("gone")] * 3)
+        launch, calls = _launcher()
+        with self.assertRaises(RuntimeError):
+            train_with_window_relaunch(
+                lambda: trainer, lambda: None, launch, max_relaunches=2,
+                resume=lambda t, mk: trainer)
+        self.assertEqual(calls, {"launches": 3, "cleanups": 3})
+
+    def test_resume_trainer_roundtrip(self):
+        import tempfile
+        from pathlib import Path
+
+        from training.external_experiment import _resume_trainer
+
+        with tempfile.TemporaryDirectory() as tmp:
+            trainer = _trainer(total=8, rollout=8)
+            trainer.config.checkpoint_dir = tmp
+            trainer.train()
+            self.assertEqual(trainer.num_timesteps, 8)
+            before = [p.clone() for p in trainer.model.parameters()]
+            resumed = _resume_trainer(
+                trainer,
+                lambda: ExternalGameEnv(_game(), NullRewardProvider(),
+                                        StepLimitTermination(max_steps=1000),
+                                        lifecycle=None))
+            self.assertEqual(resumed.num_timesteps, 8)
+            self.assertEqual(resumed.num_updates, trainer.num_updates)
+            for a, b in zip(before, resumed.model.parameters()):
+                self.assertTrue(torch.equal(a, b))
+            self.assertTrue((Path(tmp) / "ppo_interrupted.pt").is_file())
+
+
 if __name__ == "__main__":
     unittest.main()

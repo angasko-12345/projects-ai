@@ -28,9 +28,9 @@
   (59-red chrome seen in verify window could mask hit edges); then re-run exp02
   config (4096 first; 30k once stable) with the same untrained/trained/delta
   comparison. Judge by miss-rate + episode length.
-- [ ] Reliability: window-death mid-training ("target window is gone", empty game
-  log, killed a 30k run at step 6144). Consider relaunch-and-resume or
-  checkpoint-every-N-updates so partial runs stay usable.
+- [x] Reliability: relaunch-and-resume in phase 2 (max 3) + periodic ckpts every
+  25 updates. A repeat of the step-6144 window death now costs one relaunch,
+  not the run. Suite 278 OK.
 - [ ] Curiosity enabled on the external game (config flag exists).
 - [ ] Commit pending work (`universal-game-agent/` + `.agents/memory/oh-my-pi/` only).
 

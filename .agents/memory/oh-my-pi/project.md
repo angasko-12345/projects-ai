@@ -54,6 +54,11 @@
   baseline (likely ClearType title-bar fringing) — inside the 8-200 hit band,
   so ball flashes may not create a pay edge there. MUST check baseline reds
   in the real exp window before the next training run.
+- STEP 4 DONE (uncommitted): phase-2 window-loss tolerance — `train_with_window_relaunch`
+  (max 3 relaunches): on WindowLost/WindowNotFound/CaptureError the game is
+  relaunched and training resumes from in-memory state (`ppo_interrupted.pt`) on a
+  fresh env; histories concatenated; `window_relaunches` in report. Periodic ckpts
+  1000 -> 25 updates in exp02 yaml. 5 new tests; suite 278 OK.
 
 ## Open threads
 - NEXT (Step 3 pre-flight): check live-play baseline reds in the exp window

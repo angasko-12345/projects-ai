@@ -25,10 +25,66 @@ import yaml
 
 from agent.model import ActorCritic
 from environment.external_game import make_external_env_from_config
-from interface.window import WindowManager
+from interface.capture import CaptureError
+from interface.window import WindowLostError, WindowManager, WindowNotFoundError
 from training.evaluate import evaluate
 from training.ppo import PPOConfig, PPOTrainer
 
+_SESSION_ERRORS = (WindowLostError, WindowNotFoundError, CaptureError)
+MAX_WINDOW_RELAUNCHES = 3
+
+
+def _resume_trainer(trainer, make_env) -> PPOTrainer:
+    """Persist in-memory training state and reload it on a fresh env."""
+    path = str(Path(trainer.config.checkpoint_dir) / "ppo_interrupted.pt")
+    trainer.save_checkpoint(path)
+    return PPOTrainer.load_checkpoint(path, make_env())
+
+
+def _concat_histories(histories: list[dict]) -> dict:
+    """Concatenate per-attempt PPO histories (all values are lists)."""
+    merged: dict = {}
+    for history in histories:
+        for key, values in history.items():
+            merged.setdefault(key, []).extend(values)
+    return merged
+
+
+def train_with_window_relaunch(new_trainer, make_env, launch_session,
+                               max_relaunches: int = MAX_WINDOW_RELAUNCHES,
+                               resume=_resume_trainer):
+    """Train to the configured budget across game-window deaths.
+
+    `new_trainer()` builds the fresh trainer; `make_env()` builds a new env
+    for each attempt; `launch_session()` starts the game and returns a
+    zero-arg cleanup. On session loss the in-memory state is checkpointed
+    and reloaded on a fresh env (partial rollout steps are recounted, not
+    replayed). Returns (trainer, merged_history, relaunch_count).
+    """
+    relaunches = 0
+    trainer = new_trainer()
+    histories = []
+    while True:
+        cleanup = launch_session()
+        try:
+            histories.append(trainer.train())
+        except _SESSION_ERRORS as exc:
+            try:
+                trainer.env.close()
+            except Exception:
+                pass  # dead session must not block the resume
+            cleanup()
+            if relaunches >= max_relaunches:
+                raise RuntimeError(
+                    f"game window lost {relaunches + 1} times; giving up: {exc}")
+            relaunches += 1
+            print(f"window lost ({exc}); relaunching "
+                  f"({relaunches}/{max_relaunches})...", flush=True)
+            trainer = resume(trainer, make_env)
+        else:
+            trainer.env.close()
+            cleanup()
+            return trainer, _concat_histories(histories), relaunches
 APP = Path(__file__).resolve().parent.parent / "games" / "extern_pong.py"
 
 METRIC_DEFINITIONS = {
@@ -200,23 +256,31 @@ def run_external_experiment(config_path) -> dict:
         stop(proc)
     print(f"baseline mean={baseline['mean_reward']:.2f} len={baseline['mean_length']:.1f}")
 
-    # Phase 2: fresh process, fresh model, PPO training.
+    # Phase 2: fresh process, fresh model, PPO training (window-loss tolerant).
     print("=== phase 2: PPO training ===")
-    model = fresh_model()
     ppo_config = PPOConfig.from_dict(ppo_cfg_raw)
     ppo_config.checkpoint_dir = _run_checkpoint_dir(ppo_cfg_raw)
-    proc = launch_game(title, seed, int(game.get("fps", 60)), "phase2")
-    t0 = time.perf_counter()
-    trainer = None
-    try:
+
+    def new_trainer():
+        return PPOTrainer(make_env(), fresh_model(), ppo_config, env_config=env_cfg)
+
+    def launch_phase2():
+        proc = launch_game(title, seed, int(game.get("fps", 60)), "phase2")
         wait_attach(title)
-        trainer = PPOTrainer(make_env(), model, ppo_config, env_config=env_cfg)
-        history = trainer.train()
-    finally:
-        if trainer is not None:
-            trainer.env.close()
-        stop(proc)
+        check_alive(proc, "phase 2 startup")
+        return proc
+
+    t0 = time.perf_counter()
+    launch_state: dict = {}
+
+    def launch_session():
+        launch_state["proc"] = launch_phase2()
+        return lambda: stop(launch_state["proc"])
+
+    trainer, history, relaunches = train_with_window_relaunch(
+        new_trainer, make_env, launch_session)
     train_seconds = time.perf_counter() - t0
+    print(f"phase 2 done: relaunches={relaunches}")
     ckpt = str(Path(ppo_config.checkpoint_dir) / "ppo_final.pt")
 
     # Phase 3: fresh process, separate env, trained checkpoint.
@@ -264,6 +328,7 @@ def run_external_experiment(config_path) -> dict:
         "training_steps": trainer.num_timesteps,
         "training_seconds": train_seconds,
         "decision_fps": trainer.num_timesteps / max(train_seconds, 1e-6),
+        "window_relaunches": relaunches,
         "checkpoint": ckpt,
         "dependencies": dependency_versions(),
         "history_tail": {k: v[-5:] for k, v in history.items()},

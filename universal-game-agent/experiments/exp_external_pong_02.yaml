@@ -59,7 +59,7 @@ ppo:
   max_grad_norm: 0.5
   seed: 0
   checkpoint_dir: "checkpoints/extern_pong_02"
-  checkpoint_every_updates: 1000
+  checkpoint_every_updates: 25
 
 curiosity:
   enabled: false
