@@ -5,10 +5,10 @@ __pycache__/
 # Virtual environments
 .venv/
 venv/
-# Checkpoints / experiment output (kept as empty dirs via .gitkeep)
-checkpoints/*.pt
-checkpoints/*.zip
-checkpoints/*.pkl
+# Checkpoints / experiment output (kept as empty dirs via .gitkeep); ** also covers nested run dirs
+checkpoints/**/*.pt
+checkpoints/**/*.zip
+checkpoints/**/*.pkl
 experiments/*/
 !experiments/.gitkeep
 logs/*.log
