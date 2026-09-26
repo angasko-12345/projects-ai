@@ -201,3 +201,38 @@
 - **Reason:** Centralizes the source of truth for project memory and agent-specific guidance while preserving tools that only discover root-level instruction files.
 - **Alternatives considered:** Keep root files as full duplicates (rejected because duplicated guidance drifts); remove root files entirely (rejected because root-only loaders would lose the compatibility path).
 - **Agents involved:** pi-manager.
+
+## 2026-09-26 - Two-product instruction hierarchy
+
+- **Decision:** `.agents/AGENTS.md` holds only universal rules; product facts live in `agentops/AGENTS.md` and `universal-game-agent/AGENTS.md`; root `AGENTS.md` and `pi_AGENTS.md` stay as compatibility shims and are explicitly not sources of truth. `.agents/team.md` is reconciled to match rather than left to drift.
+- **Reason:** A single file could not describe both products honestly. It had already drifted: root instructions asserted one repository-wide test command and named AgentOps as the only maintained product, while `universal-game-agent/` had no local guidance at all.
+- **Alternatives considered:** One combined file per product pair (rejected — reintroduces exactly the drift being fixed); local files only with no universal layer (rejected — the sole-writer and secret rules must be stated once).
+- **Agents involved:** pi-manager (OpenCode session).
+
+## 2026-09-26 - Sole writer is Pi *or* Oh-My-Pi; Antigravity is quota-gated
+
+- **Decision:** Either Pi or Oh-My-Pi may act as sole writer in a dirty tree, never both at once. Antigravity is an allowed review collaborator only while its quota has remaining capacity. Codex and Claude remain forbidden as review collaborators.
+- **Reason:** Explicit user instruction. The previous rule ("Pi is the sole writer", "do not task Antigravity") was both too restrictive on the writer and needlessly restrictive on reviewers.
+- **Alternatives considered:** Unconditional Antigravity inclusion (rejected — it fails hard once quota is gone); keeping Pi as the only writer (rejected — contradicts the user's decision).
+- **Agents involved:** pi-manager (OpenCode session).
+
+## 2026-09-26 - Checkpoint ignore fixed in the subproject, not a new root ignore file
+
+- **Decision:** Fix the nested-checkpoint gap in `universal-game-agent/.gitignore` with `checkpoints/**` patterns rather than recreating a root `.gitignore`. Machine-local paths stay in `.git/info/exclude`.
+- **Reason:** The flat `checkpoints/*.pt` rule missed `checkpoints/extern_pong_01/ppo_final.pt` (11.8 MB, unique), so any `git add -A` risked staging ~16.3 MB of binaries. The existing subproject file is the right owner for product-specific artifacts. The 2026-09-15 decision removed the root `.gitignore` at the user's request and that stands.
+- **Alternatives considered:** New root `.gitignore` (rejected — reverses an explicit user decision for a product-scoped problem); `git update-index --skip-worktree` (rejected — local-only, invisible to every other clone).
+- **Agents involved:** pi-manager (OpenCode session).
+
+## 2026-09-26 - Test baselines are dated observations, not contracts
+
+- **Decision:** Record test counts with the commit they were observed at, state the count is volatile, and make "run the suite" the actual contract. Keep the run-the-suite rule and the "treat any new failure as attributable to current work" rule.
+- **Reason:** The `universal-game-agent/` count went 258 → 261 within about an hour because a parallel session committed three new tests. A bare number in a governance file is wrong almost immediately and teaches agents to trust a stale figure.
+- **Alternatives considered:** Omit counts entirely (rejected — a rough magnitude is still useful); keep counts and accept the rot (rejected — that is the failure mode being fixed).
+- **Agents involved:** pi-manager (OpenCode session).
+
+## 2026-09-26 - Governance files are reviewed before commit, and claims are verified before writing
+
+- **Decision:** Any instruction or memory file asserting facts about code gets an independent read-only review before it is committed. Facts are verified against the source, or explicitly marked unverified, before being written down.
+- **Reason:** The first draft of the instruction hierarchy carried seven factually wrong claims (a test count, a checkpoint count, a config key count, a file that had just been deleted, an attributed-to-the-wrong-file helper, an inverted fragility claim, a wrong module path) and one entirely invented defect. All were caught by review and corrected. Writing a plausible-sounding claim is the failure mode, not a typo.
+- **Alternatives considered:** Self-review only (rejected — the author is the worst reviewer of their own unchecked assumptions); commit then fix later (rejected — a bad governance file misleads every agent that reads it, and the mistake compounds silently).
+- **Agents involved:** pi-manager (OpenCode session).

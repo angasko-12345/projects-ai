@@ -338,6 +338,41 @@
 - **Solution:** Digest the untouched AgentOps subtree before and after the restore, stage/verify only the requested Agent Intercom entries, remove only that category, and write a separate restore manifest without touching AgentOps files.
 - **Remember:** For partial reversals, freeze an integrity digest of every out-of-scope archive category first and verify it again before deleting anything.
 
+### 2026-09-22 — OpenCode free-tier gate + oh-my-pi mirror-provider fix + ollama-cloud 401
+
+- **Symptom:** oh-my-pi (`omp`, `@oh-my-pi/pi-coding-agent`) calls to free Zen models (`opencode-zen/muse-spark-1.3-contributor-free`) failed `403 FreeTierError` ("…can only be used from within OpenCode"); `ollama-cloud` threw `401 Unauthorized`.
+- **Root cause (opencode gate, probed live):** `https://opencode.ai/zen/v1` checks attribution headers **format-only** — `User-Agent` starts `opencode/`, `x-opencode-session: ses_`+26 (12 hex + 14 base62), NO `Authorization` needed. Body must be CLI-shaped: `stream:true`, real tools, and on `/responses` also `instructions` + multi-message `input` (minimal bodies → 403). `/chat/completions` works for completions-model free ids only with `stream:true` (stream:false → 403; some free ids like `jev-1.13-free` 500). omp clobbers session/UA headers **only** when provider id is `opencode-zen`/`opencode-go` (UA is set-if-absent; session force-set to a uuidv7), so config headers on those ids can never pass.
+- **Solution (config-only):** mirror provider `omp-zen` (non-`opencode` id so the clobberer is skipped) in `~/.omp/agent/models.yml`: `baseUrl: https://opencode.ai/zen/v1`, `auth: none`, static `headers` (`User-Agent: opencode/1.18.32`, `x-opencode-session: ses_…`), provider-level `api: openai-responses` with **per-model `api: openai-completions` overrides** (verified supported — the router reads `model.api`). All 9 usable free models work. ollama-cloud 401 root cause: an api_key IS stored in `auth_credentials`, but ollama.com rejects it → user must re-login (`/login ollama-cloud`) or set `OLLAMA_CLOUD_API_KEY`.
+- **Remember:** omp self-updates and **rewrites `~/.omp/agent/config.yml` on version bumps** (roles get added and `default` can silently reset to a broken model — check it after any update). Free-tier gate is header-format + body-shape, not credential-based; a mirror id paired with `auth: none` avoids both the clobber and secret persistence. Never paste/print stored keys — probe them in-memory and report only HTTP status.
+
+### 2026-09-26 - Plausible claims in governance files are worse than no claims
+
+- **Symptom:** The first draft of the new agent-instruction hierarchy asserted seven factually wrong things about the code and one defect that did not exist. Examples: a test count that was off by 3, "the four `ppo_final.pt` files" when two exist, "a 12-line `ppo:` tail byte-identical across all five YAMLs" when only 9 keys match and 5 differ, `agentops.egg-info/` described as present in the working tree *after it had just been deleted*, the Windows no-console spawn helper attributed to `runner.py` which contains none (the owner is `runtime.py`), a CWD-fragility claim that was inverted (those tests are CWD-*independent*), and the `storage_dtos` DTOs attributed to `tasks.py`/`state.py` when they live in `gui_controller.py` and `git.py`. It also claimed `.agents/AGENTS.md` pointed its test command at `agentops/` and was therefore wrong — that file actually states no single repository-wide command exists.
+- **Root cause:** The claims were written from a plausible mental model of the codebase rather than from the code. Reading like the file was never a substitute for checking it. A governance file is uniquely dangerous here: it is not just wrong, it is *authoritative-looking*, and every future agent reads it as fact.
+- **Solution:** An independent read-only review caught all of them. Every factual claim now gets verified against the source before it is written, or is explicitly marked unverified. Corrections were re-verified by grepping for the removed strings rather than trusting the reviewer's report.
+- **Remember:** Never write a fact about code you have not just read. Never describe a defect in a file you have not opened in that session. And when a subagent is handed a spec that contains a wrong premise, say so instead of satisfying it — during this work a fixer was told `.agents/AGENTS.md:64` held a Tk `root.after` rule; it does not (line 64 is the leaf-modules rule), and the fixer scoped the two rules that genuinely exist rather than inventing a third to match.
+
+### 2026-09-26 - Hardcoded test baselines rot within hours
+
+- **Symptom:** `universal-game-agent/AGENTS.md` and `.agents/AGENTS.md` both carried "262 test methods". The real number was 258, then 261 about an hour later when a parallel session committed three new tests.
+- **Root cause:** A bare count in a long-lived file reads as a contract. It is actually a snapshot, and in an actively developed repo it is stale before the commit lands.
+- **Solution:** Both baselines now carry the commit they were observed at (`a03e907`, 2026-09-26), an explicit note that the count is volatile, and a pointer to run the suite for current truth. The agentops baseline was also rephrased from the ambiguous "357 passing, 4 environment skips" (which reads as 361) to "357 total, 4 skipped, 353 passed".
+- **Remember:** Date any number you cannot guarantee. Separate the *contract* (run the suite; treat a new failure as yours until disproven) from the *observation* (what it did on a given day).
+
+### 2026-09-26 - A parallel writer makes HEAD, the index, and the working tree volatile
+
+- **Symptom:** Across one session another agent landed four commits (`135ed8a`, `228930f`, `a03e907`, plus a skills commit interleaved), created a 4.1 MB `checkpoints/ppo_untrained.pt` with no reference in any config, regenerated deleted `__pycache__` directories, and left 7 modified source files in `universal-game-agent/` at the end. Test counts and file contents changed mid-review.
+- **Root cause:** Long-running single-repo work with another agent writing to the same tree. Assumptions made at the start of a session do not hold at the end.
+- **Solution:** Re-check `git log` and `git status` immediately before every write batch and again before committing. Stage only explicit paths, never `git add -A` — especially in a tree with large untracked binaries. Verify the staged list with `git diff --cached --name-only` right before committing so a concurrent `git add` cannot get captured into your commit. Prefer `git commit -- <paths>` when the index may not be clean.
+- **Remember:** A test suite run also writes `__pycache__` and can touch state, so it is a write, not a read. Budget for re-verification, and never assume a review's findings still describe the tree when it finishes.
+
+### 2026-09-26 - Verify-by-regex needs boundaries or it lies to you
+
+- **Symptom:** A contradiction sweep reported that the old rule "Pi is the sole writer" still existed in two files. It did not — both were the *new* rule, "Either Pi or Oh-My-Pi is the sole writer". The pattern `Pi is the sole writer` matched as a substring of the replacement text.
+- **Root cause:** A grep pattern that does not encode the boundary it means will match the text it was written to replace, producing a false positive that looks like an incomplete migration.
+- **Solution:** Re-read the matched lines instead of trusting the match count, and anchor patterns tightly enough that a correct replacement cannot match.
+- **Remember:** When sweeping for "old text still present", confirm each hit is real before acting on it. A verification step that cries wolf gets ignored exactly when it matters.
+
 ## Environment-specific problems
 
 - Repo root `D:/admin/code/projects`; no stack/test runner configured yet — record pitfalls here once encountered.

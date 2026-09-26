@@ -80,6 +80,37 @@
 - **Agent Intercom:** working; all four sessions connected and verified 2026-09-12 (`pi-manager`, `codex-builder`, `opencode-arch`, `agy-reviewer`). Canonical message targets: `opencode-arch`, `codex-builder`, `agy-reviewer`. Must not be reinstalled/reconfigured.
 - **Supermemory MCP:** Pi has 0 MCP servers / 0 tools (verified 2026-09-12 via `mcp` status + `supermemory` tool search) — not available to Pi. Availability to Codex / OpenCode / AGY: to be confirmed via Intercom (agents must report yes/no only, never send keys).
 
+## Agent instruction hierarchy 2026-09-26
+
+Layered so that universal rules live in exactly one place and product facts live only with
+the product they describe. A change in one product is not a change in the other.
+
+| Layer | File | Scope |
+|---|---|---|
+| Universal contract | `.agents/AGENTS.md` | Two-product identity, canonical locations, startup checklist, per-product command table, sole-writer rule, review-collaborator policy, secret-handling rule, leaf-module rule |
+| Product-local | `agentops/AGENTS.md` | Entry points, architecture map, data flow, packaging + archive inspection, SQLite migration discipline, GUI/Tk threading, leaf-module rule, verification |
+| Product-local | `universal-game-agent/AGENTS.md` | Layer dependency direction, toy vs external path, config/checkpoint handling, CLI entry points, known defects |
+| Tool deltas | `.agents/pi_AGENTS.md`, `.agents/ohmypiagents.md` | What is different when driving this repo with Pi or Oh-My-Pi |
+| Compatibility shims | root `AGENTS.md`, root `pi_AGENTS.md` | Pointers only; never an independent source of truth |
+| Adjacent | `.github/copilot-instructions.md` | Kept as a real file, not reduced to a pointer; product-focus corrected |
+
+Two structural rules the hierarchy depends on:
+
+1. **Product facts must not live in the universal file.** Test commands, dependency sets, entry points, and packaging differ per product. AgentOps is stdlib-only at runtime (PyYAML optional, imported lazily) and ships a packaged exe; universal-game-agent requires `torch`, `gymnasium`, `numpy`, `pyyaml`, and `mss` and ships none.
+2. **Rules that only one product has must be scoped to it.** Three conventions were originally filed as repo-wide but exist nowhere in universal-game-agent: Tk `root.after` threading, the Windows no-console spawn helpers, and `as_posix()` path normalization. They are now tagged `(agentops)`.
+
+The Windows no-console spawn policy has a single owner: `agentops/runtime.py` (`spawn_options()`, `CREATE_NO_WINDOW`), consumed by `runner.py` and `verification_kernel.py`. `runner.py` contains no such helper of its own; it delegates to `ProcessRuntime`. `agent_run.py` and `registry.py` also carry spawn policy.
+
+## Memory folder layout (split planned, not implemented)
+
+`.agents/memory/` currently mixes universal project knowledge with agent-specific
+runbooks. `.agents/memory/oh-my-pi/` and `.agents/memory/opencode/` are the first
+agent-specific subfolders. The intended end state is a universal set plus one folder per
+agent, but that split is **not implemented** — the two dedicated OpenCode runbooks
+(`omp-opencode-free-tier-403.md`, `pi-opencode-free-tier-fix.md`) are still at the top
+level and are the obvious candidates to move into `opencode/`. Until the split happens,
+`opencode/README.md` records the map rather than duplicating that content.
+
 ## Update log
 
 - 2026-09-12: Placeholder created during memory scaffolding; no architecture decided.
@@ -93,3 +124,4 @@
 - 2026-09-16: Added B7 capability profiles and deterministic routing (`routing.py`); registry profile/version support; workflow routing-event persistence; routing switch; 25 routing tests plus one adapter regression test; suite 336 OK. OpenCode review adjudicated: canonical adapter task mapping, UTF-8 version decoding, executed-agent tracking, and single-profile input.
 - 2026-09-16: Added A3 shared ProcessRuntime (`runtime.py`); runner/kernel/legacy-verifier delegation; unified spawn policy; CancelledError termination; thread-free cancel polling; duplicate-name validation before persistence; fail-fast evidence-dominated overall status; 16 new tests; suite 336 OK; exe rebuilt + smoke-tested.
 - 2026-09-16: Added A4 structured failure evidence (`FailureEvidence`, structured-first classifier, evidence at agent/verification/legacy recording sites, executable-only agent commands, redacted/scrubbed evidence, schema v7 column); 19 new tests; suite 356 OK.
+- 2026-09-26: Added the layered agent-instruction hierarchy documented above, and the first agent-specific memory subfolders (`.agents/memory/oh-my-pi/`, `.agents/memory/opencode/`). Documentation only; no runtime code changed. Seven factually incorrect claims in the first draft were found by an independent read-only review and corrected before commit.
