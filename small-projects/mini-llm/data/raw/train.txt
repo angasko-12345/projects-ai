@@ -1,0 +1,37 @@
+The tiny language model learns to predict the next token.
+Given a sequence of tokens, it reads the past and guesses what comes next.
+Training shows it many passages so it learns patterns of words and ideas.
+
+A transformer block has two parts with skip connections that add the input back.
+First, causal self-attention lets each position look at earlier positions.
+Each token makes a query, a key, and a value: Q = xWq, K = xWk, V = xWv.
+Attention scores are scaled dot products of queries and keys.
+A causal mask hides future positions so no token can peek ahead.
+Multiple heads run attention in parallel and their outputs are joined.
+Second, a small feed-forward network with GELU processes each position alone.
+Layer normalization steadies the values before attention and before the network.
+Stacked blocks build richer meaning, then a final layer predicts the next token.
+
+The quick brown fox jumps over the lazy dog near the quiet river bank.
+Language models turn text into tokens, tokens into vectors, vectors into guesses.
+Each training step compares the guess to the true next token and learns.
+With enough text and steps, the guesses begin to look like language.
+Small models like this one learn rhythm before they learn facts.
+The fox runs fast through tall grass while the dog sleeps in the warm sun.
+Tokens flow in order, each one remembering only what came before it.
+Prediction is the whole game: guess next, check, adjust, repeat.
+A seed of text grows into a paragraph when the model dreams forward.
+The river bends around old stones and carries leaves toward the sea.
+Attention weighs the past and chooses which words matter most right now.
+Embeddings give every token a place in a space of meaning.
+Positions tell the model where each token sits in the line.
+Gradients whisper corrections back through every layer and weight.
+The dog wakes up and barks at birds flying high above the trees.
+Checkpoints save the journey so generation can walk the learned path.
+Temperature turns certainty into playfulness when sampling the next word.
+Top-k keeps only the best guesses and rolls dice among them.
+The night sky fills with stars while the fox returns to its den.
+A tiny corpus like this one teaches shape but not the world.
+Real training needs millions of words and patience measured in hours.
+Still, every giant model once began as a small loop like this.
+The sun rises over the hills and the river keeps flowing on.
