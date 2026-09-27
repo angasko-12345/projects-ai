@@ -166,4 +166,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
     run_demo(batch_size=args.batch_size, steps=args.steps)
 
-# don't go insane don't go msane
+# don't go insane don't go insane
