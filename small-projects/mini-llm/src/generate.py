@@ -71,7 +71,13 @@ def main() -> None:
                         help="defaults to the tokenizer path stored in the checkpoint config")
     parser.add_argument("--no-eos-stop", action="store_true",
                         help="keep sampling past <eos>")
+    parser.add_argument("--seed", type=int, default=None,
+                        help="seed the sampling RNG; omit for a different sample each run")
     args = parser.parse_args()
+
+    if args.seed is not None:
+        # Same checkpoint + prompt + seed + settings => same tokens.
+        torch.manual_seed(args.seed)
 
     model, cfg = load_model(args.checkpoint)
 

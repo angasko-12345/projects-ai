@@ -69,7 +69,10 @@ mini-llm/
 never less than one context-length sample for val), wraps each blank-line
 passage in `<bos>` … `<eos>`, and writes compact `uint16` arrays plus
 `meta.json`. Samples are `context_length + 1`
-consecutive tokens, shifted into `(x, y)` next-token pairs.
+consecutive tokens, shifted into `(x, y)` next-token pairs. Training windows
+slide one token at a time by default (see below), so every next-token
+transition is supervised rather than only those inside a non-overlapping
+chunk.
 
 The shipped sample corpus is ~2.4 KB / ~920 tokens, which is far below the
 512-token context: preparing it needs `--context-length 32`, and training
@@ -108,16 +111,69 @@ python -m src.train --context-length 32                # shipped 2.4 KB sample
 # or: python src/train.py --max-steps 2000 --batch-size 8 --context-length 512
 ```
 
-AdamW (betas 0.9, 0.95, weight decay 0.1), linear warmup (500 steps) then
+AdamW (betas 0.9, 0.95, weight decay 0.1 on matrices only — LayerNorm scales
+and biases are excluded), linear warmup (500 steps) then
 cosine decay to 10% of peak lr, grad clip 1.0, seed 42. Prints device,
 parameter count, train/val loss, lr, and step. Checkpoints
 (`model_state`, `optimizer_state`, `scheduler_state`, `step`, `config`,
-losses) land in `checkpoints/` every `eval_interval` steps plus `final.pt`.
-If a `DataLoader` epoch ends mid-run, the iterator is rebuilt and training
+`rng_state`, losses) land in `checkpoints/` every `eval_interval` steps plus
+`final.pt`, and load under `weights_only=True` (no pickled objects). If a
+`DataLoader` epoch ends mid-run, the iterator is rebuilt and training
 continues. `vocab_size` is read from `data/processed/meta.json` unless
 `--vocab-size` is given, so the output head matches the tokenizer. Evaluation
 never cycles the val loader: it uses at most `eval_batches` batches, or one
-full pass if the val set is smaller.
+full pass if the val set is smaller, and averages **per target token** so a
+ragged final batch is not over-weighted.
+
+### Window stride
+
+`--stride N` sets how far the training window advances between samples
+(default `1`). Samples always contain `context_length + 1` tokens; the stride
+only decides how many windows the corpus yields:
+
+```
+samples = (n_tokens - context_length - 1) // stride + 1
+```
+
+Measured on the shipped corpus (736 train tokens, `context_length` 32,
+`batch_size` 8):
+
+| stride | samples | batches/epoch | tokens processed/epoch |
+| --- | --- | --- | --- |
+| `1` (default) | 704 | 88 | 23,232 |
+| `context_length` (32) | 22 | 2 | 726 |
+| `context_length + 1` (33) | 22 | 2 | 726 |
+
+**The default is `1`.** Two reasons. It supervises every transition — the
+non-overlapping layout silently discards the ones that straddle a seam (11 of
+99 at `context_length` 8), and no window is seen twice in an epoch. And
+because this project trains for a fixed step budget rather than to exhaustion,
+stride 1 means every step sees a different window; at stride 32 the 22
+available windows repeat ~7× per epoch, which on a corpus this small just
+memorises them.
+
+**The cost is compute per epoch, not per step:** an epoch over the same unique
+tokens costs `stride×` more (33× here, 512× at `context_length` 512). On a real
+corpus that you do iterate to exhaustion, `--stride <context_length>` buys the
+same unique tokens for a fraction of the compute. The windowing is otherwise
+identical.
+
+Stride is a data-pipeline choice and is *not* stored in the checkpoint, so pass
+the same value when you `--resume` a run.
+
+### Resuming
+
+```bash
+python -m src.train --resume checkpoints/step_500.pt                  # finish the run
+python -m src.train --resume checkpoints/step_500.pt --max-steps 20000  # extend it
+```
+
+A resumed run takes its config from the checkpoint, so the original warmup and
+cosine schedule continue from the stored step instead of restarting at step 1.
+Model weights, AdamW moments, the step counter and the torch/python/numpy RNG
+states are all restored. Any flag you pass explicitly still wins (including
+`--max-steps`). Checkpoints are read with `weights_only=True`; a file that is
+not a mini-llm checkpoint is rejected rather than unpickled.
 
 ## Generation
 
@@ -129,7 +185,9 @@ python src/generate.py --checkpoint checkpoints/final.pt --prompt "The fox" \
 Conditioning is truncated to `context_length`. `--temperature 0` = greedy;
 temperatures are clamped at 1e-3, and negative values are rejected. `--top-k`
 must be at least 1. Sampling stops at `<eos>` unless `--no-eos-stop` is given.
-The tokenizer defaults to the path stored in the checkpoint config.
+The tokenizer defaults to the path stored in the checkpoint config. Pass
+`--seed N` for reproducible sampling (same checkpoint + prompt + seed +
+settings ⇒ same text); without it, each run samples differently.
 
 ## Testing
 
@@ -141,8 +199,11 @@ CPU only. Covers tokenizer load/encode/decode, output shape, finite scalar
 loss, causal masking (future-token swap leaves past logits bit-identical),
 generation ID validity, weight tying, and checkpoint round-trip, plus the
 data pipeline: `prepare_data.py` framing and split sizing, `meta.json`,
-`TokenDataset` sampling, empty/undersized-loader diagnostics, LR warmup, the
-training loop end to end, and generation argument validation.
+`TokenDataset` window coverage, empty/undersized-loader diagnostics, LR warmup,
+token-weighted evaluation with a ragged final batch, the training loop end to
+end, resume (step/optimizer/schedule/RNG), AdamW decay groups, safe checkpoint
+loading, seeded vs unseeded generation, window-stride sample counts, and the
+agreement between the shipped corpus, tokenizer and `meta.json`.
 
 ## Limitations
 
@@ -152,5 +213,11 @@ training loop end to end, and generation argument validation.
 - Byte-level BPE with no whole-word guarantees; small corpora underfill the
   requested vocabulary, so the model is built for the size the tokenizer
   actually reached (308 on the shipped sample), not the 8192 target.
-- No validation-based early stopping or checkpoint resumption of the lr
-  step counter (restart begins at step 1 with a fresh schedule).
+- Training does not stop on its own: there is no validation-based early
+  stopping. An interrupted run continues correctly via `--resume`, but a run
+  that is restarted from scratch begins a new schedule at step 1.
+- Byte-level BPE is sensitive to the corpus's line endings: the shipped
+  sample yields vocab 308 with LF and 310 with CRLF. `.gitattributes` marks
+  `data/` as `-text` so no checkout can rewrite it, and
+  `tests/test_pipeline.py::TestShippedData` fails if the corpus and
+  `meta.json` ever disagree.

@@ -112,6 +112,7 @@ def main() -> None:
     meta_path = meta_path_for(args.train_out)
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(meta, f, indent=2)
+        f.write("\n")  # keep re-runs byte-identical to the committed file
     print(f"wrote {args.train_out} and {args.val_out}")
     print(f"wrote {meta_path} (vocab_size={vocab_size})")
 

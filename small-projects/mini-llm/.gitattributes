@@ -1,0 +1,10 @@
+# The BPE vocabulary depends on the exact bytes of the corpus: the shipped
+# sample yields 308 ids with LF line endings and 310 with CRLF. With the
+# default core.autocrlf=true a Windows checkout would silently rewrite the
+# corpus and produce a different tokenizer than a Linux clone.
+#
+# -text disables all end-of-line conversion for these paths, so every platform
+# checks out byte-identical data and prepare_data.py is reproducible.
+data/raw/train.txt -text
+data/processed/** -text
+data/tokenizer.json -text
