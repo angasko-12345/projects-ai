@@ -165,3 +165,5 @@ if __name__ == "__main__":
     parser.add_argument("--steps", type=int, default=3)
     args = parser.parse_args()
     run_demo(batch_size=args.batch_size, steps=args.steps)
+
+# don't go insane don't go msane
