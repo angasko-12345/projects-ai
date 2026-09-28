@@ -157,9 +157,26 @@ tokens costs `stride×` more (33× here, 512× at `context_length` 512). On a re
 corpus that you do iterate to exhaustion, `--stride <context_length>` buys the
 same unique tokens for a fraction of the compute. The windowing is otherwise
 identical.
-
 Stride is a data-pipeline choice and is *not* stored in the checkpoint, so pass
 the same value when you `--resume` a run.
+
+### CPU throughput
+
+Batching converts `uint16 → int64` once per batch (in the DataLoader collate
+step) instead of once per sample, over the same memory-mapped `.bin` files.
+Optional flags (all default off, all preserved across `--resume`):
+
+```bash
+python -m src.train --torch-threads 6 --torch-interop-threads 2
+python -m src.train --compile   # torch.compile; benchmark first, not known-good on Windows CPU
+```
+
+Thread counts are only applied when passed; the active
+`intraop/interop` values print at startup either way. `--compile` fails fast
+with a clear error if `torch.compile` is unavailable, and never leaks into
+checkpoints: `step_N.pt`/`final.pt` and generation always use the uncompiled
+module. Every run ends with a one-line summary:
+tokens, so ragged tails count for what they are).
 
 ### Resuming
 

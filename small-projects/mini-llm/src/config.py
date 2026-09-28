@@ -76,6 +76,11 @@ class Config:
     beta1: float = 0.9
     beta2: float = 0.95
 
+    # CPU throughput (all optional; None/False = PyTorch defaults)
+    torch_threads: int | None = None  # torch.set_num_threads
+    torch_interop_threads: int | None = None  # torch.set_num_interop_threads
+    compile: bool = False  # torch.compile the model before training
+
     # Data / checkpoints
     train_bin: str = "data/processed/train.bin"
     val_bin: str = "data/processed/val.bin"
@@ -84,10 +89,13 @@ class Config:
 
     def __post_init__(self) -> None:
         assert self.d_model % self.n_heads == 0, "d_model must be divisible by n_heads"
-        assert self.vocab_size > 0 and self.context_length > 0
         assert self.batch_size > 0 and self.max_steps > 0
         assert 0.0 < self.min_lr_ratio <= 1.0, "min_lr_ratio must be in (0, 1]"
         assert self.warmup_steps <= self.max_steps, "warmup_steps must fit in max_steps"
+        for name in ("torch_threads", "torch_interop_threads"):
+            value = getattr(self, name)
+            assert value is None or (isinstance(value, int) and value >= 1), \
+                f"{name} must be a positive int or None, got {value!r}"
 
     def validate_against_data(self) -> dict | None:
         """Fail if the model vocabulary does not match the prepared data."""

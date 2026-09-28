@@ -7,6 +7,7 @@ import math
 import os
 import random
 import sys
+import time
 
 import numpy as np
 import torch
@@ -16,6 +17,62 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.config import Config, config_for_data
 from src.dataset import build_dataloader
 from src.model import from_config
+
+
+def configure_torch_threads(cfg: Config) -> None:
+    """Apply optional CPU thread settings; a no-op when both are None.
+
+    Must run before any parallel work starts (train() calls it first),
+    because set_num_interop_threads() refuses to run afterwards. A late
+    call degrades to a warning instead of killing the run.
+    """
+    if cfg.torch_threads is not None:
+        torch.set_num_threads(cfg.torch_threads)
+    if cfg.torch_interop_threads is not None:
+        try:
+            torch.set_num_interop_threads(cfg.torch_interop_threads)
+        except RuntimeError as exc:
+            print(f"warning: ignoring --torch-interop-threads "
+                  f"{cfg.torch_interop_threads}: {exc}")
+    print(f"torch threads: intraop={torch.get_num_threads()} "
+          f"interop={torch.get_num_interop_threads()}", flush=True)
+
+
+def maybe_compile_model(model, enabled: bool):
+    """Wrap the model in torch.compile when requested, else return it as-is.
+
+    Checkpoints keep pointing at the original module (same parameter
+    objects), so compiled state-dict prefixes never leak into step_N.pt,
+    and loading/generation never depend on compilation.
+    """
+    if not enabled:
+        return model
+    compile_fn = getattr(torch, "compile", None)
+    if compile_fn is None:
+        raise SystemExit(
+            "torch.compile is unavailable in this PyTorch build; "
+            "rerun without --compile"
+        )
+    try:
+        compiled = compile_fn(model)
+    except Exception as exc:
+        raise SystemExit(f"torch.compile failed: {exc}; rerun without --compile") from exc
+    try:
+        # Backends compile lazily: a one-batch dry run forces Inductor etc.
+        # to fail here with a clear message instead of mid-training. RNG
+        # state is restored so the run is bit-identical with or without it.
+        device = next(model.parameters()).device
+        t = min(8, model.context_length)
+        rng = torch.get_rng_state()
+        with torch.no_grad():
+            compiled(torch.zeros(1, t, dtype=torch.long, device=device))
+        torch.set_rng_state(rng)
+    except Exception as exc:
+        raise SystemExit(
+            f"torch.compile dry run failed ({type(exc).__name__}: {exc}); "
+            f"rerun without --compile"
+        ) from exc
+    return compiled
 
 
 def set_seed(seed: int) -> None:
@@ -164,11 +221,15 @@ def train(cfg: Config, resume_from: str | None = None, start_step: int = 1,
         raise SystemExit(
             f"checkpoint is already at step {start_step - 1} of max_steps {cfg.max_steps}"
         )
+    configure_torch_threads(cfg)
     set_seed(cfg.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"device: {device}")
 
     model = from_config(cfg).to(device)
+    # The original module owns params, optimizer state and checkpoints;
+    # train_model is only the forward/backward path (possibly compiled).
+    train_model = maybe_compile_model(model, cfg.compile)
     n_params = model.count_parameters()
     print(f"parameters: {n_params / 1e6:.2f}M ({n_params})")
 
@@ -193,8 +254,11 @@ def train(cfg: Config, resume_from: str | None = None, start_step: int = 1,
         print(f"lr at resume: {lr_at_step(ckpt['step'] + 1, cfg):.6f}")
 
     model.train()
+    train_model.train()
     train_iter = iter(train_loader)  # build_dataloader guarantees >= 1 full batch
     last_train_loss = last_val_loss = float("nan")
+    total_tokens = 0
+    t_start = time.perf_counter()
     for step in range(start_step, cfg.max_steps + 1):
         try:
             x, y = next(train_iter)
@@ -203,13 +267,14 @@ def train(cfg: Config, resume_from: str | None = None, start_step: int = 1,
             train_iter = iter(train_loader)
             x, y = next(train_iter)
         x, y = x.to(device), y.to(device)
+        total_tokens += x.numel()  # actual batch tokens, not batch_size * context
 
         lr = lr_at_step(step, cfg)
         for group in optimizer.param_groups:
             group["lr"] = lr
 
         optimizer.zero_grad()
-        _, loss = model(x, y)
+        _, loss = train_model(x, y)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
         optimizer.step()
@@ -222,7 +287,7 @@ def train(cfg: Config, resume_from: str | None = None, start_step: int = 1,
             )
 
         if step % cfg.eval_interval == 0 or step == cfg.max_steps:
-            val_loss = evaluate(model, val_loader, cfg.eval_batches, device)
+            val_loss = evaluate(train_model, val_loader, cfg.eval_batches, device)
             last_train_loss, last_val_loss = loss.item(), val_loss
             print(
                 f"step {step} train_loss {loss.item():.4f} "
@@ -241,9 +306,14 @@ def train(cfg: Config, resume_from: str | None = None, start_step: int = 1,
         extra={"train_loss": last_train_loss, "val_loss": last_val_loss},
     )
     print("saved final checkpoint")
+    elapsed = time.perf_counter() - t_start
+    n_steps = cfg.max_steps - start_step + 1
+    print(f"training time {elapsed:.1f}s over {n_steps} steps, "
+          f"{n_steps / elapsed:.2f} steps/sec, "
+          f"{total_tokens / elapsed:.0f} tokens/sec ({total_tokens} tokens)")
 
 
-def main() -> None:
+def make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Train mini-llm GPT")
     parser.add_argument("--max-steps", type=int, default=None)
     parser.add_argument("--batch-size", type=int, default=None)
@@ -258,7 +328,20 @@ def main() -> None:
     parser.add_argument("--stride", type=int, default=1,
                         help="training window stride in tokens: 1 (default) supervises "
                              "every transition; context_length gives non-overlapping chunks")
-    args = parser.parse_args()
+    parser.add_argument("--torch-threads", type=int, default=None, metavar="N",
+                        help="torch.set_num_threads(N); omit for the PyTorch default")
+    parser.add_argument("--torch-interop-threads", type=int, default=None, metavar="N",
+                        help="torch.set_num_interop_threads(N); omit for the default")
+    # default=None (not False) so a resumed run keeps the checkpoint's value
+    # unless the flag is passed explicitly.
+    parser.add_argument("--compile", dest="compile", action="store_true", default=None,
+                        help="torch.compile the model before training (default off; "
+                             "benchmark it, it is not known-good on Windows CPU)")
+    return parser
+
+
+def main() -> None:
+    args = make_parser().parse_args()
 
     if args.resume:
         ckpt = read_checkpoint(args.resume)
@@ -284,9 +367,17 @@ def main() -> None:
                          ("context_length", args.context_length),
                          ("checkpoint_dir", args.checkpoint_dir),
                          ("train_bin", args.train_bin), ("val_bin", args.val_bin),
-                         ("vocab_size", args.vocab_size)):
+                         ("vocab_size", args.vocab_size),
+                         ("torch_threads", args.torch_threads),
+                         ("torch_interop_threads", args.torch_interop_threads)):
         if value is not None:
             setattr(cfg, field, value)
+    if args.compile is not None:
+        cfg.compile = args.compile
+    for name in ("torch_threads", "torch_interop_threads"):
+        value = getattr(cfg, name)
+        if value is not None and value < 1:
+            make_parser().error(f"--{name.replace('_', '-')} must be >= 1, got {value}")
     if cfg.warmup_steps > cfg.max_steps:
         print(f"warmup_steps {cfg.warmup_steps} > max_steps {cfg.max_steps}; shortening")
         cfg.warmup_steps = cfg.max_steps
