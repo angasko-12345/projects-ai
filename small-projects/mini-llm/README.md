@@ -175,8 +175,15 @@ Thread counts are only applied when passed; the active
 `intraop/interop` values print at startup either way. `--compile` fails fast
 with a clear error if `torch.compile` is unavailable, and never leaks into
 checkpoints: `step_N.pt`/`final.pt` and generation always use the uncompiled
-module. Every run ends with a one-line summary:
-tokens, so ragged tails count for what they are).
+module. Every run ends with a one-line summary reporting total training time,
+steps/sec, and tokens/sec (plus the total token count, so ragged tails count
+for what they are).
+
+Batch order differs from the pre-throughput loader by one RNG draw:
+`TokenDataLoader` overrides `__iter__`, so it never consumes the internal seed
+draw that `DataLoader.__iter__` performs before shuffling. Same batch
+distribution, deterministic within this version, but a run started on the old
+loader and resumed on the new one will not be bit-identical.
 
 ### Resuming
 

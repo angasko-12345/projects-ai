@@ -89,6 +89,7 @@ class Config:
 
     def __post_init__(self) -> None:
         assert self.d_model % self.n_heads == 0, "d_model must be divisible by n_heads"
+        assert self.vocab_size > 0 and self.context_length > 0
         assert self.batch_size > 0 and self.max_steps > 0
         assert 0.0 < self.min_lr_ratio <= 1.0, "min_lr_ratio must be in (0, 1]"
         assert self.warmup_steps <= self.max_steps, "warmup_steps must fit in max_steps"

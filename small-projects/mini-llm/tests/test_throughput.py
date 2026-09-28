@@ -159,6 +159,12 @@ class TestThreadOptions(unittest.TestCase):
         with self.assertRaises(AssertionError):
             Config(torch_interop_threads=-1)
 
+    def test_rejects_non_positive_vocab_and_context(self):
+        for kw in ({"vocab_size": 0}, {"vocab_size": -5},
+                   {"context_length": 0}, {"context_length": -1}):
+            with self.assertRaises(AssertionError, msg=kw):
+                Config(**kw)
+
 
 class TestCompileFlag(unittest.TestCase):
     def test_disabled_by_default_and_is_passthrough(self):
