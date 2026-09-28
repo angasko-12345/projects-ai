@@ -1,10 +1,18 @@
-"""Train BPE tokenizer on raw text, then encode + split into .bin files + meta.json."""
+"""Train BPE tokenizer on raw text, then encode + split into .bin files + meta.json.
+
+The encoder streams the input in fixed-size text chunks and spills encoded
+token IDs to a temporary file, so a TinyStories-scale corpus substantially
+larger than RAM never sits in memory whole. Peak usage is one text chunk plus
+one bounded write buffer plus a single passage (TinyStories passages are
+kilobytes); there is no whole-file read and no whole-corpus ID list.
+"""
 
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import tempfile
 
 import numpy as np
 
@@ -14,12 +22,29 @@ from src.tokenizer import encode, load_tokenizer, train_bpe_tokenizer
 DTYPE = np.uint16
 MAX_VOCAB = 65536  # DTYPE capacity; ids above this would wrap silently
 
+READ_CHARS = 1 << 20  # text streaming chunk: 1 MiB of UTF-8 text per read
+WRITE_TOKENS = 1 << 18  # bounded write buffer: 256k ids (~0.5 MiB as uint16)
+COPY_TOKENS = 1 << 20  # file-split copy chunk: 1M ids (~2 MiB) per read
+
+
+def encode_passage(tok, eos: int, passage: str) -> list[int]:
+    """Encode one stripped non-empty passage as <bos> ... <eos>.
+
+    Only this passage's IDs are materialized; callers must not accumulate them.
+    """
+    ids = encode(tok, passage, add_bos=True)
+    ids.append(eos)
+    return ids
+
 
 def encode_corpus(tok, text: str) -> list[int]:
     """Encode text as <bos> passage <eos> ... so the model learns to start and stop.
 
     Generation prompts with <bos> and is expected to emit <eos>; a corpus without
     them never trains either token.
+
+    Small-corpus reference only: materializes the whole ID list, so main() never
+    calls this on the real input. Kept for tests and as the semantics contract.
     """
     eos = tok.token_to_id("<eos>")
     ids: list[int] = []
@@ -27,25 +52,121 @@ def encode_corpus(tok, text: str) -> list[int]:
         passage = passage.strip()
         if not passage:
             continue
-        ids.extend(encode(tok, passage, add_bos=True))
-        ids.append(eos)
+        ids.extend(encode_passage(tok, eos, passage))
     if not ids:
         raise SystemExit("no non-empty passages in the input text")
     return ids
 
 
-def split_tokens(ids: np.ndarray, val_frac: float, context_length: int) -> tuple[np.ndarray, np.ndarray]:
-    """Hold out the last share of tokens, but never less than one val sample."""
-    n_val = max(context_length + 2, int(len(ids) * val_frac))
-    n_train = len(ids) - n_val
+def iter_passages(path: str):
+    """Yield stripped non-empty passages with exact ``text.split("\\n\\n")`` semantics.
+
+    The carry holds the text after the last delimiter seen so far, which no
+    future chunk can alter, so chunk boundaries never change the split.
+    """
+    with open(path, encoding="utf-8") as f:
+        carry = ""
+        while True:
+            chunk = f.read(READ_CHARS)
+            if not chunk:
+                break
+            carry += chunk
+            parts = carry.split("\n\n")
+            carry = parts.pop()
+            for part in parts:
+                passage = part.strip()
+                if passage:
+                    yield passage
+        tail = carry.strip()
+        if tail:
+            yield tail
+
+
+def encode_file_to_temp(tok, input_path: str, tmp_path: str) -> tuple[int, int]:
+    """Encode input_path passage-by-passage into tmp_path as raw uint16 IDs.
+
+    Returns (total_ids, max_id). Raises the same SystemExit messages the old
+    whole-file path raised for empty / passage-free input.
+    """
+    eos = tok.token_to_id("<eos>")
+    total = 0
+    id_max = -1
+    pending: list[int] = []  # bounded write buffer, flushed every WRITE_TOKENS ids
+    with open(tmp_path, "wb") as out:
+        for passage in iter_passages(input_path):
+            ids = encode_passage(tok, eos, passage)
+            m = max(ids)
+            if m > id_max:
+                id_max = m
+            pending.extend(ids)
+            total += len(ids)
+            if len(pending) >= WRITE_TOKENS:
+                np.array(pending, dtype=np.int64).astype(DTYPE).tofile(out)
+                del pending[:]
+        if pending:
+            np.array(pending, dtype=np.int64).astype(DTYPE).tofile(out)
+            del pending[:]
+    if total == 0:
+        # Whitespace-only input (or empty file) has no passages; match the old
+        # whole-file error. A yielded passage implies non-blank text, so the
+        # "no non-empty passages" branch is unreachable here but kept for parity
+        # with encode_corpus.
+        with open(input_path, encoding="utf-8") as f:
+            has_text = bool(f.read(READ_CHARS).strip()) or _has_more_text(f)
+        if not has_text:
+            raise SystemExit(f"input {input_path} is empty")
+        raise SystemExit("no non-empty passages in the input text")
+    return total, id_max
+
+
+def _has_more_text(f) -> bool:
+    """True if any non-whitespace text remains in the already-opened stream."""
+    while True:
+        chunk = f.read(READ_CHARS)
+        if not chunk:
+            return False
+        if chunk.strip():
+            return True
+
+
+def split_counts(n_total: int, val_frac: float, context_length: int) -> tuple[int, int]:
+    """Return (n_train, n_val): hold out the last share of tokens, minimum one val sample."""
+    n_val = max(context_length + 2, int(n_total * val_frac))
+    n_train = n_total - n_val
     if n_train < context_length + 2:
         raise SystemExit(
-            f"corpus has {len(ids)} tokens; context_length {context_length} needs at "
+            f"corpus has {n_total} tokens; context_length {context_length} needs at "
             f"least {2 * (context_length + 2)} for a train and a val sample "
             f"({n_val} would go to val, {n_train} to train). Lower --context-length, "
             "raise --val-frac, or use a larger corpus"
         )
+    return n_train, n_val
+
+
+def split_tokens(ids: np.ndarray, val_frac: float, context_length: int) -> tuple[np.ndarray, np.ndarray]:
+    """Hold out the last share of tokens, but never less than one val sample."""
+    n_train, n_val = split_counts(len(ids), val_frac, context_length)
     return ids[:n_train], ids[n_train:]
+
+
+def split_temp_file(tmp_path: str, train_out: str, val_out: str, n_train: int) -> None:
+    """Copy the first n_train IDs to train_out and the rest to val_out, in chunks."""
+    itemsize = np.dtype(DTYPE).itemsize
+    with open(tmp_path, "rb") as src, \
+            open(train_out, "wb") as f_train, \
+            open(val_out, "wb") as f_val:
+        remaining = n_train
+        while remaining > 0:
+            data = src.read(min(remaining, COPY_TOKENS) * itemsize)
+            if not data:
+                raise SystemExit(f"temporary encoded file {tmp_path} is short")
+            f_train.write(data)
+            remaining -= len(data) // itemsize
+        while True:
+            data = src.read(COPY_TOKENS * itemsize)
+            if not data:
+                break
+            f_val.write(data)
 
 
 def main() -> None:
@@ -80,32 +201,35 @@ def main() -> None:
         )
         print(f"saved tokenizer to {args.tokenizer_out} (vocab={tok.get_vocab_size()})")
 
-    with open(args.input, encoding="utf-8") as f:
-        text = f.read()
-    if not text.strip():
-        raise SystemExit(f"input {args.input} is empty")
-
-    ids = np.array(encode_corpus(tok, text), dtype=np.int64)
-    vocab_size = tok.get_vocab_size()
-    if ids.max() >= MAX_VOCAB:
-        raise SystemExit(f"token id {ids.max()} does not fit in {DTYPE.__name__}")
-    if vocab_size > MAX_VOCAB:
-        raise SystemExit(f"tokenizer has {vocab_size} ids, {DTYPE.__name__} holds {MAX_VOCAB}")
-
-    train_ids, val_ids = split_tokens(ids, args.val_frac, args.context_length)
-    print(f"tokens: total={len(ids)} train={len(train_ids)} val={len(val_ids)}")
-
     os.makedirs(os.path.dirname(args.train_out) or ".", exist_ok=True)
     os.makedirs(os.path.dirname(args.val_out) or ".", exist_ok=True)
-    train_ids.astype(DTYPE).tofile(args.train_out)
-    val_ids.astype(DTYPE).tofile(args.val_out)
+    tmp_dir = os.path.dirname(os.path.abspath(args.train_out))
+    fd, tmp_path = tempfile.mkstemp(dir=tmp_dir, prefix=".encode_all_", suffix=".bin")
+    os.close(fd)
+    try:
+        total, id_max = encode_file_to_temp(tok, args.input, tmp_path)
+        vocab_size = tok.get_vocab_size()
+        if id_max >= MAX_VOCAB:
+            raise SystemExit(f"token id {id_max} does not fit in {DTYPE.__name__}")
+        if vocab_size > MAX_VOCAB:
+            raise SystemExit(f"tokenizer has {vocab_size} ids, {DTYPE.__name__} holds {MAX_VOCAB}")
+
+        n_train, n_val = split_counts(total, args.val_frac, args.context_length)
+        print(f"tokens: total={total} train={n_train} val={n_val}")
+
+        split_temp_file(tmp_path, args.train_out, args.val_out, n_train)
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
 
     # The model must be built for the vocabulary the data was actually encoded
     # with, so publish it where Config can pick it up.
     meta = {
         "vocab_size": vocab_size,
-        "train_tokens": int(len(train_ids)),
-        "val_tokens": int(len(val_ids)),
+        "train_tokens": int(n_train),
+        "val_tokens": int(n_val),
         "dtype": DTYPE.__name__,
         "context_length": args.context_length,
     }
