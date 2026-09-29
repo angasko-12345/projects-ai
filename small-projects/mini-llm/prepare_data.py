@@ -3,7 +3,7 @@
 The encoder streams the input in fixed-size text chunks and spills encoded
 token IDs to a temporary file, so a TinyStories-scale corpus substantially
 larger than RAM never sits in memory whole. Peak usage is one text chunk plus
-one bounded write buffer plus a single passage (TinyStories passages are
+one bounded write buffer plus a batch of passages (TinyStories passages are
 kilobytes); there is no whole-file read and no whole-corpus ID list.
 """
 
@@ -12,7 +12,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 import tempfile
+import time
 
 import numpy as np
 
@@ -25,6 +27,8 @@ MAX_VOCAB = 65536  # DTYPE capacity; ids above this would wrap silently
 READ_CHARS = 1 << 20  # text streaming chunk: 1 MiB of UTF-8 text per read
 WRITE_TOKENS = 1 << 18  # bounded write buffer: 256k ids (~0.5 MiB as uint16)
 COPY_TOKENS = 1 << 20  # file-split copy chunk: 1M ids (~2 MiB) per read
+ENCODE_BATCH_SIZE = 1000  # passages per batch for tokenizer.encode_batch()
+PROGRESS_INTERVAL = 10000  # report progress every N passages
 
 
 def encode_passage(tok, eos: int, passage: str) -> list[int]:
@@ -85,16 +89,33 @@ def iter_passages(path: str):
 def encode_file_to_temp(tok, input_path: str, tmp_path: str) -> tuple[int, int]:
     """Encode input_path passage-by-passage into tmp_path as raw uint16 IDs.
 
+    Uses batched tokenizer.encode_batch() for throughput. Streams passages from
+    disk, accumulates them into batches, encodes the batch, adds <bos>/<eos>,
+    and spills to a bounded write buffer. Peak memory is one text chunk plus
+    one batch of passages plus one write buffer; no whole-corpus data in RAM.
+
     Returns (total_ids, max_id). Raises the same SystemExit messages the old
     whole-file path raised for empty / passage-free input.
     """
+    bos = tok.token_to_id("<bos>")
     eos = tok.token_to_id("<eos>")
     total = 0
     id_max = -1
     pending: list[int] = []  # bounded write buffer, flushed every WRITE_TOKENS ids
-    with open(tmp_path, "wb") as out:
-        for passage in iter_passages(input_path):
-            ids = encode_passage(tok, eos, passage)
+    batch: list[str] = []  # passages waiting for batch encoding
+    passage_count = 0
+    start_time = time.time()
+    last_report_time = start_time
+    last_report_passages = 0
+
+    def flush_batch(batch_texts: list[str]) -> None:
+        nonlocal total, id_max, pending
+        if not batch_texts:
+            return
+        # Batch encode without special tokens; we add <bos>/<eos> manually.
+        encodings = tok.encode_batch(batch_texts, add_special_tokens=False)
+        for enc in encodings:
+            ids = [bos] + enc.ids + [eos]
             m = max(ids)
             if m > id_max:
                 id_max = m
@@ -103,9 +124,40 @@ def encode_file_to_temp(tok, input_path: str, tmp_path: str) -> tuple[int, int]:
             if len(pending) >= WRITE_TOKENS:
                 np.array(pending, dtype=np.int64).astype(DTYPE).tofile(out)
                 del pending[:]
+
+    def maybe_report_progress() -> None:
+        nonlocal last_report_time, last_report_passages
+        now = time.time()
+        # Report every PROGRESS_INTERVAL passages or every 30 seconds, whichever comes first
+        if (passage_count - last_report_passages >= PROGRESS_INTERVAL) or \
+           (now - last_report_time >= 30.0):
+            elapsed = now - start_time
+            rate = passage_count / elapsed if elapsed > 0 else 0
+            print(f"  encoded {passage_count} passages ({total:,} tokens, {rate:.0f} passages/s)", file=sys.stderr)
+            last_report_time = now
+            last_report_passages = passage_count
+
+    with open(tmp_path, "wb") as out:
+        for passage in iter_passages(input_path):
+            batch.append(passage)
+            passage_count += 1
+            if len(batch) >= ENCODE_BATCH_SIZE:
+                flush_batch(batch)
+                batch.clear()
+                maybe_report_progress()
+        # Flush any remaining passages
+        if batch:
+            flush_batch(batch)
+            batch.clear()
         if pending:
             np.array(pending, dtype=np.int64).astype(DTYPE).tofile(out)
             del pending[:]
+
+    # Final progress report
+    elapsed = time.time() - start_time
+    if passage_count > 0:
+        print(f"  encoded {passage_count} passages ({total:,} tokens, {passage_count/elapsed:.0f} passages/s, {elapsed:.1f}s)", file=sys.stderr)
+
     if total == 0:
         # Whitespace-only input (or empty file) has no passages; match the old
         # whole-file error. A yielded passage implies non-blank text, so the
