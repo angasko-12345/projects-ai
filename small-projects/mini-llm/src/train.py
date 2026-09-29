@@ -81,6 +81,27 @@ def set_seed(seed: int) -> None:
     torch.manual_seed(seed)
 
 
+def resolve_device(spec: str) -> torch.device:
+    """Map a --device spec to a torch.device.
+
+    auto keeps the historical behavior (CUDA when available, else CPU). An
+    explicit cuda must never fall back: a cloud run that asked for a GPU has
+    to fail before spending a training budget on CPU.
+    """
+    if spec == "auto":
+        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if spec == "cpu":
+        return torch.device("cpu")
+    if spec == "cuda":
+        if not torch.cuda.is_available():
+            raise SystemExit(
+                "--device cuda requested but CUDA is not available in this "
+                "PyTorch build/runtime; use --device cpu or --device auto"
+            )
+        return torch.device("cuda")
+    raise SystemExit(f"--device must be auto, cpu or cuda, got {spec!r}")
+
+
 def lr_at_step(step: int, cfg: Config) -> float:
     """Linear warmup, then cosine decay to min_lr_ratio * base lr."""
     if step < cfg.warmup_steps:
@@ -133,12 +154,26 @@ def restore_rng_state(state: dict | None) -> None:
     if n:
         np.random.set_state((n["name"], np.array(n["keys"], dtype=np.uint32), n["pos"],
                              n["has_gauss"], n["cached_gaussian"]))
+    cuda_states = state.get("cuda")
+    # Saved on GPU, resumed elsewhere: restore only what this machine has,
+    # never more devices than exist; CPU-only machines skip it (old checkpoints
+    # have no "cuda" key and skip the same way).
+    if cuda_states and torch.cuda.is_available():
+        for i, s in enumerate(cuda_states):
+            if i >= torch.cuda.device_count():
+                break
+            torch.cuda.set_rng_state(s.to(torch.uint8), i)
 
 
 def save_checkpoint(path: str, model, optimizer, step: int, cfg: Config, lr: float | None = None,
                     extra: dict | None = None) -> None:
     # LR is set manually (warmup + cosine), so scheduler state is the schedule
     # config plus the current lr value.
+    rng_state = capture_rng_state()
+    # Dropout and any other GPU draw come from the CUDA generator, not the CPU
+    # one; keyed off the model device so CPU checkpoints keep their old shape.
+    if next(model.parameters()).device.type == "cuda":
+        rng_state["cuda"] = torch.cuda.get_rng_state_all()
     ckpt = {
         "model_state": model.state_dict(),
         "optimizer_state": optimizer.state_dict(),
@@ -151,7 +186,7 @@ def save_checkpoint(path: str, model, optimizer, step: int, cfg: Config, lr: flo
         },
         "step": step,
         "config": cfg.to_dict(),
-        "rng_state": capture_rng_state(),
+        "rng_state": rng_state,
     }
     if extra:
         ckpt.update(extra)
@@ -216,14 +251,14 @@ def evaluate(model, loader, batches: int, device: torch.device) -> float:
 
 
 def train(cfg: Config, resume_from: str | None = None, start_step: int = 1,
-          stride: int = 1) -> None:
+          stride: int = 1, device_spec: str = "auto") -> None:
     if start_step > cfg.max_steps:
         raise SystemExit(
             f"checkpoint is already at step {start_step - 1} of max_steps {cfg.max_steps}"
         )
     configure_torch_threads(cfg)
     set_seed(cfg.seed)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = resolve_device(device_spec)
     print(f"device: {device}")
 
     model = from_config(cfg).to(device)
@@ -322,6 +357,10 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--train-bin", default=None)
     parser.add_argument("--val-bin", default=None)
     parser.add_argument("--vocab-size", type=int, default=None)
+    parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto",
+                        help="training device: auto (default) picks CUDA when "
+                             "available, else CPU; cuda fails instead of silently "
+                             "falling back to CPU")
     parser.add_argument("--resume", default=None, metavar="CHECKPOINT",
                         help="continue from step_N.pt / final.pt: model, optimizer, "
                              "step and the original lr schedule are all restored")
@@ -385,7 +424,8 @@ def main() -> None:
     cfg.validate_against_data()
     if args.resume:
         print(f"resuming {args.resume}: step {resume_step} -> {start_step} of {cfg.max_steps}")
-    train(cfg, resume_from=args.resume, start_step=start_step, stride=args.stride)
+    train(cfg, resume_from=args.resume, start_step=start_step, stride=args.stride,
+          device_spec=args.device)
 
 
 if __name__ == "__main__":

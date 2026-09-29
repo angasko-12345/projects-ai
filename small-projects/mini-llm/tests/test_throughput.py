@@ -166,6 +166,17 @@ class TestThreadOptions(unittest.TestCase):
                 Config(**kw)
 
 
+class TestDeviceFlag(unittest.TestCase):
+    def test_auto_is_the_default(self):
+        self.assertEqual(make_parser().parse_args([]).device, "auto")
+
+    def test_device_values_are_enforced(self):
+        self.assertEqual(
+            make_parser().parse_args(["--device", "cuda"]).device, "cuda")
+        with self.assertRaises(SystemExit):
+            make_parser().parse_args(["--device", "tpu"])
+
+
 class TestCompileFlag(unittest.TestCase):
     def test_disabled_by_default_and_is_passthrough(self):
         self.assertFalse(Config().compile)

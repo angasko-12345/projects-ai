@@ -262,3 +262,13 @@
 - **Alternatives considered:** Keeping machine-local .git/info/exclude only (rejected — fresh clones unprotected). Adding a root .gitignore without superseding the recorded decision (rejected — creates a contradiction in decisions.md).
 
 - **Agents involved:** opencode (this session).
+
+## 2026-09-29 - mini-llm cloud GPU portability: --device flag + CUDA RNG checkpoints
+
+- **Decision:** In `small-projects/mini-llm`, add `--device {auto,cpu,cuda}` to `src/train.py` (`resolve_device`: `auto` preserves the old auto-select, `cuda` exits with an error when CUDA is unavailable instead of falling back, `cpu` forces CPU) and save/restore per-GPU CUDA RNG state under `rng_state["cuda"]` only when the model is on CUDA (absent key = no-op, so old checkpoints and CPU checkpoints keep their exact shape). No other changes: no mixed precision, no attention/throughput work, no new dependencies.
+
+- **Reason:** Cloud-GPU audit showed the loop was already device-agnostic and cross-device checkpoint loads were safe (`torch.load(map_location="cpu")` + optimizer `load_state_dict` casting state "to device of param", verified in installed torch 2.14 source). The two real gaps were explicit device control (a CPU-only Kaggle/Colab runtime would silently train on CPU) and resume fidelity for CUDA-side RNG draws (dropout). Both were on the requested hardening list.
+
+- **Alternatives considered:** Storing the device in `Config`/checkpoints (rejected — device belongs to the machine; a GPU-trained checkpoint must resume on CPU). Capturing CUDA RNG on every save regardless of device (rejected — initializes CUDA on CPU runs and changes CPU checkpoint bytes).
+
+- **Agents involved:** oh-my-pi (this session).

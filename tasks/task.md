@@ -595,3 +595,58 @@ it belongs to `AgentOpsController`).
   threaded. Item 1 closes that for the right reason.
 - The reviewer flagged the CLI copy of the provenance write as out of scope; it
   is the same defect and was fixed alongside the controller copy.
+
+---
+
+## Plan (mini-llm cloud GPU compatibility audit — 2026-09-29)
+
+### Subtask 1 — Inspect device, checkpoint, and path handling
+Agent: oh-my-pi (sole writer)
+Status: done
+Audited `src/train.py`, `src/model.py`, `src/config.py`, `src/dataset.py`,
+`prepare_data.py`, `src/generate.py`, `requirements.txt`, checkpoint save/load,
+and the tests. Established the baseline suite (87 tests, 1 pre-existing failure
+from the uncommitted `data/raw/train.txt` expansion: shipped-corpus vocab 3095
+vs committed `meta.json` 308 — user data, untouched).
+
+### Subtask 2 — Regression tests, then minimal hardening
+Agent: oh-my-pi (sole writer)
+Status: done
+Tests first (`TestDeviceSelection`, `TestDeviceFlag`, two CUDA-RNG tests in
+`TestCheckpointSafety`), then `--device {auto,cpu,cuda}` + `resolve_device` and
+CUDA RNG capture/restore keyed off the model device.
+
+### Subtask 3 — Docs, verification, records
+Agent: oh-my-pi (sole writer)
+Status: done
+README (`--device`, Cloud GPU section, resume/test coverage notes), full suite,
+CLI smoke runs, decisions.md entry, this record.
+
+## Output (mini-llm cloud GPU compatibility audit)
+
+Status: audit complete; the code already trains correctly on CUDA; two minimal
+hardening changes implemented, nothing else touched.
+
+- **Verdict:** device-agnostic loaders, `.to(device)` batching, seeds via
+  `torch.manual_seed` (all devices), and `torch.load(map_location="cpu")` +
+  optimizer state cast "to device of param" (verified in installed torch 2.14
+  source) mean GPU/CPU/GPU-portable checkpoints already worked. Paths in
+  checkpoints are project-relative (run from the project root); no
+  machine-specific state found.
+- **Changes:** `src/train.py` — `resolve_device()` + `--device` flag (auto
+  default = old behavior; `cuda` exits 1 instead of silently training on CPU;
+  invalid value exits 2 via argparse); CUDA RNG saved under
+  `rng_state["cuda"]` only when the model is on CUDA, restored on resume with
+  device-count guards, skipped on CPU-only machines and by old checkpoints.
+  Tests: +9 (`TestDeviceSelection`, `TestDeviceFlag`, CPU checkpoint shape,
+  CPU-only restore skip). README documented.
+- **Verification:** full suite 96 tests, 1 env skip (CUDA-device resolve on a
+  CPU box), 1 failure = the pre-existing baseline `TestShippedData` caused by
+  the uncommitted corpus edit (3095 != 308, failed identically before any
+  change). Smoke: `--device cuda` -> exit 1 with message; `--device tpu` ->
+  exit 2; `--device cpu` and `--device auto` train and checkpoint; `--resume`
+  through the new wiring restores step 3 of 4. GPU execution itself not
+  exercised (local torch is a CPU-only build: 2.14.0+cpu).
+- **Not done (by rule):** no mixed precision, attention, or throughput work;
+  no dependency changes; CPU fallback and checkpoint format preserved.
+- **Backup:** `/tmp/agentops-backup-mini-llm-cloud-20260929/diff.patch`

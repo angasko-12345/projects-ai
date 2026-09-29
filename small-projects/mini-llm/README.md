@@ -108,8 +108,15 @@ leaves too few tokens for one train sample. `--vocab-size` may not exceed
 ```bash
 python -m src.train                                   # real corpus
 python -m src.train --context-length 32                # shipped 2.4 KB sample
+python -m src.train --device cuda                      # require the GPU (see below)
 # or: python src/train.py --max-steps 2000 --batch-size 8 --context-length 512
 ```
+
+`--device {auto,cpu,cuda}` picks the training device. `auto` (default) keeps
+the historical behavior: CUDA when available, else CPU. `cpu` forces CPU even
+on a GPU machine. `cuda` never falls back: it exits with an error if this
+PyTorch build/runtime has no CUDA, so a misconfigured cloud runtime fails
+before spending a training budget on CPU.
 
 AdamW (betas 0.9, 0.95, weight decay 0.1 on matrices only — LayerNorm scales
 and biases are excluded), linear warmup (500 steps) then
@@ -124,6 +131,27 @@ continues. `vocab_size` is read from `data/processed/meta.json` unless
 never cycles the val loader: it uses at most `eval_batches` batches, or one
 full pass if the val set is smaller, and averages **per target token** so a
 ragged final batch is not over-weighted.
+
+### Cloud GPU (Kaggle, Colab, ...)
+
+The training loop is device-agnostic: batches are moved to the selected
+device, and checkpoints are read with `map_location="cpu"`, so a checkpoint
+saved on a GPU loads on a CPU-only machine or a different GPU (optimizer
+state is cast to each parameter's device when it loads). To move the
+expensive run to a free cloud GPU:
+
+```bash
+pip install -r requirements.txt
+python prepare_data.py                    # your corpus, same as locally
+python -m src.train --device cuda --max-steps 10000
+```
+
+Run everything from the project root: `train_bin`, `val_bin`,
+`tokenizer_path` and `checkpoint_dir` are stored as relative paths in
+checkpoints, so a checkpoint resumed on another machine expects the same
+working-directory layout. When training runs on CUDA, the per-GPU RNG state
+is saved under `rng_state["cuda"]` and restored on resume; checkpoints
+without that key (all older ones) load unchanged.
 
 ### Window stride
 
@@ -195,9 +223,10 @@ python -m src.train --resume checkpoints/step_500.pt --max-steps 20000  # extend
 A resumed run takes its config from the checkpoint, so the original warmup and
 cosine schedule continue from the stored step instead of restarting at step 1.
 Model weights, AdamW moments, the step counter and the torch/python/numpy RNG
-states are all restored. Any flag you pass explicitly still wins (including
-`--max-steps`). Checkpoints are read with `weights_only=True`; a file that is
-not a mini-llm checkpoint is rejected rather than unpickled.
+states are all restored (plus the per-GPU CUDA RNG when the run is on CUDA).
+Any flag you pass explicitly still wins (including `--max-steps`). Checkpoints
+are read with `weights_only=True`; a file that is not a mini-llm checkpoint is
+rejected rather than unpickled.
 
 ## Generation
 
@@ -225,7 +254,8 @@ generation ID validity, weight tying, and checkpoint round-trip, plus the
 data pipeline: `prepare_data.py` framing and split sizing, `meta.json`,
 `TokenDataset` window coverage, empty/undersized-loader diagnostics, LR warmup,
 token-weighted evaluation with a ragged final batch, the training loop end to
-end, resume (step/optimizer/schedule/RNG), AdamW decay groups, safe checkpoint
+end, resume (step/optimizer/schedule/RNG), device selection
+(`--device` auto/cpu/cuda fail-fast), AdamW decay groups, safe checkpoint
 loading, seeded vs unseeded generation, window-stride sample counts, and the
 agreement between the shipped corpus, tokenizer and `meta.json`.
 

@@ -24,8 +24,8 @@ from src.generate import main as generate_main
 from src.model import from_config
 from src.tokenizer import load_tokenizer, train_bpe_tokenizer
 from src.train import (build_param_groups, evaluate, load_checkpoint, load_model,
-                       lr_at_step, read_checkpoint, restore_rng_state, save_checkpoint,
-                       train)
+                       lr_at_step, read_checkpoint, resolve_device, restore_rng_state,
+                       save_checkpoint, train)
 from src.train import main as train_main
 
 CORPUS = (
@@ -440,6 +440,29 @@ class TestResume(unittest.TestCase):
             os.path.join(self.ckpt_dir, "final.pt"))["step"], 12)
 
 
+class TestDeviceSelection(unittest.TestCase):
+    def test_auto_matches_cuda_availability(self):
+        expected = "cuda" if torch.cuda.is_available() else "cpu"
+        self.assertEqual(resolve_device("auto").type, expected)
+
+    def test_cpu_is_forced_even_when_cuda_exists(self):
+        self.assertEqual(resolve_device("cpu").type, "cpu")
+
+    def test_unknown_device_is_rejected(self):
+        with self.assertRaises(SystemExit):
+            resolve_device("tpu")
+
+    @unittest.skipIf(torch.cuda.is_available(), "needs a CUDA-less environment")
+    def test_cuda_without_cuda_fails_instead_of_falling_back(self):
+        with self.assertRaises(SystemExit) as ctx:
+            resolve_device("cuda")
+        self.assertIn("CUDA is not available", str(ctx.exception))
+
+    @unittest.skipUnless(torch.cuda.is_available(), "needs a CUDA device")
+    def test_cuda_resolves_when_available(self):
+        self.assertEqual(resolve_device("cuda").type, "cuda")
+
+
 class TestParamGroups(unittest.TestCase):
     def test_one_dimensional_params_are_excluded_from_decay(self):
         cfg = Config(vocab_size=32, context_length=8, n_layers=2, n_heads=2,
@@ -511,6 +534,29 @@ class TestCheckpointSafety(unittest.TestCase):
     def test_read_checkpoint_reports_bad_files(self):
         with self.assertRaises(ValueError):
             read_checkpoint(os.path.join(self.tmp.name, "missing.pt"))
+
+    def test_cpu_checkpoint_carries_no_cuda_rng_state(self):
+        cfg = self.tiny()
+        model = from_config(cfg)
+        opt = torch.optim.AdamW(build_param_groups(model, cfg.weight_decay), lr=1e-3)
+        path = os.path.join(self.tmp.name, "ckpt.pt")
+        save_checkpoint(path, model, opt, step=1, cfg=cfg, lr=1e-3)
+        rng = read_checkpoint(path)["rng_state"]
+        # CPU runs keep the pre-CUDA checkpoint shape, so nothing new appears
+        # for existing tooling or older readers.
+        self.assertNotIn("cuda", rng)
+        for key in ("torch", "python", "numpy"):
+            self.assertIn(key, rng)
+
+    @unittest.skipIf(torch.cuda.is_available(), "needs the CUDA-absent skip path")
+    def test_restore_skips_cuda_states_on_cpu_only_machine(self):
+        # A GPU-trained checkpoint resumed on a CPU box: the cuda states must be
+        # ignored while the CPU RNG state still restores exactly.
+        state = {"torch": torch.get_rng_state(),
+                 "cuda": [torch.zeros(64, dtype=torch.uint8)]}
+        expected = torch.rand(4)
+        restore_rng_state(state)
+        self.assertTrue(torch.equal(torch.rand(4), expected))
 
 
 class TestGenerationSeed(unittest.TestCase):
