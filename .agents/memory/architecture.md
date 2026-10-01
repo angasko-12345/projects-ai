@@ -113,12 +113,20 @@ The Windows no-console spawn policy has a single owner: `agentops/runtime.py` (`
 ## Memory folder layout (split planned, not implemented)
 
 `.agents/memory/` currently mixes universal project knowledge with agent-specific
-runbooks. `.agents/memory/oh-my-pi/` and `.agents/memory/opencode/` are the first
-agent-specific subfolders. The intended end state is a universal set plus one folder per
-agent, but that split is **not implemented** — the two dedicated OpenCode runbooks
-(`omp-opencode-free-tier-403.md`, `pi-opencode-free-tier-fix.md`) are still at the top
-level and are the obvious candidates to move into `opencode/`. Until the split happens,
-`opencode/README.md` records the map rather than duplicating that content.
+runbooks. `.agents/memory/oh-my-pi/`, `.agents/memory/opencode/`, and
+`.agents/memory/cline/` are the agent-specific subfolders. The intended end state
+is a universal set plus one folder per agent, but that split is **not
+implemented** — the two dedicated OpenCode runbooks
+(`omp-opencode-free-tier-403.md`, `pi-opencode-free-tier-fix.md`) are still at the
+top level and are the obvious candidates to move into `opencode/`. Until the
+split happens, `opencode/README.md` and `cline/README.md` record the map rather
+than duplicating that content.
+
+`cline/` (added 2026-10-01) holds agent-scoped runbooks for Cline sessions:
+`environment.md` (verified tooling facts plus a correction to a stale claim in
+`opencode/environment.md`), `agentops-verification-workflow.md` (how to run and
+trust the suites on this Windows shell), `lessons.md`, and `sessions/`. As with
+the other subfolders, the universal files here remain authoritative.
 
 ## Update log
 
