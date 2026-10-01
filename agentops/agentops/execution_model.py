@@ -61,6 +61,94 @@ from .tasks import Task, TaskStatus
 from .verification_model import VerificationReport, VerificationReportStatus
 
 
+# Workflow readiness: the single READY rule for the whole product. Every entry
+# point that can declare a workflow READY, or gate a merge on readiness, must
+# assess through assess_workflow_readiness(); assert_workflow_ready() raises over
+# the same reason strings so no path holds a weaker contract than another.
+
+from collections.abc import Iterable
+from dataclasses import dataclass
+
+from .tasks import Task, TaskStatus
+
+
+@dataclass(frozen=True)
+class WorkflowReadiness:
+    """Why a workflow is or is not READY, in terms an operator can act on."""
+
+    workflow_id: str
+    verification_ok: bool
+    review_ok: bool
+    evidence_present: bool
+    reasons: tuple[str, ...]
+
+    @property
+    def ready(self) -> bool:
+        return not self.reasons
+
+    def summary(self) -> str:
+        return "READY" if self.ready else "; ".join(self.reasons)
+
+
+def _missing_readiness_reasons(
+    verification_ok: bool, review_ok: bool, evidence_present: bool
+) -> list[str]:
+    reasons: list[str] = []
+    if not verification_ok:
+        reasons.append("no passed+verified verification task")
+    if not review_ok:
+        reasons.append("no passed review task")
+    if not evidence_present:
+        reasons.append("no verification evidence")
+    return reasons
+
+
+def assess_workflow_readiness(
+    tasks: Iterable[Task],
+    workflow_id: str = "<unknown>",
+    *,
+    verification_task_id: str | None = None,
+    review_task_id: str | None = None,
+) -> WorkflowReadiness:
+    """Evaluate the READY contract over a workflow's tasks.
+
+    READY requires all three of: a passed+verified verification task, a passed
+    review task, and non-empty verification evidence for this workflow.
+
+    ``verification_task_id``/``review_task_id`` narrow the assessment to the
+    tasks a caller is actually gating on (the standard flow's repair cycles
+    create several verification and review tasks, and only the final pair
+    decides the outcome). Omit them to assess the workflow as a whole, which
+    is what the custom-DAG and CLI paths need.
+    """
+    scoped = list(tasks)
+
+    def pool(task_id: str | None, role: str) -> list[Task]:
+        candidates = scoped if task_id is None else [t for t in scoped if t.id == task_id]
+        return [task for task in candidates if task.role == role]
+
+    def is_evidence_backed(task: Task) -> bool:
+        return bool(task.verification_run_id or (task.result or "").strip())
+
+    verification_ok = any(
+        task.status is TaskStatus.PASSED and task.verified is True
+        for task in pool(verification_task_id, "verification")
+    )
+    review_ok = any(
+        task.status is TaskStatus.PASSED
+        for task in pool(review_task_id, "review")
+    )
+    evidence_present = any(
+        task.verified and is_evidence_backed(task)
+        for task in pool(verification_task_id, "verification")
+    )
+
+    reasons = _missing_readiness_reasons(verification_ok, review_ok, evidence_present)
+    return WorkflowReadiness(
+        workflow_id, verification_ok, review_ok, evidence_present, tuple(reasons)
+    )
+
+
 class StateTransitionError(ValueError):
     """A validated execution invariant was violated (fail-loud, never coerce)."""
 
@@ -188,17 +276,40 @@ def assert_workflow_ready(
     workflow_id: str = "<unknown>",
 ) -> None:
     """Raise StateTransitionError if a READY claim lacks any required signal."""
-    reasons: list[str] = []
-    if not verification_ok:
-        reasons.append("no passed+verified verification task")
-    if not review_ok:
-        reasons.append("no passed review task")
-    if not evidence_present:
-        reasons.append("no verification evidence")
-    if reasons:
-        raise StateTransitionError(
-            f"Workflow {workflow_id} is not READY: " + "; ".join(reasons)
-        )
+    if verification_ok and review_ok and evidence_present:
+        return
+    raise StateTransitionError(
+        f"Workflow {workflow_id} is not READY: "
+        + "; ".join(_missing_readiness_reasons(
+            verification_ok, review_ok, evidence_present))
+    )
+
+
+def assert_tasks_ready(
+    tasks: Iterable[Task],
+    workflow_id: str = "<unknown>",
+    *,
+    verification_task_id: str | None = None,
+    review_task_id: str | None = None,
+) -> WorkflowReadiness:
+    """Assert the authoritative readiness rule over real tasks.
+
+    Every READY/merge gate should call this: it assesses the tasks and raises
+    the same StateTransitionError as :func:`assert_workflow_ready` when a
+    prerequisite is missing.
+    """
+    readiness = assess_workflow_readiness(
+        tasks, workflow_id,
+        verification_task_id=verification_task_id,
+        review_task_id=review_task_id,
+    )
+    assert_workflow_ready(
+        verification_ok=readiness.verification_ok,
+        review_ok=readiness.review_ok,
+        evidence_present=readiness.evidence_present,
+        workflow_id=workflow_id,
+    )
+    return readiness
 
 
 def assert_no_fabricated_success(
@@ -220,11 +331,14 @@ __all__ = [
     "AGENT_RUN_TRANSITIONS",
     "SUCCESS_LADDER",
     "StateTransitionError",
+    "WorkflowReadiness",
     "assert_agent_run_transition",
     "assert_no_fabricated_success",
     "assert_report_consistent",
     "assert_task_completion",
+    "assert_tasks_ready",
     "assert_workflow_ready",
+    "assess_workflow_readiness",
     "ladder_position",
     "layer_requires",
 ]

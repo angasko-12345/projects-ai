@@ -20,6 +20,9 @@ class GitWorktreeTests(unittest.TestCase):
             subprocess.CompletedProcess([], 0, "C:/repo\n", ""),
             subprocess.CompletedProcess([], 0, "abc123\n", ""),
             subprocess.CompletedProcess([], 0, "main\n", ""),
+            # `git rev-parse --git-path info/exclude`, so AgentOps' own state
+            # does not make a fresh repository look dirty.
+            subprocess.CompletedProcess([], 0, ".git/info/exclude\n", ""),
             subprocess.CompletedProcess([], 0, "", ""),
         ]
         manager = GitWorktreeManager()
@@ -39,6 +42,22 @@ class GitWorktreeTests(unittest.TestCase):
         ]
         with self.assertRaises(GitError):
             GitWorktreeManager().create("C:/repo", "Add dark mode")
+
+    @patch("agentops.git.subprocess.run")
+    def test_create_writes_agentops_exclude_entry(self, run):
+        with tempfile.TemporaryDirectory() as directory:
+            exclude = Path(directory) / "info" / "exclude"
+            exclude.parent.mkdir(parents=True, exist_ok=True)
+            exclude.write_text("", encoding="utf-8")
+            run.side_effect = [
+                subprocess.CompletedProcess([], 0, "C:/repo\n", ""),
+                subprocess.CompletedProcess([], 0, "abc123\n", ""),
+                subprocess.CompletedProcess([], 0, "main\n", ""),
+                subprocess.CompletedProcess([], 0, f"{exclude}\n", ""),
+                subprocess.CompletedProcess([], 0, "", ""),
+            ]
+            GitWorktreeManager().create("C:/repo", "Add dark mode")
+            self.assertIn("/.agentops/", exclude.read_text(encoding="utf-8"))
 
     @patch("agentops.git.subprocess.run")
     def test_commit_skips_empty_worktree(self, run):

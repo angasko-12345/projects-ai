@@ -24,9 +24,12 @@ from .agent_run import (
 from .agent_result import parse_agent_result
 from .execution_model import (
     StateTransitionError,
+    WorkflowReadiness,
     assert_report_consistent,
     assert_task_completion,
+    assert_tasks_ready,
     assert_workflow_ready,
+    assess_workflow_readiness,
 )
 from .failure import (
     Failure,
@@ -526,7 +529,9 @@ class WorkflowEngine:
                     # A1: an empty command suite is vacuous success and must
                     # not verify (supersedes Review #2 — see decisions.md).
                     succeeded = bool(results) and all(result.succeeded for result in results)
-                    task.result = "\n".join(result.output for result in results)
+                    # Verification output is persisted evidence, so it follows
+                    # the same redaction policy as agent output.
+                    task.result = redact_text("\n".join(result.output for result in results))
                     # Legacy verification commands are verification evidence
                     # themselves; only agent-task success leaves verified False.
                     task.verified = succeeded
@@ -560,7 +565,15 @@ class WorkflowEngine:
                     result = await self._run_task_agent(
                         agent, task, working_directory, cancel_event=cancel_event
                     )
-                    task.result = f"log={result.log_path}\n{result.stdout}\n{result.stderr}".strip()
+                    # Redact before persisting: the tasks table is a durable
+                    # boundary and agent output can carry credential-like
+                    # material. The log path still points at the full
+                    # transcript for operators who need it.
+                    task.result = (
+                        f"log={result.log_path}\n"
+                        f"{redact_text(result.stdout or '')}\n"
+                        f"{redact_text(result.stderr or '')}"
+                    ).strip()
                     if cancel_event is not None and cancel_event.is_set():
                         raise OperationCancelled
                     task.status = TaskStatus.PASSED if result.succeeded else TaskStatus.FAILED
@@ -603,7 +616,8 @@ class WorkflowEngine:
             raise
         except Exception as error:
             task.status = TaskStatus.FAILED
-            task.result = f"Task execution error: {error}"
+            # An exception message can embed command output or a credential.
+            task.result = redact_text(f"Task execution error: {error}")
             try:
                 self.record_failure(
                     task,
@@ -787,6 +801,26 @@ class WorkflowEngine:
                 task.verification_run_id or (task.result or "").strip()
             )
         ]
+
+    def workflow_readiness(
+        self,
+        workflow_id: str,
+        *,
+        verification_task_id: str | None = None,
+        review_task_id: str | None = None,
+    ) -> WorkflowReadiness:
+        """Assess the authoritative READY contract for one workflow.
+
+        Every entry point that can declare a workflow READY — the CLI custom-DAG
+        path, the GUI, and :meth:`run_high_level` — assesses readiness through
+        this method, so no path can hold a weaker contract than the standard
+        flow.
+        """
+        return assess_workflow_readiness(
+            self.state.list_tasks(workflow_id), workflow_id,
+            verification_task_id=verification_task_id,
+            review_task_id=review_task_id,
+        )
 
     def _run_observer_for_task(self) -> AgentRunObserver | None:
         if self.run_observer is not None:
@@ -1169,15 +1203,12 @@ class WorkflowEngine:
         if verification.status is TaskStatus.PASSED and verification.verified:
             review = self.state.get_task(tasks[3].id)
             if review.status is TaskStatus.PASSED:
-                # A1: READY requires verification + review + evidence
-                # (actual statuses passed so the invariant reads standalone).
-                assert_workflow_ready(
-                    verification_ok=verification.status is TaskStatus.PASSED and verification.verified,
-                    review_ok=review.status is TaskStatus.PASSED,
-                    evidence_present=bool(self.verification_evidence(workflow_id)),
-                    workflow_id=workflow_id,
+                # One authoritative READY rule: verification + review + evidence.
+                ready = assert_tasks_ready(
+                    self.state.list_tasks(workflow_id), workflow_id,
+                    verification_task_id=verification.id, review_task_id=review.id,
                 )
-                return WorkflowResult(workflow_id, True, "READY")
+                return WorkflowResult(workflow_id, True, ready.summary())
             return WorkflowResult(workflow_id, False, "Review did not pass.")
         implementation = self.state.get_task(tasks[1].id)
         if implementation.status is not TaskStatus.PASSED:
@@ -1195,14 +1226,13 @@ class WorkflowEngine:
             final_review = self.state.get_task(final_review.id)
             if verification.status is TaskStatus.PASSED and verification.verified:
                 if final_review.status is TaskStatus.PASSED:
-                    # A1: READY requires verification + review + evidence
-                    # (actual statuses passed so the invariant reads standalone).
-                    assert_workflow_ready(
-                        verification_ok=verification.status is TaskStatus.PASSED and verification.verified,
-                        review_ok=final_review.status is TaskStatus.PASSED,
-                        evidence_present=bool(self.verification_evidence(workflow_id)),
-                        workflow_id=workflow_id,
+                    # One authoritative READY rule, scoped to this repair cycle's
+                    # verification/review pair.
+                    ready = assert_tasks_ready(
+                        self.state.list_tasks(workflow_id), workflow_id,
+                        verification_task_id=verification.id,
+                        review_task_id=final_review.id,
                     )
-                    return WorkflowResult(workflow_id, True, "READY")
+                    return WorkflowResult(workflow_id, True, ready.summary())
                 return WorkflowResult(workflow_id, False, "Repair or review did not pass.")
         return WorkflowResult(workflow_id, False, "Repair or review did not pass.")

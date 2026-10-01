@@ -99,6 +99,7 @@ class GitWorktreeManager:
         branch = f"agentops/{slug}-{uuid4().hex[:8]}"
         path = repository / ".agentops" / "worktrees" / branch.replace("/", "-")
         path.parent.mkdir(parents=True, exist_ok=True)
+        self._exclude_agentops_state(repository)
         result = self._run(repository, "worktree", "add", "-b", branch, str(path), "HEAD")
         if result.returncode:
             raise GitError(result.stderr.strip() or "Could not create Git worktree.")
@@ -119,6 +120,40 @@ class GitWorktreeManager:
 
     def _managed_root(self, repository: str | Path) -> Path:
         return self.repository_root(repository) / ".agentops" / "worktrees"
+
+    def _exclude_agentops_state(self, repository: Path) -> None:
+        """Keep AgentOps' own state out of the base repository's dirty set.
+
+        Worktrees live at ``<repo>/.agentops/worktrees/...``, so a fresh clone
+        shows ``?? .agentops/`` in ``git status`` and merge() would then refuse
+        to merge AgentOps' own work. Writing ``.agentops/`` to
+        ``.git/info/exclude`` removes that self-inflicted dirt without
+        depending on the target repository carrying a ``.gitignore`` entry, and
+        without touching any tracked file the user owns.
+
+        A failure here is not fatal: it only means the target repo still sees
+        AgentOps state as untracked.
+        """
+        result = self._run(repository, "rev-parse", "--git-path", "info/exclude")
+        if result.returncode:
+            return
+        raw = result.stdout.strip()
+        if not raw:
+            return
+        exclude = Path(raw)
+        if not exclude.is_absolute():
+            exclude = repository / exclude
+        entry = "/.agentops/"
+        try:
+            existing = exclude.read_text(encoding="utf-8", errors="replace")
+            if entry in existing.split():
+                return
+            prefix = "" if existing.endswith("\n") or not existing else "\n"
+            exclude.parent.mkdir(parents=True, exist_ok=True)
+            with exclude.open("a", encoding="utf-8") as handle:
+                handle.write(f"{prefix}{entry}\n")
+        except OSError:
+            return
 
     def list_worktrees(self, repository: str | Path) -> list[WorktreeInfo]:
         root = self.repository_root(repository)

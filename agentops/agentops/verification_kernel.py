@@ -15,7 +15,7 @@ from time import monotonic
 from typing import Any
 from uuid import uuid4
 
-from .logging import LogManager
+from .logging import LogManager, redact_text
 from .persistence import Degradation, DegradationRecorder
 from .runtime import OperationCancelled, ProcessRuntime, SpawnFactory
 from .tasks import utc_now
@@ -195,17 +195,24 @@ class VerificationKernel:
         checks: dict[str, VerificationCheck] = {}
         texts: dict[str, dict[str, str]] = {}
         if self._state is not None:
-            for spec in specs:
-                timeout = spec.timeout_seconds or profile.default_timeout_seconds
-                # Persist the declared directory; containment is enforced at
-                # execution time so the stored value never masks a rejection.
-                check_dir = spec.working_directory or str(base)
-                created = self._state.create_verification_check(
-                    run_id, workflow_id, task_id, profile.name, spec.name,
-                    spec.check_class.value, spec.command, check_dir, timeout,
-                    spec.required, spec.policy.value,
-                )
-                checks[spec.name] = created
+            try:
+                for spec in specs:
+                    timeout = spec.timeout_seconds or profile.default_timeout_seconds
+                    # Persist the declared directory; containment is enforced at
+                    # execution time so the stored value never masks a rejection.
+                    check_dir = spec.working_directory or str(base)
+                    created = self._state.create_verification_check(
+                        run_id, workflow_id, task_id, profile.name, spec.name,
+                        spec.check_class.value, spec.command, check_dir, timeout,
+                        spec.required, spec.policy.value,
+                    )
+                    checks[spec.name] = created
+            except Exception as error:
+                # A run whose checks could not all be created must not stay
+                # RUNNING: it would be invisible to recovery and look live
+                # forever. Close it out as failed, then surface the error.
+                self._abort_setup(run_id, checks, error)
+                raise
         else:
             now = utc_now()
             for spec in specs:
@@ -334,6 +341,38 @@ class VerificationKernel:
             )
             self._state.create_verification_report(report)
         return report
+
+    def _abort_setup(
+        self,
+        run_id: str,
+        checks: dict[str, VerificationCheck],
+        error: BaseException,
+    ) -> None:
+        """Close out a run whose verification checks could not be created.
+
+        Leaves the run in a terminal FAILED state rather than RUNNING, so the
+        partial setup is diagnosable instead of looking live forever. Nothing
+        here may raise: the caller is already propagating the real error and a
+        secondary failure would replace a useful message with a confusing one.
+        """
+        if self._state is None:
+            return
+        try:
+            for check in checks.values():
+                if check.status in {VerificationCheckStatus.PENDING, VerificationCheckStatus.RUNNING}:
+                    self._state.finish_verification_check(
+                        check.id, VerificationCheckStatus.FAILED,
+                        check.exit_code, None, None, None,
+                        f"verification setup failed: {error}",
+                    )
+            self._state.finish_verification_run(
+                run_id, VerificationRunStatus.FAILED, VerificationReportStatus.FAILED,
+                len(checks), 0, len(checks), 0, len(checks), 0.0,
+            )
+        except Exception:
+            # The original error is the one worth reporting; a failed
+            # best-effort closeout must not replace it.
+            pass
 
     def _skip_specs(
         self,
@@ -616,9 +655,11 @@ class VerificationKernel:
                 f"(exit={check.exit_code}, required={check.required})."
             )
             if check.status is not VerificationCheckStatus.PASSED:
+                # Command output is persisted in the report transcript, so it
+                # must follow the same redaction policy as task results.
                 output = texts.get(check.name, {})
-                stdout = _truncate(output.get("stdout", ""))
-                stderr = _truncate(output.get("stderr", ""))
+                stdout = _truncate(redact_text(output.get("stdout", "")))
+                stderr = _truncate(redact_text(output.get("stderr", "")))
                 if stdout.strip():
                     lines.append(f"  stdout:\n{stdout.rstrip()}")
                 if stderr.strip():

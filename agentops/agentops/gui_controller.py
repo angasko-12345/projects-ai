@@ -576,9 +576,11 @@ class AgentOpsController:
         root = self._operation_root(directory)
         state = StateStore(self._state_path(root))
         try:
+            # Every pass must honour workflow_id: scoping only the task pass
+            # would terminate another workflow's live rows.
             return dict(state.recover_all() if workflow_id is None else {
-                "agent_runs": len(state.recover_agent_runs()),
-                "verification_runs": len(state.recover_verification_runs()),
+                "agent_runs": len(state.recover_agent_runs(workflow_id)),
+                "verification_runs": len(state.recover_verification_runs(workflow_id)),
                 "tasks": len(state.recover_tasks(workflow_id)),
             })
         finally:

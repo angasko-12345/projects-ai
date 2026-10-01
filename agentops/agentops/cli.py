@@ -389,15 +389,10 @@ def main(argv: list[str] | None = None) -> int:
                 return 2
             workflow_id, _ = engine.create_workflow(description, specifications)
             asyncio.run(engine.execute(workflow_id, worktree.path))
-            status = state.refresh_workflow_status(workflow_id)
-            evidence = engine.verification_evidence(workflow_id)
-            ready = status.value == "passed" and bool(evidence)
-            summary = (
-                "READY" if ready else
-                "No passed verification evidence; workflow is not READY." if status.value == "passed"
-                else str(status)
-            )
-            result = WorkflowResult(workflow_id, ready, summary)
+            # Custom DAGs get the same READY contract as the standard flow:
+            # passed+verified verification, a passed review, and evidence.
+            readiness = engine.workflow_readiness(workflow_id)
+            result = WorkflowResult(workflow_id, readiness.ready, readiness.summary())
         else:
             result = asyncio.run(engine.run_high_level(description, worktree.path))
         workflow_id = result.workflow_id
