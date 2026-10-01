@@ -234,6 +234,7 @@
 | D6 | Exe rebuild cadence after each Track A milestone vs batched | Batch, unless packaging touched | A1–A9 |
 | D7 | Sequencing of C1 vs B-tracks: start C1 early or after A? | Start C1's non-engine items (dashboard/feed) concurrently with A5+ | C1 |
 | D8 | `fcc-claude` security review availability (server was down 2026-09-15) | Retry per phase; else document as pending | All review gates |
+| D9 | `retry_merge` merges without a readiness check. It is a manual operator retry of an already-reviewed worktree; gating it on `workflow_readiness` would close the last merge path that skips the gate, but also blocks a deliberate manual override of a stale/incorrect readiness record. | Leave ungated until a real need is demonstrated; add an explicit opt-in flag if users report needing the block | Any future hardening of merge entry points |
 
 ---
 

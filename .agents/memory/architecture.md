@@ -135,3 +135,25 @@ level and are the obvious candidates to move into `opencode/`. Until the split h
 - 2026-09-16: Added A4 structured failure evidence (`FailureEvidence`, structured-first classifier, evidence at agent/verification/legacy recording sites, executable-only agent commands, redacted/scrubbed evidence, schema v7 column); 19 new tests; suite 356 OK.
 - 2026-09-26: Added the A8 persistence-failure policy (`persistence.py`): every store write with a fallback is classified safe-to-degrade or must-fail-closed, degrading writes emit a `persistence.degraded` WARNING event, and the verification kernel no longer lets a lost check-state write produce a `passed` report. 18 new tests; suite 375 OK (4 skips). No packaging change, so no exe rebuild.
 - 2026-09-26: Added the layered agent-instruction hierarchy documented above, and the first agent-specific memory subfolders (`.agents/memory/oh-my-pi/`, `.agents/memory/opencode/`). Documentation only; no runtime code changed. Seven factually incorrect claims in the first draft were found by an independent read-only review and corrected before commit.
+## One readiness predicate 2026-10-01
+
+- `execution_model.assess_workflow_readiness(tasks, workflow_id, *, verification_task_id=None, review_task_id=None) -> WorkflowReadiness` is the single READY rule. `WorkflowReadiness` carries `verification_ok`, `review_ok`, `evidence_present`, and `reasons` (the missing prerequisites, in operator wording); `.ready` is `not reasons` and `.summary()` renders `READY` or the joined reasons.
+- `assert_workflow_ready(...)` raises `StateTransitionError` over the same reason strings; `assert_tasks_ready(...)` assesses real tasks and delegates to it. Both remain exported; no path computes readiness independently.
+- `WorkflowEngine.workflow_readiness(workflow_id, ...)` is the engine-level entry point. Callers: `cli.py` (custom-DAG path) and both `run_high_level` READY returns. The task-id arguments scope the assessment to the verification/review pair that decides the outcome, which matters because `run_high_level`'s repair cycles create several of each.
+- Removed from `cli.py`: `refresh_workflow_status` + `verification_evidence` as a readiness formula. `refresh_workflow_status` answers "did every task pass", which a workflow with no review task also satisfies.
+
+## AgentOps state self-exclusion 2026-10-01
+
+- `git.GitWorktreeManager._exclude_agentops_state(repository)` resolves the exclude file with `git rev-parse --git-path info/exclude` and appends `/.agentops/` if absent; called from `create()`. Non-fatal on failure, never duplicates the entry, preserves existing content.
+- Why: worktrees live at `<repo>/.agentops/worktrees/`, so without this a fresh clone shows `?? .agentops/` and `merge()` refuses on the product's own state. `.git/info/exclude` is local and untracked, so no tracked file is modified and no target-repo configuration is needed. The dirty-tree guard in `merge()` is unchanged and still blocks genuine user changes.
+
+## Redaction coverage across persistence sinks 2026-10-01
+
+- `workflow.py` now redacts at every assignment that reaches durable storage: agent `task.result` (stdout/stderr, log path kept), legacy verification command output, and the `Task execution error: {error}` string.
+- `verification_kernel._transcript` redacts check stdout/stderr before embedding them in the persisted `VerificationReport` transcript.
+- Reuses the existing `logging.redact_text`; no new redaction mechanism.
+
+## Verification setup failure handling 2026-10-01
+
+- The check-creation loop in `run_verification` is wrapped; a mid-loop failure calls `_abort_setup(run_id, checks, error)`, which finishes each created check and the run as terminal FAILED, then re-raises the original error unchanged. `_abort_setup` never raises, so the closeout cannot mask the real cause.
+- `AgentOpsController.recover_interrupted` forwards `workflow_id` to `recover_agent_runs` and `recover_verification_runs` as well as `recover_tasks`; the underlying store methods already supported it.
