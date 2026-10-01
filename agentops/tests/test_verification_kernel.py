@@ -12,6 +12,11 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+try:  # `discover -s tests` puts tests/ on sys.path; direct runs do not.
+    from tests.tk_display import requires_display
+except ModuleNotFoundError:
+    from tk_display import requires_display
+
 from agentops.cli import main as cli_main
 from agentops.config import AppConfig, AgentConfig, load_config
 from agentops.gui_controller import AgentOpsController
@@ -820,6 +825,7 @@ class VerificationInspectionTests(unittest.TestCase):
             self.assertEqual(len(workflow["verifications"]), 1)
 
 
+@requires_display
 class VerificationGuiTests(unittest.TestCase):
     def test_selected_task_shows_verification(self):
         from agentops.gui import AgentOpsApp

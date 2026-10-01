@@ -219,14 +219,39 @@ class ProcessRuntimeTests(unittest.TestCase):
     @unittest.skipIf(sys.platform == "win32", "POSIX process-group behavior")
     def test_posix_terminate_uses_process_group(self):
         process = HangingProcess(pid=4242)
-        with patch("os.killpg") as killpg:
+
+        def fake_killpg(pid, sig):
+            # killpg() SIGKILLs the whole group, so the child dies without
+            # Popen.kill() ever being called. The double must model that or
+            # communicate() hangs until the cleanup timeout instead of
+            # returning the captured output.
+            process.kill()
+
+        with patch("os.killpg", create=True) as killpg:
+            killpg.side_effect = fake_killpg
             stdout, stderr = asyncio.run(ProcessRuntime().terminate_process(process))
         killpg.assert_called_once()
         called_pid, called_signal = killpg.call_args.args
         self.assertEqual(called_pid, 4242)
         import signal as stdlib_signal
         self.assertEqual(called_signal, stdlib_signal.SIGKILL)
+        self.assertTrue(process.killed)
         self.assertEqual((stdout, stderr), (b"partial", b""))
+
+    def test_cleanup_timeout_is_bounded_when_the_process_never_dies(self):
+        """The fix above must not weaken the bounded-cleanup guarantee."""
+        class UnkillableProcess(HangingProcess):
+            def kill(self):
+                pass
+
+        process = UnkillableProcess(pid=4242)
+        with patch("os.killpg", create=True) as killpg:
+            stdout, stderr = asyncio.run(ProcessRuntime().terminate_process(
+                process, platform="posix", cleanup_timeout=0.05,
+            ))
+        killpg.assert_called_once()
+        self.assertEqual((stdout, stderr),
+                         (b"", b"Process did not exit within the cleanup timeout."))
 
     @unittest.skipIf(sys.platform != "win32", "Windows cleanup behavior")
     def test_windows_taskkill_cleanup_hides_console(self):

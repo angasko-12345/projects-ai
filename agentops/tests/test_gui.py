@@ -19,6 +19,10 @@ from agentops.runner import AgentRunner, OperationCancelled
 from agentops.state import StateStore
 from agentops.tasks import Task, TaskStatus
 from agentops.workflow import WorkflowEngine
+try:  # `discover -s tests` puts tests/ on sys.path; direct runs do not.
+    from tests.tk_display import requires_display
+except ModuleNotFoundError:
+    from tk_display import requires_display
 
 
 class RunnerCancellationTests(unittest.TestCase):
@@ -180,6 +184,7 @@ class FakeController:
         return None
 
 
+@requires_display
 class LayoutScrollbarTests(unittest.TestCase):
     def setUp(self):
         self.root = tk.Tk()
@@ -238,6 +243,7 @@ class LayoutScrollbarTests(unittest.TestCase):
                 self.assertTrue(bool(tree.column(column, "stretch")), (tree_name, column))
 
 
+@requires_display
 class GuiTests(unittest.TestCase):
     def setUp(self):
         self.root = tk.Tk()

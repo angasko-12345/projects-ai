@@ -12,6 +12,11 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+try:  # `discover -s tests` puts tests/ on sys.path; direct runs do not.
+    from tests.tk_display import requires_display
+except ModuleNotFoundError:
+    from tk_display import requires_display
+
 from agentops.agent_run import (
     AgentRunContext,
     AgentRunMetadata,
@@ -513,6 +518,7 @@ class RunsGuiController:
         }]
 
 
+@requires_display
 class RunsGuiTests(unittest.TestCase):
     def test_selected_task_shows_agent_runs(self):
         from agentops.gui import AgentOpsApp

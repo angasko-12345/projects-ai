@@ -131,15 +131,35 @@ class GitWorktreeManager:
         depending on the target repository carrying a ``.gitignore`` entry, and
         without touching any tracked file the user owns.
 
-        A failure here is not fatal: it only means the target repo still sees
-        AgentOps state as untracked.
+        A failed write is only harmless when the repository already ignores
+        ``.agentops`` some other way. If it does not, continuing leaves the
+        repository permanently unmergeable — every merge() raises "Base
+        worktree has uncommitted changes" against AgentOps' own state — so the
+        failure is raised with instructions instead of swallowed.
+        """
+        if self._write_agentops_exclude(repository):
+            return
+        if self._agentops_state_is_untracked(repository):
+            raise GitError(
+                f"Cannot exclude {repository}/.agentops from Git: writing "
+                ".git/info/exclude failed. AgentOps' own state then shows as "
+                "an untracked change and every merge is refused as a dirty "
+                "base worktree. Fix write access to .git/info/exclude, or add "
+                "'/.agentops/' to that file by hand, then retry."
+            )
+
+    def _write_agentops_exclude(self, repository: Path) -> bool:
+        """Append the AgentOps state entry to the repository exclude file.
+
+        Returns True when the entry is present afterwards. Any failure to read
+        or write the file returns False; the caller decides how loud that is.
         """
         result = self._run(repository, "rev-parse", "--git-path", "info/exclude")
         if result.returncode:
-            return
+            return False
         raw = result.stdout.strip()
         if not raw:
-            return
+            return False
         exclude = Path(raw)
         if not exclude.is_absolute():
             exclude = repository / exclude
@@ -147,13 +167,23 @@ class GitWorktreeManager:
         try:
             existing = exclude.read_text(encoding="utf-8", errors="replace")
             if entry in existing.split():
-                return
+                return True
             prefix = "" if existing.endswith("\n") or not existing else "\n"
             exclude.parent.mkdir(parents=True, exist_ok=True)
             with exclude.open("a", encoding="utf-8") as handle:
                 handle.write(f"{prefix}{entry}\n")
         except OSError:
-            return
+            return False
+        return True
+
+    def _agentops_state_is_untracked(self, repository: Path) -> bool:
+        """True when Git still sees ``.agentops`` as an untracked change."""
+        result = self._run(repository, "status", "--porcelain", "--", ".agentops")
+        if result.returncode:
+            # Cannot confirm the state is ignored; assume the unsafe case so
+            # the caller reports rather than silently deadlocking.
+            return True
+        return bool(result.stdout.strip())
 
     def list_worktrees(self, repository: str | Path) -> list[WorktreeInfo]:
         root = self.repository_root(repository)

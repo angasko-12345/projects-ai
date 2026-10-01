@@ -9,6 +9,7 @@
 ## Current project state
 
 - Current verified state (2026-09-20): AgentOps v0.1.3, additive schema v7, A3/A4/B7 complete, and the latest full-suite result is 357 passing with 4 environment skips. The canonical instruction layout is `.agents/AGENTS.md` plus `.agents/pi_AGENTS.md`, with root compatibility shims.
+- Correctness queue closed for AgentOps on 2026-10-01 (Cline): full suite 425 passing, 4 environment skips. Four verified changes: READY now requires ONE verification task to supply PASSED + `verified=True` + evidence (signal-mixing across tasks fixed and reproduction-locked); `_exclude_agentops_state()` raises an actionable `GitError` instead of silently deadlocking merges when `.git/info/exclude` cannot be written; `retry_merge()` audited and deliberately left ungated (roadmap D9 resolved); headless GUI handled by a test-only `@requires_display` policy in `tests/tk_display.py`, with production GUI unchanged. Verified on Windows only - Linux CI conditions were simulated, not run.
 - AgentOps v0.1.2 at `D:/admin/code/projects/agentops` (bumped 2026-09-14). AgentRun support implemented 2026-09-14 (95 tests passing). Verification Kernel implemented 2026-09-14: 122-test suite passing (1 Windows-platform skip), including 27 kernel tests; relayed opencode review findings fixed and rebuilt. `dist/AgentOps.exe` rebuilt (~14.7 MB, PyInstaller one-file windowed), archive-inspected (15 `agentops.*` modules), and startup/shutdown smoke-tested.
 - Working tree carries uncommitted feature work (do not assume HEAD == working state): GUI (`gui.py`, `gui_controller.py`), packaging (`AgentOps.spec`, `agentops_gui.py`, `scripts/build_windows_exe.py`), History/Logs/Worktrees tabs, cancellation tokens, operation-ID staleness guard, shared `finalize.py`, AgentRun lifecycle, Verification Kernel, Failure/Repair/Recovery Kernel (backed up to `/tmp/agentops-backup-failure-kernel/` before work began), and now the Structured Results upgrade (backed up to `/tmp/agentops-backup-structured-results/`; 184-test suite passing, 1 platform skip).
 - Milestones 1–2 complete: workflow history + task inspector, safe log browser, worktree inspect/cleanup/retry-merge. Full architecture audit completed 2026-09-13 with a 10-phase roadmap (in session, not yet user-approved).
@@ -41,7 +42,7 @@
 ## Technologies
 
 - Python >= 3.11, runtime dependencies: stdlib only (Tkinter, sqlite3, asyncio, unittest). Optional: PyYAML (`.[yaml]`), PyInstaller >= 6 (`.[windows]`).
-- Test runner: `python -m unittest discover -s tests` (latest recorded baseline: 357 passing, 4 environment skips).
+- Test runner: `python -m unittest discover -s tests` (latest recorded baseline: 425 passing, 4 environment skips, recorded 2026-10-01 on Windows).
 - Packaging: PyInstaller 6.22 one-file windowed exe; package-aware `agentops_gui.py` launcher (entry script must not be `agentops/gui.py` — relative imports break frozen).
 
 ## Important conventions

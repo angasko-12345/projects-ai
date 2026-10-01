@@ -23,6 +23,9 @@ class GitWorktreeTests(unittest.TestCase):
             # `git rev-parse --git-path info/exclude`, so AgentOps' own state
             # does not make a fresh repository look dirty.
             subprocess.CompletedProcess([], 0, ".git/info/exclude\n", ""),
+            # That path cannot be written under this mock, so confirm the
+            # repository already ignores .agentops before continuing.
+            subprocess.CompletedProcess([], 0, "", ""),
             subprocess.CompletedProcess([], 0, "", ""),
         ]
         manager = GitWorktreeManager()
@@ -58,6 +61,58 @@ class GitWorktreeTests(unittest.TestCase):
             ]
             GitWorktreeManager().create("C:/repo", "Add dark mode")
             self.assertIn("/.agentops/", exclude.read_text(encoding="utf-8"))
+
+    @patch("agentops.git.subprocess.run")
+    def test_exclude_write_failure_is_reported_when_state_stays_untracked(self, run):
+        """Swallowing the write failure deadlocks every later merge."""
+        with tempfile.TemporaryDirectory() as directory:
+            exclude = Path(directory) / "info" / "exclude"
+            run.side_effect = [
+                subprocess.CompletedProcess([], 0, "C:/repo\n", ""),
+                subprocess.CompletedProcess([], 0, "abc123\n", ""),
+                subprocess.CompletedProcess([], 0, "main\n", ""),
+                subprocess.CompletedProcess([], 0, f"{exclude}\n", ""),
+                # `.agentops` is still untracked, so continuing is unusable.
+                subprocess.CompletedProcess([], 0, "?? .agentops/\n", ""),
+            ]
+            with patch.object(Path, "open", side_effect=OSError("read-only fs")), \
+                 patch("agentops.git.Path.mkdir"):
+                with self.assertRaises(GitError) as caught:
+                    GitWorktreeManager().create("C:/repo", "Add dark mode")
+            message = str(caught.exception)
+            self.assertIn(".git/info/exclude", message)
+            self.assertIn("/.agentops/", message)
+
+    @patch("agentops.git.subprocess.run")
+    def test_exclude_write_failure_is_tolerated_when_state_is_already_ignored(self, run):
+        """A failed write is harmless once the repo already ignores .agentops."""
+        with tempfile.TemporaryDirectory() as directory:
+            exclude = Path(directory) / "info" / "exclude"
+            run.side_effect = [
+                subprocess.CompletedProcess([], 0, "C:/repo\n", ""),
+                subprocess.CompletedProcess([], 0, "abc123\n", ""),
+                subprocess.CompletedProcess([], 0, "main\n", ""),
+                subprocess.CompletedProcess([], 0, f"{exclude}\n", ""),
+                subprocess.CompletedProcess([], 0, "", ""),  # already ignored
+                subprocess.CompletedProcess([], 0, "", ""),  # worktree add
+            ]
+            with patch.object(Path, "open", side_effect=OSError("read-only fs")), \
+                 patch("agentops.git.Path.mkdir"):
+                worktree = GitWorktreeManager().create("C:/repo", "Add dark mode")
+            self.assertTrue(worktree.branch.startswith("agentops/add-dark-mode-"))
+
+    @patch("agentops.git.subprocess.run")
+    def test_exclude_location_failure_is_reported(self, run):
+        """git cannot say where the exclude file is: do not guess."""
+        run.side_effect = [
+            subprocess.CompletedProcess([], 0, "C:/repo\n", ""),
+            subprocess.CompletedProcess([], 0, "abc123\n", ""),
+            subprocess.CompletedProcess([], 0, "main\n", ""),
+            subprocess.CompletedProcess([], 128, "", "fatal: not a git repository"),
+            subprocess.CompletedProcess([], 0, "?? .agentops/\n", ""),
+        ]
+        with self.assertRaises(GitError):
+            GitWorktreeManager().create("C:/repo", "Add dark mode")
 
     @patch("agentops.git.subprocess.run")
     def test_commit_skips_empty_worktree(self, run):

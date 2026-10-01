@@ -47,7 +47,9 @@ Authoritative transition matrix::
     task must carry verified=False (reviews approve; they do not verify).
 
     Workflow:   READY requires a passed+verified verification task, a passed
-    review task, and non-empty verification evidence for the same workflow.
+    review task, and non-empty verification evidence carried by that same
+    verification task. The signals are a conjunction over one task, never a
+    scan of the task pool that lets separate tasks donate separate signals.
 
     Recovery:   no success status may be produced without evidence
     (recovery honesty — mirrors the standing "never fabricate success"
@@ -113,7 +115,10 @@ def assess_workflow_readiness(
     """Evaluate the READY contract over a workflow's tasks.
 
     READY requires all three of: a passed+verified verification task, a passed
-    review task, and non-empty verification evidence for this workflow.
+    review task, and non-empty verification evidence carried by that same
+    verification task. Evidence found only on a different verification task
+    does not satisfy the contract, because the READY claim must rest on
+    signals that actually coexist in one task.
 
     ``verification_task_id``/``review_task_id`` narrow the assessment to the
     tasks a caller is actually gating on (the standard flow's repair cycles
@@ -130,16 +135,24 @@ def assess_workflow_readiness(
     def is_evidence_backed(task: Task) -> bool:
         return bool(task.verification_run_id or (task.result or "").strip())
 
+    def is_passed_and_verified(task: Task) -> bool:
+        return task.status is TaskStatus.PASSED and task.verified is True
+
     verification_ok = any(
-        task.status is TaskStatus.PASSED and task.verified is True
+        is_passed_and_verified(task)
         for task in pool(verification_task_id, "verification")
     )
     review_ok = any(
         task.status is TaskStatus.PASSED
         for task in pool(review_task_id, "review")
     )
+    # Evidence counts only when it is carried by a verification task that is
+    # itself PASSED and verified. Scanning the pool for evidence alone lets a
+    # sibling task donate it: one task supplies the PASSED+verified signal
+    # while a different — even FAILED — task supplies the evidence, and the
+    # workflow is declared READY on signals that never coexisted in one task.
     evidence_present = any(
-        task.verified and is_evidence_backed(task)
+        is_passed_and_verified(task) and is_evidence_backed(task)
         for task in pool(verification_task_id, "verification")
     )
 

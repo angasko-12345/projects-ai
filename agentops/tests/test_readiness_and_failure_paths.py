@@ -17,7 +17,8 @@ from agentops.execution_model import (
     assert_tasks_ready,
     assess_workflow_readiness,
 )
-from agentops.git import GitError, GitWorktreeManager
+from agentops.git import GitError, GitWorktreeManager, WorktreeRef
+from agentops.gui_controller import AgentOpsController
 from agentops.registry import DetectedAgent
 from agentops.runner import RunResult
 from agentops.state import StateStore
@@ -59,6 +60,26 @@ def _engine(state, *, verifier=None, run_agent=None):
 def _passed(role, workflow_id):
     task = Task(f"{role} work", role, workflow_id)
     task.status = TaskStatus.PASSED
+    return task
+
+
+def _verification_task(workflow_id, name, status, *, verified, evidence):
+    """One verification-role task with fully explicit signals.
+
+    Readiness bugs hide in the interaction between tasks, so every signal is
+    a parameter instead of being derived from a shared builder.
+    """
+    task = Task(name, "verification", workflow_id)
+    task.status = status
+    task.verified = verified
+    task.verification_run_id = "run-1" if evidence else None
+    task.result = "transcript" if evidence else ""
+    return task
+
+
+def _review_task(workflow_id, status=TaskStatus.PASSED, name="review work"):
+    task = Task(name, "review", workflow_id)
+    task.status = status
     return task
 
 
@@ -145,6 +166,214 @@ class ReadinessRuleTests(unittest.TestCase):
         source = inspect.getsource(workflow_module)
         self.assertIn("assert_tasks_ready", source)
         self.assertIn("assess_workflow_readiness", source)
+
+
+class ReadinessSignalMixingTests(unittest.TestCase):
+    """One verification task must supply every verification signal.
+
+    The READY contract is a conjunction over a *single* valid verification
+    task. Checking the signals independently over the whole verification pool
+    lets one task donate the PASSED+verified signal while a different task —
+    even a FAILED one — donates the evidence signal, which declares an
+    unverified workflow READY.
+    """
+
+    def test_valid_verification_evidence_and_review_is_ready(self):
+        tasks = [
+            _verification_task("wf", "verify", TaskStatus.PASSED,
+                               verified=True, evidence=True),
+            _review_task("wf"),
+        ]
+        readiness = assess_workflow_readiness(tasks, "wf")
+        self.assertTrue(readiness.ready)
+        self.assertEqual(readiness.reasons, ())
+
+    def test_evidence_from_a_different_verification_task_is_not_ready(self):
+        """The reported bug: PASSED task has no evidence, FAILED task does."""
+        tasks = [
+            _verification_task("wf", "verify", TaskStatus.PASSED,
+                               verified=True, evidence=False),
+            _verification_task("wf", "verify-old", TaskStatus.FAILED,
+                               verified=True, evidence=True),
+            _review_task("wf"),
+        ]
+        readiness = assess_workflow_readiness(tasks, "wf")
+        self.assertFalse(readiness.ready)
+        self.assertIn("no verification evidence", readiness.reasons)
+
+    def test_evidence_from_an_unverified_task_is_not_ready(self):
+        tasks = [
+            _verification_task("wf", "verify", TaskStatus.PASSED,
+                               verified=True, evidence=False),
+            _verification_task("wf", "verify-other", TaskStatus.PASSED,
+                               verified=False, evidence=True),
+            _review_task("wf"),
+        ]
+        readiness = assess_workflow_readiness(tasks, "wf")
+        self.assertFalse(readiness.ready)
+        self.assertIn("no verification evidence", readiness.reasons)
+
+    def test_evidence_from_a_running_task_is_not_ready(self):
+        tasks = [
+            _verification_task("wf", "verify", TaskStatus.PASSED,
+                               verified=True, evidence=False),
+            _verification_task("wf", "verify-running", TaskStatus.RUNNING,
+                               verified=True, evidence=True),
+            _review_task("wf"),
+        ]
+        readiness = assess_workflow_readiness(tasks, "wf")
+        self.assertFalse(readiness.ready)
+        self.assertIn("no verification evidence", readiness.reasons)
+
+    def test_evidence_without_a_passing_verification_is_not_ready(self):
+        tasks = [
+            _verification_task("wf", "verify", TaskStatus.FAILED,
+                               verified=True, evidence=True),
+            _review_task("wf"),
+        ]
+        readiness = assess_workflow_readiness(tasks, "wf")
+        self.assertFalse(readiness.ready)
+        self.assertFalse(readiness.verification_ok)
+        self.assertIn("no passed+verified verification task", readiness.reasons)
+
+    def test_failed_review_is_not_ready_even_with_valid_verification(self):
+        tasks = [
+            _verification_task("wf", "verify", TaskStatus.PASSED,
+                               verified=True, evidence=True),
+            _review_task("wf", TaskStatus.FAILED),
+        ]
+        readiness = assess_workflow_readiness(tasks, "wf")
+        self.assertFalse(readiness.ready)
+        self.assertFalse(readiness.review_ok)
+        self.assertIn("no passed review task", readiness.reasons)
+
+    def test_failed_verification_is_not_ready_even_with_evidence_and_review(self):
+        tasks = [
+            _verification_task("wf", "verify", TaskStatus.FAILED,
+                               verified=True, evidence=True),
+            _review_task("wf"),
+        ]
+        readiness = assess_workflow_readiness(tasks, "wf")
+        self.assertFalse(readiness.ready)
+        self.assertIn("no passed+verified verification task", readiness.reasons)
+
+    def test_all_required_signals_on_one_task_is_ready(self):
+        tasks = [
+            _verification_task("wf", "verify", TaskStatus.PASSED,
+                               verified=True, evidence=True),
+            _review_task("wf"),
+        ]
+        readiness = assess_workflow_readiness(tasks, "wf")
+        self.assertTrue((readiness.verification_ok, readiness.evidence_present,
+                         readiness.review_ok))
+        self.assertEqual(readiness.summary(), "READY")
+
+    def test_mixed_signals_raise_through_the_asserting_gate(self):
+        """The asserting gate must reject what the assessment rejects."""
+        tasks = [
+            _verification_task("wf", "verify", TaskStatus.PASSED,
+                               verified=True, evidence=False),
+            _verification_task("wf", "verify-old", TaskStatus.FAILED,
+                               verified=True, evidence=True),
+            _review_task("wf"),
+        ]
+        with self.assertRaises(StateTransitionError) as caught:
+            assert_tasks_ready(tasks, "wf")
+        self.assertIn("no verification evidence", str(caught.exception))
+
+    def test_scoped_assessment_cannot_borrow_from_a_sibling_task(self):
+        """Scoping to one task must not be widened by a sibling's evidence."""
+        scoped = _verification_task("wf", "verify", TaskStatus.PASSED,
+                                    verified=True, evidence=False)
+        sibling = _verification_task("wf", "verify-old", TaskStatus.PASSED,
+                                     verified=True, evidence=True)
+        readiness = assess_workflow_readiness(
+            [scoped, sibling, _review_task("wf")], "wf",
+            verification_task_id=scoped.id,
+        )
+        self.assertFalse(readiness.ready)
+
+
+class RetryMergeContractTests(unittest.TestCase):
+    """retry_merge() is an explicit manual recovery path, not a readiness gate."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix="agentops-retry-"))
+        self._git("init", "-b", "main")
+        self._git("config", "user.email", "test@example.invalid")
+        self._git("config", "user.name", "test")
+        (self.root / "README.md").write_text("seed", encoding="utf-8")
+        self._git("add", "-A")
+        self._git("commit", "-m", "init")
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def _git(self, *args):
+        return subprocess.run(["git", *args], cwd=self.root, capture_output=True, text=True)
+
+    def test_retry_merge_is_a_manual_recovery_path_not_a_readiness_gate(self):
+        """Documented contract: retry_merge re-attempts a preserved merge.
+
+        It is an explicit operator action on a worktree whose merge already
+        failed, not a readiness decision. The normal flow gates merges on
+        `result.ready` (gui_controller._run_operation and cli.run); this path
+        deliberately does not, because the workflow that produced the worktree
+        may no longer exist in state, and the operator is deciding explicitly.
+        It still enforces its own real safety gates: clean worktree, managed
+        agentops/* branch, and provenance-validated merge.
+        """
+        source = inspect.getsource(AgentOpsController.retry_merge)
+        for gate in ("uncommitted worktree changes", "managed agentops/* worktree",
+                     "find_worktree_ref_by_path"):
+            self.assertIn(gate, source)
+        self.assertNotIn("workflow_readiness", source)
+        self.assertNotIn("assert_tasks_ready", source)
+
+    def test_retry_merge_requires_a_clean_worktree(self):
+        manager = GitWorktreeManager()
+        worktree = manager.create(self.root, "retry task")
+        (worktree.path / "feature.txt").write_text("work", encoding="utf-8")
+        controller = AgentOpsController(config=AppConfig({}, {}, (), max_attempts=1,
+                                                         concurrency=1))
+        with self.assertRaises(GitError) as caught:
+            controller.retry_merge(self.root, worktree.path)
+        self.assertIn("uncommitted worktree changes", str(caught.exception))
+
+    def test_retry_merge_uses_stored_provenance_over_current_head(self):
+        """Stored base wins; otherwise the retry would validate against 'now'."""
+        manager = GitWorktreeManager()
+        worktree = manager.create(self.root, "retry task")
+        (worktree.path / "feature.txt").write_text("work", encoding="utf-8")
+        manager.commit_changes(worktree, "agentops: work")
+        state = StateStore(self.root / ".agentops" / "state.sqlite")
+        try:
+            workflow_id = state.create_workflow("retry provenance")
+            state.record_worktree_ref(WorktreeRef(
+                id="ref-1", workflow_id=workflow_id, path=str(worktree.path),
+                branch=worktree.branch, base_branch=worktree.base_branch,
+                base_commit=worktree.base_commit, created_at="",
+            ))
+        finally:
+            state.close()
+        controller = AgentOpsController(config=AppConfig({}, {}, (), max_attempts=1,
+                                                         concurrency=1))
+        result = controller.retry_merge(self.root, worktree.path)
+        self.assertTrue(result["used_stored_provenance"])
+        self.assertTrue(result["merged"])
+        self.assertTrue((self.root / "feature.txt").exists())
+
+    def test_retry_merge_falls_back_to_current_head_without_stored_provenance(self):
+        manager = GitWorktreeManager()
+        worktree = manager.create(self.root, "retry without provenance")
+        (worktree.path / "feature.txt").write_text("work", encoding="utf-8")
+        manager.commit_changes(worktree, "agentops: work")
+        controller = AgentOpsController(config=AppConfig({}, {}, (), max_attempts=1,
+                                                         concurrency=1))
+        result = controller.retry_merge(self.root, worktree.path)
+        self.assertFalse(result["used_stored_provenance"])
+        self.assertEqual(result["base_branch"], "main")
+        self.assertTrue((self.root / "feature.txt").exists())
 
 
 class FreshRepositoryTests(unittest.TestCase):

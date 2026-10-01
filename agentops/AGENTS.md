@@ -25,6 +25,11 @@ python -m unittest discover -s tests
 
 - 21 test modules, all `unittest.TestCase`. `pytest` may be used for convenience but is
   not the source of truth and is not configured in the repository.
+- GUI tests that build a real Tk root are skipped when no display is available
+  (`tests/tk_display.py`). Linux CI is headless, so those classes are marked
+  `@requires_display` rather than faking a GUI: production GUI code never
+  pretends a display exists. Controller-level GUI logic lives in non-Tk test
+  classes and runs everywhere.
 - The latest recorded baseline is 357 tests total, with 4 environment skips (so 353 passed).
   That observation was recorded at commit `a03e907` on 2026-09-26. Treat any new failure or
   skip as attributable to the current work until proven otherwise. Do not rely on remembered
@@ -81,6 +86,13 @@ Console scripts: `agentops` -> `agentops.cli:main`, `agentops-gui` -> `agentops.
   repair, and recovery decisions.
 - Success model: `agentops/execution_model.py` is authoritative. Process success, agent
   success, verification, review, merge, and workflow readiness are separate gates.
+  READY is a conjunction over a *single* valid verification task: one task must be
+  terminal PASSED, `verified=True`, and carry evidence. Evidence found only on a
+  different verification task does not satisfy it.
+- `gui_controller.retry_merge()` is an explicit manual recovery path for an
+  already-reviewed worktree, not a readiness gate. It enforces clean worktree,
+  managed `agentops/*` branch, and provenance-validated merge. The normal flow
+  gates merges on `result.ready`.
 - Git integration: `agentops/git.py` and `agentops/finalize.py` manage isolated
   worktrees, commit/merge behavior, provenance, and conflict preservation. Dirty bases,
   changed base commits, and conflicts are refused or preserved, never silently merged.

@@ -708,7 +708,19 @@ class AgentOpsController:
         return GitWorktreeManager().cleanup_worktree(root, path, delete_unmerged_branch)
 
     def retry_merge(self, directory: str | Path, path: str | Path) -> dict[str, object]:
-        """Phase 3: retry validates against stored provenance when available."""
+        """Re-attempt a merge for a preserved worktree (manual recovery path).
+
+        This is an explicit operator action, not a readiness decision, so it
+        deliberately does not run the READY contract: the workflow that
+        produced the worktree may no longer exist in state, and the operator is
+        choosing to merge now. The normal flow already gates merges on
+        ``result.ready`` (see ``_run_operation`` and ``cli.run``).
+
+        The safety gates here are the ones that still matter for a blind
+        re-merge: the worktree must be clean, must be a managed ``agentops/*``
+        branch, and must merge against the stored base branch/commit when
+        provenance exists, so a moved base is still refused by ``merge()``.
+        """
         root = self._operation_root(directory)
         manager = GitWorktreeManager()
         info = manager.inspect_worktree(root, path)

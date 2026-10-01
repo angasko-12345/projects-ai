@@ -13,6 +13,18 @@ directory. There is no repository-wide test command.
 All jobs run on `ubuntu-latest` with Python 3.11 (the lowest supported
 version) on CPU.
 
+## Headless GUI policy (agentops)
+
+The AgentOps job runs headless, so it has no `$DISPLAY`. AgentOps GUI tests
+that construct a real Tk root window are skipped rather than faked: they are
+marked `@requires_display` (`agentops/tests/tk_display.py`), which detects
+display availability and skips with an explicit reason.
+
+This is a testing-only policy. Production GUI code is unchanged and still
+fails loudly when no display exists — AgentOps never fabricates a GUI
+success condition. Controller and workflow logic that the GUI depends on is
+covered by non-Tk test classes, which run in CI.
+
 ## What CI does NOT validate
 
 - No lint, formatter, type-check, or coverage gate: no product configures
