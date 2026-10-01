@@ -311,3 +311,9 @@
 - **Reason:** The active correctness fixes (READY predicate, persistence-boundary redaction, verification finalization, workflow-scoped recovery) all touch the exact engine/store/finalize seams a split would move; refactoring now would make each fix harder to verify. A6 additionally has no agreed row shapes yet (review/merge runs persist as agent/verification runs + `finalize.py`, not first-class rows), so it is a design task first.
 - **Baseline:** agentops suite 407 tests OK (4 environment skips) on 2026-10-01; A5/A6/A7 branches must match it before review.
 - **Agents involved:** omp (this session).
+
+## 2026-10-01 - small-projects/ unignored at container level, artifacts ignored locally
+
+- **Decision:** Removed the blanket `small-projects/` rule from the tracked root `.gitignore` (plus its stale machine-local `.git/info/exclude` twin). Large/regenerable mini-llm artifacts are now ignored in `small-projects/mini-llm/.gitignore` instead: `data/tinystories/`, the two large raw corpus files, `data/processed/*.bin`, `checkpoints*/`, `.pytest_cache/`. Source, the tiny shipped sample, `meta.json`, and the default tokenizer stay tracked. The two new mini-llm docs were force-added (`-f`) under the same precedent as the already-tracked `tokenizer.json`.
+- **Reason:** The blanket rule forced every legitimate mini-llm doc into a `-f` exception and hid sibling projects (`Cube Timer.html`, `privacy_audit_tool/`, `quickscripts/` now visible as untracked, left alone). Artifact ignores preserve the intent (no gigabyte blobs in git) without hiding source.
+- **Agents involved:** omp (this session, per explicit user instruction).

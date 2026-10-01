@@ -63,3 +63,32 @@
   inverted: no claim about learnability stands until a post-fix re-run (Step 3).
 - Consequence: task-side levers (serve spread, ball speed, survival shaping) stay
   proposals, not conclusions. Judge the re-run by miss-rate + episode length.
+
+## 2026-10-01: `checkpoint_every_updates=0` means disabled (P5)
+- Rejected "reject all non-positive": three shipped experiment configs use
+  1000-as-effectively-disabled, so disabled is a wanted semantic. Made it
+  explicit (0) instead of keeping the silent never-fires drift.
+- `final.pt` always written regardless of the interval.
+
+## 2026-10-01: Cleanup ownership transfers only on success (P6)
+- `launch_phase2_process` stops the proc inside on attach/liveness failure
+  because the caller never receives the handle. `stop()` idempotent via
+  `_stopped` so failure-path and session cleanups can overlap safely.
+- `load_eval_model` owns the throwaway env (try/finally close) — the
+  checkpoint object never takes env ownership.
+
+## 2026-10-01: Measurement limits documented, not coded around (P7)
+- External `reset(seed=)` stays a documented no-op (game seeded once at
+  launch). Wiring per-episode reseeding through process restart would be a
+  behavior change with live-timing consequences — explicitly out of scope.
+- `hits`/`misses` keep counting reward sign (report schema frozen); the
+  contract now states which providers they are meaningful for.
+
+## 2026-10-01: No per-product test-command invention in CI (P8)
+- Workflows run exactly the documented `python -m unittest discover -s tests`
+  per product. No lint/format/coverage gates (none configured anywhere).
+
+## 2026-10-01: TinyStories artifact accepted as baseline without re-running (P10)
+- The 168 MB `checkpoints/tinystories/final.pt` was verified (config, losses,
+  seeded generation sample) but NOT resumed — a resume would rewrite the
+  artifact. Resume path proven on a `$TEMP` tiny loop + existing suite tests.

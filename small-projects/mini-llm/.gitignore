@@ -2,3 +2,13 @@
 __pycache__/
 *.pyc
 checkpoints/
+# Large / regenerable data artifacts. Source, the tiny shipped sample
+# (data/raw/train.txt), split metadata (data/processed/meta.json), and the
+# default tokenizer stay tracked; everything below is reproduced by
+# prepare_data.py / training (see docs/EXPERIMENT-tinystories.md).
+checkpoints_test/
+.pytest_cache/
+data/tinystories/
+data/raw/TinyStories-train.txt
+data/raw/tinystories-small.txt
+data/processed/*.bin

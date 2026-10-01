@@ -18,11 +18,11 @@ game window -> MSS capture (native) ->+- raw_frame -> reward/termination provide
 - `environment/toy_pong.py` — pixel-only Pong toy (Gymnasium). `reset(seed)`, `step(a)`.
 - `environment/preprocessing.py` — gray/resize/normalize/stack/skip. `preprocess_frame`, `FrameStack`, `PreprocessingWrapper`.
 - `agent/model.py` — `ActorCritic`: `forward` (1 step), `forward_sequence` (BPTT chunks), `initial_state`, `save`/`load` (`weights_only`).
-- `training/ppo.py` — single-env recurrent PPO. Segmented replay (hidden reset at dones), timeout-aware GAE, clipped objectives + entropy, grad clip. Checkpoints: model+optim+counters+curiosity+env_config.
+- `training/ppo.py` — single-env recurrent PPO. Segmented replay (hidden reset at dones), timeout-aware GAE, clipped objectives + entropy, grad clip. Checkpoints: model+optim+counters+curiosity+env_config. `checkpoint_every_updates`: non-negative int, 0 = periodic disabled (final always written). `save_checkpoint`: atomic same-dir temp + `os.replace`.
 - `training/curiosity.py` — ICM forward-dynamics, RMS norm, scale 0.1. Disabled = legacy behavior.
-- `training/evaluate.py` — separate env/episode, greedy/sampled, fixed seeds, mode save/restore, no-grad. Reports `action_counts` per action index.
+- `training/evaluate.py` — separate env/episode, greedy/sampled, fixed seeds, mode save/restore, no-grad. Reports `action_counts` per action index. `hits`/`misses` = reward-sign counts (meaningful only for sign-based providers). Each per-episode env closed in `finally`.
 - `training/experiment.py` — toy experiments; `make_env_from_config` (toy default, `type: external` delegates).
-- `training/external_experiment.py` — real-game 3-phase runs. Unique PID titles/outputs, stale-title preflight, per-phase logs + liveness asserts.
+- `training/external_experiment.py` — real-game 3-phase runs. Unique PID titles/outputs, stale-title preflight, per-phase logs + liveness asserts. `launch_phase2_process` (ownership-on-success), `load_eval_model` (throwaway env always closed), idempotent `stop()`.
 - `training/external_smoke.py` — OS-loop smoke: `drive_loop` (random/fixed/policy, budgets, rewards), `run_bounded` failed/timeout reports.
 - `environment/external_game.py` — `ExternalGameEnv` + `make_external_env_from_config` (`allow_live_capture` safeguard). Carries `raw_frame` (native, providers) + resized `frame` (network). `last_breakdown` diagnostics.
 - `environment/reward.py` — `RewardProvider`, `NullRewardProvider`, composable Event/TerminalPenalty/Survival/Progress + `CompositeReward` (breakdown + reset), config factories (`red_present`/`red_edge`/`brightness` detectors).
@@ -38,3 +38,4 @@ game window -> MSS capture (native) ->+- raw_frame -> reward/termination provide
 - Termination (game ended) vs truncation (budget) never conflated, everywhere.
 - Checkpoints backward compatible (`ckpt.get` for newer keys).
 - Lazy `__getattr__` package re-exports (avoids `runpy` submodule warning).
+- Seeding: toy `reset(seed=)` reseeds; external `reset(seed=)` is a documented no-op (game seeded once at launch). Eval seeds reproduce only on seeding envs.

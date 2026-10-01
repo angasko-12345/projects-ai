@@ -165,3 +165,14 @@ the other subfolders, the universal files here remain authoritative.
 
 - The check-creation loop in `run_verification` is wrapped; a mid-loop failure calls `_abort_setup(run_id, checks, error)`, which finishes each created check and the run as terminal FAILED, then re-raises the original error unchanged. `_abort_setup` never raises, so the closeout cannot mask the real cause.
 - `AgentOpsController.recover_interrupted` forwards `workflow_id` to `recover_agent_runs` and `recover_verification_runs` as well as `recover_tasks`; the underlying store methods already supported it.
+
+## Three-product repo + per-product CI 2026-10-01
+
+- The repository is a container for three independent products (`agentops/`, `universal-game-agent/`, `small-projects/mini-llm/`); no product imports another. Each has its own `AGENTS.md` and its own `python -m unittest discover -s tests` from its own directory.
+- CI (`.github/workflows/{agentops,universal-game-agent,mini-llm}.yml`, scope in `.github/CI.md`): path-filtered jobs, py3.11 CPU. UGA/mini-llm jobs install `requirements.txt` first. No lint/format/coverage, no GPU, no live-game, no exe packaging in CI.
+
+## UGA checkpoint/lifecycle contracts 2026-10-01 (commit 2cb2413)
+
+- `PPOConfig.checkpoint_every_updates`: non-negative int, 0 disables periodic checkpoints; `train()` always writes `ppo_final.pt`. `save_checkpoint` is atomic (same-dir temp + `os.replace`).
+- `external_experiment.launch_phase2_process` transfers proc ownership to the caller only on success (stops it on attach/liveness failure); `load_eval_model` closes the throwaway load env; `stop()` is idempotent. `evaluate()` closes each per-episode env even on exception.
+- Measurement law (documented, not enforced): external `reset(seed=)` ignores the seed (game seeded once at launch); `hits`/`misses` count reward sign and are only paddle-hits/misses for sign-based providers.

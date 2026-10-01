@@ -59,3 +59,37 @@
   under `model:` -> `error: 'ppo'`); always re-parse the config after editing it.
 - `pkill -f <pattern>` matches its own command line: the shell SIGTERMs itself
   (exit 15, no output). Use a self-excluding pattern (`pkill -f "Trace[D]eaths"`).
+
+## 2026-10-01: P5–P10 session (omp)
+- Edit-tool range discipline: `PUT N.=M` REPLACES the whole range — including
+  it dropped the seed/gamma checks from `PPOConfig.__post_init__` once (caught
+  on re-read, restored). Wide PUTs over validation blocks are the danger zone;
+  re-read the touched region after every edit, never trust the echo.
+- `PUT` body `++` is a literal `+` line (syntax error), not "add blank". To
+  delete one line use `CUT N.=N`. To insert use `PUT >N:`.
+- `bool` is an `int` subclass: `isinstance(True, int)` passes. Config
+  validation that accepts ints must exclude bools explicitly where `True`
+  as `1` is nonsense (did so for `checkpoint_every_updates`, `seed`).
+- Windows python does NOT see bash `/tmp/...` paths (resolves to a
+  nonexistent drive-relative path; `tokenizers` save died with os error 3).
+  Use `$TEMP`-rooted native paths (`$TEMP/mlsmoke`) for throwaway artifacts.
+- `train.py` has no `--tokenizer-path`/`--eval-interval` flags; tokenizer
+  path for generation comes from the checkpoint config (or explicit
+  `--tokenizer`); eval cadence is config `eval_interval` (default 500).
+  Check `--help` before scripting smoke runs.
+- Reported-but-absent bugs: `launch_phase2` leak and phase-3 env leak were
+  REAL on current source (fixed); phantom-reset and GAE truncations were
+  already-fixed (settle + `terminated`-masking, tested) — changed nothing
+  there. Reproduce-or-disprove each lead individually; never batch-apply old
+  audit fixes.
+- Nested helpers (`launch_phase2` inside `run_external_experiment`) are
+  untestable — extract module-level `launch_phase2_process` /
+  `load_eval_model` and test those with stub procs/envs. `_FakeProc`
+  pattern (terminate/kill/wait counters + `_log_file`) lives in
+  `tests/test_external_experiment.py`.
+- mini-llm tiny-sample smoke recipe (all outputs outside repo):
+  `prepare_data.py --input data/raw/train.txt --tokenizer-out $T/tok.json
+  --train-out $T/train.bin --val-out $T/val.bin --vocab-size 64
+  --min-frequency 1 --context-length 16` → `src.train` 6 steps →
+  `--resume` 2 more → `generate.py --tokenizer $T/tok.json`. Proves the loop
+  without touching `data/` or `checkpoints/`.

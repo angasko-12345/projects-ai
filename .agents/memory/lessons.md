@@ -424,3 +424,17 @@
 - **Root cause:** The `StateStore` methods had supported `workflow_id` all along (docstrings said so explicitly) and the engine's own `recover_incomplete` already passed it to all three. Only the controller copy was wrong, and it looked correct because the parameter was present in the enclosing signature.
 - **Solution:** Forward the id to all three passes.
 - **Remember:** "This function is scoped" is a claim about every call it makes, not about its own signature. When a method takes an optional scope, grep each call inside it. A correct sibling implementation is evidence the pattern exists - and here it also meant the fix was two words, because the bug was purely at the call site.
+
+### 2026-10-01 — OpenBLAS thread over-allocation kills torch imports (omp session)
+
+- **Symptom:** `import torch` exits code 45 with `OpenBLAS error: Memory allocation still failed after 10 retries`, even though the same interpreter imported torch fine an hour earlier. All unittest runs die silently (no test output at all).
+- **Root cause:** Transient resource pressure + OpenBLAS default thread fan-out. Environmental, not a code bug.
+- **Solution:** `OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1` prefix on every torch test run. Deterministic recovery, verified repeatedly.
+- **Remember:** Zero test output + OpenBLAS errors = set the two thread vars and rerun before suspecting the code.
+
+### 2026-10-01 — Pre-existing working-tree deletions surface as your test failures (omp session)
+
+- **Symptom:** mini-llm suite 96 run / 3 errors, all in `TestGenerationSeed` (`Tokenizer.from_file` on missing `data/tokenizer.json`).
+- **Root cause:** The file deletion predated the session (visible in the very first `git status`). Nothing in the change set touched it.
+- **Solution:** Left the deletion alone; verified the generation path another way (explicit `--tokenizer` against `data/tinystories/tokenizer.json` + a `$TEMP/mlsmoke` end-to-end loop). Reported as pre-existing, not fixed.
+- **Remember:** Run `git status` before starting and attribute ruthlessly — a red suite is not automatically your regression. Never "fix" a user deletion by restoring the file.

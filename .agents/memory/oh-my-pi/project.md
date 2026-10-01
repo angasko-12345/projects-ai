@@ -66,3 +66,46 @@
 - NEXT (Step 3 pre-flight): check live-play baseline reds in the exp window,
   then re-run exp02. Uncommitted: memory files only.
 - `checkpoints/extern_pong_01/ppo_final.pt` (12 MB) deliberately uncommitted; nested path dodges `checkpoints/*.pt` ignore.
+
+## Current state (2026-10-01, commit 2cb2413, omp session P5–P10)
+
+- Full suite: **288/288 passing** (`cd universal-game-agent`, `python -m unittest
+  discover -s tests`, ~15 s). Baseline moved 261 → 288 via this session's
+  11 regression tests (4 PPO checkpoint, 6 launch/lifecycle, 1 external
+  seed-no-op) plus parallel-session additions. No PPO-math changes; old
+  entropy/GAE/GRU/curiosity audit claims left as-is, green.
+- P5 checkpoints (`training/ppo.py`): `checkpoint_every_updates` validated —
+  non-negative int, 0 disables periodic (only `ppo_final.pt` written).
+  `save_checkpoint` atomic via same-dir temp + `os.replace`, temp cleaned on
+  failure. Note: `__post_init__` now also rejects `bool` for the interval and
+  seed (bool is an int subclass; `True` previously passed as 1).
+- P6 lifecycle (`training/external_experiment.py`, `training/evaluate.py`):
+  `launch_phase2_process()` — proc ownership reaches the caller only on
+  success, stopped locally on attach/liveness failure. `load_eval_model()`
+  closes the throwaway checkpoint-load env (phase 3 used to leak it).
+  `stop()` idempotent via `_stopped` flag. `evaluate()` closes each
+  per-episode env in `finally` (a mid-episode `step()` raise used to leak it).
+- P7 contracts (doc-only + 1 test): external `reset(seed=)` accepts but
+  ignores seed — game seeded once at `launch_game(..., seed, ...)`; episodes
+  are session continuations. `hits`/`misses` = reward-sign counts, meaningful
+  only for sign-based providers (toy ±1, extern_pong ±1); null → always 0,
+  composite/survival inflates hits. Settle logic untouched (already correct,
+  5+ tests). No results invalidated.
+- exp02 verdict still SUSPENDED (Step-3 pre-flight + re-run still open).
+- `small-projects/universal-game-agent/` confirmed still EMPTY 2026-10-01 —
+  leave alone. Repo is now tracked as THREE products; see canonical memory.
+- Interpreter: this box runs `D:/admin/code/projects` venv python 3.14.7
+  (torch CPU). If `import torch` dies with OpenBLAS allocation errors + exit
+  45 and zero test output: prefix
+  `OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1`. Environmental, always retry
+  with it before suspecting code.
+
+## Open threads (2026-10-01)
+
+- STEP 3 pre-flight (live-play baseline reds) + exp02 re-run — unchanged, still next.
+- mini-llm TinyStories baseline recorded (`small-projects/mini-llm/docs/EXPERIMENT-tinystories.md`):
+  3.1M-token prep from `tinystories-small.txt`, vocab 8192, step-10000 ckpt
+  (train 1.785/val 1.833), coherent samples. Wart: ckpt stores default
+  `tokenizer_path` — always pass `--tokenizer` explicitly.
+- `data/tokenizer.json` working-tree deletion predates 2026-10-01 and breaks
+  3 `TestGenerationSeed` tests; deliberately NOT restored (user's change).

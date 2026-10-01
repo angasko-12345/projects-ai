@@ -92,7 +92,8 @@
 - **Risks:** classification behavior changes (in the intended direction) — add before/after tests so improvements are visible, not silent.
 - **Success criteria:** ≥5 tests prove structured evidence beats string heuristics; every failure row carries machine-readable evidence.
 
-### A5 — WorkflowEngine decomposition (P1)
+### A5 — WorkflowEngine decomposition (P1) ❄ FROZEN 2026-10-01
+> ❄ Frozen 2026-10-01: rationale + entry criteria in `.agents/plans/architecture-freeze-a5-a6-a7.md`. Do not start until the correctness queue closes.
 
 - **Objective:** Split the 918-line god object into `WorkflowPlanner` / `WorkflowScheduler` / `TaskExecutor` / `RepairCoordinator` / `RecoveryCoordinator` behind a thin `WorkflowEngine` facade.
 - **Concrete actions:**
@@ -105,7 +106,8 @@
 - **Risks:** pure-cut risk is low (facade preserves API); the real risk is splitting *before* A2/A3 land and doing the work twice. Sequence deliberately.
 - **Success criteria:** No public API change; `workflow.py` ≤ ~350 lines; existing workflow tests untouched and green.
 
-### A6 — First-class ReviewRun / MergeRun (P1/P2)
+### A6 — First-class ReviewRun / MergeRun (P1/P2) ❄ FROZEN 2026-10-01
+> ❄ Frozen 2026-10-01: rationale + entry criteria in `.agents/plans/architecture-freeze-a5-a6-a7.md`. Do not start until the correctness queue closes.
 
 - **Objective:** Review and merge become persisted, observable lifecycle objects like agent runs and verification runs.
 - **Concrete actions:**
@@ -118,7 +120,8 @@
 - **Risks:** touches the `git.py` + `finalize.py` merge path the GUI relies on. Mitigate with dedicated `test_merge_run.py` + conflict simulation.
 - **Success criteria:** Every merge produces a `merge_runs` row; conflicted merges never become successful; "which verified commit merged into which base" is answerable via SQL.
 
-### A7 — StateStore repository split (P2)
+### A7 — StateStore repository split (P2) ❄ FROZEN 2026-10-01
+> ❄ Frozen 2026-10-01: rationale + entry criteria in `.agents/plans/architecture-freeze-a5-a6-a7.md`. Do not start until the correctness queue closes.
 
 - **Objective:** Break the 1948-line `state.py` into domain repositories behind a `StateStore` facade. Not urgent — do **after** A1–A6 so repositories stabilize around final object shapes.
 - **Concrete actions:**

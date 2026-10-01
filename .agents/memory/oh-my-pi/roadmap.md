@@ -38,3 +38,23 @@
   (all rejected for lack of evidence; see decisions.md).
 - Live SendInput end-to-end tests (side effects); multi-seed statistics (cost).
 - Client-area-only capture (full-frame documented as intended).
+
+## Done 2026-10-01 (commit 2cb2413, suite 288/288)
+
+- [x] P5 checkpoint safety: interval validation (0 = disabled), atomic
+  temp-file replace, 4 regression tests.
+- [x] P6 lifecycle: launch-failure ownership, temp-env close, idempotent
+  stop, eval-env close on exception, 6 regression tests.
+- [x] P7 contracts: seed-no-op + hits/misses semantics documented, 1 test.
+  No reset-behavior change, no results invalidated.
+- [x] P8 CI: per-product workflows + scope doc; three-product routing.
+- [x] P9 freeze: A5/A6/A7 deferred (`.agents/plans/architecture-freeze-a5-a6-a7.md`).
+- [x] P10 mini-llm: TinyStories experiment record + verified loop.
+
+## Next (proposed, in order)
+
+- [ ] STEP 3 pre-flight + exp02 re-run (unchanged top item).
+- [ ] Watch: `data/tokenizer.json` deletion — if the user restores it, the
+  3 `TestGenerationSeed` errors should clear with no code change.
+- [ ] mini-llm scale: full 1.9 GB TinyStories prep + GPU run (procedure in
+  EXPERIMENT doc; needs cloud GPU, not this box).

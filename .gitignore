@@ -15,7 +15,6 @@ agent-intercom-fix/
 .agentops/
 .local-temp-archive/
 .pi/
-small-projects/
 orchestrator.py
 omniroute-model-results.csv
 working_models.txt
