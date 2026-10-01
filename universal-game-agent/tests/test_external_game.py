@@ -19,6 +19,17 @@ def _frame(value=0, h=48, w=64):
     return np.full((h, w, 3), value, dtype=np.uint8)
 
 
+def _live_capture_available() -> bool:
+    """Whether MSSBackend() constructs here (needs a live display)."""
+    try:
+        from interface.capture import MSSBackend
+
+        MSSBackend().close()
+    except Exception:
+        return False
+    return True
+
+
 class FakeInterface:
     """Records execute calls, serves scripted frames. No OS touched."""
 
@@ -574,9 +585,32 @@ class TestExternalFactory(unittest.TestCase):
                                            "out_height": 32})
         with self.assertRaises(RuntimeError):
             make_external_env_from_config(cfg)
+
+    def test_safeguard_accepts_explicit_flag_without_display(self):
+        # Factory BUILD validates the safeguard with no display touch: the
+        # live-capture constructor (MSSBackend) runs only inside make().
+        # This is the part display-less CI covers.
+        from environment.external_game import make_external_env_from_config
+
+        cfg = self._synthetic_cfg(capture={"mode": "region", "out_width": 32,
+                                           "out_height": 32})
+        cfg["allow_live_capture"] = True
+        make = make_external_env_from_config(cfg)  # must not raise
+        self.assertTrue(callable(make))
+
+    def test_live_region_build_needs_display(self):
+        # Actually BUILDING the env constructs MSSBackend: needs a display.
+        # Gated so display-less CI skips instead of failing.
+        from environment.external_game import make_external_env_from_config
+
+        if not _live_capture_available():
+            self.skipTest("no live display for MSSBackend")
+        cfg = self._synthetic_cfg(capture={"mode": "region", "out_width": 32,
+                                           "out_height": 32})
         cfg["allow_live_capture"] = True
         env = make_external_env_from_config(cfg)()  # builds; captures nothing
         self.assertEqual(tuple(env.observation_space.shape), (4, 84, 84))
+        env.close()
 
     def test_window_needs_title(self):
         from environment.external_game import make_external_env_from_config

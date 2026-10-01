@@ -1,4 +1,5 @@
 """Tests for the external game interface. No real input or windows touched."""
+import os
 import unittest
 
 import numpy as np
@@ -203,8 +204,16 @@ class TestAdapter(unittest.TestCase):
 
 
 class TestWindowManager(unittest.TestCase):
+    @unittest.skipUnless(os.name == "nt", "Win32 window attach needs Windows")
     def test_missing_window_raises(self):
         with self.assertRaises(WindowNotFoundError):
+            WindowManager("definitely-not-a-real-window-xyz-123").attach()
+
+    @unittest.skipUnless(os.name != "nt", "Windows raises WindowNotFoundError instead")
+    def test_attach_refuses_without_windows(self):
+        # Platform contract: no Win32 emulation on other OSes. Attach must
+        # fail closed (OSError), never pretend to find a window.
+        with self.assertRaises(OSError):
             WindowManager("definitely-not-a-real-window-xyz-123").attach()
 
     def test_detached_state(self):

@@ -424,6 +424,17 @@ def make_external_env_from_config(env_cfg: dict, clock=None):
         else:
             from interface.window import WindowManager
 
+            # Validate configuration BEFORE touching display resources:
+            # MSSBackend() needs a live display, so constructing it first
+            # would mask a config error (or force display-less CI to have
+            # X merely to check validation). Never fall back to synthetic.
+            window_title = ""
+            if mode == "window":
+                window_title = str(cap_cfg.get("title", "") or life_cfg.get("title", ""))
+                if not window_title:
+                    raise ValueError("capture.mode 'window' needs capture.title (or lifecycle.title)")
+            elif life_cfg.get("mode", "none") == "window":
+                raise ValueError("lifecycle.mode 'window' needs a window target")
             backend = MSSBackend()
             if mode == "region":
                 region = cap_cfg.get("region", {}) or {}

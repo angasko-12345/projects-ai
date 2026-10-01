@@ -6,9 +6,11 @@ from pathlib import Path
 try:
     from training.external_experiment import (
         _apply_run_title,
+        _resume_trainer,
         _results_path,
         _run_checkpoint_dir,
         _unique_title,
+        launch_game,
         launch_phase2_process,
         load_eval_model,
         stop,
@@ -176,6 +178,90 @@ class TestLaunchCleanup(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             load_eval_model("ckpt.pt", make_env)
         self.assertEqual(closed, [True])
+
+    def test_launch_game_popen_failure_closes_log(self):
+        import subprocess
+        import tempfile
+        from unittest.mock import patch
+
+        import os as _os
+
+        old_cwd = _os.getcwd()
+        with tempfile.TemporaryDirectory() as tmp:
+            _os.chdir(tmp)
+            try:
+                opened = []
+                real_open = open
+
+                def spy_open(*args, **kwargs):
+                    fh = real_open(*args, **kwargs)
+                    opened.append(fh)
+                    return fh
+
+                with patch("builtins.open", spy_open), \
+                        patch.object(subprocess, "Popen",
+                                     side_effect=OSError("cannot fork")):
+                    with self.assertRaises(OSError):
+                        launch_game("T", 0, 60, "phase9")
+                self.assertEqual(len(opened), 1)
+                self.assertTrue(opened[0].closed)
+            finally:
+                _os.chdir(old_cwd)
+
+    def _ckpt_trainer(self):
+        import tempfile
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+
+        class _Trainer:
+            config = type("C", (), {"checkpoint_dir": tmp.name})()
+
+            def save_checkpoint(self, path):
+                Path(path).write_bytes(b"ckpt")
+
+        return _Trainer()
+
+    def test_resume_trainer_make_env_failure_propagates(self):
+        def boom_env():
+            raise RuntimeError("no display")
+
+        with self.assertRaises(RuntimeError):
+            _resume_trainer(self._ckpt_trainer(), boom_env)
+
+    def test_resume_trainer_load_failure_closes_env(self):
+        closed = []
+
+        class _Env:
+            def close(self):
+                closed.append(True)
+
+        class _Boom:
+            @staticmethod
+            def load_checkpoint(*args, **kwargs):
+                raise RuntimeError("corrupt checkpoint")
+
+        self._patch(PPOTrainer=_Boom)
+        with self.assertRaises(RuntimeError):
+            _resume_trainer(self._ckpt_trainer(), _Env)
+        self.assertEqual(closed, [True])
+
+    def test_resume_trainer_success_keeps_env_open(self):
+        closed = []
+        sentinel = object()
+
+        class _Env:
+            def close(self):
+                closed.append(True)
+
+        class _Ok:
+            model = sentinel
+
+        self._patch(PPOTrainer=type("P", (), {"load_checkpoint":
+                                             staticmethod(lambda *a, **k: _Ok())}))
+        out = _resume_trainer(self._ckpt_trainer(), _Env)
+        self.assertIsInstance(out, _Ok)
+        self.assertEqual(closed, [])  # ownership transferred, not closed
 
 
 if __name__ == "__main__":

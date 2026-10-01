@@ -38,7 +38,17 @@ def _resume_trainer(trainer, make_env) -> PPOTrainer:
     """Persist in-memory training state and reload it on a fresh env."""
     path = str(Path(trainer.config.checkpoint_dir) / "ppo_interrupted.pt")
     trainer.save_checkpoint(path)
-    return PPOTrainer.load_checkpoint(path, make_env())
+    env = make_env()  # if this raises, no env exists yet: nothing to close
+    try:
+        return PPOTrainer.load_checkpoint(path, env)
+    except BaseException:
+        # The checkpoint object never took ownership (it only owns env on
+        # success), so close here or the fresh env leaks.
+        try:
+            env.close()
+        except Exception:
+            pass  # original load error is what the caller must see
+        raise
 
 
 def _concat_histories(histories: list[dict]) -> dict:
@@ -103,15 +113,21 @@ def launch_game(title: str, seed: int, game_fps: int, phase: str, geometry=None)
     """Start the game with stdout/stderr captured for crash diagnosis."""
     log_path = Path("logs") / f"extern_pong_{title}_{phase}.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    log_file = open(log_path, "w", encoding="utf-8")  # noqa: P201 -- closed with the process
+    log_file = open(log_path, "w", encoding="utf-8")  # noqa: P201 -- owned below
     cmd = [sys.executable, str(APP), "--title", title, "--seed", str(seed),
            "--fps", str(game_fps)]
     if geometry:
         cmd += ["--geometry", str(geometry)]
-    proc = subprocess.Popen(
-        cmd,
-        stdout=log_file, stderr=subprocess.STDOUT, close_fds=True,
-    )
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=log_file, stderr=subprocess.STDOUT, close_fds=True,
+        )
+    except BaseException:
+        # Popen() never returned, so no handle exists for stop() to clean
+        # up: release the log here or it leaks.
+        log_file.close()
+        raise
     proc._log_file = log_file  # noqa: SLF001 -- released in stop()
     return proc
 
