@@ -1,31 +1,23 @@
 ﻿# CodeCraft API Security Report
 
-Generated: 2026-10-01 20:36:53 +08:00
-
-> Controlled, non-invasive checks only. PASS means that specific behavior matched the test expectation. It does not establish that the service is secure.
-
-## Results
+Generated: 2026-10-01 21:00:53 +08:00
 
 | Check | Status | Details |
 |---|---|---|
-| HTTPS root | PASS | HTTP 200, final URL https://codecraftapi.com/, 2490 ms |
-| Strict-Transport-Security | INFO | Header not observed on root response. |
-| Content-Security-Policy | INFO | Header not observed on root response. |
-| X-Content-Type-Options | INFO | Header not observed on root response. |
-| X-Frame-Options | INFO | Header not observed on root response. |
-| Referrer-Policy | INFO | Header not observed on root response. |
-| Permissions-Policy | INFO | Header not observed on root response. |
-| TLS certificate | PASS | Expires 12/12/2026 00:29:57 |
+| HTTPS website | PASS | HTTP 200, 739 ms |
+| Website header: Strict-Transport-Security | INFO | Not observed. |
+| Website header: Content-Security-Policy | INFO | Not observed. |
+| Website header: X-Frame-Options | INFO | Not observed. |
+| Website header: X-Content-Type-Options | INFO | Not observed. |
+| Website header: Referrer-Policy | INFO | Not observed. |
+| Website header: Permissions-Policy | INFO | Not observed. |
+| TLS certificate | PASS | Certificate expires 12/12/2026 00:29:57 |
 | DNS | INFO | Resolved DNS records. |
-| robots.txt | PASS | HTTP 200 |
-| Legal: Privacy | PASS | Retrieved /privacy |
-| Legal: Terms | PASS | Retrieved /terms |
-| Legal: Acceptable Use | PASS | Retrieved /acceptable-use |
-| Unauthenticated /v1/models | INFO | Returned HTTP 429. |
-| Authenticated /v1/models | WARN | HTTP 429: The remote server returned an error: (429) Too Many Requests. |
-| Invalid API key | INFO | Returned HTTP 429. |
-| CORS | INFO | No Access-Control-Allow-Origin header observed. |
-| Failed-request canary reflection | PASS | Unique canary was not reflected in the returned error. |
+| Missing API key rejection | PASS | HTTP 401 returned for a request without credentials. |
+| Valid API key | PASS | HTTP 200. Model count=33. |
+| Invalid API key rejection | PASS | HTTP 401 returned. |
+| x-api-key authentication | PASS | HTTP 200 returned. |
+| Inference canary | INFO | Skipped. Set TEST_MODEL to enable. |
 
 ## TLS
 
@@ -59,10 +51,9 @@ Generated: 2026-10-01 20:36:53 +08:00
 }
 ```
 
-## Important limitations
+## Limitations
 
-- This cannot prove that CodeCraft does not retain prompts.
-- It cannot inspect CodeCraft's databases or internal logs.
-- A successful inference request only proves that the request reached an upstream model.
-- Missing security headers do not automatically mean a vulnerability exists.
-- Server-side privacy claims require independent evidence to verify.
+- These tests cannot prove server-side prompt retention or deletion.
+- A successful API request does not establish that upstream providers retain nothing.
+- HTTP security headers are observations, not complete security validation.
+- A 429 means the relevant authentication test is inconclusive.

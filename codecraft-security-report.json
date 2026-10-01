@@ -1,10 +1,8 @@
 ﻿{
-    "generated_at":  "2026-10-01T20:36:53.3585212+08:00",
+    "generated_at":  "2026-10-01T21:00:53.6754563+08:00",
     "target":  {
-                   "api_base":  "https://codecraftapi.com/v1",
-                   "host":  "codecraftapi.com",
-                   "name":  "CodeCraft API",
-                   "base":  "https://codecraftapi.com"
+                   "api":  "https://codecraftapi.com/v1",
+                   "website":  "https://codecraftapi.com"
                },
     "tls":  {
                 "subject":  "CN=codecraftapi.com",
@@ -28,86 +26,53 @@
                            "konnor.ns.cloudflare.com"
                        ]
             },
-    "root":  {
-                 "headers":  {
-
-                             },
-                 "final_uri":  "https://codecraftapi.com/",
-                 "status_code":  200,
-                 "success":  true,
-                 "elapsed_ms":  2490
-             },
-    "legal":  {
-                  "Privacy":  {
-                                  "text":  "privacy policy — codecraft api codecraft api models pricing docs blog log in get started models pricing docs blog log in get started terms of service privacy policy acceptable use refund policy privacy policy effective 23 august 2026 this policy explains what personal data codecraft api (\"we\", \"us\") collects when you use codecraftapi.com and our api, why we collect it, how long we keep it, who we share it with, and the rights you have over it. we have tried to describe this in plain terms rather than legal boilerplate. 1. data we collect information you give us account details — your name, email address, and optionally a phone number. password — stored only as a bcrypt hash. we never store or transmit it in readable form, and we cannot recover it for you. support messages — the contents of any ticket you open, so we can answer it. payment references — for binance pay and cryptocurrency deposits, we store the transaction id or blockchain hash you submit to automatically match and verify the incoming payment with our gateway. information from signing in with google or github if you choose to sign in with google or github, we receive your name, email address, and profile picture url from that provider, plus the provider\u0027s own account identifier so we can recognise you next time. we request only basic profile and email access. we never receive your password for those services , and we do not gain access to your google account contents or your github repositories. you can disconnect the provider at any time from your account settings, provided you have set a password first so you are not locked out. information created by using the api usage records — timestamp, model requested, token counts, response latency, http status, and which api key was used. this is what your dashboard and billing are calculated from. ip address — recorded with api requests and sign-in attempts, used for security, abuse investigation, and rate limiting. session data — a session cookie so you stay logged in, along with the browser user-agent string. prompt and response content we do not store the content of your prompts or the models\u0027 replies. request bodies pass through our servers to the upstream model provider and are not written to our database. we keep only the metadata listed above — counts and timings, not text. one exception: if a request fails, a truncated error message from the provider may be recorded in our logs to make the failure diagnosable, and that message can occasionally include a fragment of the request. note that your prompts are transmitted to the upstream provider serving the model you selected, and that provider\u0027s own retention policy then applies to them. which provider serves a given model is shown on our models page. payment card data card and online payments are handled entirely by paddle on their secure systems. card numbers never reach our servers and we cannot see them. we store only a token or reference and the last four digits, so you can recognise a saved payment method. 2. why we use it to operate the service — authenticating you, routing api calls, metering tokens, and enforcing plan limits. to bill accurately — usage records are the basis of every charge, and you can audit them in your dashboard. to prevent abuse and fraud — detecting credential stuffing, shared or leaked api keys, and payment fraud. to contact you — verification codes, password resets, payment receipts, and service notices. product and marketing emails are opt-in and off by default; you can change every notification type in your settings. to support you — reading and replying to your tickets. to meet legal obligations — retaining transaction records where the law requires it. 3. who we share it with we do not sell your personal data, and we do not share it for advertising. we disclose data only to: upstream ai providers — your request content is forwarded to the provider serving the model you chose, because that is the service you asked for. payment processors — paddle receives the details needed to take a payment. email delivery — the smtp provider configured for this installation delivers your verification and notification emails. infrastructure providers — our hosting provider and cloudflare, which sits in front of the site for tls termination and ddos protection and therefore processes request metadata. authorities — where we are legally compelled, or where disclosure is necessary to investigate a credible threat to someone\u0027s safety or to our systems. if we are ever involved in a merger or acquisition, we will give notice before your data becomes subject to a different policy. 4. how long we keep it account data — while your account exists. usage records — retained so you can audit historical billing; aggregated well beyond that for capacity planning. payment and invoice records — kept as long as financial and tax rules require, even after account closure. verification codes — expire within minutes and are deleted once used. payment screenshots — deleted once the payment is verified or rejected. server logs — rotated on a short cycle. 5. security what we actually do, not aspirations: all traffic is served over https. passwords are bcrypt-hashed. api keys are stored as a hash for verification, plus a separately encrypted copy so you can view your own key again. a stolen database alone does not yield usable keys. upstream provider credentials and smtp passwords are encrypted at rest. sign-in and password-reset attempts are rate limited per account and per ip address. verification codes expire quickly and lock out after a small number of wrong guesses. no system is immune. if a breach affects your personal data, we will notify affected users and, where required, the relevant authority. 6. your rights you can, at any time: see your data — your dashboard shows your profile, usage history, invoices, and api keys. correct it — update your name, email, and phone in settings. export it — request a machine-readable copy of your account and usage data. delete it — delete your account from settings. this removes your profile, api keys, and sessions. invoices and transaction records are retained where financial law requires, and anonymised usage aggregates may remain. choose what we email you — every optional notification type can be switched off; we will still send security and billing notices that are part of the service. withdraw provider access — disconnect google or github, or revoke our access from that provider\u0027s own security settings. to exercise any of these, email [email protected] . we will respond within 30 days. 7. cookies we use a session cookie to keep you signed in, a csrf token cookie to protect forms from cross-site request forgery, and an optional \"remember me\" cookie if you tick that box. these are strictly necessary for the site to work and cannot be disabled while using an account. we run no advertising or third-party analytics trackers. cloudflare may set its own cookie for security purposes. 8. international transfers our servers, our payment processors, and the ai providers we route to may be located outside your country. by using the service, you understand that your data — including the prompts you send — will be processed in those jurisdictions. 9. children the service is not intended for anyone under 16, and we do not knowingly collect their data. if you believe a child has created an account, contact us and we will remove it. 10. changes to this policy we will update the effective date at the top when this policy changes. for changes that materially affect your rights, we will notify account holders by email or an in-app notice before they take effect. continuing to use the service after that means you accept the updated policy. questions about this document? email [email protected] . product models pricing changelog status resources documentation blog legal terms of service privacy policy acceptable use refund policy codecraft api ai models through a simple, unified api. © 2026 codecraft api. all rights reserved.",
-                                  "status_code":  200,
-                                  "success":  true,
-                                  "text_length":  8061
-                              },
-                  "Terms":  {
-                                "text":  "terms of service — codecraft api codecraft api models pricing docs blog log in get started models pricing docs blog log in get started terms of service privacy policy acceptable use refund policy terms of service effective 23 august 2026 these terms govern your use of codecraft api at codecraftapi.com , including the website, dashboard, and api. by creating an account or sending an api request, you agree to them. if you are agreeing on behalf of a company, you confirm you are authorised to bind it. 1. what the service is codecraft api is an api gateway. we provide a single openai-compatible endpoint that routes your requests to third-party ai model providers, meters your usage, and bills you for it. we do not build or host the underlying models. model names on our platform may differ from the upstream provider\u0027s naming. because we are an intermediary, a model\u0027s availability, behaviour, quality, and speed ultimately depend on its upstream provider. models may be added, renamed, repriced, deprecated, or withdrawn — sometimes at the provider\u0027s initiative and with little notice. we will give reasonable notice of removals where we can. 2. your account you must give accurate registration information and keep it current. you must be at least 16, or the age of digital consent in your country, whichever is higher. one person or organisation per account. creating multiple accounts to obtain extra free allowances is a breach of these terms. you are responsible for everything that happens under your account. tell us promptly at [email protected] if you suspect unauthorised access. 3. api keys your api keys authenticate as you and can spend your balance. treat them like passwords. keep keys server-side. do not embed them in browser javascript, mobile apps, public repositories, or shared notebooks. scope each key to only what it needs, and rotate keys you suspect are exposed. usage incurred by a leaked key is your responsibility. we will help you investigate and can revoke keys immediately, but we cannot reverse charges already spent upstream on your behalf. 4. plans, tokens, and balance billing works on two layers, and it matters which one is being spent: plan allowance — a monthly token quota included with your plan. it resets each billing period and unused tokens do not carry over . account balance — prepaid credit, charged at each model\u0027s published per-token rate once your plan allowance is exhausted. balance does not expire while your account is open. tokens count both what you send and what the model returns. every plan can reach every publicly available model; plans differ in monthly volume and per-minute rate limits, not in feature access. when your allowance and balance are both exhausted, requests are refused with http 402 before reaching a model, so you are never billed for something you did not authorise and never cut off mid-response. where an upstream provider does not report exact token counts, we estimate them using a documented method. we publish per-model rates and they include our margin. rates can change ; we will announce increases in advance, and a change never applies retroactively to usage already billed. 5. payment paid plans are charged in advance for the period you select. balance top-ups are charged when you make them. we accept paddle (credit/debit cards, apple pay, google pay, ideal), binance pay, and cryptocurrency. availability varies by region. binance pay and cryptocurrency payments are verified automatically via gateway api integrations or transaction hashes. submit the correct transaction id or hash for instant verification. unpaid orders expire automatically after the window shown at checkout, and an expired order cannot be revived — start a new one. submitting a payment reference you did not make, or reusing one, is fraud and will result in termination. taxes, bank charges, and currency conversion fees are yours to pay. 6. refunds tokens already consumed are not refundable , because we have already paid the upstream provider for them. unused prepaid balance can be refunded within 14 days of the top-up, less any transaction fees, provided the account is in good standing. if you were charged because of a billing error on our side, we refund it in full. plan fees are refundable pro rata only if we materially fail to deliver the service and cannot remedy it. accounts terminated for breach of these terms forfeit any remaining balance. request refunds at [email protected] . 7. acceptable use your use must comply with our acceptable use policy , which forms part of these terms. in addition, do not: resell or redistribute api access without a written agreement with us. attempt to extract, reproduce, or reverse-engineer model weights. work around rate limits, token accounting, or billing, including by registering multiple accounts. probe, scan, or stress-test our infrastructure without written permission. use the service to build a directly competing gateway. 8. your content you keep all rights to the prompts you send and, as between you and us, to the output you receive. we claim no ownership over either. you grant us only the narrow licence needed to transmit your requests to the provider serving your chosen model and return the result. we do not use your prompts or outputs to train models. ai output can be wrong, biased, or fabricated. it is your responsibility to review it before relying on it, and we make no warranty about its accuracy or fitness for any purpose. you are responsible for ensuring your use of the output is lawful, including any third-party rights it may touch. 9. availability we aim for high availability but do not offer a contractual uptime guarantee or service credits on standard plans . maintenance, upstream provider outages, and network failures can interrupt service. current status is published on our status page . if you need a formal sla, contact us about an enterprise arrangement. 10. suspension and termination you may close your account at any time from your settings. we may suspend or terminate an account, with notice where practicable, if: you breach these terms or the acceptable use policy; we detect fraudulent payment or chargeback abuse; your usage threatens the stability or security of the platform; or we are legally required to. serious cases — fraud, or activity that endangers others — may be suspended immediately without prior notice. on termination your api keys stop working at once. sections 6, 8, 11, and 12 survive termination. 11. disclaimers and liability the service is provided \"as is\" and \"as available\", without warranties of any kind, express or implied, including merchantability, fitness for a particular purpose, and non-infringement. to the maximum extent the law allows, we are not liable for indirect, incidental, special, consequential, or punitive damages, nor for lost profits, revenue, data, or goodwill — including losses arising from ai output you relied on, from service interruption, or from an upstream provider\u0027s acts or omissions. our total liability for any claim is capped at the amount you paid us in the three months before the event giving rise to it. nothing here limits liability that cannot lawfully be limited. you agree to indemnify us against third-party claims arising from your use of the service, your content, or your breach of these terms. 12. changes to these terms we may update these terms. the effective date at the top will change, and for material changes we will notify account holders by email or an in-app notice before they take effect. continued use after that constitutes acceptance. if you do not accept the new terms, close your account and request a refund of unused balance under section 6. 13. general these terms, together with the acceptable use policy and privacy policy , are the entire agreement between us. if any provision is unenforceable, the rest remains in force. not enforcing a provision immediately does not waive it. you may not assign these terms without our consent; we may assign them in a merger or acquisition. we will try in good faith to resolve any dispute informally first — email [email protected] . questions about this document? email [email protected] . product models pricing changelog status resources documentation blog legal terms of service privacy policy acceptable use refund policy codecraft api ai models through a simple, unified api. © 2026 codecraft api. all rights reserved.",
-                                "status_code":  200,
-                                "success":  true,
-                                "text_length":  8450
-                            },
-                  "Acceptable Use":  {
-                                         "text":  "acceptable use policy — codecraft api codecraft api models pricing docs blog log in get started models pricing docs blog log in get started terms of service privacy policy acceptable use refund policy acceptable use policy effective 23 august 2026 this policy sets out what you may not do with codecraft api. it forms part of our terms of service , and it applies to everything you send through the api, everything you build on it, and anything you do to the platform itself. upstream model providers impose their own usage policies. activity we permit may still be refused by the provider serving your chosen model. illegal activity do not use the service to plan, carry out, or facilitate anything unlawful, including: fraud, scams, phishing, or identity theft; money laundering or sanctions evasion; trafficking in people, drugs, weapons, or stolen goods; infringing copyright, trademarks, patents, or trade secrets. harm to people do not generate or facilitate: child sexual abuse material, or any sexualised content involving minors. we report this to the authorities and terminate the account immediately, without warning. content that sexually exploits or endangers anyone; instructions for weapons capable of mass casualties — explosives, chemical, biological, radiological, or nuclear; encouragement of suicide, self-harm, or eating disorders; threats, targeted harassment, stalking, or doxxing; incitement to violence, or hatred against people based on race, ethnicity, national origin, religion, gender, sexual orientation, disability, or another protected characteristic. malicious code and unauthorised access do not use the service to create or improve: malware, ransomware, spyware, keyloggers, or botnets; exploits or intrusion tooling aimed at systems you do not own and are not authorised to test; credential-stuffing, password-cracking, or captcha-defeating tools; techniques for evading security software or hiding an intrusion. security research on your own systems, authorised penetration testing, ctf exercises, defensive tooling, and education are all permitted. if your work sits near this line, tell us at [email protected] beforehand. deception and impersonation do not use the service to: impersonate a real person or organisation, including generating their likeness or voice without consent; build deepfakes intended to deceive; run disinformation or coordinated inauthentic behaviour campaigns; manipulate elections, or produce political messaging that conceals its true origin; fabricate reviews, ratings, engagement metrics, or poll results; present ai output as human-authored where that misleads someone materially — in academic submissions, journalism, or legal filings, for example. spam do not use the service to generate unsolicited bulk email, sms, comments, or messages, to create doorway pages or mass low-value seo content, or to power engagement farming. privacy and surveillance do not use the service to: process other people\u0027s personal data without a lawful basis; build mass surveillance systems, or track individuals without consent; perform facial or biometric identification of private individuals; infer protected characteristics in order to discriminate; scrape personal data at scale in breach of a site\u0027s terms. high-stakes decisions do not present model output as professional advice, and do not let it decide, without qualified human review, matters such as: medical diagnosis, treatment, or medication; legal advice or the outcome of a case; credit, insurance, employment, housing, or immigration decisions; safety-critical control of vehicles, aircraft, medical devices, or industrial machinery. building software for these domains is fine. removing the qualified human from the decision is not. platform abuse do not: circumvent rate limits, token accounting, or billing; register multiple accounts to collect extra free allowances; share or resell api access without a written agreement; attempt to extract or reproduce model weights; scan, probe, or load-test our infrastructure without written permission; send deliberately malformed requests intended to destabilise the platform. how we enforce this we do not read your prompts. we do not store prompt or response content, so enforcement is driven by usage patterns, abuse reports, provider notifications, and payment signals. depending on severity, we may: contact you for an explanation; throttle or revoke specific api keys; suspend the account pending investigation; terminate the account, forfeiting remaining balance; report the matter to law enforcement. child sexual abuse material and credible threats to life are acted on immediately , without prior notice. for everything else we aim to warn first where it is safe to do so. reporting a violation if you believe someone is misusing codecraft api, email [email protected] with whatever detail you have. reports are treated confidentially. appeals if you think we acted on your account in error, reply to the enforcement notice or email [email protected] . a person will review it. include any context that explains the activity. questions about this document? email [email protected] . product models pricing changelog status resources documentation blog legal terms of service privacy policy acceptable use refund policy codecraft api ai models through a simple, unified api. © 2026 codecraft api. all rights reserved.",
-                                         "status_code":  200,
-                                         "success":  true,
-                                         "text_length":  5393
-                                     }
-              },
     "results":  [
                     {
-                        "check":  "HTTPS root",
+                        "check":  "HTTPS website",
                         "status":  "PASS",
-                        "details":  "HTTP 200, final URL https://codecraftapi.com/, 2490 ms",
-                        "data":  {
-                                     "final_uri":  "https://codecraftapi.com/",
-                                     "status_code":  200,
-                                     "elapsed_ms":  2490
-                                 }
-                    },
-                    {
-                        "check":  "Strict-Transport-Security",
-                        "status":  "INFO",
-                        "details":  "Header not observed on root response.",
+                        "details":  "HTTP 200, 739 ms",
                         "data":  null
                     },
                     {
-                        "check":  "Content-Security-Policy",
+                        "check":  "Website header: Strict-Transport-Security",
                         "status":  "INFO",
-                        "details":  "Header not observed on root response.",
+                        "details":  "Not observed.",
                         "data":  null
                     },
                     {
-                        "check":  "X-Content-Type-Options",
+                        "check":  "Website header: Content-Security-Policy",
                         "status":  "INFO",
-                        "details":  "Header not observed on root response.",
+                        "details":  "Not observed.",
                         "data":  null
                     },
                     {
-                        "check":  "X-Frame-Options",
+                        "check":  "Website header: X-Frame-Options",
                         "status":  "INFO",
-                        "details":  "Header not observed on root response.",
+                        "details":  "Not observed.",
                         "data":  null
                     },
                     {
-                        "check":  "Referrer-Policy",
+                        "check":  "Website header: X-Content-Type-Options",
                         "status":  "INFO",
-                        "details":  "Header not observed on root response.",
+                        "details":  "Not observed.",
                         "data":  null
                     },
                     {
-                        "check":  "Permissions-Policy",
+                        "check":  "Website header: Referrer-Policy",
                         "status":  "INFO",
-                        "details":  "Header not observed on root response.",
+                        "details":  "Not observed.",
+                        "data":  null
+                    },
+                    {
+                        "check":  "Website header: Permissions-Policy",
+                        "status":  "INFO",
+                        "details":  "Not observed.",
                         "data":  null
                     },
                     {
                         "check":  "TLS certificate",
                         "status":  "PASS",
-                        "details":  "Expires 12/12/2026 00:29:57",
+                        "details":  "Certificate expires 12/12/2026 00:29:57",
                         "data":  {
                                      "subject":  "CN=codecraftapi.com",
                                      "issuer":  "CN=WE1, O=Google Trust Services, C=US",
@@ -137,60 +102,42 @@
                                  }
                     },
                     {
-                        "check":  "robots.txt",
+                        "check":  "Missing API key rejection",
                         "status":  "PASS",
-                        "details":  "HTTP 200",
+                        "details":  "HTTP 401 returned for a request without credentials.",
                         "data":  null
                     },
                     {
-                        "check":  "Legal: Privacy",
+                        "check":  "Valid API key",
                         "status":  "PASS",
-                        "details":  "Retrieved /privacy",
-                        "data":  null
-                    },
-                    {
-                        "check":  "Legal: Terms",
-                        "status":  "PASS",
-                        "details":  "Retrieved /terms",
-                        "data":  null
-                    },
-                    {
-                        "check":  "Legal: Acceptable Use",
-                        "status":  "PASS",
-                        "details":  "Retrieved /acceptable-use",
-                        "data":  null
-                    },
-                    {
-                        "check":  "Unauthenticated /v1/models",
-                        "status":  "INFO",
-                        "details":  "Returned HTTP 429.",
-                        "data":  null
-                    },
-                    {
-                        "check":  "Authenticated /v1/models",
-                        "status":  "WARN",
-                        "details":  "HTTP 429: The remote server returned an error: (429) Too Many Requests.",
-                        "data":  null
-                    },
-                    {
-                        "check":  "Invalid API key",
-                        "status":  "INFO",
-                        "details":  "Returned HTTP 429.",
-                        "data":  null
-                    },
-                    {
-                        "check":  "CORS",
-                        "status":  "INFO",
-                        "details":  "No Access-Control-Allow-Origin header observed.",
+                        "details":  "HTTP 200. Model count=33.",
                         "data":  {
-                                     "allow_credentials":  null,
-                                     "allow_origin":  null
+                                     "remaining":  null,
+                                     "token_remaining":  null,
+                                     "frame_options":  null,
+                                     "content_type_options":  null,
+                                     "cors":  null,
+                                     "hsts":  null,
+                                     "token_limit":  null,
+                                     "rate_limit":  null
                                  }
                     },
                     {
-                        "check":  "Failed-request canary reflection",
+                        "check":  "Invalid API key rejection",
                         "status":  "PASS",
-                        "details":  "Unique canary was not reflected in the returned error.",
+                        "details":  "HTTP 401 returned.",
+                        "data":  null
+                    },
+                    {
+                        "check":  "x-api-key authentication",
+                        "status":  "PASS",
+                        "details":  "HTTP 200 returned.",
+                        "data":  null
+                    },
+                    {
+                        "check":  "Inference canary",
+                        "status":  "INFO",
+                        "details":  "Skipped. Set TEST_MODEL to enable.",
                         "data":  null
                     }
                 ]
