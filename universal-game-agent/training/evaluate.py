@@ -2,6 +2,18 @@
 
 Builds its own env instance -- never the training one -- and touches only
 pixel observations. Returns per-episode rewards/lengths plus aggregates.
+
+Measurement contract (callers must not assume more):
+
+* ``seeds`` are forwarded to ``env.reset(seed=...)`` per episode. Envs that
+  implement seeding (e.g. the toy env) reproduce episodes; envs that do not
+  (e.g. :class:`ExternalGameEnv`, whose game is seeded once at process
+  launch) ignore them and episodes are session continuations.
+* ``hits``/``misses`` count steps with reward > 0 / < 0. They mean
+  paddle-hits/misses only for sign-based event providers (toy ``+1``/``-1``,
+  ``extern_pong`` ``+1``/``-1``). Under ``null`` they are always 0; under
+  composite/survival providers positive step rewards inflate ``hits``.
+* Each per-episode env is closed even when a step raises.
 """
 from __future__ import annotations
 
@@ -27,24 +39,27 @@ def evaluate(model: ActorCritic, make_env, episodes: int = 20, seeds=None, greed
     try:
         for ep in range(episodes):
             env = make_env()
-            obs, _ = env.reset(seed=seeds[ep])
-            hidden = model.initial_state(1, device)
-            total, steps = 0.0, 0
-            counts: dict = {}
-            hits = misses = 0
-            while True:
-                t = torch.from_numpy(np.ascontiguousarray(obs, dtype=np.float32)).unsqueeze(0).to(device)
-                logits, _, hidden = model(t, hidden)
-                action = int(logits.argmax(-1).item()) if greedy else int(torch.distributions.Categorical(logits=logits).sample().item())
-                counts[action] = counts.get(action, 0) + 1
-                obs, reward, terminated, truncated, _ = env.step(action)
-                total, steps = total + float(reward), steps + 1
-                if float(reward) > 0:
-                    hits += 1
-                elif float(reward) < 0:
-                    misses += 1
-                if terminated or truncated:
-                    break
+            try:
+                obs, _ = env.reset(seed=seeds[ep])
+                hidden = model.initial_state(1, device)
+                total, steps = 0.0, 0
+                counts: dict = {}
+                hits = misses = 0
+                while True:
+                    t = torch.from_numpy(np.ascontiguousarray(obs, dtype=np.float32)).unsqueeze(0).to(device)
+                    logits, _, hidden = model(t, hidden)
+                    action = int(logits.argmax(-1).item()) if greedy else int(torch.distributions.Categorical(logits=logits).sample().item())
+                    counts[action] = counts.get(action, 0) + 1
+                    obs, reward, terminated, truncated, _ = env.step(action)
+                    total, steps = total + float(reward), steps + 1
+                    if float(reward) > 0:
+                        hits += 1
+                    elif float(reward) < 0:
+                        misses += 1
+                    if terminated or truncated:
+                        break
+            finally:
+                env.close()
             rewards.append(total)
             lengths.append(steps)
             action_counts.append(counts)
@@ -52,7 +67,6 @@ def evaluate(model: ActorCritic, make_env, episodes: int = 20, seeds=None, greed
             episode_misses.append(misses)
             episode_terminated.append(bool(terminated))
             episode_truncated.append(bool(truncated))
-            env.close()
     finally:
         if was_training:
             model.train()

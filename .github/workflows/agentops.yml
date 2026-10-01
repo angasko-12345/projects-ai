@@ -1,0 +1,28 @@
+# CI for agentops. See ../CI.md for what CI does and does not validate.
+name: agentops
+
+on:
+  push:
+    paths:
+      - "agentops/**"
+      - ".github/workflows/agentops.yml"
+      - ".github/CI.md"
+  pull_request:
+    paths:
+      - "agentops/**"
+      - ".github/workflows/agentops.yml"
+      - ".github/CI.md"
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agentops
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run agentops test suite
+        run: python -m unittest discover -s tests

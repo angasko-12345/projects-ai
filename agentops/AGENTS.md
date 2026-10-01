@@ -10,9 +10,9 @@ this file and `.agents/AGENTS.md` disagree on AgentOps product facts, this file 
   verifies, reviews, persists, and merges work in isolated Git worktrees.
 - Runtime target: Python 3.11 or newer. Runtime dependencies are standard-library only;
   PyYAML and PyInstaller are optional extras (`.[yaml]`, `.[windows]`).
-- The repository root is a container. This package is one of two products here; see
-  `universal-game-agent/AGENTS.md` for the other. Neither is a subproject of the other,
-  and a change in one is not a change in the other.
+- The repository root is a container. This package is one of three products here; see
+  `universal-game-agent/AGENTS.md` and `small-projects/mini-llm/AGENTS.md` for the others.
+  No product is a subproject of another, and a change in one is not a change in another.
 
 ## Tests
 

@@ -2,17 +2,21 @@
 
 ## Repository focus
 
-This repository contains two independent products, plus the process material agents use
+This repository contains three independent products, plus the process material agents use
 to work on them:
 
 - `agentops/` — a local-first orchestrator for installed coding-agent CLIs.
 - `universal-game-agent/` — a reinforcement-learning agent that plays Pong, including a
   Windows-only path that plays a real external game window through screen capture and
   real keyboard input.
+- `small-projects/mini-llm/` — a small GPT-style causal language model built from
+  scratch with PyTorch (BPE tokenizer, hand-written Transformer, CPU/cloud-GPU
+  training loop).
 
-Neither product depends on the other. The rest of this file covers `agentops/`, whose
-architecture is the more intricate of the two. For work in `universal-game-agent/`, read
-`universal-game-agent/AGENTS.md` instead.
+No product depends on another. The rest of this file covers `agentops/`, whose
+architecture is the more intricate of the three. For work in `universal-game-agent/`,
+read `universal-game-agent/AGENTS.md` instead; for work in `small-projects/mini-llm/`,
+read `small-projects/mini-llm/AGENTS.md` instead.
 
 Canonical agent instructions are `.agents/AGENTS.md` (universal contract) with
 per-product files at `agentops/AGENTS.md` and `universal-game-agent/AGENTS.md`. The root
@@ -23,13 +27,14 @@ user instructions take precedence over historical memory.
 
 ## Build, test, and verification commands
 
-There is no single repository-wide test command; the two products differ. Run commands
+There is no single repository-wide test command; the three products differ. Run commands
 from the product's own directory, never from the repository root.
 
 | Product | Test command | Runtime |
 |---|---|---|
 | `agentops/` | `cd agentops` then `python -m unittest discover -s tests` | Python 3.11+, no required third-party runtime dependencies |
 | `universal-game-agent/` | `cd universal-game-agent` then `python -m unittest discover -s tests` | requires `torch`, `gymnasium`, `numpy`, `pyyaml`, `mss` |
+| `small-projects/mini-llm/` | `cd small-projects/mini-llm` then `python -m unittest discover -s tests` | CPU only; requires `torch`, `tokenizers`, `numpy` |
 
 The sections below apply to `agentops/`. Commands there run in `agentops/`:
 

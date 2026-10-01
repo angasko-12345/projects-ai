@@ -20,7 +20,7 @@ Before substantial work:
 2. Read `.agents/team.md` and the relevant files under `.agents/memory/`, especially `project.md`, `architecture.md`, `roadmap.md`, `decisions.md`, and `lessons.md`.
 3. Inspect the current source, tests, `git status`, and current diff. Current code and tests outrank memory.
 4. Back up the dirty tree before substantial work, including untracked files that belong to the task.
-5. Identify which product the task touches, read that product's local `AGENTS.md` (`agentops/AGENTS.md` or `universal-game-agent/AGENTS.md`), and use its test command. There is no single repository-wide test command; the two products differ.
+5. Identify which product the task touches, read that product's local `AGENTS.md` (`agentops/AGENTS.md`, `universal-game-agent/AGENTS.md`, or `small-projects/mini-llm/AGENTS.md`), and use its test command. There is no single repository-wide test command; the products differ.
 6. If using Intercom, resolve the exact live session name with `intercom_list` before sending a message. Never assume a remembered display name is still live.
 
 ## 3. Implementation rules

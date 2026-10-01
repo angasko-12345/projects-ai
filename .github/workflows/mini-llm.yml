@@ -1,0 +1,32 @@
+# CI for mini-llm. See ../CI.md for what CI does and does not validate.
+# CPU only. Covers the pipeline and training loop on the tiny shipped sample;
+# real-corpus training is a documented manual procedure, not a CI job.
+name: mini-llm
+
+on:
+  push:
+    paths:
+      - "small-projects/mini-llm/**"
+      - ".github/workflows/mini-llm.yml"
+      - ".github/CI.md"
+  pull_request:
+    paths:
+      - "small-projects/mini-llm/**"
+      - ".github/workflows/mini-llm.yml"
+      - ".github/CI.md"
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: small-projects/mini-llm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install runtime dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Run mini-llm test suite
+        run: python -m unittest discover -s tests

@@ -4,11 +4,10 @@ This is the canonical repository instruction file. The root `AGENTS.md` is only 
 
 ## Project identity and scope
 
-- This repository is a container for two independent Python products plus the process material agents use to work on them. The products do not depend on each other, and a change in one is not a change in the other.
+- This repository is a container for three independent Python products plus the process material agents use to work on them. The products do not depend on each other, and a change in one is not a change in the other.
   - `agentops/` — a local-first orchestrator for installed coding-agent CLIs. It plans, implements, verifies, reviews, persists, and merges work in isolated Git worktrees. See `agentops/AGENTS.md`.
   - `universal-game-agent/` — a reinforcement-learning agent that plays Pong, including a Windows-only path that plays a real external game window through screen capture and real keyboard input. See `universal-game-agent/AGENTS.md`.
-- **Product facts do not belong in this file.** Test commands, runtime targets, dependencies, architecture, and packaging rules live in the two local files above. Do not assume they are the same for both products: they have different dependency sets, different test commands, and only one ships a packaged executable. A single repository-wide test command does not exist.
-- Keep task scope narrow. Do not add unrelated features, migrations, configuration, packaging work, or repository cleanup.
+  - `small-projects/mini-llm/` — a small GPT-style causal language model built from scratch with PyTorch. See `small-projects/mini-llm/AGENTS.md`.
 
 ## Canonical locations
 
@@ -33,7 +32,7 @@ Before substantial work:
 2. Read the relevant files under `.agents/memory/`, especially `project.md`, `architecture.md`, `roadmap.md`, `decisions.md`, and `lessons.md`.
 3. Inspect current source, tests, `git status`, and the current diff. Current source, tests, and explicit user instructions outrank memory.
 4. Back up the dirty tree before substantial work, including relevant untracked files.
-5. Identify which product the task touches, read that product's `AGENTS.md`, and use its test command. There is no single repository-wide test command; the two products differ.
+5. Identify which product the task touches, read that product's `AGENTS.md`, and use its test command. There is no single repository-wide test command; the products differ.
 6. If using Intercom, resolve the exact live session name before messaging. A failed delivery is a disconnect signal.
 
 ## Commands
@@ -48,11 +47,12 @@ current truth.
 |---|---|---|
 | `agentops/` | `cd agentops` then `python -m unittest discover -s tests` | 357 tests total, 4 skipped by environment, so 353 passed |
 | `universal-game-agent/` | `cd universal-game-agent` then `python -m unittest discover -s tests` | 261 tests, no skips |
+| `small-projects/mini-llm/` | `cd small-projects/mini-llm` then `python -m unittest discover -s tests` | no recorded baseline yet; run the suite for current truth |
 
 Treat any new failure or skip as attributable to the current work until proven otherwise,
 and do not rely on remembered counts — run the suite. An empty, interrupted, all-skipped,
 or unknown run is never a pass. Do not invent lint, formatter, type-check, or coverage
-commands; neither product configures one.
+commands; no product configures one.
 
 CLI entry points are also per-product and are documented in the local files.
 

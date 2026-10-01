@@ -272,6 +272,15 @@ class ExternalGameEnv(_Base):
 
     # -- Gymnasium API ----------------------------------------------------
     def reset(self, *, seed=None, options=None):
+        """Start a new episode on the live game session.
+
+        ``seed`` is accepted for Gymnasium API compatibility but does NOT
+        reseed the external game: the game process is seeded once at launch
+        (``launch_game(..., seed, ...)``) and episodes are continuations of
+        that session, not fresh seeded runs. Callers passing per-episode
+        seeds (e.g. evaluation) get reproducibility only from envs that
+        implement seeding (e.g. the toy env), not from this wrapper.
+        """
         attached_now = self._ensure_session()
         if attached_now and not self._started:
             self._sleep_ms(self.startup_delay_ms)

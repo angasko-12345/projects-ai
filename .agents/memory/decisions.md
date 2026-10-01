@@ -304,3 +304,10 @@
 - **Alternatives considered:** Catching and continuing (rejected - publishes a run whose checks were never created). Swallowing the setup error (rejected - hides a load-bearing failure). Letting `_abort_setup` raise a secondary error (rejected - would replace a useful message with a confusing one, so it swallows its own failures only). Fixing recovery inside `StateStore` (rejected - it already scoped correctly; the bug was at the call site, and the engine's `recover_incomplete` already did it right, which is what made the controller copy a divergence).
 - **Deliberate non-change:** the A8 persistence policy was left as-is. `record_failure` already degrades visibly via `DegradationRecorder`; no new error architecture was introduced and no finding was invented to justify one.
 - **Agents involved:** Cline (this session).
+
+## 2026-10-01 - Architecture freeze: A5/A6/A7 deferred until the correctness queue closes
+
+- **Decision:** No WorkflowEngine decomposition (A5), no ReviewRun/MergeRun persistence work (A6), no StateStore decomposition (A7) until the correctness queue is closed. Full rationale and entry criteria: `.agents/plans/architecture-freeze-a5-a6-a7.md`.
+- **Reason:** The active correctness fixes (READY predicate, persistence-boundary redaction, verification finalization, workflow-scoped recovery) all touch the exact engine/store/finalize seams a split would move; refactoring now would make each fix harder to verify. A6 additionally has no agreed row shapes yet (review/merge runs persist as agent/verification runs + `finalize.py`, not first-class rows), so it is a design task first.
+- **Baseline:** agentops suite 407 tests OK (4 environment skips) on 2026-10-01; A5/A6/A7 branches must match it before review.
+- **Agents involved:** omp (this session).

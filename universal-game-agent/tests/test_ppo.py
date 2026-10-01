@@ -122,6 +122,70 @@ class TestPPOTrainer(unittest.TestCase):
             PPOConfig(seed=-1)
         with self.assertRaises(ValueError):
             PPOConfig.from_dict({"seed": -1})
+        for bad in (-1, -100, 0.5, "10", True):
+            with self.assertRaises(ValueError, msg=f"interval={bad!r}"):
+                PPOConfig(checkpoint_every_updates=bad)
+        self.assertEqual(PPOConfig(checkpoint_every_updates=0).checkpoint_every_updates, 0)
+
+    def test_disabled_periodic_checkpoints(self):
+        # interval 0: only the final checkpoint is written, no ZeroDivisionError.
+        with tempfile.TemporaryDirectory() as tmp:
+            env = PreprocessingWrapper(ToyPongEnv(max_steps=64))
+            model = ActorCritic(num_actions=int(env.action_space.n))
+            config = _tiny_config(total_timesteps=64, checkpoint_dir=tmp,
+                                  checkpoint_every_updates=0)
+            PPOTrainer(env, model, config).train()
+            files = sorted(Path(tmp).glob("*.pt"))
+            self.assertEqual([p.name for p in files], ["ppo_final.pt"])
+
+    def test_save_replaces_existing_checkpoint_atomically(self):
+        trainer = _trainer()
+        buf, *_ = trainer.collect_rollout()
+        trainer.update(buf)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = str(Path(tmp) / "ckpt.pt")
+            trainer.save_checkpoint(path)
+            first = Path(path).read_bytes()
+            buf2, *_ = trainer.collect_rollout()
+            trainer.update(buf2)
+            trainer.save_checkpoint(path)  # must replace, not fail or duplicate
+            self.assertTrue(Path(path).exists())
+            self.assertEqual(len(list(Path(tmp).glob("*.pt"))), 1)
+            self.assertNotEqual(Path(path).read_bytes(), first)
+            # No stray temp files left behind on the happy path.
+            self.assertEqual(list(Path(tmp).glob(".tmp-ckpt-*")), [])
+            # Replaced file still loads and resumes.
+            resumed = PPOTrainer.load_checkpoint(
+                path, PreprocessingWrapper(ToyPongEnv(max_steps=64)))
+            self.assertEqual(resumed.num_timesteps, trainer.num_timesteps)
+
+    def test_failed_save_preserves_existing_checkpoint(self):
+        import torch as _torch
+
+        trainer = _trainer()
+        buf, *_ = trainer.collect_rollout()
+        trainer.update(buf)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = str(Path(tmp) / "ckpt.pt")
+            trainer.save_checkpoint(path)
+            good = Path(path).read_bytes()
+            orig_save = _torch.save
+
+            def boom(*args, **kwargs):
+                raise RuntimeError("simulated interrupted write")
+
+            _torch.save = boom
+            try:
+                with self.assertRaises(RuntimeError):
+                    trainer.save_checkpoint(path)
+            finally:
+                _torch.save = orig_save
+            # Old checkpoint intact; no stray temp file.
+            self.assertEqual(Path(path).read_bytes(), good)
+            self.assertEqual(list(Path(tmp).glob(".tmp-ckpt-*")), [])
+            resumed = PPOTrainer.load_checkpoint(
+                path, PreprocessingWrapper(ToyPongEnv(max_steps=64)))
+            self.assertEqual(resumed.num_timesteps, trainer.num_timesteps)
 
 
 if __name__ == "__main__":

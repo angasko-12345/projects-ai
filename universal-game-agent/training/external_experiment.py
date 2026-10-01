@@ -130,22 +130,62 @@ def wait_attach(title: str, timeout_s: float = 20.0) -> None:
 
 
 def stop(proc: subprocess.Popen) -> None:
-    proc.terminate()
+    # Safe to call more than once (failure-path cleanup may race the
+    # session cleanup): terminate/wait on a reaped proc are no-ops and
+    # closing an already-closed log file is harmless.
+    if getattr(proc, "_stopped", False):
+        return
+    proc._stopped = True  # noqa: SLF001 -- flag lives with the handle
+    try:
+        proc.terminate()
+    except Exception:
+        pass  # already exited or unstartable: still reap + release the log
     try:
         proc.wait(timeout=10)
     except subprocess.TimeoutExpired:
-        proc.kill()
+        try:
+            proc.kill()
+        except Exception:
+            pass
         proc.wait(timeout=10)
     finally:
         log_file = getattr(proc, "_log_file", None)
         if log_file is not None:
-            log_file.close()
+            try:
+                log_file.close()
+            except Exception:
+                pass
 
 
 def check_alive(proc: subprocess.Popen, phase: str) -> None:
     if proc.poll() is not None:
         raise RuntimeError(f"game process exited (code {proc.returncode}) during {phase}; "
                            f"see logs/extern_pong_*.log")
+
+
+def launch_phase2_process(title: str, seed: int, game_fps: int) -> subprocess.Popen:
+    """Launch the phase-2 game; ownership transfers to the caller only on success.
+
+    If attach or the startup liveness check fails, the process is stopped
+    here (the caller never receives the handle, so nobody else could).
+    """
+    proc = launch_game(title, seed, game_fps, "phase2")
+    try:
+        wait_attach(title)
+        check_alive(proc, "phase 2 startup")
+    except BaseException:
+        stop(proc)
+        raise
+    return proc
+
+
+def load_eval_model(ckpt, make_env):
+    """Load a trained model on a throwaway env that is always closed."""
+    env = make_env()
+    try:
+        return PPOTrainer.load_checkpoint(ckpt, env).model
+    finally:
+        env.close()
 
 
 def dependency_versions() -> dict:
@@ -265,10 +305,7 @@ def run_external_experiment(config_path) -> dict:
         return PPOTrainer(make_env(), fresh_model(), ppo_config, env_config=env_cfg)
 
     def launch_phase2():
-        proc = launch_game(title, seed, int(game.get("fps", 60)), "phase2")
-        wait_attach(title)
-        check_alive(proc, "phase 2 startup")
-        return proc
+        return launch_phase2_process(title, seed, int(game.get("fps", 60)))
 
     t0 = time.perf_counter()
     launch_state: dict = {}
@@ -288,7 +325,7 @@ def run_external_experiment(config_path) -> dict:
     proc = launch_game(title, seed, int(game.get("fps", 60)), "phase3")
     try:
         wait_attach(title)
-        trained = PPOTrainer.load_checkpoint(ckpt, make_env()).model
+        trained = load_eval_model(ckpt, make_env)
         final = evaluate(trained, make_env, episodes=eval_episodes, seeds=eval_seeds)
         check_alive(proc, "phase 3 final eval")
     finally:

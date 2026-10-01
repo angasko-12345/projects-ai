@@ -49,7 +49,13 @@ class PPOConfig:
         for name in ("rollout_length", "minibatch_size", "update_epochs", "total_timesteps"):
             if not isinstance(getattr(self, name), int) or getattr(self, name) <= 0:
                 raise ValueError(f"{name} must be a positive int, got {getattr(self, name)!r}")
-        if not isinstance(self.seed, int) or self.seed < 0:
+        if (not isinstance(self.checkpoint_every_updates, int)
+                or isinstance(self.checkpoint_every_updates, bool)
+                or self.checkpoint_every_updates < 0):
+            raise ValueError(
+                "checkpoint_every_updates must be a non-negative int "
+                f"(0 disables periodic checkpoints), got {self.checkpoint_every_updates!r}")
+        if not isinstance(self.seed, int) or isinstance(self.seed, bool) or self.seed < 0:
             raise ValueError(f"seed must be a non-negative int, got {self.seed!r}")
         if not 0 <= self.gamma <= 1 or not 0 <= self.gae_lambda <= 1:
             raise ValueError("gamma and gae_lambda must be in [0, 1]")
@@ -288,9 +294,13 @@ class PPOTrainer:
 
     # -- checkpoints -----------------------------------------------------
     def save_checkpoint(self, path) -> str:
+        import os
+        import tempfile
+
         path = str(path)
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
-        torch.save({
+        parent = Path(path).parent
+        parent.mkdir(parents=True, exist_ok=True)
+        payload = {
             "ppo_config": asdict(self.config),
             "model_config": self.model._config,
             "model": self.model.state_dict(),
@@ -299,7 +309,21 @@ class PPOTrainer:
             "num_updates": self.num_updates,
             "curiosity": self.curiosity.state_dict() if self.curiosity is not None else None,
             "env_config": self.env_config,
-        }, path)
+        }
+        # Atomic replace: a kill during the temp write leaves only a stray
+        # tmp file, never a truncated final checkpoint. Same-dir temp file
+        # keeps os.replace atomic on all platforms.
+        fd, tmp_name = tempfile.mkstemp(dir=str(parent), prefix=".tmp-ckpt-", suffix=".pt")
+        try:
+            os.close(fd)
+            torch.save(payload, tmp_name)
+            os.replace(tmp_name, path)
+        except BaseException:
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
+            raise
         return path
 
     @classmethod
@@ -373,7 +397,7 @@ class PPOTrainer:
                 f"pg={stats['policy_loss']:.4f} vf={stats['value_loss']:.4f} "
                 f"ent={stats['entropy']:.4f} pred={stats.get('predictor_loss', 0.0):.4f} fps={fps:.0f}"
             )
-            if self.num_updates % cfg.checkpoint_every_updates == 0:
+            if cfg.checkpoint_every_updates and self.num_updates % cfg.checkpoint_every_updates == 0:
                 self.save_checkpoint(ckpt_dir / f"ppo_{self.num_timesteps}.pt")
         final = self.save_checkpoint(ckpt_dir / "ppo_final.pt")
         print(f"training done: {self.num_timesteps} steps, checkpoint {final}")

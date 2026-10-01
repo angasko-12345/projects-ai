@@ -10,12 +10,12 @@ correct.
 - A reinforcement-learning agent that plays Pong. The standard path is a Gymnasium toy
   environment; the experimental path plays a real external Pong window on Windows through
   screen capture and real keyboard input.
-- The repository root is a container. This package is one of two products here; see
-  `agentops/AGENTS.md` for the other. Neither is a subproject of the other, and a change in
-  one is not a change in the other.
+- The repository root is a container. This package is one of three products here; see
+  `agentops/AGENTS.md` and `small-projects/mini-llm/AGENTS.md` for the others. No product
+  is a subproject of another, and a change in one is not a change in another.
 - Runtime dependencies are not standard-library only: `requirements.txt` lists `torch`,
   `gymnasium`, `numpy`, `pyyaml`, and `mss`, all unpinned. This differs from the other
-  product in this repository.
+  two products in this repository.
 - The external game path is **Windows-only by construction**: it depends on `ctypes`
   window management, `SendInput` keyboard injection, and MSS screen capture. MSS is not the
   only backend, though: `environment/external_game.py:363` also accepts `synthetic`, which

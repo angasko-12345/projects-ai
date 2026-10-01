@@ -6,6 +6,7 @@ import numpy as np
 from environment.external_game import (
     ExternalGameEnv,
     GameLifecycle,
+    NeverTerminateProvider,
     NullReward,
     RewardProvider,
     StepLimitTermination,
@@ -695,6 +696,17 @@ class TestResetSettle(unittest.TestCase):
                         reset_settle_timeout_s=10.0)
         env.reset(seed=0)  # step limits have no per-frame signal: single capture
         self.assertEqual(env.interface.captures, 1)
+
+    def test_reset_seed_does_not_reseed_session(self):
+        # Contract: per-episode seeds are accepted but ignored -- the game
+        # is seeded once at process launch. Same frames + different seeds
+        # must yield identical observations (no hidden reseeding).
+
+        env_a = self._env([_frame(7)], NeverTerminateProvider())
+        env_b = self._env([_frame(7)], NeverTerminateProvider())
+        obs_a, _ = env_a.reset(seed=0)
+        obs_b, _ = env_b.reset(seed=999)
+        self.assertTrue(np.array_equal(obs_a, obs_b))
 
     def test_negative_settle_timeout_rejected(self):
         from environment.external_game import ExternalGameEnv
