@@ -176,3 +176,10 @@ the other subfolders, the universal files here remain authoritative.
 - `PPOConfig.checkpoint_every_updates`: non-negative int, 0 disables periodic checkpoints; `train()` always writes `ppo_final.pt`. `save_checkpoint` is atomic (same-dir temp + `os.replace`).
 - `external_experiment.launch_phase2_process` transfers proc ownership to the caller only on success (stops it on attach/liveness failure); `load_eval_model` closes the throwaway load env; `stop()` is idempotent. `evaluate()` closes each per-episode env even on exception.
 - Measurement law (documented, not enforced): external `reset(seed=)` ignores the seed (game seeded once at launch); `hits`/`misses` count reward sign and are only paddle-hits/misses for sign-based providers.
+
+## mini-llm checkpoint config is path-blind 2026-10-01
+
+- `Config.tokenizer_path` has no CLI flag and `prepare_data.py` does not record it in `meta.json`, so every checkpoint stores the default `data/tokenizer.json` regardless of which tokenizer was used. Only `src/generate.py --tokenizer` can override it at generation time.
+- `Config.train_bin` / `val_bin` / `checkpoint_dir` *are* settable via `src.train` flags, but a resumed run takes its config from the checkpoint, so those stored strings are authoritative unless re-passed. A checkpoint trained against non-default paths therefore resumes against the default paths.
+- That combination is load-bearing for validation: `Config.validate_against_data()` reads `meta.json` next to `train_bin` and raises when `vocab_size` disagrees, so a resume against a differently-prepped default path fails before any training happens. Reproduced on the TinyStories artifact (vocab 8192 vs the vocab-308 `data/processed/` prep).
+- Resolved in `docs/EXPERIMENT-tinystories.md`; the CLI gap itself is a known source-level wart, not fixed.

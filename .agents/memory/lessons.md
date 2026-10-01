@@ -438,3 +438,10 @@
 - **Root cause:** The file deletion predated the session (visible in the very first `git status`). Nothing in the change set touched it.
 - **Solution:** Left the deletion alone; verified the generation path another way (explicit `--tokenizer` against `data/tinystories/tokenizer.json` + a `$TEMP/mlsmoke` end-to-end loop). Reported as pre-existing, not fixed.
 - **Remember:** Run `git status` before starting and attribute ruthlessly — a red suite is not automatically your regression. Never "fix" a user deletion by restoring the file.
+
+### 2026-10-01 - A config default is not a CLI flag, and a documented command may never have run
+
+- **Symptom:** `docs/EXPERIMENT-tinystories.md` stated that both generation and `--resume` must pass `--tokenizer`. Only `src/generate.py` has that flag; `src/train.py` never loads a tokenizer at all. The claim read as verified because it followed from a real observation (the checkpoint does store the default `tokenizer_path`).
+- **Root cause:** A `Config` field default was read as if it were an exposed CLI option. The two CLIs that read `tokenizer_path` and the one that does not were never separated. Meanwhile the doc's own `--resume` command could not have run: the checkpoint stores default `train_bin`/`val_bin` paths, so validation rejected it against the vocab-308 `data/processed/` prep. Nobody executed the command because the section was labelled "not executed on this artifact".
+- **Solution:** Grepped the `argparse` parsers instead of the dataclass, then read the artifact's stored `config` dict and replayed `main()`'s validation with `train()` stubbed out. Rewrote the section around what each entry point actually does.
+- **Remember:** A default in a dataclass tells you what happens when nobody passes a flag, not that a flag exists. When a doc claims a command "was verified", check whether it was verified by running it or by reasoning about it, and check the recorded artifact's own config against the documented flags. Replay config construction with side effects stubbed rather than invoking a real training run to test a resume command.
