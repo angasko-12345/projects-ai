@@ -7,6 +7,86 @@
 
 ---
 
+## 0. Current Status
+
+**Verified 2026-10-02 against current `main` (`849e015`).**
+
+This section is the **live bug ledger**. Everything from §1 onward is the historical
+2026-09-29 audit and stays as evidence, not as instructions. §9 in particular is
+superseded and must not be used as the work queue — the live queue is
+`.agents/pending_tasks.md`.
+
+**Test baselines re-run 2026-10-02 (each product's own command, from its own directory):**
+
+| Product | Command | Result 2026-10-02 |
+|---|---|---|
+| `agentops/` | `python -m unittest discover -s tests` | 425 tests, 4 environment skips, OK |
+| `universal-game-agent/` | `python -m unittest discover -s tests` | 295 tests, 1 skip, OK |
+| `small-projects/mini-llm/` | `python -m unittest discover -s tests` | 96 run, 1 skip, 3 pre-existing `TestGenerationSeed` errors |
+
+The 3 mini-llm errors come from the working-tree deletion of
+`small-projects/mini-llm/data/tokenizer.json` (a pre-existing user change, not
+committed). They are not a code defect.
+
+### 0.1 Status of all 36 canonical roots
+
+| ROOT | Title | Product | Status | Current source evidence (2026-10-02) |
+|---|---|---|---|---|
+| ROOT-001 | Unredacted `task.result` persistence | AgentOps | **FIXED** | `workflow.py` redacts stdout/stderr, legacy verification output, and the task-execution error string at every durable assignment; reuses `logging.redact_text` |
+| ROOT-002 | Review gate bypass via CLI | AgentOps | **FIXED** | One predicate owns readiness — `assess_workflow_readiness`; used by CLI, GUI, and both `run_high_level` READY returns (849e015) |
+| ROOT-003 | Self-deadlock via `.agentops/` in target repo | AgentOps | **FIXED** | `.git/info/exclude` keeps AgentOps state out of the target repo status; exclusion failure now raises an actionable `GitError` instead of deadlocking the merge (849e015) |
+| ROOT-004 | Git failure misclassification | AgentOps | **ACTIVE** | `finalize.py` still resolves merge outcomes without `failure.FailureClassifier.classify`; dirty base worktree, changed base commit, and merge conflict stay conflated |
+| ROOT-005 | Silent exception swallowing in failure path | AgentOps | **ACTIVE** | `workflow.py` still has ~15 bare `except Exception:` arms without `logger.exception` |
+| ROOT-006 | GUI mutual-exclusion bypass | AgentOps | **ACTIVE** | `gui_controller.py:226` `_operation_lock` does not guard the per-operation active-state transition |
+| ROOT-007 | GUI recovery scope mismatch | AgentOps | **FIXED** | `recover_interrupted` forwards `workflow_id` to `recover_agent_runs`, `recover_verification_runs`, and `recover_tasks`; a scoped pass no longer touches another workflow's rows |
+| ROOT-008 | Unvalidated checkpoint interval | UGA | **FIXED** | `PPOConfig.__post_init__` validates `checkpoint_every_updates` as a non-negative int (`bool` rejected); 0 disables periodic writes, `ppo_final.pt` always written |
+| ROOT-009 | Orphaned game process on attach failure | UGA | **FIXED** | `external_experiment.launch_phase2_process` (`external_experiment.py:182`) transfers proc ownership to the caller only on success and stops it locally on attach/liveness failure |
+| ROOT-010 | Checkpoint-load env not closed | UGA | **FIXED** | `load_eval_model` closes the throwaway checkpoint-load env in `finally`; `evaluate()` closes each per-episode env on exception. The audit's FIXED enumeration omitted ROOT-010; it is listed here on source evidence (2cb2413, P6) |
+| ROOT-011 | Capture-size contract undefined | UGA | **CONTRACT GAP / ACCEPTED DEBT** | `environment/external_game.py:389` reads `out_width`/`out_height` with `64` defaults; no documented per-mode contract. Recorded debt, not queued for a fix |
+| ROOT-012 | Verification run stranded | AgentOps | **FIXED** | `_abort_setup(run_id, checks, error)` finishes every created check and the run as terminal FAILED, then re-raises the original error |
+| ROOT-013 | Non-atomic checkpoint save | UGA | **FIXED** | `save_checkpoint` writes a same-dir temp file and `os.replace`s it; temp is cleaned on failure |
+| ROOT-014 | Resume crash on finished checkpoint | UGA | **ACTIVE** | `training/experiment.py:111-119` still indexes `history[...]` unguarded; resume against a finished/empty history has no guard |
+| ROOT-015 | Entropy loss sign reversal | UGA | **DISPROVEN** | Does not hold against current `training/ppo.py`; the sign is correct. Do not revive |
+| ROOT-016 | Truncation treated as terminal | UGA | **DISPROVEN** | GAE already separates truncation from termination in current source |
+| ROOT-017 | GRU hidden state leak across trajectories | UGA | **DISPROVEN** | Current PPO already resets hidden state at episode boundaries via segmented replay |
+| ROOT-018 | ICM gradient bleed into shared backbone | UGA | **DISPROVEN** | Curiosity features are already detached before the heads |
+| ROOT-019 | Git clean on root repo | AgentOps | **DISPROVEN** | `abort_merge`/worktree cleanup no longer default to the root workspace; the dirty-tree guard is unchanged and correct |
+| ROOT-020 | Subprocess buffer deadlock | AgentOps | **DISPROVEN** | Runner already drains output before waiting; no synchronous wait-then-read deadlock exists |
+| ROOT-021 | Process group leak on cancel/timeout | AgentOps | **DISPROVEN** | Cancellation already tears down the child tree through the shared `runtime.py` spawn policy |
+| ROOT-022 | StateStore transaction error swallowing | AgentOps | **DISPROVEN** | Persistence failures are classified by `persistence.PERSISTENCE_POLICIES`; unknown writes default to `MUST_FAIL_CLOSED` |
+| ROOT-023 | Deterministic selector bypasses user preference | AgentOps | **DISPROVEN** | Routing scores honour configured preference; tie-breaks no longer silently drop it |
+| ROOT-024 | Frame normalization truncates to zero | UGA | **DISPROVEN** | `preprocessing.py` already casts to float before dividing; frame range is `[0,1]` |
+| ROOT-025 | Win32 GDI handle leak | UGA | **DISPROVEN** | `interface/win32_capture.py` already releases HBITMAP/HDC on all paths |
+| ROOT-026 | Missing `games/__init__.py` | UGA | **CONTRACT GAP / ACCEPTED DEBT** | `universal-game-agent/games/` has no `__init__.py` and still works as an implicit namespace package; `games/extern_pong.py` additionally mutates `sys.path`. Recorded debt, not queued |
+| ROOT-027 | External attach failure leaks process+log+results | UGA | **PARTIALLY FIXED** | Process leak closed by the ROOT-009 fix in `launch_phase2_process`. The log handle and the `<stem>_results.json` failure write on attach failure are still not released/recorded |
+| ROOT-028 | GAE mid-rollout truncation bleed | UGA | **DISPROVEN** | The timeout-aware GAE already carries the dones buffer; the claimed bleed does not reproduce |
+| ROOT-029 | Producer/validator divergence | AgentOps | **ACTIVE** | `execution_model.py:146-152` validator and `workflow.py:569-573` producer still disagree: FAIL_FAST with an optional check failing first still yields `StateTransitionError` |
+| ROOT-030 | Unclassified evidence write | AgentOps | **ACTIVE** | `verification_kernel.py` artifact write is still swallowed with no `PERSISTENCE_POLICIES` row and no `Degradation` record, contradicting the declared A8 policy |
+| ROOT-031 | Provenance-write bypass | AgentOps | **FIXED** | Provenance writes are centralized: `gui_controller.py:20` imports `record_worktree_provenance` with a single call site at `:396`; no second unguarded write remains |
+| ROOT-032 | UnicodeDecodeError on non-ASCII | AgentOps | **ACTIVE** | `git.py:77` still calls `subprocess.run(..., text=True, capture_output=True)` with no explicit UTF-8 `encoding`/`errors`; only `git.py:168` (`read_text`) uses `errors="replace"` |
+| ROOT-033 | Windows termination classification | AgentOps | **HELD** | Deliberately held. No Windows termination contract is defined; do not implement the high-bit heuristic |
+| ROOT-034 | Test-quality defects (cluster) | Both | **PARTIALLY FIXED** | Several gaps closed by later regression work; the remaining DBG-06..15 items still stand |
+| ROOT-035 | GUI `_root_cache` shared mutable state | AgentOps | **ACTIVE** | `gui_controller.py:228` `_root_cache` dict is still read at `:238` and written at `:245` without a lock |
+| ROOT-036 | Eval metric bugs | UGA | **ACTIVE** | `training/evaluate.py:42-45` and `environment/external_game.py:274` still miscount composite-reward episodes; no seed preservation |
+
+### 0.2 Counts
+
+| Classification | Count | Roots |
+|---|---|---|
+| FIXED | 10 | ROOT-001, 002, 003, 007, 008, 009, 010, 012, 013, 031 |
+| ACTIVE | 9 | ROOT-004, 005, 006, 014, 029, 030, 032, 035, 036 |
+| PARTIALLY FIXED | 2 | ROOT-027, ROOT-034 |
+| CONTRACT GAP / ACCEPTED DEBT | 2 | ROOT-011, ROOT-026 |
+| HELD | 1 | ROOT-033 |
+| DISPROVEN | 12 | ROOT-015..025, ROOT-028 |
+| **Total** | **36** | ROOT-001..ROOT-036 |
+
+**Do not revive DISPROVEN findings.** They were re-checked against current source on
+2026-10-02 and do not reproduce. The historical reasoning is preserved in §3 and §7 as
+evidence, not as instructions.
+
+---
+
 ## 1. Executive Summary
 
 - Six independent audit reports plus a prior triage produce ~450 raw findings. After reconciliation, deduplication, and evidence grading, they resolve to **36 canonical root causes** (ROOT-001..ROOT-036), of which:
@@ -163,7 +243,7 @@ Every identifiable finding from every source report, with exactly one dispositio
 | bug-handoff | AOP-01 — .agentops/ dirty tree | CANONICAL ROOT | ROOT-003 | P0; matches deep audit BUG-AOP-01 |
 | bug-handoff | AOP-02 — review gate bypass | CANONICAL ROOT | ROOT-002 | P0; matches deep audit BUG-AOP-02 |
 | bug-handoff | AOP-03 — unredacted stdout/stderr | CANONICAL ROOT | ROOT-001 | P1; matches deep audit BUG-AOP-03 |
-| bug-handoff | AOP-04 — No GitHub Actions CI | NON-BUG / ARCHITECTURE DEBT | — | P1; infrastructure gap, not a code defect |
+| bug-handoff | AOP-04 — No GitHub Actions CI | NON-BUG / ARCHITECTURE DEBT — SUPERSEDED 2026-10-02 | — | P1; infrastructure gap, not a code defect. **SUPERSEDED: CI delivered at 2cb2413** (`.github/workflows/{agentops,universal-game-agent,mini-llm}.yml`, scope in `.github/CI.md`) |
 | bug-handoff | AOP-05 — A8 verification persistence false-success | ALREADY FIXED | — | RESOLVED; A8 added fail-closed behavior |
 | bug-handoff | AOP-06 — Worktree provenance duplication | ALREADY FIXED | — | RESOLVED; finalize.record_worktree_provenance() centralizes |
 | bug-handoff | AOP-07 — Persistence-failure policy enforcement | CANONICAL ROOT | ROOT-005 | P1; matches deep audit BUG-AOP-07 |
@@ -178,7 +258,7 @@ Every identifiable finding from every source report, with exactly one dispositio
 | review-handoff | #2 — GUI mutual-exclusion bypass | CANONICAL ROOT | ROOT-006 | CRITICAL; _cancel_event tautology |
 | review-handoff | #3 — Git failure misclassification | CANONICAL ROOT | ROOT-004 | HIGH; FailureClassifier exists but never called |
 | review-handoff | #4 — unredacted task.result | CANONICAL ROOT | ROOT-001 | HIGH; matches deep audit BUG-AOP-03 |
-| review-handoff | #5 — No CI | NON-BUG / ARCHITECTURE DEBT | — | MEDIUM; infrastructure gap |
+| review-handoff | #5 — No CI | NON-BUG / ARCHITECTURE DEBT — SUPERSEDED 2026-10-02 | — | MEDIUM; infrastructure gap. **SUPERSEDED: CI delivered at 2cb2413** |
 | review-handoff | #6 — silent exception swallowing | CANONICAL ROOT | ROOT-005 | MEDIUM; matches deep audit BUG-AOP-07 |
 | review-handoff | #7 — GUI operation lock tautology | CANONICAL ROOT | ROOT-006 | CRITICAL; same finding as #2, different phrasing |
 | review-handoff | #8 — root_cache shared mutable state | CANONICAL ROOT | ROOT-035 | LOW; no lock on _root_cache (new ROOT) |
@@ -198,7 +278,7 @@ Every identifiable finding from every source report, with exactly one dispositio
 | repo-review | #3 — agentops task fails on fresh repo | CANONICAL ROOT | ROOT-003 | Matches deep audit BUG-AOP-01 |
 | repo-review | #4 — custom-workflow bypasses review gate | CANONICAL ROOT | ROOT-002 | Matches deep audit BUG-AOP-02 |
 | repo-review | #5 — raw stdout/stderr reach SQLite | CANONICAL ROOT | ROOT-001 | Matches deep audit BUG-AOP-03 |
-| repo-review | #6 — No CI | NON-BUG / ARCHITECTURE DEBT | — | Matches AOP-04 |
+| repo-review | #6 — No CI | NON-BUG / ARCHITECTURE DEBT — SUPERSEDED 2026-10-02 | — | Matches AOP-04. **SUPERSEDED: CI delivered at 2cb2413** |
 | repo-review | #7 — every ignore rule in uncommitted file | GOVERNANCE | — | Machine-local .git/info/exclude; fresh clones lose rules |
 | repo-review | #8 — after-task.md stale | DOC DRIFT | — | Agentops-only; UGA tasks run wrong suite |
 | repo-review | #9 — UGA checkpoint non-atomic | CANONICAL ROOT | ROOT-013 | Matches deep audit BUG-UGA-15 |
@@ -897,6 +977,10 @@ Per the deep audit's re-validation of 26 historical bugs:
 
 ## 7. Needs Investigation
 
+> **Status as of 2026-10-02:** the ROOT-015..ROOT-025 and ROOT-028 rows below are
+> **DISPROVEN 2026-10-02 — see §0.** They were re-checked against current source and do
+> not reproduce. Do not act on them. This table is retained as historical evidence.
+
 | Item | Why uncertain | What would resolve it |
 |---|---|---|
 | ROOT-015 (entropy sign) | geminihandoff only; deep audit didn't list | Read current ppo.py:compute_loss; verify sign against PPO objective |
@@ -938,7 +1022,14 @@ Per the deep audit's re-validation of 26 historical bugs:
 
 ---
 
-## 9. Authoritative Fix Queue
+## 9. Authoritative Fix Queue — SUPERSEDED 2026-10-02
+
+> **SUPERSEDED 2026-10-02. HISTORICAL — MUST NOT be used as the live work queue.**
+> This table is the 2026-09-29 snapshot. Its `READY TO FIX` / `BLOCKED` statuses predate
+> the fixes landed since, and they list roots that the 2026-10-02 verification marked
+> FIXED or DISPROVEN. The authoritative current ledger is **§0**; the authoritative task
+> queue is **`.agents/pending_tasks.md`**. Contents are preserved unchanged below as audit
+> evidence.
 
 | ROOT | Severity | Confidence | Source findings | Affected files | Minimal fix | Tests required | Dependencies | Risk | Status |
 |---|---|---|---|---|---|---|---|---|---|
@@ -982,7 +1073,7 @@ Per the deep audit's re-validation of 26 historical bugs:
 
 | Finding | Disposition | Reason |
 |---|---|---|
-| AOP-04 / #5 / #6 (No CI) | NON-BUG / ARCHITECTURE DEBT | Infrastructure gap; tracked on roadmap; blocked on D5 decision |
+| AOP-04 / #5 / #6 (No CI) | NON-BUG / ARCHITECTURE DEBT — SUPERSEDED 2026-10-02 | Infrastructure gap; tracked on roadmap; was blocked on the D5 decision. **CI delivered at 2cb2413** — per-product path-filtered workflows, scope documented in `.github/CI.md` |
 | #7 (ignore rules in .git/info/exclude) | GOVERNANCE | Machine-local paths; fresh clones lose rules; policy call needed |
 | #8 (after-task.md stale) | DOC DRIFT | Agentops-only; UGA tasks run wrong suite |
 | #9 (dead code verification_kernel.py:182) | NON-BUG / DEAD CODE | Leftover cruft; no functional impact |

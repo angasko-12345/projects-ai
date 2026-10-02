@@ -67,9 +67,22 @@
   then re-run exp02. Uncommitted: memory files only.
 - `checkpoints/extern_pong_01/ppo_final.pt` (12 MB) deliberately uncommitted; nested path dodges `checkpoints/*.pt` ignore.
 
-## Current state (2026-10-01, commit 2cb2413, omp session P5–P10)
+## Current state (2026-10-02, superseding the 2026-10-01 entry)
 
-- Full suite: **288/288 passing** (`cd universal-game-agent`, `python -m unittest
+- Full suite: **295 tests, 1 skip, OK** (`cd universal-game-agent`, `python -m unittest
+  discover -s tests`). The 261 → 288 → 295 progression is history; 288 was the 2cb2413
+  count. No PPO-math changes; the old entropy/GAE/GRU/curiosity audit claims were
+  re-verified 2026-10-02 and are **DISPROVEN** — do not revive them
+  (`master-bug-synthesis.md` §0).
+- **Open UGA bugs (2026-10-02):** ROOT-014 (resume against a finished/empty history),
+  ROOT-027 (attach-failure log handle + results write; process leak already fixed),
+  ROOT-036 (eval metric counting / seed preservation), plus the UGA share of ROOT-034.
+  ROOT-011 and ROOT-026 are CONTRACT GAP / ACCEPTED DEBT.
+- The rest of the 2026-10-01 P5/P6/P7 record below remains accurate and stays as history.
+
+### Historical entry: state as of 2026-10-01, commit 2cb2413, omp session P5–P10
+
+- Full suite: **288/288 passing** (at that time; `cd universal-game-agent`, `python -m unittest
   discover -s tests`, ~15 s). Baseline moved 261 → 288 via this session's
   11 regression tests (4 PPO checkpoint, 6 launch/lifecycle, 1 external
   seed-no-op) plus parallel-session additions. No PPO-math changes; old

@@ -1,5 +1,10 @@
 # universal-game-agent — Roadmap
 
+> Superseded for status purposes 2026-10-02. This is a UGA-specific historical roadmap.
+> The live task queue is `.agents/pending_tasks.md`; the live bug ledger is
+> `.agents/memory/opencode/bugfinding/master-bug-synthesis.md` §0. Suite counts below are
+> dated observations; the current baseline (2026-10-02) is 295 tests, 1 skip, OK.
+
 ## Done (all verified green at commit time)
 - [x] Scaffold, config system, logging, README baseline
 - [x] Pixel-only Toy Pong + preprocessing (gray/84/stacked/skip)
@@ -39,7 +44,7 @@
 - Live SendInput end-to-end tests (side effects); multi-seed statistics (cost).
 - Client-area-only capture (full-frame documented as intended).
 
-## Done 2026-10-01 (commit 2cb2413, suite 288/288)
+## Done 2026-10-01 (commit 2cb2413, suite 288/288 — superseded, current is 295/1)
 
 - [x] P5 checkpoint safety: interval validation (0 = disabled), atomic
   temp-file replace, 4 regression tests.

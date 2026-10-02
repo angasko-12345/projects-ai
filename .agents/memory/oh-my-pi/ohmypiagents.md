@@ -6,8 +6,8 @@ Root `AGENTS.md` and `pi_AGENTS.md` are compatibility entrypoints only; do not m
 
 ## 1. Project identity and scope
 
-- The repository root, `D:\admin\code\projects`, is a container folder for two independent products and the process material agents use to work on them. Read the local `AGENTS.md` for whichever product the task touches: `agentops/AGENTS.md` (local-first orchestrator for coding-agent CLIs) or `universal-game-agent/AGENTS.md` (a reinforcement-learning agent that plays Pong). The products do not depend on each other.
-- The two products differ in ways that matter: `agentops` targets Python 3.11+ with standard-library-only runtime dependencies and ships a packaged executable, while `universal-game-agent` requires `torch`, `gymnasium`, `numpy`, `pyyaml`, and `mss`, ships no executable, and has a Windows-only external-game path. There is no single repository-wide test command.
+- The repository root, `D:\admin\code\projects`, is a container folder for three independent products and the process material agents use to work on them. Read the local `AGENTS.md` for whichever product the task touches: `agentops/AGENTS.md` (local-first orchestrator for coding-agent CLIs), `universal-game-agent/AGENTS.md` (a reinforcement-learning agent that plays Pong), or `small-projects/mini-llm/AGENTS.md` (a small GPT-style causal LM). The products do not depend on each other.
+- The three products differ in ways that matter: `agentops` targets Python 3.11+ with standard-library-only runtime dependencies and ships a packaged executable, while `universal-game-agent` requires `torch`, `gymnasium`, `numpy`, `pyyaml`, and `mss`, ships no executable, and has a Windows-only external-game path; `small-projects/mini-llm` requires `torch`, `tokenizers`, and `numpy` and ships no executable. There is no single repository-wide test command.
 - Runtime state and logs belong under the target repository's `.agentops/` directory. Generated state and packaged executables are not repository deliverables.
 - Treat the task description as the scope. Do not add features, migrations, configuration, packaging work, or unrelated cleanup that the request does not require.
 - Work only in the workspace or the AgentOps worktree assigned to the task. Do not alter externally managed task files or files owned by another session.
@@ -20,7 +20,7 @@ Before substantial work:
 2. Read `tasks/task.md` and `tasks/after-task.md` when those files are present.
 3. Inspect the current source, tests, and working tree. Current code and tests outrank memory.
 4. Back up the dirty tree before substantial work, including untracked files that belong to the task.
-5. Identify which product the task touches, read that product's local `AGENTS.md`, and use its test command. There is no single repository-wide test command; the two products differ.
+5. Identify which product the task touches, read that product's local `AGENTS.md`, and use its test command. There is no single repository-wide test command; the three products differ. Current baselines (re-run 2026-10-02, commit `849e015`): `agentops/` 425 tests with 4 environment skips; `universal-game-agent/` 295 tests with 1 skip; `small-projects/mini-llm/` 96 run with 1 skip and 3 pre-existing `TestGenerationSeed` errors from a working-tree tokenizer deletion.
 6. If using Agent Intercom, resolve the exact live session name with `intercom_list` before sending a message. Never assume a remembered display name is still live.
 
 ## 3. Architecture map

@@ -79,7 +79,7 @@
 
 ## Important technical implementation details
 
-- Constructor injection across engine/registry/runner/verifier/state — fully fakeable; latest recorded suite baseline is 357 passing with 4 environment skips, mocked subprocesses except one real-git lifecycle test plus real-process runtime smoke coverage; headless GUI tests.
+- Constructor injection across engine/registry/runner/verifier/state — fully fakeable; current suite baseline (re-run 2026-10-02) is 425 tests with 4 environment skips, mocked subprocesses except one real-git lifecycle test plus real-process runtime smoke coverage; headless GUI tests via the test-only `@requires_display` policy.
 - SQLite `claim_task` conditional UPDATE is the cross-process atomicity guarantee.
 - Worktree base branch/commit metadata was memory-only (resolved by roadmap Phase 3: persisted worktree refs).
 - Polling is the event bus (roadmap Phase 2: subscriptions); single in-flight op per controller (roadmap Phase 4: queue).
@@ -96,19 +96,29 @@ the product they describe. A change in one product is not a change in the other.
 
 | Layer | File | Scope |
 |---|---|---|
-| Universal contract | `.agents/AGENTS.md` | Two-product identity, canonical locations, startup checklist, per-product command table, sole-writer rule, review-collaborator policy, secret-handling rule, leaf-module rule |
+| Universal contract | `.agents/AGENTS.md` | Three-product identity, canonical locations, startup checklist, per-product command table, memory-hierarchy rule, sole-writer rule, review-collaborator policy, secret-handling rule, leaf-module rule |
 | Product-local | `agentops/AGENTS.md` | Entry points, architecture map, data flow, packaging + archive inspection, SQLite migration discipline, GUI/Tk threading, leaf-module rule, verification |
 | Product-local | `universal-game-agent/AGENTS.md` | Layer dependency direction, toy vs external path, config/checkpoint handling, CLI entry points, known defects |
+| Product-local | `small-projects/mini-llm/AGENTS.md` | Model identity, tests, conventions, checkpoint/tokenizer path contract |
 | Tool deltas | `.agents/pi_AGENTS.md`, `.agents/ohmypiagents.md` | What is different when driving this repo with Pi or Oh-My-Pi |
 | Compatibility shims | root `AGENTS.md`, root `pi_AGENTS.md` | Pointers only; never an independent source of truth |
 | Adjacent | `.github/copilot-instructions.md` | Kept as a real file, not reduced to a pointer; product-focus corrected |
 
 Two structural rules the hierarchy depends on:
 
-1. **Product facts must not live in the universal file.** Test commands, dependency sets, entry points, and packaging differ per product. AgentOps is stdlib-only at runtime (PyYAML optional, imported lazily) and ships a packaged exe; universal-game-agent requires `torch`, `gymnasium`, `numpy`, `pyyaml`, and `mss` and ships none.
+1. **Product facts must not live in the universal file.** Test commands, dependency sets, entry points, and packaging differ per product. AgentOps is stdlib-only at runtime (PyYAML optional, imported lazily) and ships a packaged exe; universal-game-agent requires `torch`, `gymnasium`, `numpy`, `pyyaml`, and `mss` and ships none; mini-llm requires `torch`, `tokenizers`, and `numpy` and ships none.
 2. **Rules that only one product has must be scoped to it.** Three conventions were originally filed as repo-wide but exist nowhere in universal-game-agent: Tk `root.after` threading, the Windows no-console spawn helpers, and `as_posix()` path normalization. They are now tagged `(agentops)`.
 
 The Windows no-console spawn policy has a single owner: `agentops/runtime.py` (`spawn_options()`, `CREATE_NO_WINDOW`), consumed by `runner.py` and `verification_kernel.py`. `runner.py` contains no such helper of its own; it delegates to `ProcessRuntime`. `agent_run.py` and `registry.py` also carry spawn policy.
+
+## Memory hierarchy rule (2026-10-02)
+
+- The **live bug ledger** is `.agents/memory/opencode/bugfinding/master-bug-synthesis.md`
+  §0. The **live task queue** is `.agents/pending_tasks.md`.
+- Historical audit reports are evidence, not current instructions, and are never revised
+  in place. master-bug-synthesis.md §9 is explicitly SUPERSEDED.
+- Agent-scoped memory (`cline/`, `oh-my-pi/`, `opencode/`) never overrides canonical
+  memory in `.agents/memory/*.md`.
 
 ## Memory folder layout (split planned, not implemented)
 

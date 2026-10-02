@@ -1,95 +1,87 @@
 # Pending Tasks
 
-> Created 2026-09-14. Track work items that need validation, implementation, or follow-up.
+> Rewritten 2026-10-02 to be the **live task queue**. It contains ONLY unfinished work.
+> The live bug ledger is `.agents/memory/opencode/bugfinding/master-bug-synthesis.md` section 0;
+> verify a status there before starting anything on this page.
+>
+> Completed history stays in `.agents/memory/project.md`. The 2026-09-29 audit fix queue
+> (master-bug-synthesis.md section 9) is superseded and must not be used as a queue.
 
-## Agent Intercom Windows EPERM fsync Fix — Validation ✅ COMPLETE
+## AgentOps -- open
 
-**Status:** Validated and reproducible
+| ID | Item | Evidence |
+|---|---|---|
+| ROOT-004 | Wire `FailureClassifier` into merge/finalize outcome resolution | `finalize.py` still conflates dirty base worktree, changed base commit, and merge conflict |
+| ROOT-005 | Log swallowed exceptions in the failure path | `workflow.py` has ~15 bare `except Exception:` arms without `logger.exception` |
+| ROOT-006 | Close the GUI mutual-exclusion bypass | `gui_controller.py:226` `_operation_lock` does not guard the active-state transition |
+| ROOT-029 | Align verification producer and validator | `execution_model.py:146-152` vs `workflow.py:569-573`; FAIL_FAST + failing optional check still raises `StateTransitionError` |
+| ROOT-030 | Classify the verification artifact write | `verification_kernel.py` artifact write has no `PERSISTENCE_POLICIES` row and no `Degradation` record, contradicting the A8 policy |
+| ROOT-032 | Make git subprocess decoding explicit | `git.py:77` uses `text=True` with no `encoding`/`errors`; non-ASCII output can mis-decode |
+| ROOT-035 | Lock `_root_cache` access | `gui_controller.py:228` dict read at `:238`, written at `:245`, unguarded |
+| ROOT-034 (AgentOps share) | Remaining test-quality gaps in the DBG-06..15 cluster | PARTIALLY FIXED -- see master-bug-synthesis section 0 |
+| -- | `SpawnFactory` Protocol typing (deferred from the A3 review) | still deferred |
+| -- | Repository characteristics for routing are inert | `workflow.py` still passes `{}` as repository characteristics, so router repository-derived signals do nothing |
+| -- | A8 reviewer pass | A8 implementation is DONE; the read-only opencode/copilot review pass was never run |
 
-**Context:** The `writeDurableJson()` function in `@ctliz/agent-intercom-pi` and `@ctliz/agent-intercom-opencode` throws `EPERM` on Windows because `openSync(temporaryPath, "r")` creates a read-only handle, and Windows `FlushFileBuffers` requires `GENERIC_WRITE`. Fix: change to `"r+"`.
+## AgentOps -- held / requires decision
 
-**Artifacts created:**
-- `agent-intercom-fix/durable-json.windows-eperm.pi.patch` — 1-line patch for agent-intercom-pi
-- `agent-intercom-fix/durable-json.windows-eperm.opencode.patch` — 3-line patch for agent-intercom-opencode (interface + impl + call site)
-- `agent-intercom-fix/durable-json.test.ts` — Windows EPERM regression test suite
-- `agent-intercom-fix/BUG_REPORT.md` — upstream PR description with all details
-- `agent-intercom-fix/HOW_TO_REAPPLY.md` — PowerShell + git apply + sed instructions
-- `agent-intercom-fix/0001-fix-windows-eperms-fsync-on-durable-json-temp-file.md` — technical background
+| Item | Why held |
+|---|---|
+| ROOT-033 -- Windows termination classification | No Windows termination contract exists. Do not implement the high-bit heuristic. Needs an explicit platform decision first |
+| D5 follow-up -- GitHub Actions under the local-only repo policy | CI itself shipped at `2cb2413`; what remains undecided is whether it should gate PRs, which needs a user decision on secrets/auth |
+| D6 -- exe rebuild cadence after each Track A milestone vs batched | standing constraint, unresolved |
 
-**Validation results:**
-- ✅ `git apply --check` passes cleanly on both repos
-- ✅ Only `durable-json.ts` changed in both repos (pi: 1 line, opencode: 3 lines)
-- ✅ `writeDurableJson` roundtrip confirmed working with patched code
-- ✅ Existing test suite runs without new failures caused by patch
-- ✅ Upstream repos do NOT contain this fix (verified via GitHub API)
+## Universal-game-agent -- open
 
-**Remaining work:**
-- Submit upstream PRs to `ctliz/agent-intercom-pi` and `ctliz/agent-intercom-opencode`
-- Add `durable-json.test.ts` to each repo's test suite
-- Monitor for upstream merge (expected versions: pi@0.12.3+, opencode@0.12.2+)
+| ID | Item | Evidence |
+|---|---|---|
+| ROOT-014 | Guard resume against a finished/empty history | `training/experiment.py:111-119` indexes `history[...]` unguarded |
+| ROOT-027 | Release the log handle and write a results record on attach failure | PARTIALLY FIXED -- the process leak is closed (ROOT-009); the log/results half is not |
+| ROOT-036 | Fix eval metric counting and preserve seeds | `training/evaluate.py:42-45`, `environment/external_game.py:274` |
+| ROOT-034 (UGA share) | Remaining test-quality gaps in the DBG-06..15 cluster | PARTIALLY FIXED -- see master-bug-synthesis section 0 |
+| -- | STEP 3 pre-flight: check live-play baseline reds in the exp window, then re-run exp02 | unchanged top item; the exp02 verdict stays suspended until this runs |
+| -- | Untested `training/external_experiment.py` orchestration | helpers covered, the three-phase driver is not |
 
----
+## mini-llm -- open
 
-## AgentOps Packaging & Release — ✅ RESOLVED 2026-09-15
+| ID | Item | Evidence |
+|---|---|---|
+| -- | Checkpoint stores default paths | `Config.tokenizer_path` has no CLI flag and `prepare_data.py` does not record it in `meta.json`, so every checkpoint stores the default `data/tokenizer.json`; `train_bin`/`val_bin`/`checkpoint_dir` come from the checkpoint on resume. Reproduced: bare `--resume` of the TinyStories artifact dies with `vocab_size=8192 but data/processed/train.bin was encoded with a vocabulary of 308`. Source-level wart, not fixed |
+| -- | 3 `TestGenerationSeed` errors | caused by the working-tree deletion of `data/tokenizer.json` (pre-existing user change, deliberately left untouched). Clears with no code change if the user restores the file |
+| -- | Full 1.9 GB TinyStories prep + GPU run | needs a cloud GPU, not this box; procedure is in `docs/EXPERIMENT-tinystories.md` |
 
-**Status:** Done. Commit strategy executed (`935f4dc` + subtree fold `a1c95d3` + branch unification `fd9abfb`); Roadmap Phase 1 + Phase 3 delivered (`1047121`); fresh `dist/AgentOps.exe` (14,807,079 bytes) published as GitHub Release `v0.1.3`. Exe stays out of git per standing decision.
+## Frozen
 
-**See:** `memory/project.md` release record.
+Frozen by deliberate decision. **Re-entry requires an explicit user decision.** It is not a
+backlog item and must not be picked up as ordinary work.
 
-## Roadmap Phase 1 + Phase 3 — ✅ COMPLETE 2026-09-15
+| ID | Item | Freeze note |
+|---|---|---|
+| A5 | WorkflowEngine decomposition | FROZEN 2026-10-01. The stated entry condition (close the correctness queue) HAS been satisfied, but the freeze remains by deliberate decision. Rationale + criteria in `.agents/plans/architecture-freeze-a5-a6-a7.md` |
+| A6 | First-class `ReviewRun` / `MergeRun` | FROZEN 2026-10-01, same condition and same deliberate decision. No `ReviewRun`/`MergeRun` classes exist; this is a design task first, not a split |
+| A7 | StateStore repository split | FROZEN 2026-10-01, same condition and same deliberate decision |
 
-**Status:** Done, suite 224 OK. Plan: `plans/phase-1-storage-dtos-phase-3-worktree-refs-plan.md`. Output: `outputs/phase-1-storage-dtos-phase-3-worktree-refs.md`.
+## Not started
 
-## A4 Structured Failure Evidence — ✅ COMPLETE 2026-09-16
+| ID | Item |
+|---|---|
+| A9 | Artifact lifecycle + orphan recovery |
+| B6 | Policy gates |
+| B8 | Approvals (human gate, first-class) |
+| B9 | Project memory (per-repo conventions) |
+| B10 | REST API + evals |
+| -- | Track C UX (C1/C2/C3) |
 
-**Status:** Done, suite 356 OK. Copilot and OpenCode reviews closed. Plan: `plans/a4-evidence-plan.md`. Output: `outputs/a4-evidence.md`.
+## Superseded / historical pointer
 
-## A3 Shared ProcessRuntime — ✅ COMPLETE 2026-09-16
-
-**Status:** Done, suite 336 OK. Copilot and OpenCode reviews closed. Plan: `plans/a3-runtime-plan.md`. Output: `outputs/a3-runtime.md`.
-
-## B7 Capability Resolver and Deterministic Router — ✅ COMPLETE 2026-09-16
-
-**Status:** Done, suite 336 OK. Copilot and OpenCode reviews closed. Plan: `plans/b7-router-plan.md`. Output: `outputs/b7-router.md`.
-
----
-
-## AgentOps / Agent Intercom Temp Artifact Archive — ✅ COMPLETE 2026-09-17
-
-**Status:** Complete and verified.
-
-- Moved 27 name-matched Temp entries into `.local-temp-archive/` under `agent-intercom/` and `agentops/`.
-- Archive contains 30,476 files totaling 314,882,683 bytes; no matching entries remain in `C:\Users\admin\AppData\Local\Temp`.
-- Staged copies were hash-verified before source deletion; final files were reverified against `.local-temp-archive/move-manifest.json`.
-- At archive time, no name-matched Temp entries remained. The two Agent Intercom trees were later restored; the 25 AgentOps entries remain archived.
-- The machine-local archive is excluded through `.git/info/exclude`; no product code or packaging files changed.
-- Full suite from `agentops/` at archive time: 357 passing, 4 environment skips.
-
----
-
-## Agent Intercom Temp Restore — ✅ COMPLETE 2026-09-17
-
-**Status:** Complete and verified.
-
-- Restored `C:\Users\admin\AppData\Local\Temp\agent-intercom-opencode-test` and `C:\Users\admin\AppData\Local\Temp\agent-intercom-pi-test` from the machine-local archive.
-- Restore totals: 30,264 files, 310,090,625 bytes; final Temp trees hash-verified.
-- The AgentOps archive was not modified: 212 files, 4,792,058 bytes, tree digest unchanged.
-- Restore manifest: `.local-temp-archive/agent-intercom-restore-manifest.json`.
-- Full suite from `agentops/` after restore: 357 passing, 4 environment skips.
-
-## A8 Persistence Failure Policy — ✅ COMPLETE 2026-09-26
-
-**Status:** Done, suite 375 OK (4 skips).
-
-- `agentops/persistence.py`: every store write with a fallback classified `SAFE_TO_DEGRADE` or `MUST_FAIL_CLOSED` (unknown defaults to fail-closed); degradations emit a `persistence.degraded` WARNING event.
-- Fixed a real defect: a swallowed `finish_verification_check` error let a report claim `passed` while the check row stayed `running`, and the workflow marked the task verified on it. Same class of hole closed in `start_verification_check`.
-- `task.update` and the merge conflict task were already fail-closed; now regression-locked.
-- Backup: `/tmp/agentops-backup-a8-persistence-20260926-174814`. No exe rebuild (packaging untouched).
-- Open: no reviewer pass yet (opencode/copilot read-only snapshot review not run for this change).
-
-## Still Open (AgentOps)
-
-- `SpawnFactory` Protocol typing (deferred from the A3 review).
-- Repository characteristics for routing: `workflow.py:417` still passes `{}`, so the router's repository-derived signals are inert.
-- A5 WorkflowEngine decomposition, A6 ReviewRun/MergeRun, A7 StateStore split, A9 artifact lifecycle, A10 CI gating.
-- B6 policy gates, B8 approvals, B9 project memory, B10 REST API; Track C UX.
+- `.agents/memory/opencode/bugfinding/master-bug-synthesis.md` section 9 "Authoritative
+  Fix Queue" is **SUPERSEDED 2026-10-02**. Read section 0 of that file instead.
+  Sections 1-11 remain as historical audit evidence.
+- The other reports in `.agents/memory/opencode/bugfinding/` are dated audit evidence
+  (`bug-registry.md`, `deep-bug-audit-2026-09-29.md`, `geminihandoff.md`,
+  `projects-ai-bug-handoff.md`, `projects-ai-review-handoff.md`,
+  `repo-review-2026-09-26.md`). They are not instructions and are never revised in place.
+- ROOT-015..ROOT-025 and ROOT-028 are DISPROVEN and are not queue items.
+- The Agent Intercom Windows EPERM fix, the AgentOps packaging/release work, the roadmap
+  Phase 1+3 delivery, A4, A3, B7, the temp-archive and restore operations, and the A8
+  implementation are all complete. Their history is in `.agents/memory/project.md`.

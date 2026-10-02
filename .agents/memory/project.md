@@ -8,19 +8,42 @@
 
 ## Current project state
 
-- Current verified state (2026-09-20): AgentOps v0.1.3, additive schema v7, A3/A4/B7 complete, and the latest full-suite result is 357 passing with 4 environment skips. The canonical instruction layout is `.agents/AGENTS.md` plus `.agents/pi_AGENTS.md`, with root compatibility shims.
-- Correctness queue closed for AgentOps on 2026-10-01 (Cline): full suite 425 passing, 4 environment skips. Four verified changes: READY now requires ONE verification task to supply PASSED + `verified=True` + evidence (signal-mixing across tasks fixed and reproduction-locked); `_exclude_agentops_state()` raises an actionable `GitError` instead of silently deadlocking merges when `.git/info/exclude` cannot be written; `retry_merge()` audited and deliberately left ungated (roadmap D9 resolved); headless GUI handled by a test-only `@requires_display` policy in `tests/tk_display.py`, with production GUI unchanged. Verified on Windows only - Linux CI conditions were simulated, not run.
+- Current verified state (2026-10-02): three products in one container. `agentops/` v0.1.3, additive schema v7; `universal-game-agent/`; `small-projects/mini-llm/`. The canonical instruction layout is `.agents/AGENTS.md` plus `.agents/pi_AGENTS.md`, with root compatibility shims.
+- **Test baselines, re-run 2026-10-02** (each product's own command, from its own directory): `agentops/` **425 tests, 4 environment skips, OK**; `universal-game-agent/` **295 tests, 1 skip, OK**; `small-projects/mini-llm/` **96 run, 1 skip, 3 pre-existing `TestGenerationSeed` errors**. The 3 mini-llm errors are caused by the working-tree deletion of `data/tokenizer.json` (pre-existing user change, not committed) and are not a code defect.
+- **Bug status (2026-10-02):** the live ledger is `.agents/memory/opencode/bugfinding/master-bug-synthesis.md` §0 — 36 canonical roots: 10 FIXED, 9 ACTIVE, 2 PARTIALLY FIXED, 2 CONTRACT GAP / ACCEPTED DEBT, 1 HELD, 12 DISPROVEN. ROOT-015..025 and ROOT-028 are disproven and must not be revived.
+- **A10 (CI/regression gating) is DONE**, delivered at `2cb2413` as per-product path-filtered workflows with scope in `.github/CI.md`. Whether CI gates PRs remains undecided (roadmap D5 follow-up).
+- **A5/A6/A7 are FROZEN by deliberate decision.** Their stated freeze condition ("close the correctness queue") has been satisfied, but the freeze remains. Re-entry requires an explicit user decision; they are not ordinary backlog.
+- Current open UGA bugs: ROOT-014 (resume against a finished/empty history, `training/experiment.py:111-119` unguarded `history[...]` indexing), ROOT-027 (attach-failure log handle and results write; process leak half already fixed), ROOT-036 (eval metric counting and seed preservation), plus the UGA share of ROOT-034.
+- Current open AgentOps bugs: ROOT-004, ROOT-005, ROOT-006, ROOT-029, ROOT-030, ROOT-032, ROOT-035, plus the AgentOps share of ROOT-034. ROOT-033 is HELD pending a Windows termination contract.
+- **mini-llm checkpoint-path wart (current):** `Config.tokenizer_path` has no CLI flag and `prepare_data.py` does not record it in `meta.json`, so every checkpoint stores the default `data/tokenizer.json`; `train_bin`/`val_bin`/`checkpoint_dir` are taken from the checkpoint on resume. A bare `--resume` of the TinyStories artifact fails in `Config.validate_against_data()` with `vocab_size=8192 but data/processed/train.bin was encoded with a vocabulary of 308`. Source-level wart, documented, not fixed.
+- Historical: (2026-09-20) AgentOps v0.1.3, additive schema v7, A3/A4/B7 complete, full suite 357 passing with 4 environment skips. That number is superseded by the 425/4 figure above.
 - AgentOps v0.1.2 at `D:/admin/code/projects/agentops` (bumped 2026-09-14). AgentRun support implemented 2026-09-14 (95 tests passing). Verification Kernel implemented 2026-09-14: 122-test suite passing (1 Windows-platform skip), including 27 kernel tests; relayed opencode review findings fixed and rebuilt. `dist/AgentOps.exe` rebuilt (~14.7 MB, PyInstaller one-file windowed), archive-inspected (15 `agentops.*` modules), and startup/shutdown smoke-tested.
+- Correctness queue closed for AgentOps on 2026-10-01 (Cline): full suite 425 passing, 4 environment skips. Four verified changes: READY now requires ONE verification task to supply PASSED + `verified=True` + evidence (signal-mixing across tasks fixed and reproduction-locked); `_exclude_agentops_state()` raises an actionable `GitError` instead of silently deadlocking merges when `.git/info/exclude` cannot be written; `retry_merge()` audited and deliberately left ungated (roadmap D9 resolved); headless GUI handled by a test-only `@requires_display` policy in `tests/tk_display.py`, with production GUI unchanged. Verified on Windows only - Linux CI conditions were simulated, not run.
 - Working tree carries uncommitted feature work (do not assume HEAD == working state): GUI (`gui.py`, `gui_controller.py`), packaging (`AgentOps.spec`, `agentops_gui.py`, `scripts/build_windows_exe.py`), History/Logs/Worktrees tabs, cancellation tokens, operation-ID staleness guard, shared `finalize.py`, AgentRun lifecycle, Verification Kernel, Failure/Repair/Recovery Kernel (backed up to `/tmp/agentops-backup-failure-kernel/` before work began), and now the Structured Results upgrade (backed up to `/tmp/agentops-backup-structured-results/`; 184-test suite passing, 1 platform skip).
 - Milestones 1–2 complete: workflow history + task inspector, safe log browser, worktree inspect/cleanup/retry-merge. Full architecture audit completed 2026-09-13 with a 10-phase roadmap (in session, not yet user-approved).
 - Historical 2026-09-12 note: repo root was greenfield (memory scaffold only); product work lives in `agentops/`.
 - Shared memory scaffolding created 2026-09-12; full memory system initialized same day per user directive (Parts 1–7).
 
+## Memory hierarchy rule (2026-10-02)
+
+- The **live bug ledger** is `.agents/memory/opencode/bugfinding/master-bug-synthesis.md`
+  **§0** (Current Status). Read a root's status there before acting on any bug.
+- The **live task queue** is `.agents/pending_tasks.md`. It contains only unfinished work.
+- **Historical audit reports remain evidence, not current instructions.** Sections 1-11 of
+  master-bug-synthesis.md and every other dated report in
+  `.agents/memory/opencode/bugfinding/` are never revised in place and are never a work
+  queue. master-bug-synthesis.md §9 is explicitly SUPERSEDED.
+- **Agent-scoped memory never overrides canonical memory.** `.agents/memory/cline/`,
+  `.agents/memory/oh-my-pi/`, and `.agents/memory/opencode/` hold runbooks and session
+  records only. When they disagree with `.agents/memory/*.md`, the canonical file wins and
+  the agent-scoped file is wrong and needs correcting.
+- `decisions.md` and `lessons.md` are append-only. Add dated entries; never rewrite old ones.
+
 ## Canonical instruction layout — 2026-09-20
 
 - `.agents/AGENTS.md` and `.agents/pi_AGENTS.md` are the canonical repository and Pi-specific instruction files; `.agents/ohmypiagents.md` is the Oh My Pi-specific supplement.
 - Root `AGENTS.md` and `pi_AGENTS.md` remain compatibility entrypoints for tools that only discover instructions at the repository root. They redirect readers to `.agents/` and are not independent sources of truth.
-- The canonical repository instructions record the current schema-v7 state and the latest recorded 357-passing/4-skip test baseline.
+- The canonical repository instructions record the current schema-v7 state. The dated 357/4-skip baseline once recorded there is superseded; see `.agents/AGENTS.md` for the 2026-10-02 baselines.
 
 ## Requirements
 
@@ -132,7 +155,7 @@
 
 ## Repo reorganization + agent instruction hierarchy 2026-09-26
 
-- **Two products confirmed.** `agentops/` and `universal-game-agent/` are independent; neither depends on the other. The root is a container plus agent process material. A single repository-wide test command does not exist.
+- **Two products confirmed 2026-09-26; three products confirmed 2026-10-01.** `agentops/`, `universal-game-agent/`, and `small-projects/mini-llm/` are independent; none depends on another. The root is a container plus agent process material. A single repository-wide test command does not exist. Any "two-product" statement below this entry is a dated historical record.
 - **Backup:** `C:\Users\admin\AppData\Local\Temp\opencode\projects-backup-20260926` — 50 files (0.399 MB) plus `worktree.patch` (56,902 bytes) covering the modified and untracked files.
 - **Cleanup, 19.71 MB reclaimed:** deleted `agentops/build/`, `agentops/.pytest_cache/`, `agentops/agentops.egg-info/`, all `__pycache__` directories, and the `state.sqlite-shm` / `state.sqlite-wal` sidecars. `dist/AgentOps.exe` (14,851,920 bytes) and `.agentops/state.sqlite` were preserved deliberately — the exe is a release deliverable and the sqlite file is live state.
 - **`universal-game-agent/.gitignore` fixed:** rules are now `checkpoints/**/*.pt`, `checkpoints/**/*.zip`, `checkpoints/**/*.pkl`, preceded by an ignore-all-then-allow pattern for `README.md` and `.gitkeep`. The previous flat `checkpoints/*.pt` rule did not match nested checkpoints, so `git add -A` would have staged ~16.3 MB of binaries, 11.8 MB of it unique. No root `.gitignore` was created — see the 2026-09-15 commit-strategy decision, item 4.

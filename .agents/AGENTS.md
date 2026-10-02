@@ -18,6 +18,9 @@ This is the canonical repository instruction file. The root `AGENTS.md` is only 
 - Oh My Pi instructions: `.agents/ohmypiagents.md`
 - Team and collaboration policy: `.agents/team.md`
 - Canonical memory: `.agents/memory/`
+- Live bug ledger: `.agents/memory/opencode/bugfinding/master-bug-synthesis.md` §0
+- Live task queue: `.agents/pending_tasks.md`
+- Agent-scoped memory: `.agents/memory/opencode/`, `.agents/memory/oh-my-pi/`, `.agents/memory/cline/` — runbooks and session records only; each has a `README.md` describing its scope
 - Plans and outputs: `.agents/plans/` and `.agents/outputs/`
 - Agent skills: `.agents/skills/`
 - Root `AGENTS.md` and `pi_AGENTS.md` are compatibility shims and must not be treated as independent sources of truth.
@@ -37,17 +40,17 @@ Before substantial work:
 
 ## Commands
 
-There is no single repository-wide test command. Each product has its own, and both run
-from their own directory rather than from the repository root. Read the local
-`AGENTS.md` before running anything. The baselines below are dated observations recorded
-at commit `a03e907` on 2026-09-26, not contracts; tests get added, so run the suite for
-current truth.
+There is no single repository-wide test command. Each product has its own, and each runs
+from its own directory rather than from the repository root. Read the local
+`AGENTS.md` before running anything. The baselines below were re-run 2026-10-02 at
+commit `849e015`; they are dated observations, not contracts, and tests get added, so run
+the suite for current truth.
 
-| Product | Test command | Recorded baseline |
+| Product | Test command | Baseline 2026-10-02 |
 |---|---|---|
-| `agentops/` | `cd agentops` then `python -m unittest discover -s tests` | 357 tests total, 4 skipped by environment, so 353 passed |
-| `universal-game-agent/` | `cd universal-game-agent` then `python -m unittest discover -s tests` | 261 tests, no skips |
-| `small-projects/mini-llm/` | `cd small-projects/mini-llm` then `python -m unittest discover -s tests` | no recorded baseline yet; run the suite for current truth |
+| `agentops/` | `cd agentops` then `python -m unittest discover -s tests` | 425 tests, 4 skipped by environment, OK |
+| `universal-game-agent/` | `cd universal-game-agent` then `python -m unittest discover -s tests` | 295 tests, 1 skip, OK |
+| `small-projects/mini-llm/` | `cd small-projects/mini-llm` then `python -m unittest discover -s tests` | 96 run, 1 skip, 3 pre-existing `TestGenerationSeed` errors (working-tree deletion of `data/tokenizer.json`, a user change — not a code defect) |
 
 Treat any new failure or skip as attributable to the current work until proven otherwise,
 and do not rely on remembered counts — run the suite. An empty, interrupted, all-skipped,
@@ -106,3 +109,15 @@ Before starting, ask the user when antislop applies: during the work, or after i
 ## Memory and completion
 
 After substantial work, update the relevant `.agents/memory/` files with concise, verifiable facts. Preserve append-only history in `decisions.md` and `lessons.md`. Update plans, outputs, and task records only when the task procedure calls for it. Do not duplicate transcripts or store secrets.
+
+## Memory hierarchy
+
+- The live bug ledger is `.agents/memory/opencode/bugfinding/master-bug-synthesis.md` §0.
+  Read a root's status there before acting on any bug; §9 of that file is SUPERSEDED.
+- The live task queue is `.agents/pending_tasks.md`. It holds only unfinished work.
+- Historical audit reports remain evidence, not current instructions. Never revise them in
+  place and never treat one as a work queue.
+- Agent-scoped memory never overrides canonical memory. When `.agents/memory/cline/`,
+  `.agents/memory/oh-my-pi/`, or `.agents/memory/opencode/` disagrees with a canonical
+  `.agents/memory/*.md` file, the canonical file wins and the agent-scoped file needs
+  correcting.

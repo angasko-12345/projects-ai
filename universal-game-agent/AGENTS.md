@@ -15,7 +15,7 @@ correct.
   is a subproject of another, and a change in one is not a change in another.
 - Runtime dependencies are not standard-library only: `requirements.txt` lists `torch`,
   `gymnasium`, `numpy`, `pyyaml`, and `mss`, all unpinned. This differs from the other
-  two products in this repository.
+  products in this repository.
 - The external game path is **Windows-only by construction**: it depends on `ctypes`
   window management, `SendInput` keyboard injection, and MSS screen capture. MSS is not the
   only backend, though: `environment/external_game.py:363` also accepts `synthetic`, which
@@ -31,12 +31,19 @@ cd universal-game-agent
 python -m unittest discover -s tests
 ```
 
-- 20 test modules, 261 tests, all `unittest.TestCase`, no skips. That count was observed at
-  commit `a03e907` on 2026-09-26 and is a dated observation, not a contract. The count is
-  volatile because tests get added, so it goes stale; run the suite for current truth.
+- The current baseline (re-run 2026-10-02 at commit `849e015`) is **295 tests, 1 skip,
+  OK**. That is a dated observation, not a contract; the count is volatile because tests
+  get added. Run the suite for current truth. All tests are `unittest.TestCase`, and
   `tests/__init__.py` exists so discovery works as a package. The tests import `configs`,
   `training`, and `games` because discovery runs with `universal-game-agent/` as the working
   directory — no test bootstraps `sys.path` itself. Run the suite from that directory.
+- Current open UGA bugs are tracked in
+  `.agents/memory/opencode/bugfinding/master-bug-synthesis.md` §0: ROOT-014 (resume against
+  a finished/empty history), ROOT-027 (attach-failure log handle and results write; the
+  process leak half is already fixed), ROOT-036 (eval metric counting and seed
+  preservation), plus the UGA share of ROOT-034. ROOT-011 and ROOT-026 are CONTRACT GAP /
+  ACCEPTED DEBT. ROOT-015..018 and ROOT-028 are DISPROVEN — do not revive the PPO
+  entropy/GAE/GRU/curiosity claims.
 - `.agents/AGENTS.md` defines no single repository-wide test command. The per-product command
   for this product is its `universal-game-agent/` row, and it must be run from that
   directory. Use the command above.
@@ -95,11 +102,11 @@ The dependency direction is deliberate. Preserve it.
   `checkpoint_every_updates`. This is known duplication, not an endorsed pattern.
 - `experiments/*_results.json` are tracked. New result files are not ignored, so a fresh
   run always shows up in `git status`. That is intentional: results are evidence.
-- `checkpoint_every_updates` varies across configs (10, 50, 1000, 1000, 1000). Three of the
-  1000s are functionally equivalent to disabled, because the guard at
-  `training/ppo.py:376` (`if self.num_updates % cfg.checkpoint_every_updates == 0`) is
-  never reached: `exp_toy_ppo_02_nocur` and `exp_toy_ppo_03_cur` finish at 234 updates
-  (30000/128) and `exp_external_pong_01` at 8 (1024/128). This is undocumented drift.
+- `checkpoint_every_updates` varies across configs (10, 50, 1000, 1000, 1000). It is now
+  validated as a non-negative int on config construction (`PPOConfig.__post_init__`), and
+  `0` disables periodic writes while `train()` always writes `ppo_final.pt`. The old claim
+  that a `1000` interval silently "never fires" described the pre-validation behaviour and
+  is stale; intervals above the run length now simply produce no periodic checkpoint.
 - `checkpoint_dir` differs per config (`checkpoints`, `checkpoints/exp02_nocur`,
   `checkpoints/exp03_cur`, `checkpoints/extern_pong_01`). Exactly two trained
   `ppo_final.pt` files exist: `checkpoints/ppo_final.pt` and
@@ -137,6 +144,14 @@ The dependency direction is deliberate. Preserve it.
 
 Recorded so they are not rediscovered as if new. Fix them deliberately, not incidentally.
 
+The authoritative open-bug list is
+`.agents/memory/opencode/bugfinding/master-bug-synthesis.md` §0. The most important live
+entries for this product are ROOT-014 (resume against a finished/empty history crashes in
+`training/experiment.py:111-119`), ROOT-027 (attach failure still leaks the log handle and
+writes no results record; the process leak is fixed), and ROOT-036 (eval metric counting
+and seed preservation in `training/evaluate.py` and `environment/external_game.py`).
+ROOT-011 and ROOT-026 are accepted contract debt, not bugs to fix on sight.
+
 - `training/external_experiment.py` has **no tests for its orchestration**. Only the
   helpers (`_unique_title`, `_run_checkpoint_dir`, `_results_path`, `_apply_run_title`) are
   covered. The three-phase baseline -> train -> eval driver is untested, and its per-run
@@ -159,7 +174,8 @@ Recorded so they are not rediscovered as if new. Fix them deliberately, not inci
   factory bypasses. The two disagree, and the game-specific code sits in the wrong layer.
 - `games/` has no `__init__.py`. It works as an implicit namespace package, but
   `games/extern_pong.py:17-19` additionally mutates `sys.path` and uses a flat
-  `from pong_logic import ...`, so the same module is importable under two names.
+  `from pong_logic import ...`, so the same module is importable under two names. This is
+  ROOT-026, classified CONTRACT GAP / ACCEPTED DEBT — it is not a defect to fix on sight.
 - Two resizers exist with no shared owner: `interface/capture.py:resize_rgb` and
   `environment/preprocessing.py:_resize_bilinear`.
 - The virtual-key action mapping is defined in multiple places with no shared constant:

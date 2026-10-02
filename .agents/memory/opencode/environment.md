@@ -27,11 +27,11 @@ marked as such rather than asserted.
 
 ## Repo facts that affect tooling
 
-- **Single repository, two products.** `agentops/` and `universal-game-agent/` are
-  independent; neither depends on the other. A root-level test invocation does not work —
-  each suite must run from its own product directory, because the root `agentops/` folder
-  shadows the `agentops` package for namespace resolution.
-- **No configured lint, formatter, type-check, or coverage tooling** in either product. Do
+- **Single repository, three products.** `agentops/`, `universal-game-agent/`, and
+  `small-projects/mini-llm/` are independent; none depends on another. A root-level test
+  invocation does not work — each suite must run from its own product directory, because
+  the root `agentops/` folder shadows the `agentops` package for namespace resolution.
+- **No configured lint, formatter, type-check, or coverage tooling** in any product. Do
   not invent such commands.
 - `.git/info/exclude` holds machine-local paths (`.pi/`, `small-projects/`, and others).
   There is deliberately **no root `.gitignore`** — see the 2026-09-15 commit-strategy

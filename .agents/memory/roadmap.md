@@ -4,17 +4,47 @@
 >
 > Status tracking lives here. Mark phases `PROPOSED` / `IN PROGRESS` / `DONE` with date + verification. Per-phase rule: regression test → implement → full suite → exe rebuild + smoke if packaging affected. DB changes are additive only (`CREATE TABLE IF NOT EXISTS`); new behavior behind `runtime.*` config flags defaulting to current semantics. Controller stays the only service boundary for GUI/API.
 
-## Current status snapshot (verified 2026-09-20)
+## Current status snapshot (verified 2026-10-02)
 
 | Item | Status | Evidence |
 |---|---|---|
-| Phase 1 — Storage DTOs | ✅ DONE | `commit 1047121`; Workflow DTO, latest/list/get_workflow return dataclasses, controller serializes to plain dicts; suite 224 OK |
-| Phase 2 — Event bus | ✅ DONE | Delivered via Phase 4: `events.py` `EventBus` + `typed_events` (schema v4) |
-| Phase 3 — Persisted worktree refs | ✅ DONE | `commit 1047121`; `worktree_refs` schema v6, `WorktreeRef` DTO, retry_merge validates stored provenance; suite 224 OK |
-| Phase 4 — Structured agent results | ✅ DONE | Delivered via Phase 4 task header: `agent_result.py` (schema v1, total parser/coercion) |
-| Phase 5 — Artifacts registry | ✅ DONE | Delivered via Phase 4 task header: `artifacts.py` (schema v5) |
-| Phases 6–10 | ⏳ PROPOSED | Restructured into Track B below; B7 is DONE |
-| Version | 0.1.3, exe rebuilt | `dist/AgentOps.exe`; latest recorded suite baseline 357 passing, 4 environment skips |
+| Phase 1 -- Storage DTOs | DONE | `commit 1047121`; Workflow DTO, latest/list/get_workflow return dataclasses, controller serializes to plain dicts |
+| Phase 2 -- Event bus | DONE | Delivered via Phase 4: `events.py` `EventBus` + `typed_events` (schema v4) |
+| Phase 3 -- Persisted worktree refs | DONE | `commit 1047121`; `worktree_refs` schema v6, `WorktreeRef` DTO, retry_merge validates stored provenance |
+| Phase 4 -- Structured agent results | DONE | Delivered via Phase 4 task header: `agent_result.py` (schema v1, total parser/coercion) |
+| Phase 5 -- Artifacts registry | DONE | Delivered via Phase 4 task header: `artifacts.py` (schema v5) |
+| Phases 6-10 | See Track B | Restructured into Track B. B7 DONE. B6/B8/B9/B10 NOT STARTED. The old "Phases 6-10 PROPOSED" line is superseded |
+| Version | 0.1.3, exe rebuilt | `dist/AgentOps.exe` |
+
+**Test baselines (each product's own command, from its own directory), re-run 2026-10-02:**
+
+| Product | Result |
+|---|---|
+| `agentops/` | 425 tests, 4 environment skips, OK |
+| `universal-game-agent/` | 295 tests, 1 skip, OK |
+| `small-projects/mini-llm/` | 96 run, 1 skip, 3 pre-existing `TestGenerationSeed` errors (working-tree deletion of `data/tokenizer.json`) |
+
+**Track A / Track B item status, 2026-10-02:**
+
+| Item | Status |
+|---|---|
+| A1, A2, A3, A4 | DONE |
+| A5, A6, A7 | FROZEN -- see "Frozen" below |
+| A8 Persistence failure policy | DONE |
+| A9 Artifact lifecycle + orphan recovery | NOT STARTED |
+| A10 CI/regression gating | DONE -- CI delivered at `2cb2413` (`.github/workflows/{agentops,universal-game-agent,mini-llm}.yml`, scope in `.github/CI.md`) |
+| B6 Policy gates | NOT STARTED |
+| B7 Router | DONE |
+| B8 Approvals | NOT STARTED |
+| B9 Project memory | NOT STARTED |
+| B10 REST API + evals | NOT STARTED |
+
+**Frozen (A5/A6/A7) -- deliberate, not blocked.** The freeze recorded on 2026-10-01 stated
+the entry condition as "close the correctness queue". That condition **has been satisfied**
+(the AgentOps correctness queue closed 2026-10-01; the bug ledger is
+`master-bug-synthesis.md` section 0). The freeze nonetheless **remains by deliberate
+decision**. A5, A6, and A7 are NOT ordinary backlog and must not be started as routine work.
+**Re-entry requires an explicit user decision.**
 
 **Standing constraints that govern everything below:**
 - Additive DB schema changes only (`CREATE TABLE IF NOT EXISTS`); no destructive migrations.
@@ -93,7 +123,7 @@
 - **Success criteria:** ≥5 tests prove structured evidence beats string heuristics; every failure row carries machine-readable evidence.
 
 ### A5 — WorkflowEngine decomposition (P1) ❄ FROZEN 2026-10-01
-> ❄ Frozen 2026-10-01: rationale + entry criteria in `.agents/plans/architecture-freeze-a5-a6-a7.md`. Do not start until the correctness queue closes.
+> ❄ **FROZEN, not blocked.** Rationale + entry criteria in `.agents/plans/architecture-freeze-a5-a6-a7.md`. The freeze condition ("close the correctness queue") **has been satisfied** as of 2026-10-01, but the freeze **remains by deliberate decision**. Re-entry requires an explicit user decision; do not start this as ordinary work.
 
 - **Objective:** Split the 918-line god object into `WorkflowPlanner` / `WorkflowScheduler` / `TaskExecutor` / `RepairCoordinator` / `RecoveryCoordinator` behind a thin `WorkflowEngine` facade.
 - **Concrete actions:**
@@ -107,7 +137,7 @@
 - **Success criteria:** No public API change; `workflow.py` ≤ ~350 lines; existing workflow tests untouched and green.
 
 ### A6 — First-class ReviewRun / MergeRun (P1/P2) ❄ FROZEN 2026-10-01
-> ❄ Frozen 2026-10-01: rationale + entry criteria in `.agents/plans/architecture-freeze-a5-a6-a7.md`. Do not start until the correctness queue closes.
+> ❄ **FROZEN, not blocked.** Same condition and same deliberate decision as A5. Re-entry requires an explicit user decision. Note: no `ReviewRun`/`MergeRun` classes exist today, so this is a design task first, not a mechanical split.
 
 - **Objective:** Review and merge become persisted, observable lifecycle objects like agent runs and verification runs.
 - **Concrete actions:**
@@ -121,7 +151,7 @@
 - **Success criteria:** Every merge produces a `merge_runs` row; conflicted merges never become successful; "which verified commit merged into which base" is answerable via SQL.
 
 ### A7 — StateStore repository split (P2) ❄ FROZEN 2026-10-01
-> ❄ Frozen 2026-10-01: rationale + entry criteria in `.agents/plans/architecture-freeze-a5-a6-a7.md`. Do not start until the correctness queue closes.
+> ❄ **FROZEN, not blocked.** Same condition and same deliberate decision as A5. Re-entry requires an explicit user decision.
 
 - **Objective:** Break the 1948-line `state.py` into domain repositories behind a `StateStore` facade. Not urgent — do **after** A1–A6 so repositories stabilize around final object shapes.
 - **Concrete actions:**
@@ -141,7 +171,7 @@
 - **Deliberate boundary:** only the previously-swallowed `(KeyError, ValueError)` is caught. A real SQLite error still propagates and aborts the run, which was already fail-closed — A8 did not widen the catch.
 - **Success criteria:** test matrix for each degradation path; no silent persistence loss.
 
-### A9 — Artifact lifecycle + orphan recovery (P2)
+### A9 — Artifact lifecycle + orphan recovery (P2) ⬜ NOT STARTED 2026-10-02
 
 - **Objective:** complete lifecycle (created → attached → verified → preserved → cleaned/orphaned) with crash-window protection and orphan scanning.
 - **Concrete actions:** extend `ArtifactStore` with state transitions, `scan_files`/`find_orphans` (partially added from the copilot review), and a cleanup policy tied to worktree teardown.
@@ -149,7 +179,16 @@
 - **Dependencies:** A6 (merge teardown), A7 (repository).
 - **Success criteria:** orphan + cleanup tests; every artifact answers *which workflow/task/run/worktree, what created it, can it be deleted safely?*.
 
-### A10 — CI/regression gating (P1)
+### A10 — CI/regression gating (P1) ✅ DONE
+
+> **Delivered at `2cb2413` (2026-10-01).** Per-product path-filtered GitHub Actions
+> workflows exist: `.github/workflows/{agentops,universal-game-agent,mini-llm}.yml`, with
+> scope documented in `.github/CI.md`. py3.11 CPU; the UGA and mini-llm jobs install
+> `requirements.txt` first. No lint/format/coverage job, no GPU, no live-game job, no exe
+> packaging job in CI.
+>
+> Still open under this item: whether CI should **gate** PRs is undecided (roadmap D5
+> follow-up, needs a user decision on secrets/auth). A8's reviewer pass was never run.
 
 - **Objective:** continuous protection for lifecycle code.
 - **Concrete actions:** GitHub Actions workflow running `python -m unittest discover -s tests` from `agentops/` + `ruff` + a compile check; gate on the standing suite; add targeted regression tests for duplicate task claims, cancellation during agent execution & verification, repeated-recovery idempotency, base-commit races, missing-agent fallback, malformed agent output, persistence failures, orphan recovery.
@@ -164,7 +203,7 @@
 
 > All depend on Track A (they need the stabilized contracts). B6–B8 are **prerequisites for any REST exposure**.
 
-### B6 — Policy gates
+### B6 — Policy gates ⬜ NOT STARTED 2026-10-02
 
 - **Objective:** per-role path/network/approval flags enforced pre-claim (task won't start until policy is satisfiable).
 - **Concrete actions:** new `Policy` dataclass (or extension of `AgentConfig`); enforcement hook in `TaskExecutor`; pre-claim check in scheduler. `DIRTY_WORKTREE`/`POLICY_VIOLATION` failure categories already exist — wire them to actual violations.
@@ -178,20 +217,20 @@
 - **Status:** `routing.py`, registry profiles, workflow integration, routing-decision events, routing switch, 25 routing tests plus one adapter regression test, README, copilot and opencode reviews completed; suite 336 OK. Plan: `.agents/plans/b7-router-plan.md`. Output: `.agents/outputs/b7-router.md`.
 - **Success criteria:** `Agent: Auto` resolves to a scored candidate with an explainable reason.
 
-### B8 — Approvals (human gate, first-class)
+### B8 — Approvals (human gate, first-class) ⬜ NOT STARTED 2026-10-02
 
 - **Objective:** approval becomes a persisted operation (approve / reject / send-back-for-repair), gating merge/finalize.
 - **Concrete actions:** `approvals` table, `request_approval`/`resolve_approval` in controller, `APPROVAL_REQUESTED` event, gate between READY and `finalize_worktree`.
 - **Dependencies:** A6 (MergeRun must consume approval decisions), B6.
 - **Success criteria:** no merge without an approval decision when gated; full audit trail persisted.
 
-### B9 — Project memory (per-repo conventions)
+### B9 — Project memory (per-repo conventions) ⬜ NOT STARTED 2026-10-02
 
 - **Objective:** inject per-repository conventions (`AGENTS.md`-style) into agent prompts via the `_prompt()` seam, with configurable injection.
 - **Dependencies:** A5 (prompt seam stabilized).
 - **Success criteria:** conventions reach prompts; redaction verified (no secrets injected).
 
-### B10 — REST API + evals
+### B10 — REST API + evals ⬜ NOT STARTED 2026-10-02
 
 - **Objective:** read endpoints first (history/logs/status), then runs with approval enforcement; eval harness on recorded runs.
 - **Dependencies:** B8 (approvals MUST exist before any write API), A7.

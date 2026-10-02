@@ -30,6 +30,11 @@ python -m unittest discover -s tests
   generation, weight tying, checkpoint round-trip, the data pipeline
   (`prepare_data.py` framing/splits/`meta.json`), window stride, device selection,
   and the training loop end to end including resume.
+- Current baseline (re-run 2026-10-02 at commit `849e015`): **96 run, 1 skip, 3 errors**.
+  The 3 errors are all `TestGenerationSeed` and are caused by the working-tree deletion of
+  `small-projects/mini-llm/data/tokenizer.json` (a pre-existing user change, deliberately
+  not restored). They are not a code defect and clear with no code change if the file
+  comes back. Run the suite for current truth.
 - There is no configured lint, formatter, type-check, or coverage command. Do not
   invent one.
 - The shipped sample corpus (`data/raw/train.txt`, ~2.4 KB) needs
@@ -44,3 +49,23 @@ python -m unittest discover -s tests
   training adopts it (or fails) rather than building rows the data cannot produce.
 - Checkpoints load under `weights_only=True`; stride is a data-pipeline choice not
   stored in checkpoints, so pass the same `--stride` when resuming.
+
+## Known wart — checkpoints store default paths (unfixed as of 2026-10-02)
+
+- `Config.tokenizer_path` has **no CLI flag**, and `prepare_data.py` does **not** record it
+  in `meta.json`. Every checkpoint therefore stores the default `data/tokenizer.json`
+  regardless of which tokenizer was actually used. Only `src/generate.py --tokenizer` can
+  override it at generation time; `src/train.py` has no `--tokenizer` flag at all and the
+  training loop never loads a tokenizer.
+- `Config.train_bin` / `val_bin` / `checkpoint_dir` *are* settable through `src.train`
+  flags, but a resumed run takes its config from the checkpoint, so those stored strings
+  are authoritative unless re-passed. A checkpoint trained against non-default paths
+  therefore resumes against the defaults.
+- This is load-bearing because `Config.validate_against_data()` reads `meta.json` next to
+  `train_bin` and raises on a `vocab_size` mismatch. Reproduced read-only on the
+  TinyStories artifact (`checkpoints/tinystories/final.pt`, vocab 8192) resuming against
+  the vocab-308 `data/processed/` prep: `ValueError: vocab_size=8192 but
+  data/processed/train.bin was encoded with a vocabulary of 308`.
+- When documenting or reproducing an experiment, pass the data paths explicitly rather than
+  relying on what a checkpoint stores. Fixing the underlying gap is a source change and is
+  tracked in `.agents/pending_tasks.md` under mini-llm.
