@@ -12,9 +12,40 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 
+#: Declared reward semantics. ``sign`` licenses counting per-step reward sign
+#: as hits/misses: reward > 0 iff a paddle hit occurred that decision step and
+#: reward < 0 iff a paddle miss, with no other reward source. ``generic``
+#: means the reward sign carries no event meaning, so no hit/miss count may be
+#: reported (see training/evaluate.py).
+SIGN_SEMANTICS = "sign"
+GENERIC_SEMANTICS = "generic"
+
+
+def reward_semantics_of(obj) -> str:
+    """Declared reward semantics of a provider, env, or wrapper.
+
+    Fails closed: whatever does not declare ``sign`` semantics is ``generic``,
+    so an arbitrary reward provider can never be reported as hit/miss counts.
+    An unrecognised value warns and degrades to ``generic`` rather than
+    raising -- a bad declaration must not destroy a multi-hour run at
+    reporting time.
+    """
+    import warnings
+
+    value = getattr(obj, "reward_semantics", GENERIC_SEMANTICS)
+    if value in (SIGN_SEMANTICS, GENERIC_SEMANTICS):
+        return value
+    warnings.warn(f"reward: unknown reward_semantics {value!r}; "
+                  f"treating rewards as {GENERIC_SEMANTICS}", UserWarning, stacklevel=2)
+    return GENERIC_SEMANTICS
+
 
 class RewardProvider(ABC):
     """Pixels + action context -> scalar extrinsic reward."""
+
+    #: Override only when the reward sign really means hit/miss. Providers
+    #: that leave this generic are never reported as hit/miss counts.
+    reward_semantics = GENERIC_SEMANTICS
 
     @abstractmethod
     def reward(self, previous_frame: np.ndarray, current_frame: np.ndarray, context: int) -> float:

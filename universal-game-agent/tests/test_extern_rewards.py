@@ -191,6 +191,69 @@ class TestExternTerminationIntegration(unittest.TestCase):
         self.assertEqual(obs.shape, (4, 84, 84))
 
 
+class TestRewardSemanticsDeclaration(unittest.TestCase):
+    """ROOT-036: only providers whose sign means hit/miss may declare it."""
+
+    def test_extern_pong_provider_declares_sign(self):
+        from environment.reward import SIGN_SEMANTICS
+
+        self.assertEqual(ExternPongReward().reward_semantics, SIGN_SEMANTICS)
+
+    def test_every_other_provider_stays_generic(self):
+        from environment.reward import (
+            GENERIC_SEMANTICS,
+            CompositeReward,
+            EventReward,
+            NullRewardProvider,
+            ProgressReward,
+            SurvivalReward,
+            TerminalPenalty,
+            make_reward_from_config,
+        )
+
+        always_true = lambda prev, cur: True  # noqa: E731 - test detector
+        providers = [
+            NullRewardProvider(),
+            EventReward(always_true, 1.0),
+            TerminalPenalty(always_true, -1.0),
+            SurvivalReward(1.0),
+            ProgressReward(lambda frame: 1.0),
+            CompositeReward({"hit": EventReward(always_true, 1.0),
+                             "alive": SurvivalReward(1.0)}),
+            make_reward_from_config({"provider": "null"}),
+        ]
+        for provider in providers:
+            self.assertEqual(provider.reward_semantics, GENERIC_SEMANTICS,
+                             f"{type(provider).__name__} must not claim hit/miss meaning")
+
+    def test_toy_env_declares_sign(self):
+        from environment.reward import SIGN_SEMANTICS
+        from environment.toy_pong import ToyPongEnv
+
+        self.assertEqual(ToyPongEnv().reward_semantics, SIGN_SEMANTICS)
+
+    def test_reader_fails_closed_and_warns_on_unknown(self):
+        from environment.reward import (
+            GENERIC_SEMANTICS,
+            SIGN_SEMANTICS,
+            reward_semantics_of,
+        )
+
+        class Bare:
+            pass
+
+        class Signy:
+            reward_semantics = SIGN_SEMANTICS
+
+        class Typo:
+            reward_semantics = "hits_and_misses"
+
+        self.assertEqual(reward_semantics_of(Bare()), GENERIC_SEMANTICS)
+        self.assertEqual(reward_semantics_of(Signy()), SIGN_SEMANTICS)
+        with self.assertWarns(UserWarning):
+            self.assertEqual(reward_semantics_of(Typo()), GENERIC_SEMANTICS)
+
+
 class TestClassifyHelper(unittest.TestCase):
     def test_classify_boundaries(self):
         from training.reward_diagnostic import classify

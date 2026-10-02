@@ -54,6 +54,7 @@ class TestCLIDispatch(unittest.TestCase):
         fake = {"mean_reward": 1.0, "std_reward": 0.0, "min_reward": 1.0,
                 "max_reward": 1.0, "mean_length": 10.0, "episodes": 2,
                 "episode_rewards": [1.0, 1.0], "action_counts": {0: 20},
+                "reward_semantics": "sign",
                 "mean_hits": 0.0, "mean_misses": 0.0,
                 "terminated_episodes": 0, "truncated_episodes": 2}
         with patch("training.evaluate.evaluate", return_value=fake):
@@ -74,6 +75,7 @@ class TestCLIDispatch(unittest.TestCase):
             return {"mean_reward": mean, "std_reward": 0.0, "min_reward": mean,
                     "max_reward": mean, "mean_length": 10.0, "episodes": 1,
                     "episode_rewards": rewards, "action_counts": actions,
+                    "reward_semantics": "sign",
                     "mean_hits": hits, "mean_misses": misses,
                     "terminated_episodes": 0, "truncated_episodes": 1}
 
@@ -197,6 +199,116 @@ class TestCLIIntegration(unittest.TestCase):
             code, out = _run(["experiment", "--config", exp_path])
             self.assertEqual(code, 0)
             self.assertTrue((Path(tmp) / "tiny_exp_results.json").exists())
+
+
+@unittest.skipUnless(__import__("importlib").util.find_spec("torch"), "torch not installed")
+class TestResumeFinishedCheckpoint(unittest.TestCase):
+    """ROOT-014: resuming a checkpoint that already met its budget is a no-op.
+
+    The trainer's loop is `while num_timesteps < total_timesteps`, so a
+    finished checkpoint runs no update and ``train()`` returns an empty
+    history. Indexing that history is what used to raise IndexError. These
+    tests pin the three cases with a real trainer, not a mock.
+    """
+
+    def _trained_checkpoint(self, tmp, total_timesteps=8):
+        import torch
+        from agent.model import ActorCritic
+        from environment.preprocessing import PreprocessingWrapper
+        from environment.toy_pong import ToyPongEnv
+        from training.ppo import PPOConfig, PPOTrainer
+
+        torch.manual_seed(0)
+        trainer = PPOTrainer(
+            PreprocessingWrapper(ToyPongEnv(max_steps=64)),
+            ActorCritic(num_actions=3, feature_dim=32, hidden_size=16),
+            PPOConfig(rollout_length=8, minibatch_size=8, update_epochs=1,
+                      total_timesteps=total_timesteps, learning_rate=1e-3,
+                      checkpoint_dir=str(Path(tmp) / "ckpt")),
+        )
+        trainer.train()
+        ckpt = Path(tmp) / "ckpt" / "ppo_final.pt"
+        self.assertEqual(trainer.num_timesteps, total_timesteps,
+                         "setup: the checkpoint must sit exactly on the budget")
+        return str(ckpt)
+
+    def _config(self, tmp):
+        import yaml
+
+        cfg_path = Path(tmp) / "tiny.yaml"
+        cfg_path.write_text(yaml.safe_dump({
+            "env": {"max_steps": 64, "obs_size": 84, "num_stack": 4, "skip": 1},
+            "model": {"in_channels": 4, "frame_size": 84, "feature_dim": 32,
+                      "hidden_size": 16, "num_layers": 1},
+            "ppo": {"total_timesteps": 8, "rollout_length": 8, "minibatch_size": 8,
+                    "update_epochs": 1, "learning_rate": 1e-3, "seed": 0,
+                    "checkpoint_dir": str(Path(tmp) / "ckpt"),
+                    "checkpoint_every_updates": 0},
+        }), encoding="utf-8")
+        return str(cfg_path)
+
+    @staticmethod
+    def _payload(path):
+        import torch
+
+        return torch.load(path, map_location="cpu", weights_only=True)
+
+    def _assert_checkpoint_untouched(self, path, before):
+        import torch
+
+        after = self._payload(path)
+        self.assertEqual(after["num_timesteps"], before["num_timesteps"],
+                         "resume must not rewind or advance the step count")
+        self.assertEqual(after["num_updates"], before["num_updates"],
+                         "no update may run on an already-complete checkpoint")
+        for key, value in before["model"].items():
+            self.assertTrue(torch.equal(after["model"][key], value),
+                            f"weights changed for {key!r}: training must not restart")
+
+    def test_resume_exactly_complete_checkpoint(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ckpt = self._trained_checkpoint(tmp, total_timesteps=8)
+            before = self._payload(ckpt)
+            code, out = _run(["train", "--config", self._config(tmp),
+                              "--resume", ckpt, "--timesteps", "8"])
+            self.assertEqual(code, 0, out)
+            self.assertIn("already complete", out)
+            self.assertIn("no updates ran", out)
+            self.assertIn("kept existing final checkpoint", out)
+            self._assert_checkpoint_untouched(ckpt, before)
+
+    def test_resume_over_complete_checkpoint(self):
+        """A budget below the checkpoint's step count is still complete."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ckpt = self._trained_checkpoint(tmp, total_timesteps=8)
+            before = self._payload(ckpt)
+            code, out = _run(["train", "--config", self._config(tmp),
+                              "--resume", ckpt, "--timesteps", "4"])
+            self.assertEqual(code, 0, out)
+            self.assertIn("already complete", out)
+            self.assertIn("no updates ran", out)
+            self._assert_checkpoint_untouched(ckpt, before)
+
+    def test_normal_resume_still_trains(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ckpt = self._trained_checkpoint(tmp, total_timesteps=8)
+            before = self._payload(ckpt)
+            code, out = _run(["train", "--config", self._config(tmp),
+                              "--resume", ckpt, "--timesteps", "16"])
+            self.assertEqual(code, 0, out)
+            self.assertNotIn("already complete", out)
+            self.assertIn("train done", out)
+            self.assertIn("mean_reward_100", out)
+            after = self._payload(ckpt)
+            self.assertEqual(after["num_timesteps"], 16,
+                             "a resume below the budget must keep training")
+            self.assertGreater(after["num_updates"], before["num_updates"])
 
 
 if __name__ == "__main__":

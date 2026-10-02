@@ -16,6 +16,8 @@ import random
 
 import numpy as np
 
+from environment.reward import SIGN_SEMANTICS
+
 try:  # Prefer real Gymnasium; fall back to API-compatible stubs.
     import gymnasium as gym
     from gymnasium import spaces
@@ -57,6 +59,11 @@ class ToyPongEnv(_Base):
     """Paddle (bottom) vs. falling ball, rendered as a small RGB frame."""
 
     metadata = {"render_modes": ["rgb_array"]}
+
+    #: +1.0 is exactly one paddle hit and -1.0 exactly one miss; every other
+    #: step pays 0.0 and ``step`` emits at most one of each, so the reward
+    #: sign carries the hit/miss event meaning.
+    reward_semantics = SIGN_SEMANTICS
 
     def __init__(self, width: int = 64, height: int = 48, max_steps: int = 500):
         super().__init__()

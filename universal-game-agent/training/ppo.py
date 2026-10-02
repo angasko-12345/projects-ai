@@ -88,6 +88,45 @@ def compute_gae(rewards, values, terminated, next_value, gamma, gae_lambda):
     return advantages, advantages + values
 
 
+def summarize_history(history: dict[str, list]) -> dict:
+    """Aggregate a training history that may legitimately be empty.
+
+    A trainer restored from a checkpoint that already reached
+    ``total_timesteps`` runs no update, so ``train()`` returns an empty
+    history. Readers must not index it blindly: report the aggregates below
+    and check ``updates_run`` to tell "nothing was trained" apart from
+    "trained, reward happened to be zero".
+    """
+    def values(key):
+        return history.get(key) or []
+
+    def last(key):
+        seq = values(key)
+        return seq[-1] if seq else 0.0
+
+    def total(key):
+        return int(sum(values(key)))
+
+    def mean(key):
+        seq = values(key)
+        return float(np.mean(seq)) if seq else 0.0
+
+    components = values("components")
+    return {
+        "updates_run": len(values("timesteps")),
+        "episodes": int(last("episodes")),
+        "mean_reward": float(last("mean_reward")),
+        "mean_ext_reward": float(last("mean_ext_reward")),
+        "mean_int_reward": float(last("mean_int_reward")),
+        "predictor_loss": float(last("predictor_loss")),
+        "pixel_change": mean("pixel_change"),
+        "mean_episode_length": mean("upd_mean_length"),
+        "terminated_episodes": total("upd_terminated"),
+        "truncated_episodes": total("upd_truncated"),
+        "component_means": dict(components[-1]) if components else {},
+    }
+
+
 class PPOTrainer:
     """Single-env recurrent PPO with explicit boundary semantics.
 
@@ -350,11 +389,31 @@ class PPOTrainer:
         return trainer
 
     # -- main loop -------------------------------------------------------
+    def is_complete(self) -> bool:
+        """True once this trainer has reached its configured ``total_timesteps``.
+
+        Includes the over-complete case: a checkpoint saved past the resumed
+        run's (smaller) budget still has nothing left to train.
+        """
+        return self.num_timesteps >= self.config.total_timesteps
+
     def train(self) -> dict[str, list]:
         cfg = self.config
         ckpt_dir = Path(cfg.checkpoint_dir)
         start = time.perf_counter()
         episodes_seen = 0
+        if self.is_complete():
+            # Resumed checkpoint already satisfies the budget: report it and
+            # train nothing. Restarting here would silently discard the
+            # restored weights and step count.
+            print(f"training already complete: checkpoint is at {self.num_timesteps} "
+                  f"timesteps, budget is {cfg.total_timesteps}; no updates will run. "
+                  f"Raise total_timesteps above {self.num_timesteps} to continue "
+                  f"training from this checkpoint.")
+            final = ckpt_dir / "ppo_final.pt"
+            if final.exists():
+                print(f"kept existing final checkpoint {final}")
+                return self.history
         while self.num_timesteps < cfg.total_timesteps:
             buf, ep_rewards, ep_lengths, ep_ext, ep_int, ep_term = self.collect_rollout()
             stats = self.update(buf)

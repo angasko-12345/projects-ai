@@ -199,10 +199,19 @@ def cmd_train(args) -> int:
                              curiosity=_build_curiosity(cfg, num_actions),
                              env_config=cfg.get("env"))
     history = trainer.train()
+    from training.ppo import summarize_history
+
+    summary = summarize_history(history)
+    checkpoint = Path(ppo_config.checkpoint_dir) / "ppo_final.pt"
+    if not summary["updates_run"]:
+        print(f"train done: steps={trainer.num_timesteps} "
+              f"(no updates ran; the checkpoint had already reached its timestep "
+              f"budget) checkpoint={checkpoint}")
+        return 0
     print(f"train done: steps={trainer.num_timesteps} "
-          f"mean_reward_100={history['mean_reward'][-1]:.2f} "
-          f"episodes={history['episodes'][-1]} "
-          f"checkpoint={Path(ppo_config.checkpoint_dir) / 'ppo_final.pt'}")
+          f"mean_reward_100={summary['mean_reward']:.2f} "
+          f"episodes={summary['episodes']} "
+          f"checkpoint={checkpoint}")
     return 0
 
 
@@ -232,9 +241,17 @@ def _print_eval_report(title: str, rep: dict) -> None:
     actions = rep["action_counts"]
     total = sum(actions.values()) or 1
     mix = ", ".join(f"{a}:{c} ({100.0 * c / total:.0f}%)" for a, c in sorted(actions.items()))
+    # hits/misses are a statement about the game, so they are printed only
+    # when the reward semantics license it; otherwise report the sign counts
+    # under a name that does not claim an event.
+    if rep.get("reward_semantics") == "sign":
+        events = f"hits/ep={rep['mean_hits']:.1f} misses/ep={rep['mean_misses']:.1f}"
+    else:
+        events = (f"rewards=generic "
+                  f"(+steps/ep={rep.get('mean_positive_reward_steps', 0.0):.1f} "
+                  f"-steps/ep={rep.get('mean_negative_reward_steps', 0.0):.1f})")
     print(f"{title}: episodes={rep['episodes']} mean={rep['mean_reward']:.2f} "
-          f"total={sum(rep['episode_rewards']):.1f} hits/ep={rep['mean_hits']:.1f} "
-          f"misses/ep={rep['mean_misses']:.1f} len={rep['mean_length']:.1f} "
+          f"total={sum(rep['episode_rewards']):.1f} {events} len={rep['mean_length']:.1f} "
           f"term={rep['terminated_episodes']:d} trunc={rep['truncated_episodes']:d} actions=[{mix}]")
 
 

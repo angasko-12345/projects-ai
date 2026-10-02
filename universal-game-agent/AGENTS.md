@@ -38,12 +38,11 @@ python -m unittest discover -s tests
   `training`, and `games` because discovery runs with `universal-game-agent/` as the working
   directory — no test bootstraps `sys.path` itself. Run the suite from that directory.
 - Current open UGA bugs are tracked in
-  `.agents/memory/opencode/bugfinding/master-bug-synthesis.md` §0: ROOT-014 (resume against
-  a finished/empty history), ROOT-027 (attach-failure log handle and results write; the
-  process leak half is already fixed), ROOT-036 (eval metric counting and seed
-  preservation), plus the UGA share of ROOT-034. ROOT-011 and ROOT-026 are CONTRACT GAP /
-  ACCEPTED DEBT. ROOT-015..018 and ROOT-028 are DISPROVEN — do not revive the PPO
-  entropy/GAE/GRU/curiosity claims.
+  `.agents/memory/opencode/bugfinding/master-bug-synthesis.md` §0. ROOT-014 (resume
+  against a finished/empty history) and the ROOT-036 hit/miss metric contract are
+  fixed; the UGA share of ROOT-034 and the ROOT-027 remainder are open. ROOT-011 and
+  ROOT-026 are CONTRACT GAP / ACCEPTED DEBT. ROOT-015..018 and ROOT-028 are
+  DISPROVEN — do not revive the PPO entropy/GAE/GRU/curiosity claims.
 - `.agents/AGENTS.md` defines no single repository-wide test command. The per-product command
   for this product is its `universal-game-agent/` row, and it must be run from that
   directory. Use the command above.
@@ -145,17 +144,47 @@ The dependency direction is deliberate. Preserve it.
 Recorded so they are not rediscovered as if new. Fix them deliberately, not incidentally.
 
 The authoritative open-bug list is
-`.agents/memory/opencode/bugfinding/master-bug-synthesis.md` §0. The most important live
-entries for this product are ROOT-014 (resume against a finished/empty history crashes in
-`training/experiment.py:111-119`), ROOT-027 (attach failure still leaks the log handle and
-writes no results record; the process leak is fixed), and ROOT-036 (eval metric counting
-and seed preservation in `training/evaluate.py` and `environment/external_game.py`).
-ROOT-011 and ROOT-026 are accepted contract debt, not bugs to fix on sight.
+`.agents/memory/opencode/bugfinding/master-bug-synthesis.md` §0. ROOT-014, the ROOT-036
+hit/miss metric contract, and the ROOT-027 failure-artifact path are fixed and covered by
+tests; the remaining open UGA share is ROOT-034. ROOT-011 and ROOT-026 are accepted contract
+debt, not bugs to fix on sight.
 
-- `training/external_experiment.py` has **no tests for its orchestration**. Only the
-  helpers (`_unique_title`, `_run_checkpoint_dir`, `_results_path`, `_apply_run_title`) are
-  covered. The three-phase baseline -> train -> eval driver is untested, and its per-run
-  isolation helpers have never completed a run end to end.
+- **Checkpoint resume is a no-op, not a restart.** `PPOTrainer.train()` returns immediately
+  when `is_complete()` (the checkpoint already met `total_timesteps`) and keeps the existing
+  `ppo_final.pt`; it prints which step count it is at and how to continue. Readers of the
+  history must go through `training.ppo.summarize_history`, which tolerates the empty
+  history that case produces. `experiments/*_results.json` now carry `training_updates` so
+  "nothing was trained" is visible in the artifact instead of reading as a zero reward.
+- **Hit/miss counts require a declared reward semantics.** `environment/reward.py` defines
+  `SIGN_SEMANTICS`/`GENERIC_SEMANTICS` and `reward_semantics_of`. Only `ToyPongEnv` and
+  `ExternPongReward` declare `sign`; `evaluate()` reports `episode_hits`/`mean_hits` ONLY
+  for them and otherwise omits those keys entirely (absence, not `0.0`, is the encoding).
+  An undeclared or unrecognised semantics is `generic`, and `PreprocessingWrapper`
+  downgrades to `generic` when `skip > 1`, because summing rewards across frames breaks the
+  one-event-per-decision-step invariant. Adding a provider that pays `+1` per surviving
+  step must not be reported as a hit count.
+- **Capture output size is per-mode, and the live modes ignore it on purpose.**
+  `capture.out_width`/`out_height` are honoured only by `synthetic`; `region` returns the
+  captured rectangle (defaulting to the out size only when `capture.region.width/height`
+  are absent) and `window` returns the native rect. Native frames are what the
+  red-pixel-count reward/termination bands need. Documented in
+  `make_external_env_from_config`; ROOT-011 is a contract decision, not a resize bug.
+- **Verified native red-pixel baseline (Step-3 pre-flight, 2026-10-02, live window
+  capture, 240 steps through the real external path).** Native frame is `279x336` (the
+  `320x240` canvas plus window chrome). Red-pixel counts: **0 steps in the ambiguous
+  `200..300` gap**, and the MISS banner count (`>= 300`) matched the number of misses
+  exactly (7 banners / 7 misses). Window chrome contributes no red above the hit band.
+  Counts of `1..7` red pixels do occur (23 steps) — below `hit_min=8`, so they classify
+  as "normal" and cannot produce a false hit; a subsequent in-band frame still pays the
+  rising-edge `+1`. `env.reward_semantics` reports `"sign"` for this provider, as the
+  ROOT-036 contract requires. Caveat for anyone reading exp01/exp02 hit counts: the
+  decision cadence (60 ms key hold + 80 ms delay) moves the paddle 5 px per decision
+  while the ball travels roughly 34 px in the same time, so even a pixel-chase policy
+  scores about 2 hits per 7 misses. Low hit yield is that cadence, not detector loss.
+- `training/external_experiment.py` orchestration is covered only up to the phase-1 attach.
+  The helpers (`_unique_title`, `_run_checkpoint_dir`, `_results_path`, `_apply_run_title`)
+  and the failure path are tested; the three-phase baseline -> train -> eval success path
+  still is not, and the per-run isolation helpers have never completed a run end to end.
 - `training/external_experiment.py:46-60` and `training/external_smoke.py:46-51` overlap —
   21 lines total, and they are not byte-identical and not equivalent.
   `external_experiment.launch_game` opens a log file and sets `close_fds=True` (`:50-57`)

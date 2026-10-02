@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from environment.reward import RewardProvider
+from environment.reward import SIGN_SEMANTICS, RewardProvider
 from environment.termination import NaturalTerminationProvider
 
 
@@ -33,6 +33,10 @@ def red_mask(frame: np.ndarray) -> np.ndarray:
 
 
 class ExternPongReward(RewardProvider):
+    #: +1 is exactly one paddle hit and -1 exactly one miss; 0 is neither, so
+    #: this provider's sign carries the hit/miss event meaning.
+    reward_semantics = SIGN_SEMANTICS
+
     def __init__(self, hit_reward: float = 1.0, miss_reward: float = -1.0,
                  hit_min: int = 8, hit_max: int = 200, miss_min: int = 300):
         if not 0 <= hit_min <= hit_max < miss_min:

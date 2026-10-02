@@ -101,6 +101,9 @@ METRIC_DEFINITIONS = {
     "episode_reward": "sum of external rewards in one episode (greedy eval) or PPO rollout accounting (train)",
     "mean_episode_reward": "mean over evaluated episodes, or rolling mean over last <=100 training episodes",
     "mean_episode_length": "mean decisions per episode",
+    "reward_semantics": "the evaluated env's declared reward semantics: 'sign' means reward>0 is a paddle hit and reward<0 a paddle miss; anything else is 'generic' and no hit/miss metric is reported",
+    "mean_hits": "mean paddle hits per episode; only present when reward_semantics is 'sign'",
+    "mean_misses": "mean paddle misses per episode; only present when reward_semantics is 'sign'",
     "terminated": "episodes ended by the game's own terminal signal (red MISS banner)",
     "truncated": "episodes ended by a step/time budget, not by the game",
     "external_reward": "reward from screen pixels via the configured provider (no game internals)",
@@ -219,19 +222,22 @@ def _unique_title(base: str) -> str:
     return f"{base}-{os.getpid()}"
 
 
-COMPARISON_METRICS = ("mean_reward", "std_reward", "mean_hits", "mean_misses",
-                      "mean_length", "terminated_episodes", "truncated_episodes")
+#: Metrics compared between the untrained and trained runs. Hit/miss metrics
+#: are added only when the reward semantics license them, so a generic-reward
+#: run is never compared on counts that would not mean hits.
+COMPARISON_METRICS = ("mean_reward", "std_reward", "mean_length",
+                      "terminated_episodes", "truncated_episodes")
+_SIGN_METRICS = ("mean_hits", "mean_misses")
 
 
 def summarize_eval(rep: dict) -> dict:
     """Flat comparable summary of one evaluate() report (no verdict attached)."""
     total_actions = sum(rep["action_counts"].values()) or 1
-    return {
+    summary = {
         "episodes": int(rep["episodes"]),
+        "reward_semantics": str(rep.get("reward_semantics", "generic")),
         "mean_reward": float(rep["mean_reward"]),
         "std_reward": float(rep["std_reward"]),
-        "mean_hits": float(rep["mean_hits"]),
-        "mean_misses": float(rep["mean_misses"]),
         "mean_length": float(rep["mean_length"]),
         "terminated_episodes": int(rep["terminated_episodes"]),
         "truncated_episodes": int(rep["truncated_episodes"]),
@@ -239,11 +245,24 @@ def summarize_eval(rep: dict) -> dict:
         "action_share": {str(a): float(c) / float(total_actions)
                          for a, c in rep["action_counts"].items()},
     }
+    if summary["reward_semantics"] == "sign":
+        summary["mean_hits"] = float(rep["mean_hits"])
+        summary["mean_misses"] = float(rep["mean_misses"])
+    return summary
 
 
 def summarize_difference(untrained: dict, trained: dict) -> dict:
-    """Trained-minus-untrained deltas over the comparison metrics (descriptive only)."""
-    diff = {m: float(trained[m]) - float(untrained[m]) for m in COMPARISON_METRICS}
+    """Trained-minus-untrained deltas over the metrics both summaries carry."""
+    # Derived from the summaries, not from a second hand-maintained list: a
+    # metric is compared only when both sides actually reported it.
+    metrics = [m for m in (*COMPARISON_METRICS, *_SIGN_METRICS)
+               if m in untrained and m in trained]
+    diff = {m: float(trained[m]) - float(untrained[m]) for m in metrics}
+    untrained_semantics, trained_semantics = (untrained.get("reward_semantics"),
+                                              trained.get("reward_semantics"))
+    diff["reward_semantics"] = (untrained_semantics
+                                if untrained_semantics == trained_semantics
+                                else "mixed")
     actions = sorted(set(untrained["action_counts"]) | set(trained["action_counts"]))
     diff["action_counts"] = {a: int(trained["action_counts"].get(a, 0))
                              - int(untrained["action_counts"].get(a, 0)) for a in actions}

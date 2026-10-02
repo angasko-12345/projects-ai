@@ -16,6 +16,8 @@ from collections import deque
 
 import numpy as np
 
+from environment.reward import GENERIC_SEMANTICS, reward_semantics_of
+
 try:
     import gymnasium as gym
 except ImportError:  # pragma: no cover - only on minimal installs
@@ -131,6 +133,12 @@ class PreprocessingWrapper(_WrapperBase):
         if not isinstance(skip, (int, np.integer)) or int(skip) <= 0:
             raise ValueError(f"skip must be a positive int, got {skip!r}")
         self.size, self.skip = int(size), int(skip)
+        # Frame skip sums rewards across `skip` decisions into one decision, so
+        # one decision can pay several hit events and the step count stops
+        # equalling the event count. The wrapper therefore withdraws the
+        # wrapped env's hit/miss claim whenever it aggregates.
+        self.reward_semantics = (reward_semantics_of(env) if self.skip == 1
+                                 else GENERIC_SEMANTICS)
         self.stack = FrameStack(num_stack=num_stack, size=size)
         shape = (num_stack, size, size)
         if gym is not None:

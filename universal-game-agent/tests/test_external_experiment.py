@@ -283,5 +283,171 @@ class TestFailureResults(unittest.TestCase):
             self.assertEqual(data["config_file"], str(cfg_path))
 
 
+_CONFIG_YAML = (
+    "game:\n"
+    "  title: ExternPongExp\n"
+    "  fps: 60\n"
+    "env: {}\n"
+    "model: {}\n"
+    "ppo:\n"
+    "  seed: 0\n"
+    "eval:\n"
+    "  episodes: 1\n"
+)
+
+
+class _FakeEnv:
+    """Env stand-in exposing only what the driver's probe touches."""
+
+    def __init__(self):
+        self.action_space = type("_Space", (), {"n": 3})()
+        self.closed = 0
+
+    def close(self):
+        self.closed += 1
+
+
+@unittest.skipUnless(_HAS_DEPS, "torch not installed")
+class TestAttachFailureResults(unittest.TestCase):
+    """ROOT-027: an attach failure must leave a results record and stop the game.
+
+    Every phase dependency is stubbed on `training.external_experiment`; the
+    only real code that runs is `run_external_experiment` and the body of
+    `_run_external_experiment` up to the phase-1 attach.
+    """
+
+    def _patch(self, **kw):
+        old = {k: getattr(_xp, k) for k in kw}
+        for k, v in kw.items():
+            setattr(_xp, k, v)
+        self.addCleanup(lambda: [setattr(_xp, k, v) for k, v in old.items()])
+
+    def _stub_pre_attach_phase(self, attach_error, windows, stopped):
+        """Patch everything the driver touches before and during phase 1 launch.
+
+        `windows` collects the stale-window probe attachments so a test can
+        prove the driver really reached line 322's attach site; `stopped`
+        collects the process handles the driver hands to `stop()`.
+        """
+        proc = _FakeProc()
+
+        def window_manager(title):
+            def attach():
+                windows.append(title)
+                raise _xp.WindowNotFoundError(f"no window titled {title!r}")
+            return type("_WM", (), {"attach": staticmethod(attach)})()
+
+        self._patch(
+            make_external_env_from_config=lambda env_cfg: _FakeEnv,
+            WindowManager=window_manager,
+            launch_game=lambda *a, **k: proc,
+            wait_attach=lambda title, timeout_s=20.0: (_ for _ in ()).throw(
+                attach_error),
+            check_alive=lambda p, phase: None,
+            stop=lambda p: stopped.append(p),
+        )
+        return proc
+
+    def _config_in_tempdir(self):
+        import tempfile
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        cfg_path = Path(tmp.name) / "exp.yaml"
+        cfg_path.write_text(_CONFIG_YAML, encoding="utf-8")
+        return cfg_path
+
+    def test_attach_failure_writes_results_and_stops_game(self):
+        import json
+
+        stopped = []
+        windows = []
+        error = RuntimeError("game window 'ExternPongExp-1' did not appear within 20 s")
+        cfg_path = self._config_in_tempdir()
+        proc = self._stub_pre_attach_phase(error, windows, stopped)
+
+        with self.assertRaises(RuntimeError) as ctx:
+            _xp.run_external_experiment(cfg_path)
+
+        # the original exception still reaches the caller
+        self.assertIs(ctx.exception, error,
+                      f"run_external_experiment must re-raise the attach error, got "
+                      f"{ctx.exception!r}")
+        # the driver got past the stale-window check and into phase 1
+        self.assertEqual(windows, [_xp._unique_title("ExternPongExp")],
+                         "expected exactly one stale-window probe before launch")
+
+        out = _results_path(cfg_path)
+        self.assertTrue(out.is_file(), f"no failure results written at {out}")
+        data = json.loads(out.read_text(encoding="utf-8"))
+        self.assertEqual(data["status"], "failed",
+                         "failure results must be marked status=failed")
+        self.assertTrue(data["error"],
+                        "failure results must carry a non-empty error string")
+        self.assertIn("window", data["error"].lower(),
+                      f"error should describe the window/attach problem, got "
+                      f"{data['error']!r}")
+        self.assertEqual(data["error_type"], "RuntimeError")
+        self.assertEqual(data["config_file"], str(cfg_path))
+
+        self.assertEqual(stopped, [proc],
+                         "the launched game process must be stopped exactly once "
+                         "and not leaked")
+
+    def test_attach_failure_without_results_write_still_raises_original(self):
+        """A failing recorder must not mask the run failure (ROOT-027)."""
+        import io
+        from contextlib import redirect_stderr
+        from unittest.mock import patch
+
+        stopped = []
+        windows = []
+        error = RuntimeError("game window 'ExternPongExp-1' did not appear within 20 s")
+        cfg_path = self._config_in_tempdir()
+        proc = self._stub_pre_attach_phase(error, windows, stopped)
+        results_path = _results_path(cfg_path)
+        real_open = open
+
+        def spy_open(path, *args, **kwargs):
+            if isinstance(path, (str, os.PathLike)) and Path(path) == results_path:
+                raise OSError("no such directory")
+            return real_open(path, *args, **kwargs)
+
+        stderr = io.StringIO()
+        with patch("builtins.open", spy_open), redirect_stderr(stderr):
+            with self.assertRaises(RuntimeError) as ctx:
+                _xp.run_external_experiment(cfg_path)
+
+        self.assertIs(ctx.exception, error,
+                      f"recorder failure masked the run error, got {ctx.exception!r}")
+        self.assertFalse(results_path.exists(),
+                         "results path should not exist when the write failed")
+        self.assertIn("could not write failure results", stderr.getvalue(),
+                      "recorder must warn on stderr instead of raising")
+        self.assertEqual(stopped, [proc],
+                         "the game process must still be stopped when the recorder "
+                         "fails")
+
+    def test_attach_failure_releases_real_log_handle(self):
+        """With the real stop(), an attach failure leaves nothing running open."""
+        import json
+
+        windows = []
+        error = RuntimeError("game window 'ExternPongExp-1' did not appear within 20 s")
+        cfg_path = self._config_in_tempdir()
+        proc = self._stub_pre_attach_phase(error, windows, [])
+        self._patch(stop=stop)  # real cleanup, not a recorder
+
+        with self.assertRaises(RuntimeError):
+            _xp.run_external_experiment(cfg_path)
+
+        self.assertEqual(proc.terminated, 1, "game process was not terminated")
+        self.assertEqual(proc._log_closed, 1,  # noqa: SLF001 -- fake handle's log
+                         "the launch log handle leaked on the attach-failure path")
+        data = json.loads(_results_path(cfg_path).read_text(encoding="utf-8"))
+        self.assertEqual(data["status"], "failed",
+                         "failure results must still be written when stop() is real")
+
+
 if __name__ == "__main__":
     unittest.main()

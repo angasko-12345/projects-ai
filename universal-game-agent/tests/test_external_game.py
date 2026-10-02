@@ -162,6 +162,19 @@ class TestExternalGameContract(unittest.TestCase):
         self.assertEqual(r2, 0.0)
         self.assertEqual((term2, trunc2), (False, False))
 
+    def test_reward_semantics_reads_the_live_provider(self):
+        """ROOT-036: a swapped provider must not keep a stale hit/miss claim."""
+        from environment.extern_pong_rewards import ExternPongReward
+        from environment.reward import GENERIC_SEMANTICS, SIGN_SEMANTICS
+
+        env = _env(reward_provider=ExternPongReward())
+        self.assertEqual(env.reward_semantics, SIGN_SEMANTICS)
+        env.reward_provider = NullReward()
+        self.assertEqual(env.reward_semantics, GENERIC_SEMANTICS,
+                         "swapping in a zero reward must withdraw the hit/miss claim")
+        env.reward_provider = ExternPongReward()
+        self.assertEqual(env.reward_semantics, SIGN_SEMANTICS)
+
     def test_step_limit_truncates(self):
         env = _env(termination_provider=StepLimitTermination(max_steps=2), lifecycle=None)
         env.reset()

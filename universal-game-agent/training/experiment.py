@@ -20,7 +20,7 @@ from agent.model import ActorCritic
 from environment.preprocessing import PreprocessingWrapper
 from environment.toy_pong import ToyPongEnv
 from training.evaluate import evaluate
-from training.ppo import PPOConfig, PPOTrainer
+from training.ppo import PPOConfig, PPOTrainer, summarize_history
 
 
 def load_experiment(path: str | Path) -> dict:
@@ -100,6 +100,8 @@ def run_experiment(config_path: str | Path) -> dict:
     history = trainer.train()
     train_seconds = time.perf_counter() - t0
 
+    summary = summarize_history(history)
+
     print("=== final eval (trained network, separate env) ===")
     final = evaluate(model, make_env, episodes=eval_episodes, seeds=eval_seeds)
 
@@ -108,15 +110,18 @@ def run_experiment(config_path: str | Path) -> dict:
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "curiosity_enabled": curiosity is not None,
         "initial_mean_episode_reward": baseline["mean_reward"],
-        "final_train_rolling_mean_reward": history["mean_reward"][-1],
-        "final_train_rolling_mean_ext_reward": history["mean_ext_reward"][-1],
-        "final_train_rolling_mean_int_reward": history["mean_int_reward"][-1],
-        "final_predictor_loss": history["predictor_loss"][-1],
-        "mean_pixel_change": float(np.mean(history["pixel_change"])),
-        "train_mean_episode_length": float(np.mean(history["upd_mean_length"])),
-        "train_terminated_episodes": int(sum(history["upd_terminated"])),
-        "train_truncated_episodes": int(sum(history["upd_truncated"])),
-        "train_component_means": history["components"][-1] if history["components"] else {},
+        # updates_run makes "nothing was trained" visible in the artifact
+        # instead of letting the aggregates below read as measurements.
+        "training_updates": summary["updates_run"],
+        "final_train_rolling_mean_reward": summary["mean_reward"],
+        "final_train_rolling_mean_ext_reward": summary["mean_ext_reward"],
+        "final_train_rolling_mean_int_reward": summary["mean_int_reward"],
+        "final_predictor_loss": summary["predictor_loss"],
+        "mean_pixel_change": summary["pixel_change"],
+        "train_mean_episode_length": summary["mean_episode_length"],
+        "train_terminated_episodes": summary["terminated_episodes"],
+        "train_truncated_episodes": summary["truncated_episodes"],
+        "train_component_means": summary["component_means"],
         "final_eval_mean_reward": final["mean_reward"],
         "final_eval_std_reward": final["std_reward"],
         "final_eval_mean_episode_length": final["mean_length"],

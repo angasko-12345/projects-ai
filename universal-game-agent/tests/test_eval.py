@@ -82,7 +82,11 @@ class TestEvalMode(unittest.TestCase):
 
 
 class ScriptedEvalEnv:
-    """Seed-selected scripted episodes with marked frames (test-only fake)."""
+    """Seed-selected scripted episodes with marked frames (test-only fake).
+
+    Declares no reward semantics, so it is treated as ``generic``: its
+    scripted rewards (1.0, 2.0, 5.0) are not hit/miss events.
+    """
 
     RESET_VAL = -1.0
     SCRIPTS = {0: [(1.0, False, False), (2.0, True, False)],
@@ -115,6 +119,12 @@ class ScriptedEvalEnv:
         pass
 
 
+class SignScriptedEvalEnv(ScriptedEvalEnv):
+    """Scripted env that declares the sign-based hit/miss contract (ROOT-036)."""
+
+    reward_semantics = "sign"
+
+
 def _tiny_model():
     torch.manual_seed(0)
     return ActorCritic(num_actions=2, in_channels=1, feature_dim=16, hidden_size=8)
@@ -122,23 +132,35 @@ def _tiny_model():
 
 @unittest.skipUnless(_HAS_TORCH, "torch not installed")
 class TestEvalCorrectness(unittest.TestCase):
-    EXPECTED_KEYS = {"episodes", "greedy", "seeds", "mean_reward", "std_reward",
-                     "min_reward", "max_reward", "mean_length",
-                     "episode_rewards", "episode_lengths", "action_counts",
-                     "episode_hits", "episode_misses", "mean_hits", "mean_misses",
-                     "episode_terminated", "episode_truncated",
-                     "terminated_episodes", "truncated_episodes"}
+    #: Keys every report carries, whatever the reward semantics.
+    BASE_KEYS = {"episodes", "greedy", "seeds", "reward_semantics", "mean_reward",
+                 "std_reward", "min_reward", "max_reward", "mean_length",
+                 "episode_rewards", "episode_lengths", "action_counts",
+                 "episode_positive_reward_steps", "episode_negative_reward_steps",
+                 "mean_positive_reward_steps", "mean_negative_reward_steps",
+                 "episode_terminated", "episode_truncated",
+                 "terminated_episodes", "truncated_episodes"}
+    #: Hit/miss keys exist only when the env declares sign-based rewards.
+    SIGN_KEYS = {"episode_hits", "episode_misses", "mean_hits", "mean_misses"}
+
     def test_attribution_and_schema(self):
         from training.evaluate import evaluate as evaluate_fn
 
         rep = evaluate_fn(_tiny_model(), ScriptedEvalEnv, episodes=2, seeds=[0, 1])
-        self.assertEqual(set(rep.keys()), self.EXPECTED_KEYS)
+        self.assertEqual(set(rep.keys()), self.BASE_KEYS)
         self.assertEqual(rep["episode_rewards"], [3.0, 5.0])
         self.assertEqual(rep["episode_lengths"], [2, 1])
         self.assertAlmostEqual(rep["mean_reward"], 4.0)
         self.assertAlmostEqual(rep["mean_length"], 1.5)
         self.assertEqual(rep["min_reward"], 3.0)
         self.assertEqual(rep["max_reward"], 5.0)
+
+    def test_sign_semantics_schema_adds_hit_keys(self):
+        from training.evaluate import evaluate as evaluate_fn
+
+        rep = evaluate_fn(_tiny_model(), SignScriptedEvalEnv, episodes=2, seeds=[0, 1])
+        self.assertEqual(set(rep.keys()), self.BASE_KEYS | self.SIGN_KEYS)
+        self.assertEqual(rep["reward_semantics"], "sign")
 
     def test_greedy_ignores_rng_state(self):
         from training.evaluate import evaluate as evaluate_fn
@@ -222,14 +244,62 @@ class TestEvalCorrectness(unittest.TestCase):
         self.assertEqual(rep["episode_lengths"], [1])
         self.assertEqual(rep["std_reward"], 0.0)
 
-    def test_hits_and_misses_counted(self):
+    def test_hits_and_misses_counted_for_sign_provider(self):
         from training.evaluate import evaluate as evaluate_fn
 
-        rep = evaluate_fn(_tiny_model(), ScriptedEvalEnv, episodes=2, seeds=[0, 1])
+        rep = evaluate_fn(_tiny_model(), SignScriptedEvalEnv, episodes=2, seeds=[0, 1])
         self.assertEqual(rep["episode_hits"], [2, 1])
         self.assertEqual(rep["episode_misses"], [0, 0])
         self.assertEqual(rep["mean_hits"], 1.5)
         self.assertEqual(rep["mean_misses"], 0.0)
+
+    def test_generic_provider_reports_no_hits(self):
+        """ROOT-036: a reward with no hit/miss meaning must not be called hits."""
+        from training.evaluate import evaluate as evaluate_fn
+
+        rep = evaluate_fn(_tiny_model(), ScriptedEvalEnv, episodes=2, seeds=[0, 1])
+        self.assertEqual(rep["reward_semantics"], "generic")
+        for key in ("mean_hits", "mean_misses", "episode_hits", "episode_misses"):
+            self.assertNotIn(key, rep,
+                             f"{key!r} must be absent, not zero, for generic rewards")
+        # the same counts stay available under a name that claims no event
+        self.assertEqual(rep["episode_positive_reward_steps"], [2, 1])
+        self.assertEqual(rep["episode_negative_reward_steps"], [0, 0])
+        self.assertAlmostEqual(rep["mean_positive_reward_steps"], 1.5)
+        self.assertAlmostEqual(rep["mean_negative_reward_steps"], 0.0)
+
+    def test_survival_style_rewards_are_generic_not_hits(self):
+        """Every step pays +1: the step count is not a hit count."""
+        from training.evaluate import evaluate as evaluate_fn
+
+        class SurvivalScriptEnv(ScriptedEvalEnv):
+            SCRIPTS = {0: [(1.0, False, False), (1.0, False, False), (1.0, True, False)],
+                       1: [(1.0, False, False)]}
+
+        rep = evaluate_fn(_tiny_model(), SurvivalScriptEnv, episodes=2, seeds=[0, 1])
+        self.assertNotIn("mean_hits", rep)
+        self.assertEqual(rep["episode_positive_reward_steps"], [3, 1])
+
+    def test_unknown_semantics_warns_and_degrades_to_generic(self):
+        from training.evaluate import evaluate as evaluate_fn
+
+        class TypoEnv(ScriptedEvalEnv):
+            reward_semantics = "signn"
+
+        with self.assertWarns(UserWarning):
+            rep = evaluate_fn(_tiny_model(), TypoEnv, episodes=1, seeds=[0])
+        self.assertEqual(rep["reward_semantics"], "generic")
+        self.assertNotIn("mean_hits", rep)
+
+    def test_disagreeing_envs_fall_back_to_generic(self):
+        """A mixed run cannot make the stronger hit/miss claim."""
+        from training.evaluate import evaluate as evaluate_fn
+
+        envs = [SignScriptedEvalEnv(), ScriptedEvalEnv()]
+
+        rep = evaluate_fn(_tiny_model(), lambda: envs.pop(0), episodes=2, seeds=[0, 1])
+        self.assertEqual(rep["reward_semantics"], "generic")
+        self.assertNotIn("mean_hits", rep)
 
     def test_terminated_truncated_counts(self):
         from training.evaluate import evaluate as evaluate_fn
@@ -248,7 +318,8 @@ class TestEvalCorrectness(unittest.TestCase):
         from training.evaluate import evaluate as evaluate_fn
         from training.external_experiment import summarize_difference, summarize_eval
 
-        base = summarize_eval(evaluate_fn(_tiny_model(), ScriptedEvalEnv, episodes=2, seeds=[0, 1]))
+        base = summarize_eval(evaluate_fn(_tiny_model(), SignScriptedEvalEnv,
+                                          episodes=2, seeds=[0, 1]))
         for key in ("mean_reward", "std_reward", "mean_hits", "mean_misses",
                     "mean_length", "terminated_episodes", "truncated_episodes",
                     "action_counts"):
@@ -261,6 +332,36 @@ class TestEvalCorrectness(unittest.TestCase):
                     "terminated_episodes", "truncated_episodes"):
             self.assertEqual(diff[key], 0.0)
         self.assertTrue(all(v == 0 for v in diff["action_counts"].values()))
+
+    def test_comparison_of_generic_rewards_omits_hit_metrics(self):
+        """ROOT-036: a generic-reward comparison must not report hit deltas."""
+        from training.evaluate import evaluate as evaluate_fn
+        from training.external_experiment import summarize_difference, summarize_eval
+
+        untrained = summarize_eval(evaluate_fn(_tiny_model(), ScriptedEvalEnv,
+                                               episodes=2, seeds=[0, 1]))
+        trained = summarize_eval(evaluate_fn(_tiny_model(), ScriptedEvalEnv,
+                                            episodes=2, seeds=[0, 1]))
+        self.assertEqual(untrained["reward_semantics"], "generic")
+        self.assertNotIn("mean_hits", untrained)
+        diff = summarize_difference(untrained, trained)
+        self.assertNotIn("mean_hits", diff)
+        self.assertNotIn("mean_misses", diff)
+        self.assertIn("mean_reward", diff)
+        self.assertEqual(diff["reward_semantics"], "generic")
+
+    def test_comparison_of_mixed_semantics_is_flagged(self):
+        from training.evaluate import evaluate as evaluate_fn
+        from training.external_experiment import summarize_difference, summarize_eval
+
+        sign = summarize_eval(evaluate_fn(_tiny_model(), SignScriptedEvalEnv,
+                                          episodes=2, seeds=[0, 1]))
+        generic = summarize_eval(evaluate_fn(_tiny_model(), ScriptedEvalEnv,
+                                             episodes=2, seeds=[0, 1]))
+        diff = summarize_difference(generic, sign)
+        self.assertEqual(diff["reward_semantics"], "mixed")
+        # only the metrics both sides carry are compared
+        self.assertNotIn("mean_hits", diff)
 
 
 @unittest.skipUnless(_HAS_TORCH, "torch not installed")

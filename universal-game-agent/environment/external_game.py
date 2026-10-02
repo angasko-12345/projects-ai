@@ -23,7 +23,12 @@ except ImportError:  # pragma: no cover - only on minimal installs
     _Base = object
 
 from environment.preprocessing import FrameStack
-from environment.reward import NullReward, NullRewardProvider, RewardProvider
+from environment.reward import (
+    NullReward,
+    NullRewardProvider,
+    RewardProvider,
+    reward_semantics_of,
+)
 from environment.termination import (
     NaturalTerminationProvider,
     NeverTerminateProvider,
@@ -207,6 +212,17 @@ class ExternalGameEnv(_Base):
         self._last_raw: np.ndarray | None = None
         self.last_breakdown = None  # latest RewardResult (or None for scalar providers)
 
+    @property
+    def reward_semantics(self) -> str:
+        """Declared reward semantics, read live from the current provider.
+
+        A property rather than a value captured in ``__init__``: callers and
+        tests swap ``reward_provider`` after construction, and a stale snapshot
+        would keep publishing hit/miss counts for rewards that no longer
+        carry that meaning.
+        """
+        return reward_semantics_of(self.reward_provider)
+
     @staticmethod
     def _discrete(n: int):
         if gym is not None:
@@ -378,6 +394,25 @@ def make_external_env_from_config(env_cfg: dict, clock=None):
     ``allow_live_capture: true`` as an explicit safeguard; without it only
     the display-free ``synthetic`` source is built.
     Returns a zero-arg factory like ``make_env_from_config``.
+
+    Capture output size -- the CURRENT contract, per mode (ROOT-011):
+    ``capture.out_width``/``out_height`` are validated as positive in every
+    mode, but only ``synthetic`` resizes frames to them:
+
+    * ``synthetic``: frames are exactly ``out_width`` x ``out_height``.
+    * ``region``: frames are the captured rectangle's size, which is
+      ``capture.region.width``/``height`` and DEFAULTS to the out size only
+      when those keys are absent. A region that specifies its own size wins;
+      the out size is not applied as a resize.
+    * ``window``: frames are the window rect (title bar and borders
+      included) at native size; the out size is not applied as a resize.
+
+    Native frames for the live modes are deliberate: the reward/termination
+    detectors are red-pixel-count bands that only separate a 6px ball from a
+    MISS banner on undownscaled frames. The model observation path resizes
+    downstream to ``obs_size`` in ``PreprocessingWrapper``. Treating this as
+    a bug and resizing would silently degrade detection, so changing it needs
+    a contract decision, not a patch.
     """
     from interface.adapter import GameInterface
     from interface.capture import MSSBackend, ScreenCapture, SyntheticBackend, WindowCapture

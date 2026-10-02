@@ -154,5 +154,37 @@ class TestPreprocessingWrapper(unittest.TestCase):
         self.assertEqual(tuple(t.shape), (4, 84, 84))
 
 
+class TestRewardSemanticsForwarding(unittest.TestCase):
+    """ROOT-036: the wrapper must not overstate what a decision step means.
+
+    Frame skip sums rewards across `skip` decisions into one reported reward,
+    so a single decision can pay several hit events and a step count stops
+    equalling an event count. At skip=1 nothing is aggregated and the
+    wrapped env's declaration passes through unchanged.
+    """
+
+    def test_skip_one_forwards_wrapped_declaration(self):
+        from environment.reward import SIGN_SEMANTICS
+        from environment.toy_pong import ToyPongEnv
+
+        wrapper = PreprocessingWrapper(ToyPongEnv(), skip=1)
+        self.assertEqual(wrapper.reward_semantics, SIGN_SEMANTICS)
+
+    def test_frame_skip_withdraws_the_hit_miss_claim(self):
+        from environment.reward import GENERIC_SEMANTICS
+        from environment.toy_pong import ToyPongEnv
+
+        wrapper = PreprocessingWrapper(ToyPongEnv(), skip=2)
+        self.assertEqual(wrapper.reward_semantics, GENERIC_SEMANTICS)
+
+    def test_wrapper_does_not_mutate_the_wrapped_env(self):
+        from environment.reward import SIGN_SEMANTICS
+        from environment.toy_pong import ToyPongEnv
+
+        env = ToyPongEnv()
+        PreprocessingWrapper(env, skip=4)
+        self.assertEqual(env.reward_semantics, SIGN_SEMANTICS)
+
+
 if __name__ == "__main__":
     unittest.main()
