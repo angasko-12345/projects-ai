@@ -42,14 +42,14 @@ Before substantial work:
 
 There is no single repository-wide test command. Each product has its own, and each runs
 from its own directory rather than from the repository root. Read the local
-`AGENTS.md` before running anything. The baselines below were re-run 2026-10-02 at
-commit `849e015`; they are dated observations, not contracts, and tests get added, so run
-the suite for current truth.
+`AGENTS.md` before running anything. The baselines below are the current verified values
+as of 2026-10-02 (after `dae1415`); they are dated observations, not contracts, and tests
+get added, so run the suite for current truth.
 
 | Product | Test command | Baseline 2026-10-02 |
 |---|---|---|
-| `agentops/` | `cd agentops` then `python -m unittest discover -s tests` | 425 tests, 4 skipped by environment, OK |
-| `universal-game-agent/` | `cd universal-game-agent` then `python -m unittest discover -s tests` | 295 tests, 1 skip, OK |
+| `agentops/` | `cd agentops` then `python -m unittest discover -s tests` | 443 tests, 4 skipped by environment, OK |
+| `universal-game-agent/` | `cd universal-game-agent` then `python -m unittest discover -s tests` | 317 tests, 1 skip, OK |
 | `small-projects/mini-llm/` | `cd small-projects/mini-llm` then `python -m unittest discover -s tests` | 96 run, 1 skip, 3 pre-existing `TestGenerationSeed` errors (working-tree deletion of `data/tokenizer.json`, a user change — not a code defect) |
 
 Treat any new failure or skip as attributable to the current work until proven otherwise,
@@ -114,6 +114,11 @@ After substantial work, update the relevant `.agents/memory/` files with concise
 
 - The live bug ledger is `.agents/memory/opencode/bugfinding/master-bug-synthesis.md` §0.
   Read a root's status there before acting on any bug; §9 of that file is SUPERSEDED.
+  Current state (2026-10-02): **zero ACTIVE roots** across all 36 canonical roots — 20
+  FIXED, 1 PARTIALLY FIXED (ROOT-034), 2 CONTRACT GAP / ACCEPTED DEBT (ROOT-011,
+  ROOT-026), 1 HELD (ROOT-033), 12 DISPROVEN. This file deliberately does not restate
+  per-root statuses; the ledger is the only place that list lives. Do not treat ROOT-015
+  through ROOT-025 or ROOT-028 as bugs — they are DISPROVEN and must not be revived.
 - The live task queue is `.agents/pending_tasks.md`. It holds only unfinished work.
 - Historical audit reports remain evidence, not current instructions. Never revise them in
   place and never treat one as a work queue.

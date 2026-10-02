@@ -16,11 +16,12 @@
 | Phases 6-10 | See Track B | Restructured into Track B. B7 DONE. B6/B8/B9/B10 NOT STARTED. The old "Phases 6-10 PROPOSED" line is superseded |
 | Version | 0.1.3, exe rebuilt | `dist/AgentOps.exe` |
 
-**Test baselines (each product's own command, from its own directory), re-run 2026-10-02:**
+**Test baselines (each product's own command, from its own directory), verified 2026-10-02
+after `dae1415`:**
 
 | Product | Result |
 |---|---|
-| `agentops/` | 425 tests, 4 environment skips, OK |
+| `agentops/` | 443 tests, 4 environment skips, OK |
 | `universal-game-agent/` | 317 tests, 1 skip, OK |
 | `small-projects/mini-llm/` | 96 run, 1 skip, 3 pre-existing `TestGenerationSeed` errors (working-tree deletion of `data/tokenizer.json`) |
 

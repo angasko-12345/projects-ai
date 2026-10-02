@@ -31,18 +31,30 @@ cd universal-game-agent
 python -m unittest discover -s tests
 ```
 
-- The current baseline (re-run 2026-10-02 at commit `849e015`) is **295 tests, 1 skip,
+- The current baseline (verified 2026-10-02, after `dae1415`) is **317 tests, 1 skip,
   OK**. That is a dated observation, not a contract; the count is volatile because tests
   get added. Run the suite for current truth. All tests are `unittest.TestCase`, and
   `tests/__init__.py` exists so discovery works as a package. The tests import `configs`,
   `training`, and `games` because discovery runs with `universal-game-agent/` as the working
   directory — no test bootstraps `sys.path` itself. Run the suite from that directory.
-- Current open UGA bugs are tracked in
-  `.agents/memory/opencode/bugfinding/master-bug-synthesis.md` §0. ROOT-014 (resume
-  against a finished/empty history) and the ROOT-036 hit/miss metric contract are
-  fixed; the UGA share of ROOT-034 and the ROOT-027 remainder are open. ROOT-011 and
-  ROOT-026 are CONTRACT GAP / ACCEPTED DEBT. ROOT-015..018 and ROOT-028 are
-  DISPROVEN — do not revive the PPO entropy/GAE/GRU/curiosity claims.
+- **Bug state: no ACTIVE canonical roots for this product.** The authoritative per-root
+  status list is `.agents/memory/opencode/bugfinding/master-bug-synthesis.md` §0 — read a
+  root's status there before acting on any bug, and take unfinished work from
+  `.agents/pending_tasks.md`. For UGA specifically: ROOT-014 (finished-checkpoint resume),
+  ROOT-036 (eval hit/miss semantics, now a **declared contract** rather than an inferred
+  metric), and ROOT-027 (attach-failure cleanup and results artifact) are FIXED; the UGA
+  share of ROOT-034 remains PARTIALLY FIXED; ROOT-011 is CONTRACT GAP / DOCUMENTED and
+  ROOT-026 is CONTRACT GAP / ACCEPTED DEBT, neither of which is a defect to fix on sight.
+  ROOT-033 is an AgentOps-only root and does not belong in this product's bug list.
+  ROOT-015..018 and ROOT-028 are DISPROVEN — do not revive the PPO entropy/GAE/GRU/curiosity
+  claims.
+- **Real open UGA work** (from `.agents/pending_tasks.md`): the STEP-3 exp02 re-run has
+  still NOT been run — its pre-flight passed 2026-10-02 and the run was then cancelled
+  because the machine was in use, so the exp02 verdict stays suspended. **Ask before
+  starting it:** a long GUI run sends real `SendInput` keystrokes and holds a real window
+  for three phases. Also open: the untested three-phase
+  `training/external_experiment.py` orchestration (helpers covered, the success path is
+  not), and the UGA share of ROOT-034.
 - `.agents/AGENTS.md` defines no single repository-wide test command. The per-product command
   for this product is its `universal-game-agent/` row, and it must be run from that
   directory. Use the command above.
@@ -143,11 +155,16 @@ The dependency direction is deliberate. Preserve it.
 
 Recorded so they are not rediscovered as if new. Fix them deliberately, not incidentally.
 
-The authoritative open-bug list is
-`.agents/memory/opencode/bugfinding/master-bug-synthesis.md` §0. ROOT-014, the ROOT-036
-hit/miss metric contract, and the ROOT-027 failure-artifact path are fixed and covered by
-tests; the remaining open UGA share is ROOT-034. ROOT-011 and ROOT-026 are accepted contract
-debt, not bugs to fix on sight.
+The authoritative per-root bug status list is
+`.agents/memory/opencode/bugfinding/master-bug-synthesis.md` §0, and unfinished work is
+`.agents/pending_tasks.md`. There are currently **no ACTIVE canonical roots** for this
+product. ROOT-014 (finished-checkpoint resume), ROOT-036 (the declared reward-semantics
+hit/miss contract), and ROOT-027 (attach-failure cleanup plus the `status: failed`
+results artifact) are fixed and covered by tests; the only unfinished canonical root is
+ROOT-034 (PARTIALLY FIXED). ROOT-011 is CONTRACT GAP / DOCUMENTED and ROOT-026 is
+CONTRACT GAP / ACCEPTED DEBT — both are recorded debt, not bugs to fix on sight. The
+entries below are design and maintainability hazards that predate the audit and are not
+tracked as canonical roots.
 
 - **Checkpoint resume is a no-op, not a restart.** `PPOTrainer.train()` returns immediately
   when `is_complete()` (the checkpoint already met `total_timesteps`) and keeps the existing

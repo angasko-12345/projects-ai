@@ -30,15 +30,18 @@ python -m unittest discover -s tests
   `@requires_display` rather than faking a GUI: production GUI code never
   pretends a display exists. Controller-level GUI logic lives in non-Tk test
   classes and runs everywhere.
-- The current baseline (re-run 2026-10-02 at commit `849e015`) is **425 tests, 4 skipped
+- The current baseline (verified 2026-10-02, after `dae1415`) is **443 tests, 4 skipped
   by environment, OK**. That is a dated observation, not a contract. Treat any new failure
   or skip as attributable to the current work until proven otherwise. Do not rely on
   remembered counts; run the suite.
-- Current open AgentOps bugs are tracked in
-  `.agents/memory/opencode/bugfinding/master-bug-synthesis.md` §0: ROOT-004, ROOT-005,
-  ROOT-006, ROOT-029, ROOT-030, ROOT-032, ROOT-035, plus the AgentOps share of ROOT-034.
-  ROOT-033 is HELD pending a Windows termination contract. ROOT-015..025 and ROOT-028 are
-  DISPROVEN — do not revive them.
+- **Bug state: no ACTIVE canonical roots.** The authoritative per-root status list is
+  `.agents/memory/opencode/bugfinding/master-bug-synthesis.md` §0 — read a root's status
+  there before acting on any bug, and take unfinished work from `.agents/pending_tasks.md`.
+  For AgentOps specifically: every previously-open root is now FIXED; the AgentOps share
+  of ROOT-034 remains PARTIALLY FIXED (remaining test-quality gaps in the DBG-06..15
+  cluster, not a generic bug hunt); and ROOT-033 (Windows termination classification)
+  remains HELD pending an explicit platform decision — do not implement the high-bit
+  heuristic. ROOT-015..025 and ROOT-028 are DISPROVEN — do not revive them.
 - There is no configured lint, formatter, type-check, or coverage command. Do not invent
   one as part of normal validation.
 - Tests use in-memory SQLite and `tempfile`; they do not write into `.agentops/`.
