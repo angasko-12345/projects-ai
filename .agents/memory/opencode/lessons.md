@@ -75,6 +75,73 @@ When sweeping for "old text still present", read the matched lines rather than t
 count, and anchor patterns so a correct replacement cannot match. A verifier that cries wolf
 gets ignored exactly when it matters.
 
+## 2026-10-02 — UGA bug-root implementation and experiment validity
+
+Full record: `sessions/2026-10-02-uga-root-014-036.md`.
+
+### Review the measurement contract before writing it
+
+**The ROOT-036 design was reviewed by an independent read-only reviewer before any code was
+written, and that review earned its keep.** It returned **six failure modes in a proposal that
+already looked careful**.
+
+Three would have broken the test suite. Two were **unlisted consumers the proposal had missed**:
+fake report dicts in `tests/test_cli.py` that carry no `reward_semantics`, and an exact-key-set
+assertion in `tests/test_eval.py`.
+
+One would have **reintroduced the precise lie the change existed to remove**: an `__init__`
+snapshot of `reward_semantics` would have kept publishing hit counts after the reward provider was
+swapped. A stale value is worse than no value when the artifact is evidence — it looks measured.
+
+Its conclusions were adopted: declare on the `RewardProvider` ABC, property rather than snapshot,
+downgrade on `skip > 1`, derive comparison metrics instead of hand-maintaining a second list.
+
+### Absence, not zero, for "this was not measured"
+
+**`0.0` hits reads as "hit nothing"** — to a human and to any plotting script. The eval report now
+**omits the hit/miss keys entirely** for non-sign rewards rather than reporting zero.
+
+This applies to any metric that is not measurable under a given configuration. If the number was
+never computed, it must not occupy the slot where a computed number belongs.
+
+### Test fixtures carry the contract too
+
+**A fixture that deliberately does not satisfy a new contract is still evidence.** `ScriptedEvalEnv`
+in `tests/test_eval.py` intentionally did **not** declare sign semantics, so the existing hit/miss
+assertions had to move to a `SignScriptedEvalEnv` subclass. The pre-existing tests were **updated
+rather than made to pass** by loosening the fixture.
+
+The fake report dicts in `tests/test_cli.py` were two more fixtures that had to gain the new
+field. When a contract lands, the tests are consumers too, and every fixture is a claim about the
+contract.
+
+### Verify your own harness before blaming the product
+
+The first external-Pong pre-flight reported **0 hits and 23 misses while red was present in the hit
+band for 15 steps**. That is a contradiction, so the harness got the suspicion first — and it was
+the right instinct.
+
+**Two separate harness bugs were found and fixed:**
+
+- The ball detector **averaged the white Windows title bar**, because the capture is the whole
+  window rect, so the analysis had to be cropped to the black canvas.
+- **The run was too short.**
+
+Red-on-latch only happens on a real hit, so "red present but zero paid hits" was a **real signal,
+not noise**. After the fix the bands behaved correctly: 0 steps in the ambiguous 200..300 gap, and
+the MISS band (`>=300`) matched the miss count exactly. The extra run was worth it.
+
+### Ask before starting a long run on a machine the user is using
+
+A **~45-90 minute GUI experiment** was dispatched to a background lane while the user was actively
+at the machine. It sends **real `SendInput` keystrokes and opens real windows for three phases**.
+The user cancelled it.
+
+Ask first. And prefer a **bounded pre-flight that proves the measurement precondition** over a long
+run that cannot be interpreted until the precondition holds — the 240-step pre-flight answered the
+detector question in minutes; 4096 timesteps plus two 100-episode evals would not have answered it
+any faster.
+
 ## Cross-references
 
 - `../lessons.md` — canonical dated lessons, including the same 2026-09-26 entries in full.
