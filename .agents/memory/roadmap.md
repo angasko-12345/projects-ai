@@ -21,7 +21,7 @@
 | Product | Result |
 |---|---|
 | `agentops/` | 425 tests, 4 environment skips, OK |
-| `universal-game-agent/` | 295 tests, 1 skip, OK |
+| `universal-game-agent/` | 317 tests, 1 skip, OK |
 | `small-projects/mini-llm/` | 96 run, 1 skip, 3 pre-existing `TestGenerationSeed` errors (working-tree deletion of `data/tokenizer.json`) |
 
 **Track A / Track B item status, 2026-10-02:**
