@@ -336,3 +336,12 @@
 - **Baseline re-verified 2026-10-02** at commit `849e015`, each product's own command from its own directory: `agentops/` 425 tests with 4 environment skips OK; `universal-game-agent/` 295 tests with 1 skip OK; `small-projects/mini-llm/` 96 run with 1 skip and 3 pre-existing `TestGenerationSeed` errors caused by the working-tree deletion of `data/tokenizer.json`.
 - **Documentation only.** No production source and no test was modified.
 - **Agents involved:** Cline (this session).
+
+## 2026-10-02 - Assigned root batch fixed test-first; disposition now 20 FIXED / 0 ACTIVE
+
+- **Decision:** Fix the eight roots assigned to this session test-first (red regression test, smallest fix, focused green): ROOT-004, ROOT-005, ROOT-006, ROOT-027, ROOT-029, ROOT-030, ROOT-032, ROOT-035 — committed and pushed as `b46a3e0`. A parallel session then closed ROOT-014 and ROOT-036 at `2a7b25a`. Ledger §0.1/§0.2, `.agents/pending_tasks.md`, canonical `project.md`, and `.agents/memory/oh-my-pi/project.md` were synced to the combined state.
+- **Reason:** These were the remaining CONFIRMED actionable roots after the 2026-10-02 verification. ROOT-005 routes swallowed failure-record losses through the existing `DegradationRecorder` (A8 persistence policy) instead of adding a second logging channel; ROOT-027's failure-results write is guarded so the recorder can never mask the original run error; ROOT-029 makes the producer satisfy the validator's existing invariant rather than relaxing the validator.
+- **Alternatives considered:** `logger.exception` in the bare arms (rejected — the persistence policy already defines the visible sink for record loss; a log line would be an unstructured duplicate). Editing superseded §9 statuses in place (rejected — same traceability reason as the 2026-10-02 hierarchy decision above).
+- **Disposition of the 36 roots (2026-10-02, post-batch):** 20 FIXED, 0 ACTIVE, 1 PARTIALLY FIXED (ROOT-034), 2 CONTRACT GAP / ACCEPTED DEBT (ROOT-011, ROOT-026), 1 HELD (ROOT-033), 12 DISPROVEN (ROOT-015..025, ROOT-028).
+- **Baseline after the batches (2026-10-02):** `agentops/` 443 tests, 4 environment skips, OK; `universal-game-agent/` 317 tests, 1 skip, OK; `small-projects/mini-llm/` unchanged (96 run, 1 skip, 3 pre-existing `TestGenerationSeed` errors from the working-tree tokenizer deletion).
+- **Agents involved:** omp (this session); ROOT-014/ROOT-036 by a parallel session.

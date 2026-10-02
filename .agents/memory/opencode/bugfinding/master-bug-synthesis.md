@@ -21,7 +21,7 @@ superseded and must not be used as the work queue — the live queue is
 | Product | Command | Result 2026-10-02 |
 |---|---|---|
 | `agentops/` | `python -m unittest discover -s tests` | 443 tests, 4 environment skips, OK (after the 2026-10-02 root-fix batch; earlier same-day baseline: 425) |
-| `universal-game-agent/` | `python -m unittest discover -s tests` | 296 tests, 1 skip, OK (after the 2026-10-02 root-fix batch; earlier same-day baseline: 295) |
+| `universal-game-agent/` | `python -m unittest discover -s tests` | 317 tests, 1 skip, OK (after the 2026-10-02 root-fix batches; earlier same-day baseline: 295) |
 | `small-projects/mini-llm/` | `python -m unittest discover -s tests` | 96 run, 1 skip, 3 pre-existing `TestGenerationSeed` errors |
 
 The 3 mini-llm errors come from the working-tree deletion of
@@ -73,8 +73,8 @@ committed). They are not a code defect.
 
 | Classification | Count | Roots |
 |---|---|---|
-| FIXED | 18 | ROOT-001, 002, 003, 004, 005, 006, 007, 008, 009, 010, 012, 013, 027, 029, 030, 031, 032, 035 |
-| ACTIVE | 2 | ROOT-014, ROOT-036 |
+| FIXED | 20 | ROOT-001, 002, 003, 004, 005, 006, 007, 008, 009, 010, 012, 013, 014, 027, 029, 030, 031, 032, 035, 036 |
+| ACTIVE | 0 | none |
 | PARTIALLY FIXED | 1 | ROOT-034 |
 | CONTRACT GAP / ACCEPTED DEBT | 2 | ROOT-011, ROOT-026 |
 | HELD | 1 | ROOT-033 |

@@ -28,8 +28,6 @@
 
 | ID | Item | Evidence |
 |---|---|---|
-| ROOT-014 | Guard resume against a finished/empty history | `training/experiment.py:111-119` indexes `history[...]` unguarded |
-| ROOT-036 | Fix eval metric counting and preserve seeds | `training/evaluate.py:42-45`, `environment/external_game.py:274` |
 | ROOT-034 (UGA share) | Remaining test-quality gaps in the DBG-06..15 cluster | PARTIALLY FIXED -- see master-bug-synthesis section 0 |
 | -- | STEP 3 pre-flight: check live-play baseline reds in the exp window, then re-run exp02 | unchanged top item; the exp02 verdict stays suspended until this runs |
 | -- | Untested `training/external_experiment.py` orchestration | helpers covered, the three-phase driver is not |
