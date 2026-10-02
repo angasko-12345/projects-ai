@@ -20,8 +20,8 @@ superseded and must not be used as the work queue — the live queue is
 
 | Product | Command | Result 2026-10-02 |
 |---|---|---|
-| `agentops/` | `python -m unittest discover -s tests` | 425 tests, 4 environment skips, OK |
-| `universal-game-agent/` | `python -m unittest discover -s tests` | 295 tests, 1 skip, OK |
+| `agentops/` | `python -m unittest discover -s tests` | 443 tests, 4 environment skips, OK (after the 2026-10-02 root-fix batch; earlier same-day baseline: 425) |
+| `universal-game-agent/` | `python -m unittest discover -s tests` | 296 tests, 1 skip, OK (after the 2026-10-02 root-fix batch; earlier same-day baseline: 295) |
 | `small-projects/mini-llm/` | `python -m unittest discover -s tests` | 96 run, 1 skip, 3 pre-existing `TestGenerationSeed` errors |
 
 The 3 mini-llm errors come from the working-tree deletion of
@@ -35,9 +35,9 @@ committed). They are not a code defect.
 | ROOT-001 | Unredacted `task.result` persistence | AgentOps | **FIXED** | `workflow.py` redacts stdout/stderr, legacy verification output, and the task-execution error string at every durable assignment; reuses `logging.redact_text` |
 | ROOT-002 | Review gate bypass via CLI | AgentOps | **FIXED** | One predicate owns readiness — `assess_workflow_readiness`; used by CLI, GUI, and both `run_high_level` READY returns (849e015) |
 | ROOT-003 | Self-deadlock via `.agentops/` in target repo | AgentOps | **FIXED** | `.git/info/exclude` keeps AgentOps state out of the target repo status; exclusion failure now raises an actionable `GitError` instead of deadlocking the merge (849e015) |
-| ROOT-004 | Git failure misclassification | AgentOps | **ACTIVE** | `finalize.py` still resolves merge outcomes without `failure.FailureClassifier.classify`; dirty base worktree, changed base commit, and merge conflict stay conflated |
-| ROOT-005 | Silent exception swallowing in failure path | AgentOps | **ACTIVE** | `workflow.py` still has ~15 bare `except Exception:` arms without `logger.exception` |
-| ROOT-006 | GUI mutual-exclusion bypass | AgentOps | **ACTIVE** | `gui_controller.py:226` `_operation_lock` does not guard the per-operation active-state transition |
+| ROOT-004 | Git failure misclassification | AgentOps | **FIXED** | `finalize.py` classifies `GitError` through `FailureClassifier.classify(source=FailureSource.GIT, error=...)`: dirty base → clean-worktree task, refused/changed base → re-validate task, conflict → unchanged conflict task, other → generic merge task (2026-10-02) |
+| ROOT-005 | Silent exception swallowing in failure path | AgentOps | **FIXED** | `workflow.py` no longer swallows failure-record losses: the six `record_failure` wrappers record a `failure.create` degradation, and the Path-B observer create/finish/fail arms reuse `_note_run_degradation` (`agent_run.create` / `agent_run.transition`) (2026-10-02) |
+| ROOT-006 | GUI mutual-exclusion bypass | AgentOps | **FIXED** | `_begin_operation` mints a fresh cancel `Event` per operation and `_end_operation` identity-checks its argument, so a stale worker cannot clear a newer operation's active state (2026-10-02) |
 | ROOT-007 | GUI recovery scope mismatch | AgentOps | **FIXED** | `recover_interrupted` forwards `workflow_id` to `recover_agent_runs`, `recover_verification_runs`, and `recover_tasks`; a scoped pass no longer touches another workflow's rows |
 | ROOT-008 | Unvalidated checkpoint interval | UGA | **FIXED** | `PPOConfig.__post_init__` validates `checkpoint_every_updates` as a non-negative int (`bool` rejected); 0 disables periodic writes, `ppo_final.pt` always written |
 | ROOT-009 | Orphaned game process on attach failure | UGA | **FIXED** | `external_experiment.launch_phase2_process` (`external_experiment.py:182`) transfers proc ownership to the caller only on success and stops it locally on attach/liveness failure |
@@ -58,24 +58,24 @@ committed). They are not a code defect.
 | ROOT-024 | Frame normalization truncates to zero | UGA | **DISPROVEN** | `preprocessing.py` already casts to float before dividing; frame range is `[0,1]` |
 | ROOT-025 | Win32 GDI handle leak | UGA | **DISPROVEN** | `interface/win32_capture.py` already releases HBITMAP/HDC on all paths |
 | ROOT-026 | Missing `games/__init__.py` | UGA | **CONTRACT GAP / ACCEPTED DEBT** | `universal-game-agent/games/` has no `__init__.py` and still works as an implicit namespace package; `games/extern_pong.py` additionally mutates `sys.path`. Recorded debt, not queued |
-| ROOT-027 | External attach failure leaks process+log+results | UGA | **PARTIALLY FIXED** | Process leak closed by the ROOT-009 fix in `launch_phase2_process`. The log handle and the `<stem>_results.json` failure write on attach failure are still not released/recorded |
+| ROOT-027 | External attach failure leaks process+log+results | UGA | **FIXED** | Process/log cleanup already covered by `launch_phase2_process` + `stop()` (ROOT-009); `run_external_experiment` now writes `<stem>_results.json` with `status: failed`, `error`, and `error_type` before re-raising on any failure path (2026-10-02) |
 | ROOT-028 | GAE mid-rollout truncation bleed | UGA | **DISPROVEN** | The timeout-aware GAE already carries the dones buffer; the claimed bleed does not reproduce |
-| ROOT-029 | Producer/validator divergence | AgentOps | **ACTIVE** | `execution_model.py:146-152` validator and `workflow.py:569-573` producer still disagree: FAIL_FAST with an optional check failing first still yields `StateTransitionError` |
-| ROOT-030 | Unclassified evidence write | AgentOps | **ACTIVE** | `verification_kernel.py` artifact write is still swallowed with no `PERSISTENCE_POLICIES` row and no `Degradation` record, contradicting the declared A8 policy |
+| ROOT-029 | Producer/validator divergence | AgentOps | **FIXED** | Producer decision chain requires ≥1 passed check for PASSED (otherwise FAILED), so vacuous pass suites no longer contradict `assert_report_consistent`; regression tests in `tests/test_verification_kernel.py` (2026-10-02) |
+| ROOT-030 | Unclassified evidence write | AgentOps | **FIXED** | Artifact-pointer write failure records a `verification_check.artifacts` degradation with `SAFE_TO_DEGRADE` in `persistence.PERSISTENCE_POLICIES`; stdout/stderr pointers are dropped, check state and transcript retained — no fabricated evidence (2026-10-02) |
 | ROOT-031 | Provenance-write bypass | AgentOps | **FIXED** | Provenance writes are centralized: `gui_controller.py:20` imports `record_worktree_provenance` with a single call site at `:396`; no second unguarded write remains |
-| ROOT-032 | UnicodeDecodeError on non-ASCII | AgentOps | **ACTIVE** | `git.py:77` still calls `subprocess.run(..., text=True, capture_output=True)` with no explicit UTF-8 `encoding`/`errors`; only `git.py:168` (`read_text`) uses `errors="replace"` |
+| ROOT-032 | UnicodeDecodeError on non-ASCII | AgentOps | **FIXED** | `git.py` `_run` passes `encoding="utf-8", errors="replace"` to `subprocess.run`; non-ASCII bytes covered in `tests/test_git.py` (`Utf8DecodingTests`) (2026-10-02) |
 | ROOT-033 | Windows termination classification | AgentOps | **HELD** | Deliberately held. No Windows termination contract is defined; do not implement the high-bit heuristic |
 | ROOT-034 | Test-quality defects (cluster) | Both | **PARTIALLY FIXED** | Several gaps closed by later regression work; the remaining DBG-06..15 items still stand |
-| ROOT-035 | GUI `_root_cache` shared mutable state | AgentOps | **ACTIVE** | `gui_controller.py:228` `_root_cache` dict is still read at `:238` and written at `:245` without a lock |
+| ROOT-035 | GUI `_root_cache` shared mutable state | AgentOps | **FIXED** | `_operation_root` runs under `_root_cache_lock` (single-flight: one Git lookup for concurrent misses); GitError results stay uncached (2026-10-02) |
 | ROOT-036 | Eval metric bugs | UGA | **ACTIVE** | `training/evaluate.py:42-45` and `environment/external_game.py:274` still miscount composite-reward episodes; no seed preservation |
 
 ### 0.2 Counts
 
 | Classification | Count | Roots |
 |---|---|---|
-| FIXED | 10 | ROOT-001, 002, 003, 007, 008, 009, 010, 012, 013, 031 |
-| ACTIVE | 9 | ROOT-004, 005, 006, 014, 029, 030, 032, 035, 036 |
-| PARTIALLY FIXED | 2 | ROOT-027, ROOT-034 |
+| FIXED | 18 | ROOT-001, 002, 003, 004, 005, 006, 007, 008, 009, 010, 012, 013, 027, 029, 030, 031, 032, 035 |
+| ACTIVE | 2 | ROOT-014, ROOT-036 |
+| PARTIALLY FIXED | 1 | ROOT-034 |
 | CONTRACT GAP / ACCEPTED DEBT | 2 | ROOT-011, ROOT-026 |
 | HELD | 1 | ROOT-033 |
 | DISPROVEN | 12 | ROOT-015..025, ROOT-028 |

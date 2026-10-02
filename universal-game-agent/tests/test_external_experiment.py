@@ -264,5 +264,24 @@ class TestLaunchCleanup(unittest.TestCase):
         self.assertEqual(closed, [])  # ownership transferred, not closed
 
 
+@unittest.skipUnless(_HAS_DEPS, "torch not installed")
+class TestFailureResults(unittest.TestCase):
+    def test_experiment_failure_writes_results_json(self):
+        import json
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg_path = Path(tmp) / "exp.yaml"
+            cfg_path.write_text("env: {}\n", encoding="utf-8")  # no "game" key
+            with self.assertRaises(KeyError):
+                _xp.run_external_experiment(cfg_path)
+            out = _results_path(cfg_path)
+            self.assertTrue(out.is_file())
+            data = json.loads(out.read_text(encoding="utf-8"))
+            self.assertEqual(data["status"], "failed")
+            self.assertIn("game", data["error"])
+            self.assertEqual(data["config_file"], str(cfg_path))
+
+
 if __name__ == "__main__":
     unittest.main()

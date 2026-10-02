@@ -249,3 +249,14 @@ class NoWindowSpawnTests(unittest.TestCase):
             self.assertEqual(kwargs.get("creationflags"), subprocess.CREATE_NO_WINDOW)
         else:
             self.assertNotIn("creationflags", kwargs)
+
+
+class Utf8DecodingTests(unittest.TestCase):
+    def test_run_decodes_output_as_utf8_with_replacement(self):
+        """Locale decoding (Windows codepages) crashes on non-UTF-8 Git output."""
+        completed = subprocess.CompletedProcess(args=["git"], returncode=0, stdout="", stderr="")
+        with patch("agentops.git.subprocess.run", return_value=completed) as run:
+            GitWorktreeManager()._run(Path.cwd(), "status", "--porcelain")
+        kwargs = run.call_args.kwargs
+        self.assertEqual(kwargs.get("encoding"), "utf-8")
+        self.assertEqual(kwargs.get("errors"), "replace")

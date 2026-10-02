@@ -85,6 +85,10 @@ PERSISTENCE_POLICIES: Mapping[str, PersistencePolicy] = {
     "verification_check.create": PersistencePolicy.MUST_FAIL_CLOSED,
     "verification_check.start": PersistencePolicy.MUST_FAIL_CLOSED,
     "verification_check.finish": PersistencePolicy.MUST_FAIL_CLOSED,
+    # Artifact file pointers are convenience copies: the check's terminal
+    # state is in the run rows and its output is in the transcript, so a
+    # lost pointer write degrades the report without falsifying it.
+    "verification_check.artifacts": PersistencePolicy.SAFE_TO_DEGRADE,
     "verification_run.create": PersistencePolicy.MUST_FAIL_CLOSED,
     "verification_run.finish": PersistencePolicy.MUST_FAIL_CLOSED,
     "verification_report.create": PersistencePolicy.MUST_FAIL_CLOSED,

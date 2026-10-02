@@ -11,13 +11,6 @@
 
 | ID | Item | Evidence |
 |---|---|---|
-| ROOT-004 | Wire `FailureClassifier` into merge/finalize outcome resolution | `finalize.py` still conflates dirty base worktree, changed base commit, and merge conflict |
-| ROOT-005 | Log swallowed exceptions in the failure path | `workflow.py` has ~15 bare `except Exception:` arms without `logger.exception` |
-| ROOT-006 | Close the GUI mutual-exclusion bypass | `gui_controller.py:226` `_operation_lock` does not guard the active-state transition |
-| ROOT-029 | Align verification producer and validator | `execution_model.py:146-152` vs `workflow.py:569-573`; FAIL_FAST + failing optional check still raises `StateTransitionError` |
-| ROOT-030 | Classify the verification artifact write | `verification_kernel.py` artifact write has no `PERSISTENCE_POLICIES` row and no `Degradation` record, contradicting the A8 policy |
-| ROOT-032 | Make git subprocess decoding explicit | `git.py:77` uses `text=True` with no `encoding`/`errors`; non-ASCII output can mis-decode |
-| ROOT-035 | Lock `_root_cache` access | `gui_controller.py:228` dict read at `:238`, written at `:245`, unguarded |
 | ROOT-034 (AgentOps share) | Remaining test-quality gaps in the DBG-06..15 cluster | PARTIALLY FIXED -- see master-bug-synthesis section 0 |
 | -- | `SpawnFactory` Protocol typing (deferred from the A3 review) | still deferred |
 | -- | Repository characteristics for routing are inert | `workflow.py` still passes `{}` as repository characteristics, so router repository-derived signals do nothing |
@@ -36,7 +29,6 @@
 | ID | Item | Evidence |
 |---|---|---|
 | ROOT-014 | Guard resume against a finished/empty history | `training/experiment.py:111-119` indexes `history[...]` unguarded |
-| ROOT-027 | Release the log handle and write a results record on attach failure | PARTIALLY FIXED -- the process leak is closed (ROOT-009); the log/results half is not |
 | ROOT-036 | Fix eval metric counting and preserve seeds | `training/evaluate.py:42-45`, `environment/external_game.py:274` |
 | ROOT-034 (UGA share) | Remaining test-quality gaps in the DBG-06..15 cluster | PARTIALLY FIXED -- see master-bug-synthesis section 0 |
 | -- | STEP 3 pre-flight: check live-play baseline reds in the exp window, then re-run exp02 | unchanged top item; the exp02 verdict stays suspended until this runs |

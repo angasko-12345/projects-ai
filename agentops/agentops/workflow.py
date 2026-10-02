@@ -595,8 +595,13 @@ class WorkflowEngine:
                         FailureClassifier.classify(source=FailureSource.SYSTEM, cancelled=True),
                         evidence=task.result, primary_error="Task was cancelled.",
                     )
-                except Exception:
-                    pass
+                except Exception as persist_error:
+                    # A8: a lost failure row must stay visible even while
+                    # the cancellation outcome itself is being recorded.
+                    self.degradation.record(
+                        "failure.create", persist_error,
+                        workflow_id=task.workflow_id, task_id=task.id,
+                    )
                 self.state.update_task(task)
             raise
         except OperationCancelled:
@@ -610,8 +615,13 @@ class WorkflowEngine:
                         FailureClassifier.classify(source=FailureSource.SYSTEM, cancelled=True),
                         evidence=task.result, primary_error="Task was cancelled.",
                     )
-                except Exception:
-                    pass
+                except Exception as persist_error:
+                    # A8: a lost failure row must stay visible even while
+                    # the cancellation outcome itself is being recorded.
+                    self.degradation.record(
+                        "failure.create", persist_error,
+                        workflow_id=task.workflow_id, task_id=task.id,
+                    )
                 self.state.update_task(task)
             raise
         except Exception as error:
@@ -624,8 +634,11 @@ class WorkflowEngine:
                     FailureClassifier.classify(source=FailureSource.SYSTEM, error=str(error)),
                     evidence=task.result, primary_error=str(error),
                 )
-            except Exception:
-                pass
+            except Exception as persist_error:
+                self.degradation.record(
+                    "failure.create", persist_error,
+                    workflow_id=task.workflow_id, task_id=task.id,
+                )
         if task.status is TaskStatus.FAILED and task.attempts < task.max_attempts:
             # Bounded retry: consult the deterministic policy (attempt budget
             # enforced by max_attempts) and back off, respecting cancellation.
@@ -689,8 +702,11 @@ class WorkflowEngine:
                 evidence=task.result, primary_error=task.result,
                 structured_evidence=evidence,
             )
-        except Exception:
-            pass
+        except Exception as persist_error:
+            self.degradation.record(
+                "failure.create", persist_error,
+                workflow_id=task.workflow_id, task_id=task.id,
+            )
 
     def _record_legacy_verification_failure(self, task: Task, results) -> None:
         """Record a failed legacy verification run with structured evidence.
@@ -717,8 +733,11 @@ class WorkflowEngine:
                 evidence=task.result, primary_error="Legacy verification commands failed.",
                 structured_evidence=evidence,
             )
-        except Exception:
-            pass
+        except Exception as persist_error:
+            self.degradation.record(
+                "failure.create", persist_error,
+                workflow_id=task.workflow_id, task_id=task.id,
+            )
 
     @staticmethod
     def _check_attribute(check: object, name: str) -> object:
@@ -771,8 +790,11 @@ class WorkflowEngine:
                 evidence=task.result, primary_error="Verification report did not pass.",
                 structured_evidence=evidence,
             )
-        except Exception:
-            pass
+        except Exception as persist_error:
+            self.degradation.record(
+                "failure.create", persist_error,
+                workflow_id=task.workflow_id, task_id=task.id,
+            )
 
     def _verification_source_run(self, task: Task) -> str | None:
         candidates = []
@@ -1088,7 +1110,9 @@ class WorkflowEngine:
                 run_id = created.id if isinstance(created, AgentRun) else str(created)
                 observer.mark_starting(run_id)
                 observer.mark_running(run_id)
-            except Exception:
+            except Exception as error:
+                self._note_run_degradation(
+                    error, run_id=run_id, context=context)
                 run_id = None
         try:
             result = await self.runner.run_agent(
@@ -1107,15 +1131,17 @@ class WorkflowEngine:
                             failure_classification="cancelled",
                         ),
                     )
-                except Exception:
-                    pass
+                except Exception as error:
+                    self._note_run_degradation(
+                        error, run_id=run_id, context=context)
             raise
         except Exception as error:
             if observer is not None and run_id is not None:
                 try:
                     observer.fail_run(run_id, error, "process_error")
-                except Exception:
-                    pass
+                except Exception as persist_error:
+                    self._note_run_degradation(
+                        persist_error, run_id=run_id, context=context)
             raise
         if observer is not None and run_id is not None:
             try:
@@ -1148,8 +1174,9 @@ class WorkflowEngine:
                         or _safe_workflow_structured(result.stdout),
                     ),
                 )
-            except Exception:
-                pass
+            except Exception as persist_error:
+                self._note_run_degradation(
+                    persist_error, run_id=run_id, context=context)
         return result
 
     def _prompt_with_history(self, task: Task, working_directory: str | Path) -> str:

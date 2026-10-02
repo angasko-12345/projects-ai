@@ -16,7 +16,7 @@ from typing import Any
 from uuid import uuid4
 
 from .logging import LogManager, redact_text
-from .persistence import Degradation, DegradationRecorder
+from .persistence import Degradation, DegradationRecorder, event_emitter
 from .runtime import OperationCancelled, ProcessRuntime, SpawnFactory
 from .tasks import utc_now
 from .verification_model import (
@@ -101,6 +101,9 @@ class VerificationKernel:
         # A8: persistence failures are classified, not silently swallowed.
         # The recorder is shared across runs; per-run state is threaded
         # explicitly so concurrent runs cannot contaminate each other.
+        if degradation is None and getattr(state, "record_typed_event", None) is not None:
+            degradation = DegradationRecorder(
+                emit=event_emitter(state.record_typed_event))
         self._degradation = degradation if degradation is not None else DegradationRecorder()
         self._runtime = ProcessRuntime(pass_env_names, pass_env_prefixes, spawn=process_factory)
         if default_profile is not None and default_profile not in self._profiles:
@@ -298,9 +301,14 @@ class VerificationKernel:
         elif cancelled:
             overall = VerificationReportStatus.CANCELLED
             run_status = VerificationRunStatus.CANCELLED
-        else:
+        elif counts["passed"] >= 1:
             overall = VerificationReportStatus.PASSED
             run_status = VerificationRunStatus.COMPLETED
+        else:
+            # A1 vacuous-success rule (matches assert_report_consistent):
+            # a suite with zero passed checks is never evidence of success.
+            overall = VerificationReportStatus.FAILED
+            run_status = VerificationRunStatus.FAILED
         duration = monotonic() - started
         transcript = self._transcript(profile, overall, counts, duration, ordered, texts)
         if degraded:
@@ -621,8 +629,16 @@ class VerificationKernel:
                     ),
                 )
                 stdout_path, stderr_path = str(artifacts.stdout_path), str(artifacts.stderr_path)
-            except Exception:
+            except Exception as error:
                 stdout_path = stderr_path = None
+                # A8 SAFE_TO_DEGRADE: pointers are lost, not evidence — the
+                # check terminal state and transcript still carry the run.
+                # Not appended to the run-level fail-closed list on purpose.
+                self._note_degraded(
+                    "verification_check.artifacts", error,
+                    run_id=check.run_id, task_id=check.task_id,
+                    workflow_id=check.workflow_id,
+                )
         if self._state is not None:
             checks[spec.name] = self._finish_check_persisted(
                 check, status, exit_code, duration, stdout_path, stderr_path,

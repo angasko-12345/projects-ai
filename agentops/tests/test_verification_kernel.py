@@ -19,8 +19,10 @@ except ModuleNotFoundError:
 
 from agentops.cli import main as cli_main
 from agentops.config import AppConfig, AgentConfig, load_config
+from agentops.execution_model import assert_report_consistent
 from agentops.gui_controller import AgentOpsController
 from agentops.logging import LogManager
+from agentops.persistence import DegradationRecorder, PersistencePolicy
 from agentops.registry import DetectedAgent
 from agentops.runner import RunResult
 from agentops.state import StateStore
@@ -867,6 +869,65 @@ class VerificationGuiTests(unittest.TestCase):
                 root.destroy()
             except tk.TclError:
                 pass
+
+
+class VacuousPassAndArtifactDegradationTests(unittest.TestCase):
+    def test_fail_fast_optional_first_failure_never_produces_passed_report(self):
+        calls = []
+
+        async def factory(*command, **kwargs):
+            calls.append(command)
+            if len(calls) == 1:
+                return FakeProcess(b"bad", b"", 1)
+            return FakeProcess(b"ok", b"", 0)
+
+        profile = _profile(checks=(
+            VerificationCheckSpec("optional_first", VerificationCheckClass.FORMATTING,
+                                  ("optional-first",), required=False),
+            VerificationCheckSpec("never_runs", VerificationCheckClass.TESTS,
+                                  ("never-runs",)),
+        ))
+        with tempfile.TemporaryDirectory() as directory:
+            state, kernel = _harness(directory, profile, process_factory=factory)
+            try:
+                report = asyncio.run(kernel.run_verification(None, None, directory))
+                self.assertEqual(len(calls), 1)
+                # A1: a suite with zero passed checks must never be PASSED;
+                # the producer must agree with the validator.
+                self.assertEqual(report.overall_status,
+                                 VerificationReportStatus.FAILED)
+                assert_report_consistent(report)
+            finally:
+                state.close()
+
+    def test_artifact_write_failure_is_classified_not_silent(self):
+        recorder = DegradationRecorder()
+
+        async def factory(*command, **kwargs):
+            return FakeProcess(b"evidence", b"", 0)
+
+        profile = _profile(checks=(
+            VerificationCheckSpec("unit", VerificationCheckClass.TESTS, ("unit",)),
+        ))
+        with tempfile.TemporaryDirectory() as directory:
+            state, kernel = _harness(directory, profile, process_factory=factory,
+                                     degradation=recorder)
+            try:
+                with patch.object(LogManager, "write_run_artifacts",
+                                  side_effect=OSError("disk full")):
+                    report = asyncio.run(
+                        kernel.run_verification(None, None, directory))
+            finally:
+                state.close()
+        entries = [entry for entry in recorder.degradations
+                   if entry.operation == "verification_check.artifacts"]
+        self.assertEqual(len(entries), 1)
+        self.assertIs(entries[0].policy, PersistencePolicy.SAFE_TO_DEGRADE)
+        # Pointer loss must not flip or fabricate the verdict: the check
+        # terminal state and transcript still carry the evidence.
+        self.assertEqual(report.overall_status, VerificationReportStatus.PASSED)
+        self.assertIsNone(report.checks[0].stdout_path)
+        self.assertIsNone(report.checks[0].stderr_path)
 
 
 if __name__ == "__main__":

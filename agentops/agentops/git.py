@@ -75,7 +75,8 @@ class GitWorktreeManager:
         environment["GIT_TERMINAL_PROMPT"] = "0"
         try:
             return subprocess.run(["git", "-C", str(repository), *args], text=True, capture_output=True,
-                                  check=False, timeout=120, env=environment, **_no_window_kwargs())  # type: ignore[arg-type]
+                                  check=False, timeout=120, env=environment,
+                                  encoding="utf-8", errors="replace", **_no_window_kwargs())  # type: ignore[arg-type]
         except (OSError, subprocess.TimeoutExpired) as error:
             raise GitError(f"Git command {' '.join(args)} failed: {error}") from error
 

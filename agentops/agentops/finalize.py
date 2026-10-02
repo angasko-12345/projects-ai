@@ -12,6 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import uuid4
 
+from .failure import FailureCategory, FailureClassifier, FailureSource
 from .git import GitError, GitWorktreeManager, Worktree, WorktreeRef
 from .persistence import DegradationRecorder
 from .state import StateStore
@@ -83,8 +84,20 @@ def finalize_worktree(
     try:
         manager.merge(worktree)
     except GitError as error:
+        # The repair task must name the actual cause: only a real conflict
+        # is something to resolve by merging.
+        category = FailureClassifier.classify(
+            source=FailureSource.GIT, error=str(error)).category
+        if category is FailureCategory.GIT_CONFLICT:
+            headline = f"Resolve Git merge conflict for '{description}'."
+        elif category is FailureCategory.DIRTY_WORKTREE:
+            headline = f"Clean the dirty base worktree before merging '{description}'."
+        elif category is FailureCategory.POLICY_VIOLATION:
+            headline = f"Git merge for '{description}' was refused; re-validate the base branch and retry."
+        else:
+            headline = f"Git merge failed for '{description}'; inspect the error and resolve."
         state.add_task(Task(
-            f"Resolve Git merge conflict for '{description}'.\n{error}", "debugging", workflow_id,
+            f"{headline}\n{error}", "debugging", workflow_id,
             max_attempts=max_attempts,
         ))
         return WorktreeFinalization(changed=True, merged=False, conflict_error=str(error))

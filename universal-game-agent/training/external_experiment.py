@@ -275,7 +275,33 @@ def _apply_run_title(env_cfg: dict, title: str) -> dict:
     return cfg
 
 def run_external_experiment(config_path) -> dict:
+    """Run the experiment; a failure still leaves a results file behind.
+
+    ROOT-027: record why the run died where operators look for results,
+    then re-raise so cleanup and the CLI error path stay unchanged.
+    """
     config_path = Path(config_path)
+    try:
+        return _run_external_experiment(config_path)
+    except Exception as error:
+        report = {
+            "config_file": str(config_path),
+            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+            "status": "failed",
+            "error": str(error),
+            "error_type": type(error).__name__,
+        }
+        try:
+            with open(_results_path(config_path), "w", encoding="utf-8") as fh:
+                json.dump(report, fh, indent=2)
+        except Exception as write_error:
+            # Never mask the original run failure with the recorder's own error.
+            print(f"warning: could not write failure results: {write_error}",
+                  file=sys.stderr)
+        raise
+
+
+def _run_external_experiment(config_path: Path) -> dict:
     with open(config_path, encoding="utf-8") as fh:
         cfg = yaml.safe_load(fh)
     game, env_cfg = cfg["game"], cfg["env"]
