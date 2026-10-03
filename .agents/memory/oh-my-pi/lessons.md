@@ -93,3 +93,28 @@
   --min-frequency 1 --context-length 16` → `src.train` 6 steps →
   `--resume` 2 more → `generate.py --tokenizer $T/tok.json`. Proves the loop
   without touching `data/` or `checkpoints/`.
+
+## 2026-10-03: ROOT-034 DBG-06/07 — test-infra pass (omp)
+- Four distinct reasons direct exec lied, only three audited: `sys.path[0]=tests/`
+  import crash (12 files), `except ImportError → _HAS_TORCH=False` silent all-skip
+  (8 files), mid-file `unittest.main()` hiding later classes (7 files), and — found
+  only after fixing those — `test_compare_dispatch` leaking its `side_effect` mock
+  into `training.experiment` via `cmd_compare`'s lazy import (discovery hides this:
+  collection imports every module before any patch is active). Root cause of the
+  mock leak class: patch targets are import-order-sensitive.
+- Fix pattern now canonical for UGA tests: 4-line prelude
+  (`try: from . import _bootstrap / except ImportError: import _bootstrap`) right
+  after the docstring, `unittest.main()` only at EOF. New test files get both.
+- Verification recipe that catches all four: run every `tests/test_*.py` from a
+  fresh `mktemp -d`, print each file's `Ran N`, compare against discovery's
+  per-module counts (equal → no hidden classes, no silent skips), then assert the
+  scratch dir is empty (→ no CWD writes). Expected per-module counts are in the
+  `discover -v` output.
+- Checkpoint isolation: `_scratch_checkpoint_dir()` helper in `test_diagnostics`,
+  inline `TemporaryDirectory` in `test_external_training`, and the guard
+  `tests/test_cwd_isolation.py` runs the 4 offenders under a scratch CWD and
+  asserts empty. The mtime of `checkpoints/ppo_final.pt` across a suite run is a
+  one-line pollution probe.
+- Baseline: 317 → 318, 1 skip, OK (commit `59f5a1b`). Pre-existing, NOT fixed:
+  gitignored working-tree `checkpoints/ppo_final.pt` (1.49 MB) already clobbered
+  by pre-fix runs — reported, not regenerated; `ppo_untrained.pt` intact.

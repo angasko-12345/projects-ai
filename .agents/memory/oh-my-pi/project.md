@@ -121,3 +121,22 @@
   `tokenizer_path` — always pass `--tokenizer` explicitly.
 - `data/tokenizer.json` working-tree deletion predates 2026-10-01 and breaks
   3 `TestGenerationSeed` tests; deliberately NOT restored (user's change).
+
+## Current state (2026-10-03, superseding the 2026-10-02 entry)
+
+- Full suite: **318 tests, 1 skip, OK** (`cd universal-game-agent`, `python -m unittest
+  discover -s tests`). Progression: 261 → 288 → 295 → 317 → 318; the +1 is the new
+  `tests/test_cwd_isolation.py`. Direct execution of any `tests/test_*.py` from any
+  working directory now runs the identical tests (verified per-module against
+  discovery; scratch-CWD sweep left no files).
+- Test-infra convention (from `59f5a1b`): every UGA test module starts with the
+  `try: from . import _bootstrap / except ImportError: import _bootstrap` prelude and
+  keeps `unittest.main()` at EOF. Do both when adding a test file.
+- ROOT-034 UGA share: **DBG-06 and DBG-07 closed 2026-10-03 (`59f5a1b`)** — direct
+  execution works from any cwd; the 4 checkpoint-writing tests use temp dirs
+  (guard: `tests/test_cwd_isolation.py`). Remaining ROOT-034 items untouched; the
+  ledger is reconciled separately. AGENTS.md baseline sentence updated to 318/2026-10-03.
+- Pre-existing, reported not regenerated: gitignored working-tree
+  `checkpoints/ppo_final.pt` (1.49 MB, mtime 2026-10-03 14:45) was clobbered by the
+  pre-fix audit runs; `checkpoints/ppo_untrained.pt` untouched.
+- Unchanged: exp02 verdict still SUSPENDED (Step-3 pre-flight + re-run still next).

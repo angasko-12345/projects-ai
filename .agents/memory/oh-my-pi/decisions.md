@@ -92,3 +92,17 @@
 - The 168 MB `checkpoints/tinystories/final.pt` was verified (config, losses,
   seeded generation sample) but NOT resumed — a resume would rewrite the
   artifact. Resume path proven on a `$TEMP` tiny loop + existing suite tests.
+
+## 2026-10-03: Test-only bootstrap for direct execution; no production path code
+- DBG-06: `tests/_bootstrap.py` (repo-root sys.path insert) + 4-line prelude in
+  all 20 modules. `python -m unittest discover -s tests` stays the source of
+  truth; direct `python tests/<file>.py` from any cwd is a convenience running
+  the identical tests (per-module `Ran N` verified equal).
+- Rejected: pytest/conftest (second mechanism + dependency), production
+  sitecustomize/path hacks, rewriting all 20 files' imports. The one extra fix:
+  `test_compare_dispatch` pre-imports `training.experiment` so its patch window
+  cannot bind a mock into the module (import-order leak).
+- DBG-07: the 4 checkpoint tests point `checkpoint_dir` at temp dirs and KEEP
+  their `ppo_final.pt` asserts — location changed, claim strengthened. Production
+  default `checkpoints` untouched. Guard: `tests/test_cwd_isolation.py`
+  (scratch-CWD run + empty-dir assert).
