@@ -20,7 +20,7 @@ Before substantial work:
 2. Read `tasks/task.md` and `tasks/after-task.md` when those files are present.
 3. Inspect the current source, tests, and working tree. Current code and tests outrank memory.
 4. Back up the dirty tree before substantial work, including untracked files that belong to the task.
-5. Identify which product the task touches, read that product's local `AGENTS.md`, and use its test command. There is no single repository-wide test command; the three products differ. Current baselines (UGA re-run 2026-10-03 after `59f5a1b`; `agentops/` and mini-llm as of 2026-10-02): `agentops/` 443 tests with 4 environment skips; `universal-game-agent/` 318 tests with 1 skip; `small-projects/mini-llm/` 96 run with 1 skip and 3 pre-existing `TestGenerationSeed` errors from a working-tree tokenizer deletion.
+5. Identify which product the task touches, read that product's local `AGENTS.md`, and use its test command. There is no single repository-wide test command; the three products differ. Current baselines (UGA re-run 2026-10-03 after `59f5a1b`; `agentops/` re-run 2026-10-03 after the DBG-08 process-tree test; mini-llm as of 2026-10-02): `agentops/` 444 tests with 4 environment skips; `universal-game-agent/` 318 tests with 1 skip; `small-projects/mini-llm/` 96 run with 1 skip and 3 pre-existing `TestGenerationSeed` errors from a working-tree tokenizer deletion.
 6. If using Agent Intercom, resolve the exact live session name with `intercom_list` before sending a message. Never assume a remembered display name is still live.
 
 ## 3. Architecture map

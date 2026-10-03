@@ -17,11 +17,11 @@
 | Version | 0.1.3, exe rebuilt | `dist/AgentOps.exe` |
 
 **Test baselines (each product's own command, from its own directory), verified 2026-10-02
-after `dae1415` (UGA row re-verified 2026-10-03 after `59f5a1b`):**
+after `dae1415` (agentops and UGA rows re-verified 2026-10-03, after DBG-08 and `59f5a1b` respectively):**
 
 | Product | Result |
 |---|---|
-| `agentops/` | 443 tests, 4 environment skips, OK |
+| `agentops/` | 444 tests, 4 environment skips, OK (2026-10-03; 443 at the 2026-10-02 verification) |
 | `universal-game-agent/` | 318 tests, 1 skip, OK (2026-10-03; 317 at the 2026-10-02 verification) |
 | `small-projects/mini-llm/` | 96 run, 1 skip, 3 pre-existing `TestGenerationSeed` errors (working-tree deletion of `data/tokenizer.json`) |
 

@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
 import tempfile
 import threading
+import time
 import unittest
+from contextlib import suppress
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -46,6 +49,81 @@ class HangingProcess:
 
     def kill(self):
         self.killed = True
+
+
+#: Real parent/child/grandchild roles for the Windows process-tree test.
+#: Each role atomically publishes its own PID on entry so the test can
+#: enumerate everything it started even when a later step fails; the chain
+#: only reports "ready" once the grandchild has proven it is running.
+_TREE_HELPER_SCRIPT = '''\
+"""Parent/child/grandchild roles for the real process-tree termination test."""
+import json
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+DIRECTORY = Path(sys.argv[2])
+ROLE = sys.argv[1]
+
+
+def publish(name, text):
+    tmp = DIRECTORY / (name + ".tmp")
+    tmp.write_text(str(text), encoding="utf-8")
+    os.replace(tmp, DIRECTORY / name)
+
+
+def spin():
+    while True:
+        time.sleep(0.25)
+
+
+publish(ROLE + ".pid", os.getpid())
+
+if ROLE == "grandchild":
+    spin()
+
+if ROLE == "child":
+    grandchild = subprocess.Popen(
+        [sys.executable, os.path.abspath(__file__), "grandchild", str(DIRECTORY)])
+    deadline = time.monotonic() + 30
+    while not (DIRECTORY / "grandchild.pid").is_file():
+        if grandchild.poll() is not None or time.monotonic() > deadline:
+            raise SystemExit("grandchild never reported its pid")
+        time.sleep(0.05)
+    publish("ready.json",
+            json.dumps({"child": os.getpid(), "grandchild": grandchild.pid}))
+    spin()
+
+if ROLE == "parent":
+    child = subprocess.Popen(
+        [sys.executable, os.path.abspath(__file__), "child", str(DIRECTORY)])
+    deadline = time.monotonic() + 30
+    while not (DIRECTORY / "ready.json").is_file():
+        if child.poll() is not None or time.monotonic() > deadline:
+            raise SystemExit("child chain never became ready")
+        time.sleep(0.05)
+    spin()
+'''
+
+
+def _recorded_pids(directory: Path, parent_pid: int) -> set[int]:
+    """Every PID the tree scenario may have started, from handles and files."""
+    pids = {parent_pid}
+    for name in ("parent.pid", "child.pid", "grandchild.pid"):
+        try:
+            pids.add(int((directory / name).read_text(encoding="utf-8").strip()))
+        except (OSError, ValueError):
+            pass
+    try:
+        ready = json.loads((directory / "ready.json").read_text(encoding="utf-8"))
+        pids.add(int(ready["child"]))
+        pids.add(int(ready["grandchild"]))
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    pids.discard(0)
+    return pids
 
 
 class ProcessRuntimeTests(unittest.TestCase):
@@ -324,6 +402,99 @@ class ProcessRuntimeTests(unittest.TestCase):
             self.assertEqual(len(checks), 1)
             self.assertTrue(checks[0].succeeded)
             self.assertIn("verify-ok", checks[0].output)
+
+    @unittest.skipIf(sys.platform != "win32", "Windows process-tree termination")
+    def test_real_parent_terminate_process_kills_descendant_tree(self):
+        """ROOT-034 DBG-08: the real taskkill /T path must reach grandchildren.
+
+        No fakes anywhere on the assertion path: a real parent spawned by
+        ProcessRuntime spawns a real child, which spawns a real grandchild;
+        only the parent is handed to terminate_process(), and the child and
+        grandchild PIDs must disappear with it.  Deterministic sync (atomic
+        PID/ready files) proves liveness before termination; bounded polling
+        proves death afterwards.
+        """
+        import ctypes
+
+        process_query_limited_information = 0x1000
+        process_terminate = 0x0001
+        still_active = 259
+        kernel32 = ctypes.windll.kernel32
+        kernel32.OpenProcess.restype = ctypes.c_void_p
+
+        def alive(pid: int) -> bool:
+            handle = kernel32.OpenProcess(process_query_limited_information, False, pid)
+            if not handle:
+                return False
+            try:
+                code = ctypes.c_ulong()
+                if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+                    return False
+                return code.value == still_active
+            finally:
+                kernel32.CloseHandle(handle)
+
+        def force_kill(pid: int) -> None:
+            handle = kernel32.OpenProcess(process_terminate, False, pid)
+            if handle:
+                try:
+                    kernel32.TerminateProcess(handle, 1)
+                finally:
+                    kernel32.CloseHandle(handle)
+
+        with tempfile.TemporaryDirectory() as directory:
+            sync = Path(directory)
+            helper = sync / "tree_helper.py"
+            helper.write_text(_TREE_HELPER_SCRIPT, encoding="utf-8")
+            runtime = ProcessRuntime()
+
+            async def scenario():
+                parent = await runtime.spawn_process(
+                    sys.executable, str(helper), "parent", str(sync),
+                )
+                try:
+                    ready = sync / "ready.json"
+                    deadline = time.monotonic() + 30
+                    while not ready.is_file():
+                        if parent.returncode is not None:
+                            self.fail(f"parent exited early ({parent.returncode})")
+                        if time.monotonic() > deadline:
+                            self.fail("descendant chain never became ready")
+                        await asyncio.sleep(0.05)
+                    pids = json.loads(ready.read_text(encoding="utf-8"))
+                    child_pid, grandchild_pid = pids["child"], pids["grandchild"]
+                    # Sync says started; these probes say demonstrably alive
+                    # at the moment termination is about to be requested.
+                    self.assertTrue(alive(child_pid), "child died before termination")
+                    self.assertTrue(alive(grandchild_pid),
+                                    "grandchild died before termination")
+
+                    await runtime.terminate_process(parent)
+
+                    deadline = time.monotonic() + 10
+                    while ((alive(child_pid) or alive(grandchild_pid))
+                           and time.monotonic() < deadline):
+                        await asyncio.sleep(0.05)
+                    self.assertFalse(alive(child_pid),
+                                     "child survived terminate_process()")
+                    self.assertFalse(
+                        alive(grandchild_pid),
+                        "grandchild survived terminate_process() — real tree "
+                        "termination regressed",
+                    )
+                    self.assertIsNotNone(parent.returncode, "parent was not reaped")
+                finally:
+                    # Whatever assertion failed, nothing started here outlives it.
+                    if parent.returncode is None:
+                        with suppress(Exception):
+                            await runtime.terminate_process(parent, cleanup_timeout=5)
+                        with suppress(Exception):
+                            await asyncio.wait_for(parent.communicate(), timeout=5)
+                    for pid in _recorded_pids(sync, parent.pid):
+                        if alive(pid):
+                            force_kill(pid)
+
+            asyncio.run(scenario())
 
 
 if __name__ == "__main__":

@@ -30,7 +30,7 @@ python -m unittest discover -s tests
   `@requires_display` rather than faking a GUI: production GUI code never
   pretends a display exists. Controller-level GUI logic lives in non-Tk test
   classes and runs everywhere.
-- The current baseline (verified 2026-10-02, after `dae1415`) is **443 tests, 4 skipped
+- The current baseline (verified 2026-10-03) is **444 tests, 4 skipped
   by environment, OK**. That is a dated observation, not a contract. Treat any new failure
   or skip as attributable to the current work until proven otherwise. Do not rely on
   remembered counts; run the suite.
