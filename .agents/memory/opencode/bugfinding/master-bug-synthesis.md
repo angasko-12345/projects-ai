@@ -21,14 +21,14 @@ superseded and must not be used as the work queue — the live queue is
 | Product | Command | Result 2026-10-02 |
 |---|---|---|
 | `agentops/` | `python -m unittest discover -s tests` | 444 tests, 4 environment skips, OK (re-verified 2026-10-03 after ROOT-034 DBG-08's real process-tree test; 443 at the 2026-10-02 root-fix batch; earlier same-day baseline: 425) |
-| `universal-game-agent/` | `python -m unittest discover -s tests` | 318 tests, 1 skip, OK (re-verified 2026-10-03 after `59f5a1b` closed ROOT-034 DBG-06/DBG-07; 317 at the 2026-10-02 root-fix batches; earlier same-day baseline: 295) |
+| `universal-game-agent/` | `python -m unittest discover -s tests` | 349 tests, 1 skip, OK (re-verified 2026-10-03 after the external-experiment orchestration batch closed the ROOT-014 external gap; 318 after `59f5a1b` closed ROOT-034 DBG-06/DBG-07; 317 at the 2026-10-02 root-fix batches; earlier same-day baseline: 295) |
 | `small-projects/mini-llm/` | `python -m unittest discover -s tests` | 96 run, 1 skip, 3 pre-existing `TestGenerationSeed` errors |
 
 The 3 mini-llm errors come from the working-tree deletion of
 `small-projects/mini-llm/data/tokenizer.json` (a pre-existing user change, not
 committed). They are not a code defect.
 
-### 0.1 Status of all 36 canonical roots
+### 0.1 Status of all 38 canonical roots
 
 | ROOT | Title | Product | Status | Current source evidence (2026-10-02) |
 |---|---|---|---|---|
@@ -45,7 +45,7 @@ committed). They are not a code defect.
 | ROOT-011 | Capture-size contract undefined | UGA | **CONTRACT GAP / DOCUMENTED** | `make_external_env_from_config` now documents the per-mode meaning of `capture.out_width`/`out_height`: honoured by `synthetic` only; `region` returns the captured rectangle (defaulting to the out size only when `capture.region.width/height` are absent); `window` returns the native rect. Native live frames are required by the red-pixel-count reward/termination bands. No code change (2026-10-02) |
 | ROOT-012 | Verification run stranded | AgentOps | **FIXED** | `_abort_setup(run_id, checks, error)` finishes every created check and the run as terminal FAILED, then re-raises the original error |
 | ROOT-013 | Non-atomic checkpoint save | UGA | **FIXED** | `save_checkpoint` writes a same-dir temp file and `os.replace`s it; temp is cleaned on failure |
-| ROOT-014 | Resume crash on finished checkpoint | UGA | **FIXED** | `PPOTrainer.is_complete()` + a `train()` guard return the existing `ppo_final.pt` with a "no updates will run" message instead of indexing an empty history; readers go through `training.ppo.summarize_history`, and `experiments/*_results.json` gained `training_updates` so an untrained run is visible. Covered by exactly-complete, over-complete, and normal-resume CLI tests (2026-10-02) |
+| ROOT-014 | Resume crash on finished checkpoint | UGA | **FIXED** | `PPOTrainer.is_complete()` + a `train()` guard return the existing `ppo_final.pt` with a "no updates will run" message instead of indexing an empty history; readers go through `training.ppo.summarize_history`, and `experiments/*_results.json` gained `training_updates` so an untrained run is visible. Covered by exactly-complete, over-complete, and normal-resume CLI tests (2026-10-02). **Re-verified 2026-10-03: the 2026-10-02 fix missed a reader.** `training/external_experiment.py` still indexed the history directly, so the external driver raised `KeyError: mean_reward` on exactly the case the guard creates. It now aggregates via `summarize_history` and records `training_updates`; `TestWindowLossRelaunch::test_no_op_resume_reports_zero_updates_instead_of_crashing` pins it (mutation-proven) |
 | ROOT-015 | Entropy loss sign reversal | UGA | **DISPROVEN** | Does not hold against current `training/ppo.py`; the sign is correct. Do not revive |
 | ROOT-016 | Truncation treated as terminal | UGA | **DISPROVEN** | GAE already separates truncation from termination in current source |
 | ROOT-017 | GRU hidden state leak across trajectories | UGA | **DISPROVEN** | Current PPO already resets hidden state at episode boundaries via segmented replay |
@@ -68,18 +68,20 @@ committed). They are not a code defect.
 | ROOT-034 | Test-quality defects (cluster) | Both | **PARTIALLY FIXED** | UGA: DBG-06 and DBG-07 CLOSED 2026-10-03 (`59f5a1b`; 318 tests, 1 skip, OK, guard `tests/test_cwd_isolation.py`), DBG-13 FIXED for routing with only residual fixture quality, DBG-14 DISPROVEN, DBG-12 residual test debt. AgentOps: DBG-08 CLOSED 2026-10-03 (real Windows parent→child→grandchild integration test `test_real_parent_terminate_process_kills_descendant_tree` in `tests/test_runtime.py`, mutation-proven against a `taskkill`-without-`/T` mutant; 444 tests, 4 skips, OK), DBG-15 residual migration-test debt. ROOT-034 stays PARTIALLY FIXED only because DBG-12/DBG-15 residual test debt remains — DBG-08 no longer blocks closure; DBG-12/DBG-15 are test debt, not production bugs (2026-10-03) |
 | ROOT-035 | GUI `_root_cache` shared mutable state | AgentOps | **FIXED** | `_operation_root` runs under `_root_cache_lock` (single-flight: one Git lookup for concurrent misses); GitError results stay uncached (2026-10-02) |
 | ROOT-036 | Eval metric contract | UGA | **FIXED (contract)** | Reward semantics are now declared, not inferred: `environment/reward.py` defines `SIGN_SEMANTICS`/`GENERIC_SEMANTICS` and `reward_semantics_of` (fail-closed, warns on an unknown value); only `ToyPongEnv` and `ExternPongReward` declare `sign`. `evaluate()` reports `episode_hits`/`mean_hits` only for `sign` and otherwise omits those keys entirely (absence, not `0.0`), keeping the counts under `episode_positive_reward_steps`/`mean_negative_reward_steps`; `PreprocessingWrapper` downgrades to `generic` when `skip > 1` because reward summing breaks one-event-per-decision-step. No reward semantics or PPO math changed; tracked `experiments/*_results.json` untouched (2026-10-02) |
+| ROOT-037 | Phase-2 relaunch loop leaks env + game process on failure or Ctrl-C | UGA | **FIXED** | `train_with_window_relaunch` released the env and the launched process only on a session loss or on success. A non-session exception and a `KeyboardInterrupt` skip both arms, so the run left `trainer.env` open and the Pong process running — a real window left up, still taking `SendInput`. Added an `except BaseException` arm plus `_close_quietly` (2026-10-03). Mutation-proven: reverting it fails 4 tests in `tests/test_external_experiment_orchestration.py` |
+| ROOT-038 | Episode-boundary session loss is not relaunchable | UGA | **FIXED** | `ExternalGameEnv._ensure_session()` raised a bare `RuntimeError` when the session was gone and `attach()` could not rebind, and `_SESSION_ERRORS` did not list it. Only capture-time loss counted, so a window lost *between* decisions ended the whole experiment instead of relaunching. Added `SessionUnavailableError(RuntimeError)` — a subclass, so existing `except RuntimeError` still catches it — and added it to `_SESSION_ERRORS` (2026-10-03). Mutation-proven in both the env and the orchestration suite |
 
 ### 0.2 Counts
 
 | Classification | Count | Roots |
 |---|---|---|
-| FIXED | 20 | ROOT-001, 002, 003, 004, 005, 006, 007, 008, 009, 010, 012, 013, 014, 027, 029, 030, 031, 032, 035, 036 |
+| FIXED | 22 | ROOT-001, 002, 003, 004, 005, 006, 007, 008, 009, 010, 012, 013, 014, 027, 029, 030, 031, 032, 035, 036, 037, 038 |
 | ACTIVE | 0 | none |
 | PARTIALLY FIXED | 1 | ROOT-034 |
 | CONTRACT GAP / ACCEPTED DEBT | 2 | ROOT-011, ROOT-026 |
 | HELD | 1 | ROOT-033 |
 | DISPROVEN | 12 | ROOT-015..025, ROOT-028 |
-| **Total** | **36** | ROOT-001..ROOT-036 |
+| **Total** | **38** | ROOT-001..ROOT-038 |
 
 **Do not revive DISPROVEN findings.** They were re-checked against current source on
 2026-10-02 and do not reproduce. The historical reasoning is preserved in §3 and §7 as

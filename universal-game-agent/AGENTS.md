@@ -31,7 +31,7 @@ cd universal-game-agent
 python -m unittest discover -s tests
 ```
 
-- The current baseline (verified 2026-10-03) is **318 tests, 1 skip,
+- The current baseline (verified 2026-10-03) is **349 tests, 1 skip,
   OK**. That is a dated observation, not a contract; the count is volatile because tests
   get added. Run the suite for current truth. All tests are `unittest.TestCase`, and
   `tests/__init__.py` exists so discovery works as a package. Every test module imports
@@ -44,7 +44,9 @@ python -m unittest discover -s tests
   root's status there before acting on any bug, and take unfinished work from
   `.agents/pending_tasks.md`. For UGA specifically: ROOT-014 (finished-checkpoint resume),
   ROOT-036 (eval hit/miss semantics, now a **declared contract** rather than an inferred
-  metric), and ROOT-027 (attach-failure cleanup and results artifact) are FIXED; the UGA
+  metric), ROOT-027 (attach-failure cleanup and results artifact), ROOT-037 (phase-2 leak on
+  failure or Ctrl-C), and ROOT-038 (episode-boundary session loss not relaunchable) are
+  FIXED; the UGA
   share of ROOT-034 remains PARTIALLY FIXED; ROOT-011 is CONTRACT GAP / DOCUMENTED and
   ROOT-026 is CONTRACT GAP / ACCEPTED DEBT, neither of which is a defect to fix on sight.
   ROOT-033 is an AgentOps-only root and does not belong in this product's bug list.
@@ -54,9 +56,9 @@ python -m unittest discover -s tests
   still NOT been run — its pre-flight passed 2026-10-02 and the run was then cancelled
   because the machine was in use, so the exp02 verdict stays suspended. **Ask before
   starting it:** a long GUI run sends real `SendInput` keystrokes and holds a real window
-  for three phases. Also open: the untested three-phase
-  `training/external_experiment.py` orchestration (helpers covered, the success path is
-  not), and the UGA share of ROOT-034.
+  for three phases. The three-phase `training/external_experiment.py` orchestration is
+  no longer open: it is covered end to end by fakes (see Known defects). Still open: the
+  UGA share of ROOT-034.
 - `.agents/AGENTS.md` defines no single repository-wide test command. The per-product command
   for this product is its `universal-game-agent/` row, and it must be run from that
   directory. Use the command above.
@@ -161,8 +163,10 @@ The authoritative per-root bug status list is
 `.agents/memory/opencode/bugfinding/master-bug-synthesis.md` §0, and unfinished work is
 `.agents/pending_tasks.md`. There are currently **no ACTIVE canonical roots** for this
 product. ROOT-014 (finished-checkpoint resume), ROOT-036 (the declared reward-semantics
-hit/miss contract), and ROOT-027 (attach-failure cleanup plus the `status: failed`
-results artifact) are fixed and covered by tests; the only unfinished canonical root is
+hit/miss contract), ROOT-027 (attach-failure cleanup plus the `status: failed`
+results artifact), ROOT-037 (phase-2 env/process leak on a non-session failure or Ctrl-C),
+and ROOT-038 (episode-boundary session loss not relaunchable) are fixed and covered by
+tests; the only unfinished canonical root is
 ROOT-034 (PARTIALLY FIXED). ROOT-011 is CONTRACT GAP / DOCUMENTED and ROOT-026 is
 CONTRACT GAP / ACCEPTED DEBT — both are recorded debt, not bugs to fix on sight. The
 entries below are design and maintainability hazards that predate the audit and are not
@@ -200,10 +204,27 @@ tracked as canonical roots.
   decision cadence (60 ms key hold + 80 ms delay) moves the paddle 5 px per decision
   while the ball travels roughly 34 px in the same time, so even a pixel-chase policy
   scores about 2 hits per 7 misses. Low hit yield is that cadence, not detector loss.
-- `training/external_experiment.py` orchestration is covered only up to the phase-1 attach.
-  The helpers (`_unique_title`, `_run_checkpoint_dir`, `_results_path`, `_apply_run_title`)
-  and the failure path are tested; the three-phase baseline -> train -> eval success path
-  still is not, and the per-run isolation helpers have never completed a run end to end.
+- `training/external_experiment.py` orchestration is covered end to end by
+  `tests/test_external_experiment_orchestration.py` (fakes only, no window): the exact
+  phase order, state and config propagation into both envs, the isolated run-checkpoint
+  handoff from phase 2 to phase 3, per-phase teardown, failure propagation with a
+  `status: "failed"` artifact, Ctrl-C cleanup, and window-loss relaunch/resume. Three
+  invariants are load-bearing — reverting any one of them turns that suite red, so do not
+  "simplify" them away:
+  - `train_with_window_relaunch` releases the env *and* the launched game process on
+    **every** exit, including a non-session failure and a `KeyboardInterrupt`. The
+    session-loss branch and the success branch are both skipped in those cases, so
+    without an `except BaseException` arm the run leaves a real window up, still taking
+    `SendInput`.
+  - `SessionUnavailableError` (a `RuntimeError` subclass) is what
+    `ExternalGameEnv._ensure_session()` raises when the session is gone and `attach()`
+    cannot rebind, and it is in `_SESSION_ERRORS`. A plain `RuntimeError` there is
+    indistinguishable from an ordinary bug, so a window lost between decisions ended the
+    experiment instead of relaunching it.
+  - The success report aggregates training via `summarize_history`, not direct indexing,
+    and carries `training_updates`. A resumed checkpoint that already met the budget runs
+    no update, so the history is legitimately empty (ROOT-014) and blind indexing raises
+    `KeyError` on a run that should have reported cleanly.
 - `training/external_experiment.py:46-60` and `training/external_smoke.py:46-51` overlap —
   21 lines total, and they are not byte-identical and not equivalent.
   `external_experiment.launch_game` opens a log file and sets `close_fds=True` (`:50-57`)
