@@ -51,9 +51,9 @@ def main(argv=None) -> int:
 
     for item in success:
         print(f"OK   {item['file']}  ({item['duration']}s)")
-        credit = item.get("footage_by")
-        if isinstance(credit, str) and credit:
-            print(f"     footage by {credit} on Pexels")
+        styles = item.get("visual_styles")
+        if isinstance(styles, list) and styles:
+            print(f"     {item.get('scenes')} scenes: {', '.join(sorted(set(styles)))}")
 
     for item in failed:
         print(f"FAIL {item.get('idea') or item.get('step')}: {item.get('error')}",

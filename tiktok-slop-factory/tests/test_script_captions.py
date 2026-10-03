@@ -94,8 +94,8 @@ def test_get_scene_keywords_drops_filler_words():
 def test_get_scene_keywords_returns_empty_for_useless_input():
     """A one-character scene yields no usable search term.
 
-    The pipeline skips empty keywords and falls back to the idea text, which
-    is better than searching Pexels for "H".
+    The pipeline skips empty keywords, which is better than rendering the word
+    "H" across the screen.
     """
     assert script.get_scene_keywords("") == ""
     assert script.get_scene_keywords("H") == ""

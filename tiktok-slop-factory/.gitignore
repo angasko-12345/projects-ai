@@ -3,7 +3,7 @@
 .env.*
 !.env.example
 
-# Generated output (videos, audio, captions, metadata, footage cache)
+# Generated output (videos, audio, captions, metadata, generated visuals)
 output/
 
 # Python

@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from . import captions as cap
-from . import gemini, pexels, renderer, script as sc, tts
+from . import gemini, renderer, script as sc, tts, visuals
 from .config import (
     ConfigError,
     get_ffmpeg_path,
@@ -102,10 +102,6 @@ def check_dependencies() -> List[str]:
         gemini.get_gemini_api_key()
     except ConfigError as e:
         problems.append(str(e))
-    try:
-        pexels.get_pexels_api_key()
-    except ConfigError as e:
-        problems.append(str(e))
     if not _tool_exists(get_ffmpeg_path()):
         problems.append(
             f"FFmpeg not found ({get_ffmpeg_path()!r}). Install it and put it on PATH, "
@@ -131,12 +127,18 @@ def cleanup_stale(directory: Path, patterns: tuple) -> int:
     return removed
 
 
+def _seed(idea: str, index: int) -> int:
+    """Deterministic scene seed, so re-running the same idea looks the same."""
+    digest = hashlib.sha256((idea or "").strip().encode("utf-8")).hexdigest()
+    return int(digest[:12], 16) + int(index)
+
+
 def build_metadata(
     title: str,
     script: Dict[str, Any],
     caption: str,
     hashtags: List[str],
-    footage_urls: List[str],
+    scenes: List[Any],
     filename: str,
     duration: float,
 ) -> Dict[str, Any]:
@@ -145,46 +147,23 @@ def build_metadata(
         "script": script,
         "caption": caption,
         "hashtags": hashtags,
-        "source_footage_urls": footage_urls,
+        "visual_source": "generated locally with FFmpeg (no stock API)",
+        "scenes": [
+            {
+                "index": s.index,
+                "duration_seconds": round(s.duration, 3),
+                "style": s.style,
+                "motion": s.motion,
+                "transition": s.transition,
+                "keywords": s.keywords,
+            }
+            for s in scenes
+        ],
         "creation_timestamp": datetime.now(timezone.utc).isoformat(),
         "output_filename": filename,
         "duration_seconds": round(float(duration), 2),
         "disclaimer": "Fictional story content, not real news.",
     }
-
-
-def _find_footage(script: Dict[str, Any], idea: str) -> tuple:
-    """Return ``(path, info)`` for a usable footage clip.
-
-    Tries the scene keywords first, then the raw idea, then a generic fallback,
-    so a single bad search does not fail the video.
-    """
-    queries: List[str] = []
-    scenes = sc.split_into_scenes(script, num_scenes=2)
-    for scene in scenes:
-        kw = sc.get_scene_keywords(scene)
-        if kw:
-            queries.append(kw)
-    if idea:
-        queries.append(idea)
-    queries.append("mysterious fog forest")
-
-    seen = set()
-    for query in queries:
-        key = query.lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        try:
-            results = pexels.search_videos(query, per_page=3)
-        except pexels.PexelsError as e:
-            raise PipelineError(f"Pexels search failed for {query!r}: {e}") from None
-        for info in results:
-            try:
-                return pexels.download_video(info), info
-            except pexels.PexelsError:
-                continue
-    raise PipelineError("No usable footage found on Pexels")
 
 
 def _build_captions(text: str, duration: float, srt_path: Path) -> Path:
@@ -207,11 +186,11 @@ def run_pipeline(count: int = 3, dry_run: bool = False) -> Dict[str, Any]:
         return result
 
     out_dir = get_output_dir()
-    for sub in ("videos", "audio", "captions", "metadata", "footage"):
+    for sub in ("videos", "audio", "captions", "metadata", "visuals"):
         (out_dir / sub).mkdir(parents=True, exist_ok=True)
     # Clear half-written renders left behind by a crashed previous run.
     cleanup_stale(out_dir / "videos", ("*.partial.mp4",))
-    cleanup_stale(out_dir / "footage", ("*.part",))
+    cleanup_stale(out_dir / "visuals", ("*.partial.mp4",))
 
     try:
         ideas = select_best_ideas(gemini.generate_ideas(max(count * 3, 6)), count)
@@ -257,14 +236,21 @@ def _produce_one(idea: str, index: int) -> Dict[str, Any]:
         if not duration or duration < 1.0:
             raise PipelineError("Narration audio is empty or unreadable")
 
-        footage_path, info = _find_footage(script, idea)
+        # Visuals are generated locally from the script: no stock-media API.
+        scenes = visuals.plan_scenes(script, duration=duration, seed=_seed(idea, index))
+        if not scenes:
+            raise PipelineError("Could not plan any scenes from the script")
+        visuals_path = visuals.render_background(
+            scenes, out_dir / "visuals" / f"{stem}.mp4",
+            duration=duration, work_dir=out_dir / "visuals",
+        )
 
         srt_path = out_dir / "captions" / f"{stem}.srt"
         _build_captions(narration, duration, srt_path)
 
         out_path = out_dir / "videos" / f"{stem}.mp4"
         renderer.render_video(
-            audio_path, footage_path, srt_path, out_path, duration=duration
+            audio_path, visuals_path, srt_path, out_path, duration=duration
         )
 
         meta = build_metadata(
@@ -272,7 +258,7 @@ def _produce_one(idea: str, index: int) -> Dict[str, Any]:
             script=script,
             caption=gemini.generate_caption(script),
             hashtags=list(script.get("hashtags") or []),
-            footage_urls=[info.get("url", "")],
+            scenes=scenes,
             filename=out_path.name,
             duration=duration,
         )
@@ -286,12 +272,12 @@ def _produce_one(idea: str, index: int) -> Dict[str, Any]:
             "file": str(out_path),
             "duration": round(duration, 2),
             "idea": idea,
-            "footage_by": info.get("user"),
-            "footage_url": info.get("page_url") or info.get("url"),
+            "scenes": len(scenes),
+            "visual_styles": [s.style for s in scenes],
         }
     except Exception as e:
         # Remove this video's intermediates so failures do not leave litter.
-        for p in (srt_path, audio_path):
+        for p in (srt_path, audio_path, locals().get("visuals_path")):
             if p is not None and p.exists():
                 try:
                     p.unlink()

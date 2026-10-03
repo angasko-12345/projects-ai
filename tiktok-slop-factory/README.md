@@ -3,9 +3,10 @@
 Tiny MVP that generates vertical TikTok-style videos from short fictional
 story scripts. One command in, playable MP4s out.
 
-Everything runs on free tiers: the Gemini API free tier for script and voice,
-and the Pexels free API for stock footage. There is no database, no dashboard,
-no Docker, and no browser automation.
+Everything runs on free tiers, and there is only **one** external dependency:
+the Gemini API free tier for script and voice. Visuals are generated locally
+with FFmpeg, so no stock-media API is required. There is no database, no
+dashboard, no Docker, and no browser automation.
 
 All content is explicitly fictional. Nothing here is presented as real news.
 
@@ -14,8 +15,8 @@ All content is explicitly fictional. Nothing here is presented as real news.
 1. Asks Gemini for a batch of story ideas.
 2. Turns each idea into a short script (hook, story, twist, ending, CTA).
 3. Speaks the script with Gemini TTS.
-4. Finds a matching stock clip on Pexels.
-5. Burns readable subtitles over the clip and muxes the narration.
+4. Generates animated visuals from the script with FFmpeg.
+5. Burns readable subtitles over the visuals and muxes the narration.
 
 Output is 1080x1920 (9:16), H.264/AAC, yuv420p, faststart, with burned-in
 subtitles and a real audio track.
@@ -27,7 +28,8 @@ subtitles and a real audio track.
 | Python 3.10+ | 3.11/3.12/3.13/3.14 all work |
 | FFmpeg **and** ffprobe | Both ship together; both must be on `PATH` |
 | Gemini API key | Free tier: <https://aistudio.google.com/apikey> |
-| Pexels API key | Free tier: <https://www.pexels.com/api/> |
+
+No stock-media or image API. Nothing else needs a key.
 
 ## Setup on Windows
 
@@ -93,10 +95,9 @@ Fill in:
 
 ```
 GEMINI_API_KEY=your_key_here
-PEXELS_API_KEY=your_key_here
 ```
 
-`.env` is git-ignored. Never commit it.
+That is the only key. `.env` is git-ignored. Never commit it.
 
 ## Usage
 
@@ -116,8 +117,8 @@ output/
   videos/     <NN>-<slug>-<hash>.mp4    <- the deliverable
   audio/      narration
   captions/   burned-in subtitle source (.srt)
-  metadata/   title, script, caption, hashtags, footage credits, duration
-  footage/    cached Pexels clips (safe to delete; re-downloads on demand)
+  metadata/   title, script, caption, hashtags, scene recipes, duration
+  visuals/    generated silent visual track (safe to delete; re-rendered)
 ```
 
 Filenames use a stable SHA-256 digest, so the same idea always produces the
@@ -125,17 +126,44 @@ same filename. Re-running is idempotent instead of creating duplicates.
 
 ## Configuration
 
-Everything is an environment variable. Only the two API keys are required.
+Everything is an environment variable. Only the Gemini key is required.
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `GEMINI_API_KEY` | *required* | Gemini API key |
-| `PEXELS_API_KEY` | *required* | Pexels API key |
 | `GEMINI_TEXT_MODEL` | `gemini-3.8-flash` | Ideas and scripts |
 | `GEMINI_TTS_MODEL` | `gemini-3.8-flash-lite-tts` | Narration |
 | `TTS_VOICE` | `Kore` | Prebuilt Gemini voice name |
 | `FFMPEG_PATH` | `ffmpeg` | FFmpeg executable |
 | `FFPROBE_PATH` | `ffprobe` | ffprobe executable |
+| `VISUAL_FONT` | auto-detected | Bold TTF used for on-screen scene keywords |
+
+`VISUAL_FONT` is only needed on systems where no common bold font is found;
+Windows, most Linux distros, and macOS are detected automatically. If no font
+is available the keywords are simply skipped and the rest still renders.
+
+## How the visuals are generated
+
+The script is split into scenes, and each scene becomes an independent recipe:
+its own text, duration, colour palette, visual style, camera motion, and
+transition into the next scene.
+
+| Style | What it draws |
+|---|---|
+| `nebula` | Blurred Mandelbrot fractal screened over an animated gradient |
+| `cells` | Cellular automaton, heavily blurred, soft-lit into the gradient |
+| `aurora` | Sweeping hue and heavy blur for soft light bands |
+| `shards` | Drifting geometric grid |
+
+Camera motion is `push_in`, `pull_out` (both `zoompan`), `pan_left`,
+`pan_right`, or `drift` (a sine wander). Scenes are joined with `xfade`
+transitions that land on the narration's scene boundaries, so the cuts follow
+the voice rather than a fixed interval. Every scene also gets drifting
+particles, film grain, a vignette, and its own keywords rendered as on-screen
+text.
+
+The whole track is one FFmpeg `filter_complex`, so there are no intermediate
+image assets on disk.
 
 Model IDs are configurable because Google retires models on a schedule. If a
 call starts failing with `404` or `NOT_FOUND`, update the two model variables
@@ -159,14 +187,12 @@ skipped automatically when FFmpeg is not on `PATH`.
 **`Gemini HTTP 404`** — the model ID was retired. Update `GEMINI_TEXT_MODEL`
 and/or `GEMINI_TTS_MODEL`.
 
-**`Pexels HTTP 401`** — the API key is wrong or expired.
+**No on-screen keywords** — no usable bold font was found. Set `VISUAL_FONT`
+in `.env` to the full path of a bold `.ttf`.
 
-**`Pexels HTTP 429`** — the free tier allows 200 requests/hour. Wait and
-retry; the client already backs off automatically.
-
-**`No usable footage found`** — Pexels had nothing for the query. The
-pipeline already retries with the raw idea and then a generic fallback; if it
-still fails, it is usually a quota or network problem, not a query problem.
+**Scenes render but look static** — check that FFmpeg was built with the
+`gradients`, `zoompan`, and `xfade` filters (`ffmpeg -filters`). A minimal
+build without them will fail loudly rather than render black.
 
 ## Scope
 

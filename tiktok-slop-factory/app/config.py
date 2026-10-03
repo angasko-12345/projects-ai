@@ -55,10 +55,6 @@ def get_gemini_api_key() -> str:
     return _require_key("GEMINI_API_KEY")
 
 
-def get_pexels_api_key() -> str:
-    return _require_key("PEXELS_API_KEY")
-
-
 def get_gemini_text_model() -> str:
     _load_dotenv_once()
     return os.getenv("GEMINI_TEXT_MODEL", "gemini-3.8-flash").strip()

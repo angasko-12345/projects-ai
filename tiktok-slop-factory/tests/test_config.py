@@ -6,17 +6,18 @@ from app import config
 
 def test_config_gets_keys_from_env(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "g")
-    monkeypatch.setenv("PEXELS_API_KEY", "p")
     assert config.get_gemini_api_key() == "g"
-    assert config.get_pexels_api_key() == "p"
 
 
-@pytest.mark.parametrize("getter", ["get_gemini_api_key", "get_pexels_api_key"])
-def test_config_raises_when_key_missing(monkeypatch, getter):
+def test_config_raises_when_key_missing(monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-    monkeypatch.delenv("PEXELS_API_KEY", raising=False)
     with pytest.raises(config.ConfigError):
-        getattr(config, getter)()
+        config.get_gemini_api_key()
+
+
+def test_no_pexels_key_is_required(monkeypatch):
+    """Pexels was removed; only the Gemini key may be required."""
+    assert not hasattr(config, "get_pexels_api_key")
 
 
 def test_config_rejects_whitespace_only_key(monkeypatch):

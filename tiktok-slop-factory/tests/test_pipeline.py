@@ -7,10 +7,18 @@ from pathlib import Path
 
 import pytest
 
-from app import gemini, pipeline, renderer, tts
-from conftest import ffmpeg_required
+from app import gemini, pipeline, renderer, tts, visuals
+from conftest import FFMPEG, FFPROBE, ffmpeg_required
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+_SCRIPT = {
+    "hook": "The lighthouse keeper heard his name.",
+    "story": "He had been alone for eleven winters on the rocks.",
+    "twist": "The voice came from inside the wall behind him.",
+    "ending": "Nobody believed him, so he opened it himself.",
+    "cta": "Would you have opened it?",
+}
 
 
 def test_select_best_ideas():
@@ -55,7 +63,6 @@ def test_build_stem_distinguishes_different_ideas():
 
 def test_run_pipeline_dry_run_reports_missing_keys(monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-    monkeypatch.delenv("PEXELS_API_KEY", raising=False)
     result = pipeline.run_pipeline(1, dry_run=True)
     assert result["failed"]
     assert not result["success"]
@@ -63,7 +70,6 @@ def test_run_pipeline_dry_run_reports_missing_keys(monkeypatch):
 
 def test_run_pipeline_dry_run_ok(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "g")
-    monkeypatch.setenv("PEXELS_API_KEY", "p")
     result = pipeline.run_pipeline(1, dry_run=True)
     if result["failed"]:
         # Only acceptable dry-run failure is a missing local FFmpeg install.
@@ -80,7 +86,6 @@ def test_run_pipeline_reports_idea_failure_without_crashing(monkeypatch):
         raise gemini.GeminiError("Gemini HTTP 429")
 
     monkeypatch.setenv("GEMINI_API_KEY", "g")
-    monkeypatch.setenv("PEXELS_API_KEY", "p")
     monkeypatch.setattr(pipeline.gemini, "generate_ideas", boom)
 
     result = pipeline.run_pipeline(3)
@@ -143,71 +148,68 @@ def test_produce_one_cleans_up_intermediates_on_failure(monkeypatch, tmp_path):
     assert not list(tmp_path.glob("*.partial.mp4"))
 
 
-def test_find_footage_falls_back_across_queries(monkeypatch, tmp_path):
-    """An empty first search must not fail the video."""
-    monkeypatch.setattr(pipeline.pexels, "cache_dir", lambda: tmp_path)
-    queries = []
+def test_plan_scenes_gives_every_scene_a_full_recipe():
+    """Each scene must carry text, duration, style, motion, and transition."""
+    scenes = visuals.plan_scenes(_SCRIPT, duration=30.0, seed=7)
+    assert scenes
+    for scene in scenes:
+        assert scene.text.strip()
+        assert scene.duration >= visuals.MIN_SCENE_SECONDS
+        assert scene.style in visuals.STYLES
+        assert scene.motion in visuals.MOTIONS
+        assert scene.transition in visuals.TRANSITIONS
+        assert scene.keywords
+        assert len(scene.palette) == 3
 
-    def fake_search(query, per_page=3):
-        queries.append(query)
-        # Reject everything until the generic fallback query is used.
-        if "fog forest" not in query:
-            return []
-        return [{"id": 9, "url": "https://x.invalid/v.mp4", "user": {"name": "P"}}]
 
-    clip = tmp_path / "9.mp4"
-    clip.write_bytes(b"\0" * 20000 + b"ftyp")
+def test_plan_scenes_is_deterministic_for_a_seed():
+    a = visuals.plan_scenes(_SCRIPT, duration=30.0, seed=7)
+    b = visuals.plan_scenes(_SCRIPT, duration=30.0, seed=7)
+    assert [(s.style, s.motion, s.transition, s.duration) for s in a] == \
+           [(s.style, s.motion, s.transition, s.duration) for s in b]
 
-    monkeypatch.setattr(pipeline.pexels, "search_videos", fake_search)
-    monkeypatch.setattr(pipeline.pexels, "download_video", lambda info: clip)
 
-    path, info = pipeline._find_footage(
-        {"hook": "The lighthouse keeper watched the fog roll in."}, "fog story"
+def test_plan_scenes_varies_visuals_between_scenes():
+    """A static slideshow is the failure mode this stage exists to avoid."""
+    scenes = visuals.plan_scenes(_SCRIPT, duration=45.0, seed=3)
+    assert len(scenes) >= 3
+    assert len({s.style for s in scenes}) > 1
+    assert len({s.motion for s in scenes}) > 1
+    assert len({s.palette[0] for s in scenes}) > 1
+
+
+def test_plan_scenes_durations_cover_narration_plus_transitions():
+    scenes = visuals.plan_scenes(_SCRIPT, duration=30.0, seed=11)
+    budget = sum(s.duration for s in scenes) - visuals.TRANSITION_SECONDS * (len(scenes) - 1)
+    assert budget == pytest.approx(30.0, abs=0.5)
+
+
+def test_plan_scenes_never_invents_scenes_past_available_sentences():
+    scenes = visuals.plan_scenes(
+        {"hook": "One single sentence here."}, duration=30.0, seed=1
     )
-    assert path == clip
-    assert info["id"] == 9
-    assert len(queries) > 1
+    assert len(scenes) == 1
 
 
-def test_find_footage_skips_download_failures(monkeypatch, tmp_path):
-    """A clip that fails to download should not abort the video."""
-    monkeypatch.setattr(pipeline.pexels, "cache_dir", lambda: tmp_path)
-    attempted = []
-
-    def fake_search(query, per_page=3):
-        return [{"id": len(attempted) + 1, "url": "https://x.invalid/v.mp4"}]
-
-    def fake_download(info):
-        attempted.append(info["id"])
-        if len(attempted) == 1:
-            raise pipeline.pexels.PexelsError("download failed")
-        return good
-
-    good = tmp_path / "ok.mp4"
-    good.write_bytes(b"\0" * 20000 + b"ftyp")
-
-    monkeypatch.setattr(pipeline.pexels, "search_videos", fake_search)
-    monkeypatch.setattr(pipeline.pexels, "download_video", fake_download)
-
-    path, _ = pipeline._find_footage({"hook": "The abandoned lighthouse."}, "lighthouse")
-    assert path == good
-    assert len(attempted) >= 2
-
-
-def test_find_footage_raises_when_nothing_found(monkeypatch, tmp_path):
-    monkeypatch.setattr(pipeline.pexels, "cache_dir", lambda: tmp_path)
-    monkeypatch.setattr(pipeline.pexels, "search_videos", lambda q, per_page=3: [])
-    with pytest.raises(pipeline.PipelineError):
-        pipeline._find_footage({"hook": "A foggy lighthouse."}, "fog")
+def test_plan_scenes_returns_empty_for_empty_script():
+    assert visuals.plan_scenes({}, duration=30.0, seed=1) == []
 
 
 def test_check_dependencies_lists_missing_ffmpeg(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "g")
-    monkeypatch.setenv("PEXELS_API_KEY", "p")
     monkeypatch.setattr(pipeline, "get_ffmpeg_path", lambda: "no-such-ffmpeg")
     monkeypatch.setattr(pipeline, "get_ffprobe_path", lambda: "no-such-ffprobe")
     problems = pipeline.check_dependencies()
     assert any("FFmpeg" in p for p in problems)
+
+
+def test_check_dependencies_ignores_pexels(monkeypatch):
+    """Only the Gemini key and FFmpeg may be required."""
+    monkeypatch.setenv("GEMINI_API_KEY", "g")
+    monkeypatch.delenv("PEXELS_API_KEY", raising=False)
+    monkeypatch.setattr(pipeline, "get_ffmpeg_path", lambda: "ffmpeg")
+    monkeypatch.setattr(pipeline, "get_ffprobe_path", lambda: "ffprobe")
+    assert not any("Pexels" in p or "PEXELS" in p for p in pipeline.check_dependencies())
 
 
 def test_cli_rejects_zero_count(monkeypatch):
@@ -219,7 +221,6 @@ def test_cli_dry_run_exit_code(monkeypatch):
     import make_videos
 
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-    monkeypatch.delenv("PEXELS_API_KEY", raising=False)
     assert make_videos.main(["--count", "1", "--dry-run"]) == 1
 
 
@@ -233,7 +234,7 @@ def test_headerless_pcm_tts_is_made_playable(monkeypatch, tmp_path):
 
     raw = tmp_path / "raw.pcm"
     subprocess.run(
-        ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+        [FFMPEG, "-y", "-hide_banner", "-loglevel", "error",
          "-f", "lavfi", "-i", "sine=frequency=300:duration=4",
          "-f", "s16le", "-acodec", "pcm_s16le", "-ac", "1", "-ar", "24000",
          str(raw)],
@@ -280,15 +281,13 @@ def test_end_to_end_produces_vertical_video(monkeypatch, tmp_path, mp4_factory):
     import subprocess
 
     monkeypatch.setattr(pipeline, "get_output_dir", lambda: tmp_path)
-    monkeypatch.setattr(pipeline.pexels, "cache_dir", lambda: tmp_path / "footage")
     monkeypatch.setenv("GEMINI_API_KEY", "g")
-    monkeypatch.setenv("PEXELS_API_KEY", "p")
 
     # Real 6-second WAV. gemini.generate_tts returns already-decoded audio
     # bytes, so the stub hands the pipeline the raw WAV payload.
     wav = tmp_path / "speech.wav"
     subprocess.run(
-        ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+        [FFMPEG, "-y", "-hide_banner", "-loglevel", "error",
          "-f", "lavfi", "-i", "sine=frequency=300:duration=6",
          "-c:a", "pcm_s16le", str(wav)],
         check=True,
@@ -317,15 +316,7 @@ def test_end_to_end_produces_vertical_video(monkeypatch, tmp_path, mp4_factory):
         lambda s: gemini.AudioBlob(encoded, "audio/wav"),
     )
 
-    clip = mp4_factory(duration=6.0, size="1280x720", audio=0)  # landscape on purpose
-    monkeypatch.setattr(
-        pipeline.pexels, "search_videos",
-        lambda q, per_page=3: [{"id": 42, "url": "https://x.invalid/v.mp4",
-                                "user": {"name": "Pexels Artist"},
-                                "page_url": "https://www.pexels.com/video/42/"}],
-    )
-    monkeypatch.setattr(pipeline.pexels, "download_video", lambda info: clip)
-
+    # Visuals are generated locally, so there is no external API to stub.
     result = pipeline.run_pipeline(3)
 
     assert not result["failed"], result["failed"]
@@ -337,7 +328,7 @@ def test_end_to_end_produces_vertical_video(monkeypatch, tmp_path, mp4_factory):
 
     for video in videos:
         probe = subprocess.run(
-            ["ffprobe", "-v", "error", "-show_entries",
+            [FFPROBE, "-v", "error", "-show_entries",
              "stream=codec_type,width,height,pix_fmt",
              "-show_entries", "format=duration",
              "-of", "json", str(video)],
@@ -353,34 +344,27 @@ def test_end_to_end_produces_vertical_video(monkeypatch, tmp_path, mp4_factory):
         assert streams["video"]["pix_fmt"] == "yuv420p"
         assert float(info["format"]["duration"]) == pytest.approx(6.0, abs=0.6)
 
-    # Metadata is written for each video, with Pexels attribution.
+    # Metadata is written for each video, describing the generated scenes.
     metas = sorted((tmp_path / "metadata").glob("*.json"))
     assert len(metas) == 3
     data = json.loads(metas[0].read_text(encoding="utf-8"))
     assert data["title"] == "The Lighthouse"
     assert data["hashtags"] == ["#fiction", "#storytime"]
     assert data["duration_seconds"] == pytest.approx(6.0, abs=0.6)
-    assert data["source_footage_urls"] == ["https://x.invalid/v.mp4"]
+    assert "generated" in data["visual_source"]
+    assert data["scenes"]
+    for scene in data["scenes"]:
+        assert scene["style"] in visuals.STYLES
+        assert scene["motion"] in visuals.MOTIONS
+        assert scene["transition"] in visuals.TRANSITIONS
 
     # Subtitles exist and are non-trivial.
     srt = sorted((tmp_path / "captions").glob("*.srt"))[0]
     assert srt.read_text(encoding="utf-8-sig").count("-->") >= 4
 
 
-def test_cli_rejects_zero_count(monkeypatch):
-    import make_videos
-    assert make_videos.main(["--count", "0"]) == 1
-
-
-def test_cli_dry_run_exit_code(monkeypatch):
-    import make_videos
-
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-    monkeypatch.delenv("PEXELS_API_KEY", raising=False)
-    assert make_videos.main(["--count", "1", "--dry-run"]) == 1
-
-
 def test_build_metadata_uses_timezone_aware_timestamp():
-    meta = pipeline.build_metadata("t", {}, "c", [], [], "f.mp4", 12.3456)
+    scenes = visuals.plan_scenes(_SCRIPT, duration=12.0, seed=1)
+    meta = pipeline.build_metadata("t", {}, "c", [], scenes, "f.mp4", 12.3456)
     assert meta["creation_timestamp"].endswith("+00:00")
     assert meta["duration_seconds"] == 12.35

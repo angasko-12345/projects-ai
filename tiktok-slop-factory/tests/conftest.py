@@ -9,22 +9,26 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from app import config
 
-def _tool(name: str) -> bool:
-    return shutil.which(name) is not None
+FFMPEG = config.get_ffmpeg_path()
+FFPROBE = config.get_ffprobe_path()
+
+
+def _available(path: str) -> bool:
+    return shutil.which(path) is not None or Path(path).is_file()
 
 
 ffmpeg_required = pytest.mark.skipif(
-    not (_tool("ffmpeg") and _tool("ffprobe")),
-    reason="FFmpeg/ffprobe not installed on PATH",
+    not (_available(FFMPEG) and _available(FFPROBE)),
+    reason="FFmpeg/ffprobe not installed or FFMPEG_PATH/FFPROBE_PATH not set",
 )
 
 
 @pytest.fixture
 def fake_env(monkeypatch):
-    """Provide dummy API keys without touching real ones."""
+    """Provide the dummy API key without touching real ones."""
     monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
-    monkeypatch.setenv("PEXELS_API_KEY", "test-pexels-key")
 
 
 @pytest.fixture
@@ -36,7 +40,7 @@ def mp4_factory(tmp_path):
         counter["n"] += 1
         out = tmp_path / f"src{counter['n']}.mp4"
         cmd = [
-            "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+            FFMPEG, "-y", "-hide_banner", "-loglevel", "error",
             "-f", "lavfi", "-i", f"testsrc=size={size}:rate=30:duration={duration}",
         ]
         if audio > 0:

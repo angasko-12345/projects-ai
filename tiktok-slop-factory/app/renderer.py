@@ -1,6 +1,9 @@
 """
 Render the final vertical MP4 with FFmpeg.
 
+Combines the locally generated visual track, the burned-in subtitles, and the
+Gemini narration into one playable file.
+
 Bugs fixed here, each reproduced against a real FFmpeg build first:
 
 * **Landscape footage failed outright.** The old chain used
@@ -15,9 +18,9 @@ Bugs fixed here, each reproduced against a real FFmpeg build first:
   with ``cwd`` set to the caption directory and pass a bare filename, so no
   drive letter ever reaches the filter parser.
 * **Output was truncated to the footage length.** ``-shortest`` plus a short
-  Pexels clip produced a 5.4s video out of a 60s narration. The footage input
-  is now looped with ``-stream_loop -1`` and the output is bounded by the
-  audio duration.
+  clip produced a 5.4s video out of a 60s narration. The visual input is now
+  looped with ``-stream_loop -1`` and the output is bounded by the audio
+  duration.
 * **Audio could be dropped**, because the map used ``1:a?``. The narration is
   mandatory, so the audio stream is mapped explicitly and the result is
   verified.

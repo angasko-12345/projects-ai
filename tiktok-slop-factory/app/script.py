@@ -1,12 +1,12 @@
 """
-Script text helpers: scene splitting and Pexels search keywords.
+Script text helpers: scene splitting and scene visual keywords.
 """
 import re
 from typing import Any, Dict, List
 
 FIELDS = ("hook", "story", "twist", "ending", "cta")
 
-# Words that make for useless Pexels searches.
+# Words that make for useless visual keywords or on-screen text.
 _STOPWORDS = frozenset(
     """a an the and or but of to in on at for with from that this it he she they
     them his her their we you i my your our is are was were be been being do does
@@ -28,9 +28,8 @@ def split_into_scenes(script: Dict[str, Any], num_scenes: int = 3) -> List[str]:
     """Split narration into at most ``num_scenes`` sentence groups.
 
     Bug fixed: when the script had fewer sentences than requested scenes, the
-    old code appended copies of the last sentence, so the same footage
-    keywords were produced repeatedly and Pexels quota was burned on duplicate
-    searches. It now returns only the sentences that actually exist.
+    old code appended copies of the last sentence, so the same scene text was
+    produced repeatedly. It now returns only the sentences that actually exist.
     """
     text = script_text(script)
     if not text:
@@ -43,12 +42,14 @@ def split_into_scenes(script: Dict[str, Any], num_scenes: int = 3) -> List[str]:
 
 
 def get_scene_keywords(scene_text: str, max_words: int = 3) -> str:
-    """Pick concrete search terms from a scene for Pexels.
+    """Pick concrete, visually interesting words from a scene.
+
+    These are rendered as on-screen text over the generated background, so they
+    need to read as visual nouns rather than filler.
 
     Bug fixed: this used to return the first three whitespace-separated words
-    verbatim, which produced queries like ``H`` or ``So I was`` and matched
-    useless stock footage. It now drops stopwords and keeps the longest words,
-    which are the concrete visual nouns.
+    verbatim, which produced text like ``H`` or ``So I was``. It now drops
+    stopwords and keeps the longest words, which are the concrete visual nouns.
     """
     words = re.findall(r"[A-Za-z][A-Za-z'-]+", scene_text or "")
     if not words:

@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from app import captions, renderer
-from conftest import ffmpeg_required
+from conftest import FFMPEG, FFPROBE, ffmpeg_required
 
 APP_DIR = Path(__file__).resolve().parent.parent / "app"
 
@@ -20,7 +20,7 @@ def _make_srt(tmp_path, words=6, duration=10.0):
 def _make_audio(tmp_path, duration=10.0):
     out = tmp_path / "narr.wav"
     subprocess.run(
-        ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+        [FFMPEG, "-y", "-hide_banner", "-loglevel", "error",
          "-f", "lavfi", "-i", f"sine=frequency=300:duration={duration}",
          "-c:a", "pcm_s16le", str(out)],
         check=True,
@@ -55,7 +55,7 @@ def test_landscape_footage_renders(mp4_factory, tmp_path):
 
     assert renderer.probe_duration(out) == pytest.approx(8.0, abs=0.6)
     probe = subprocess.run(
-        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+        [FFPROBE, "-v", "error", "-select_streams", "v:0",
          "-show_entries", "stream=width,height,pix_fmt",
          "-of", "csv=p=0", str(out)],
         capture_output=True, text=True, check=True,
@@ -140,6 +140,8 @@ def test_missing_ffmpeg_gives_actionable_error(monkeypatch, tmp_path):
 
     with pytest.raises(renderer.RenderError, match="not found"):
         renderer.render_video(audio, footage, srt, tmp_path / "x.mp4", duration=5.0)
+
+
 def _renderer_code() -> str:
     """Return renderer.py with comments and docstrings stripped.
 
@@ -183,18 +185,6 @@ def test_no_dead_filter_variants():
     # The broken decrease+crop order must not return.
     assert "force_original_aspect_ratio=decrease" not in code
     assert "force_original_aspect_ratio=increase" in code
-
-
-def test_missing_ffmpeg_gives_actionable_error(monkeypatch, tmp_path):
-    monkeypatch.setattr(renderer, "get_ffmpeg_path", lambda: "definitely-not-ffmpeg")
-    audio = tmp_path / "a.wav"
-    audio.write_bytes(b"RIFF" + b"\0" * 100)
-    footage = tmp_path / "f.mp4"
-    footage.write_bytes(b"\0" * 100)
-    srt = _make_srt(tmp_path)
-
-    with pytest.raises(renderer.RenderError, match="not found"):
-        renderer.render_video(audio, footage, srt, tmp_path / "x.mp4", duration=5.0)
 
 
 def test_missing_inputs_rejected(tmp_path):
