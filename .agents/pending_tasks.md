@@ -11,7 +11,7 @@
 
 | ID | Item | Evidence |
 |---|---|---|
-| ROOT-034 (AgentOps share) | Remaining test-quality gaps in the DBG-06..15 cluster | PARTIALLY FIXED -- see master-bug-synthesis section 0 |
+| ROOT-034 (AgentOps share) | `DBG-08` open; `DBG-12` residual test debt; `DBG-15` residual migration-test debt | NARROWED by a fresh read-only ROOT-034 audit at `c67d925` (AgentOps 443 tests, 4 environment skips, OK). No item in that audit is a new production bug. Row stays open: `DBG-08` still needs a focused fix pass -- see master-bug-synthesis section 0 |
 | -- | `SpawnFactory` Protocol typing (deferred from the A3 review) | still deferred |
 | -- | Repository characteristics for routing are inert | `workflow.py` still passes `{}` as repository characteristics, so router repository-derived signals do nothing |
 | -- | A8 reviewer pass | A8 implementation is DONE; the read-only opencode/copilot review pass was never run |
@@ -28,7 +28,7 @@
 
 | ID | Item | Evidence |
 |---|---|---|
-| ROOT-034 (UGA share) | Remaining test-quality gaps in the DBG-06..15 cluster | PARTIALLY FIXED -- see master-bug-synthesis section 0 |
+| ROOT-034 (UGA share) | `DBG-06` and `DBG-07` open; `DBG-12` residual shared test debt; `DBG-13` and `DBG-14` closed | NARROWED by a fresh read-only ROOT-034 audit at `c67d925` (UGA 317 tests, 1 skip, OK). `DBG-13` is FIXED for routing with only residual fixture quality (test debt); `DBG-14` is DISPROVEN. No item in that audit is a new production bug. Row stays open: `DBG-06` and `DBG-07` still need a focused fix pass -- see master-bug-synthesis section 0 |
 | -- | STEP 3 exp02 re-run (post-fix validation run) | the pre-flight ran 2026-10-02 and the detector bands hold (0 steps in the ambiguous 200..300 gap, MISS band exact, no window-chrome red above the hit band), so the re-run is now unblocked. The re-run itself did NOT happen: cancelled because the machine was in use. The exp02 verdict stays suspended. Ask before starting a long GUI run -- it sends real `SendInput` keystrokes and holds a real window for three phases. Read the cadence caveat in `universal-game-agent/AGENTS.md` first: at 60 ms hold + 80 ms delay the paddle moves 5 px per decision against ~34 px of ball travel, so a 100-episode hit/miss comparison has very few hits to compare |
 | -- | Untested `training/external_experiment.py` orchestration | helpers covered, the three-phase driver is not |
 
