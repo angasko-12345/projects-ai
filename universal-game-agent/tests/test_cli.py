@@ -1,4 +1,9 @@
 """Tests for the main.py CLI. Heavy ops mocked; one tiny real integration run."""
+try:
+    from . import _bootstrap
+except ImportError:  # run as script or discovered top-level: no package context
+    import _bootstrap
+
 import io
 import unittest
 from contextlib import redirect_stdout
@@ -70,6 +75,8 @@ class TestCLIDispatch(unittest.TestCase):
 
     def test_compare_dispatch(self):
         import main as cli_main
+        import training.experiment  # first import must bind the real evaluate,
+        # not the side_effect patch active in this test (direct-exec order leak)
 
         def _rep(mean, actions, rewards, hits, misses):
             return {"mean_reward": mean, "std_reward": 0.0, "min_reward": mean,
@@ -311,10 +318,6 @@ class TestResumeFinishedCheckpoint(unittest.TestCase):
             self.assertGreater(after["num_updates"], before["num_updates"])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 @unittest.skipUnless(__import__("importlib").util.find_spec("torch"), "torch not installed")
 class TestCLIValidation(unittest.TestCase):
     def test_negative_seed_rejected_cleanly(self):
@@ -412,3 +415,7 @@ class TestCLIValidation(unittest.TestCase):
             _sync_curiosity_scale(PPOTrainer(env, model, PPOConfig(
                 rollout_length=8, minibatch_size=8, update_epochs=1,
                 total_timesteps=8, checkpoint_dir=tmp)), {})  # no module: no-op
+
+
+if __name__ == "__main__":
+    unittest.main()

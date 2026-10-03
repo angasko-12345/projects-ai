@@ -1,4 +1,9 @@
 """Tests for external-experiment run isolation helpers (no display needed)."""
+try:
+    from . import _bootstrap
+except ImportError:  # run as script or discovered top-level: no package context
+    import _bootstrap
+
 import os
 import unittest
 from pathlib import Path

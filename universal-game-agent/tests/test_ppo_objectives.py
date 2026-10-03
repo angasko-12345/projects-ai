@@ -1,4 +1,9 @@
 """PPO/GAE equation audits: hand-computed expectations through real code paths."""
+try:
+    from . import _bootstrap
+except ImportError:  # run as script or discovered top-level: no package context
+    import _bootstrap
+
 import unittest
 
 try:

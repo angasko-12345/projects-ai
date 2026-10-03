@@ -1,4 +1,9 @@
 """Mocked ExternalGameEnv <-> PPO end-to-end tests. No real game."""
+try:
+    from . import _bootstrap
+except ImportError:  # run as script or discovered top-level: no package context
+    import _bootstrap
+
 import unittest
 
 import numpy as np
@@ -75,8 +80,15 @@ class TestExternalTraining(unittest.TestCase):
         self.assertTrue(bool((buf["int_rewards"] >= 0).all()))
 
     def test_short_train_and_eval(self):
+        import tempfile
+        from pathlib import Path
+
+        tmp = tempfile.TemporaryDirectory(prefix="uga-ckpt-")
+        self.addCleanup(tmp.cleanup)
         trainer = _trainer(total=16)
+        trainer.config.checkpoint_dir = tmp.name
         history = trainer.train()
+        self.assertTrue((Path(tmp.name) / "ppo_final.pt").is_file())  # written to tmp, not the CWD
         self.assertEqual(history["timesteps"][-1], 16)
         train_captures = trainer.env.interface.capture_source.backend.calls
         model = trainer.model

@@ -31,12 +31,14 @@ cd universal-game-agent
 python -m unittest discover -s tests
 ```
 
-- The current baseline (verified 2026-10-02, after `dae1415`) is **317 tests, 1 skip,
+- The current baseline (verified 2026-10-03) is **318 tests, 1 skip,
   OK**. That is a dated observation, not a contract; the count is volatile because tests
   get added. Run the suite for current truth. All tests are `unittest.TestCase`, and
-  `tests/__init__.py` exists so discovery works as a package. The tests import `configs`,
-  `training`, and `games` because discovery runs with `universal-game-agent/` as the working
-  directory — no test bootstraps `sys.path` itself. Run the suite from that directory.
+  `tests/__init__.py` exists so discovery works as a package. Every test module imports
+  `tests/_bootstrap.py` first, which puts `universal-game-agent/` on `sys.path`, so the
+  command above and direct execution (`python tests/<file>.py`, from any working
+  directory) run the same tests. Discovery from this directory stays the source of
+  truth; direct execution is a convenience.
 - **Bug state: no ACTIVE canonical roots for this product.** The authoritative per-root
   status list is `.agents/memory/opencode/bugfinding/master-bug-synthesis.md` §0 — read a
   root's status there before acting on any bug, and take unfinished work from

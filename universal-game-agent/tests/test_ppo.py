@@ -1,4 +1,9 @@
 """Tests for PPO (requires torch; uses the toy game only)."""
+try:
+    from . import _bootstrap
+except ImportError:  # run as script or discovered top-level: no package context
+    import _bootstrap
+
 import tempfile
 import unittest
 from pathlib import Path
@@ -186,10 +191,6 @@ class TestPPOTrainer(unittest.TestCase):
             resumed = PPOTrainer.load_checkpoint(
                 path, PreprocessingWrapper(ToyPongEnv(max_steps=64)))
             self.assertEqual(resumed.num_timesteps, trainer.num_timesteps)
-
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 class TestRecurrentFixes(unittest.TestCase):
@@ -433,3 +434,7 @@ class TestMetricsEdgeCases(unittest.TestCase):
         buf, *_ = PPOTrainer(env, model, config).collect_rollout()
         self.assertEqual(buf["pixel_change"], 0.0)
         self.assertTrue(buf["pixel_change"] == buf["pixel_change"])  # not NaN
+
+
+if __name__ == "__main__":
+    unittest.main()

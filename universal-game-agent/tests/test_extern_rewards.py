@@ -1,4 +1,9 @@
 """Tests for screen-only extern-Pong reward/termination (synthetic frames)."""
+try:
+    from . import _bootstrap
+except ImportError:  # run as script or discovered top-level: no package context
+    import _bootstrap
+
 import unittest
 
 import numpy as np
@@ -139,9 +144,6 @@ class TestExternPongReward(unittest.TestCase):
             else:
                 self.assertGreater(count, 200)  # documents the upper limit
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class TestExternTerminationIntegration(unittest.TestCase):
     def _env(self, frames, termination, **overrides):
@@ -265,3 +267,7 @@ class TestClassifyHelper(unittest.TestCase):
         self.assertEqual(classify(200, detector), "hit")
         self.assertEqual(classify(299, detector), "normal")
         self.assertEqual(classify(300, detector), "terminal")
+
+
+if __name__ == "__main__":
+    unittest.main()

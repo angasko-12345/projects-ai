@@ -1,4 +1,9 @@
 """Tests for the recurrent actor-critic (requires torch)."""
+try:
+    from . import _bootstrap
+except ImportError:  # run as script or discovered top-level: no package context
+    import _bootstrap
+
 import tempfile
 import unittest
 from pathlib import Path

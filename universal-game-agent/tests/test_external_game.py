@@ -1,4 +1,9 @@
 """Contract tests for the external-game boundary (fakes only, no OS side effects)."""
+try:
+    from . import _bootstrap
+except ImportError:  # run as script or discovered top-level: no package context
+    import _bootstrap
+
 import unittest
 
 import numpy as np
@@ -232,10 +237,6 @@ class TestExternalGameContract(unittest.TestCase):
         self.assertFalse(lifecycle.reset_session())  # no launch command -> unsupported
         lifecycle.close()
         self.assertIsInstance(lifecycle, GameLifecycle)
-
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 class TestCapturePipeline(unittest.TestCase):
@@ -762,3 +763,7 @@ class TestResetSettle(unittest.TestCase):
             ExternalGameEnv(FakeInterface([_frame(0)]), NullReward(),
                             StepLimitTermination(max_steps=10),
                             reset_settle_timeout_s=-1.0)
+
+
+if __name__ == "__main__":
+    unittest.main()

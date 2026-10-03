@@ -1,5 +1,11 @@
 """Diagnostics aggregation tests: exact episode/outcome/component numbers."""
+try:
+    from . import _bootstrap
+except ImportError:  # run as script or discovered top-level: no package context
+    import _bootstrap
+
 import unittest
+from pathlib import Path
 
 try:
     import torch
@@ -24,6 +30,15 @@ def _trainer(script, rollout_length, total=None, curiosity=None):
                        update_epochs=1, total_timesteps=total or rollout_length,
                        checkpoint_every_updates=1000)
     return PPOTrainer(env, model, config, curiosity=curiosity)
+
+
+def _scratch_checkpoint_dir(case):
+    """Isolated PPO checkpoint dir: train() must never write into the caller's CWD."""
+    import tempfile
+
+    tmp = tempfile.TemporaryDirectory(prefix="uga-ckpt-")
+    case.addCleanup(tmp.cleanup)
+    return tmp.name
 
 
 @unittest.skipUnless(_HAS_TORCH, "torch not installed")
@@ -52,8 +67,11 @@ class TestDiagnostics(unittest.TestCase):
     def test_termination_vs_truncation_counts(self):
         script = [(0.0, True, False), (0.0, False, True),
                   (0.0, True, False), (0.0, False, True)]
+        ckpt_dir = _scratch_checkpoint_dir(self)
         trainer = _trainer(script, rollout_length=2, total=4)
+        trainer.config.checkpoint_dir = ckpt_dir
         history = trainer.train()
+        self.assertTrue((Path(ckpt_dir) / "ppo_final.pt").is_file())  # written to ckpt_dir, not the CWD
         self.assertEqual(sum(history["upd_terminated"]), 2)
         self.assertEqual(sum(history["upd_truncated"]), 2)
         self.assertEqual(history["episodes"][-1], 4)
@@ -89,20 +107,26 @@ class TestDiagnostics(unittest.TestCase):
 
         _torch.manual_seed(0)
         model = ActorCritic(num_actions=1, in_channels=4, feature_dim=16, hidden_size=8)
+        ckpt_dir = _scratch_checkpoint_dir(self)
         config = PPOConfig(rollout_length=4, minibatch_size=4, update_epochs=1,
-                           total_timesteps=4, checkpoint_every_updates=1000)
+                           total_timesteps=4, checkpoint_every_updates=1000,
+                           checkpoint_dir=ckpt_dir)
         trainer = PPOTrainer(
             ExternalGameEnv(game, composite, NeverTerminateProvider(), lifecycle=None),
             model, config)
         history = trainer.train()
+        self.assertTrue((Path(ckpt_dir) / "ppo_final.pt").is_file())  # written to ckpt_dir, not the CWD
         self.assertEqual(history["components"][-1], {"event": 2.0, "survival": 0.5})
         self.assertEqual(history["upd_episodes"][-1], 0)  # no boundaries crossed
         self.assertEqual(history["upd_mean_total"][-1], 0.0)
 
     def test_history_keys_present(self):
         script = [(1.0, True, False)] * 4
+        ckpt_dir = _scratch_checkpoint_dir(self)
         trainer = _trainer(script, rollout_length=2, total=4)
+        trainer.config.checkpoint_dir = ckpt_dir
         history = trainer.train()
+        self.assertTrue((Path(ckpt_dir) / "ppo_final.pt").is_file())  # written to ckpt_dir, not the CWD
         for key in ("upd_episodes", "upd_mean_length", "upd_terminated", "upd_truncated",
                     "upd_mean_ext", "upd_mean_int", "upd_mean_total", "components",
                     "mean_ext_reward", "mean_int_reward"):

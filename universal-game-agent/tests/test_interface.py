@@ -1,4 +1,9 @@
 """Tests for the external game interface. No real input or windows touched."""
+try:
+    from . import _bootstrap
+except ImportError:  # run as script or discovered top-level: no package context
+    import _bootstrap
+
 import os
 import unittest
 

@@ -1,4 +1,9 @@
 """Tests for the curiosity module + PPO wiring (requires torch)."""
+try:
+    from . import _bootstrap
+except ImportError:  # run as script or discovered top-level: no package context
+    import _bootstrap
+
 import unittest
 
 try:
@@ -113,10 +118,6 @@ class TestCuriosityModule(unittest.TestCase):
         self.assertTrue(torch.equal(buf["rewards"], buf["ext"]))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 @unittest.skipUnless(_HAS_TORCH, "torch not installed")
 class TestConfigWarnings(unittest.TestCase):
     def test_curiosity_unknown_key_warns(self):
@@ -147,3 +148,7 @@ class TestConfigWarnings(unittest.TestCase):
             warnings.simplefilter("error")
             cfg = PPOConfig.from_dict({"learning_rate": 1e-3})
         self.assertAlmostEqual(cfg.learning_rate, 1e-3)
+
+
+if __name__ == "__main__":
+    unittest.main()

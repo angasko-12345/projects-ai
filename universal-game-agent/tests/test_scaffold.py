@@ -1,4 +1,9 @@
 """Scaffold smoke tests (stdlib unittest only, no third-party imports)."""
+try:
+    from . import _bootstrap
+except ImportError:  # run as script or discovered top-level: no package context
+    import _bootstrap
+
 import importlib
 import importlib.util
 import unittest
@@ -42,10 +47,6 @@ class TestScaffold(unittest.TestCase):
                     handler.close()
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestLoggingValidation(unittest.TestCase):
     def test_unknown_level_rejected(self):
         from training.logger import setup_logging
@@ -68,3 +69,7 @@ class TestLoggingValidation(unittest.TestCase):
                     for handler in log.handlers[:]:
                         log.removeHandler(handler)
                         handler.close()
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,4 +1,9 @@
 """Tests for the external OS-loop driver (fakes only, no windows/input)."""
+try:
+    from . import _bootstrap
+except ImportError:  # run as script or discovered top-level: no package context
+    import _bootstrap
+
 import unittest
 
 import numpy as np

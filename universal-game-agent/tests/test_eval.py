@@ -1,4 +1,9 @@
 """Tests for evaluation + experiment wiring (requires torch)."""
+try:
+    from . import _bootstrap
+except ImportError:  # run as script or discovered top-level: no package context
+    import _bootstrap
+
 import tempfile
 import unittest
 from pathlib import Path
@@ -60,10 +65,6 @@ class TestEvaluate(unittest.TestCase):
             bad.write_text("ppo: {}\n", encoding="utf-8")
             with self.assertRaises(ValueError):
                 load_experiment(bad)
-
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 @unittest.skipUnless(_HAS_TORCH, "torch not installed")
@@ -399,3 +400,7 @@ class TestExperimentWorkflow(unittest.TestCase):
             self.assertTrue(report["fps"] > 0.0)
             self.assertEqual(report["final_eval"]["seeds"], report["baseline_eval"]["seeds"])
             self.assertFalse(report["curiosity_enabled"])
+
+
+if __name__ == "__main__":
+    unittest.main()

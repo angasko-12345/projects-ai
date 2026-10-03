@@ -1,4 +1,9 @@
 """Tests for the pixel-only toy Pong environment (stdlib unittest)."""
+try:
+    from . import _bootstrap
+except ImportError:  # run as script or discovered top-level: no package context
+    import _bootstrap
+
 import unittest
 
 import numpy as np
