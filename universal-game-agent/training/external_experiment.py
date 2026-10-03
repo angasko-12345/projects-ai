@@ -24,13 +24,17 @@ import torch
 import yaml
 
 from agent.model import ActorCritic
-from environment.external_game import make_external_env_from_config
+from environment.external_game import SessionUnavailableError, make_external_env_from_config
 from interface.capture import CaptureError
 from interface.window import WindowLostError, WindowManager, WindowNotFoundError
 from training.evaluate import evaluate
-from training.ppo import PPOConfig, PPOTrainer
+from training.ppo import PPOConfig, PPOTrainer, summarize_history
 
-_SESSION_ERRORS = (WindowLostError, WindowNotFoundError, CaptureError)
+#: A dead game session, however it surfaced: the capture path raises a window
+#: or capture error, ``reset()`` raises ``SessionUnavailableError``. All three
+#: are recoverable by relaunching the game and reloading the checkpoint.
+_SESSION_ERRORS = (WindowLostError, WindowNotFoundError, CaptureError,
+                   SessionUnavailableError)
 MAX_WINDOW_RELAUNCHES = 3
 
 
@@ -60,6 +64,14 @@ def _concat_histories(histories: list[dict]) -> dict:
     return merged
 
 
+def _close_quietly(env) -> None:
+    """Release an env; a dead session must not block the caller's cleanup."""
+    try:
+        env.close()
+    except Exception:
+        pass
+
+
 def train_with_window_relaunch(new_trainer, make_env, launch_session,
                                max_relaunches: int = MAX_WINDOW_RELAUNCHES,
                                resume=_resume_trainer):
@@ -79,10 +91,7 @@ def train_with_window_relaunch(new_trainer, make_env, launch_session,
         try:
             histories.append(trainer.train())
         except _SESSION_ERRORS as exc:
-            try:
-                trainer.env.close()
-            except Exception:
-                pass  # dead session must not block the resume
+            _close_quietly(trainer.env)
             cleanup()
             if relaunches >= max_relaunches:
                 raise RuntimeError(
@@ -91,8 +100,16 @@ def train_with_window_relaunch(new_trainer, make_env, launch_session,
             print(f"window lost ({exc}); relaunching "
                   f"({relaunches}/{max_relaunches})...", flush=True)
             trainer = resume(trainer, make_env)
+        except BaseException:
+            # Not a session loss: a real failure or a Ctrl-C. Both the branch
+            # above and the success branch below are skipped, so the env and
+            # the launched game process have to be released here or they
+            # outlive the run -- a real window left up, still taking input.
+            _close_quietly(trainer.env)
+            cleanup()
+            raise
         else:
-            trainer.env.close()
+            _close_quietly(trainer.env)
             cleanup()
             return trainer, _concat_histories(histories), relaunches
 APP = Path(__file__).resolve().parent.parent / "games" / "extern_pong.py"
@@ -396,6 +413,10 @@ def _run_external_experiment(config_path: Path) -> dict:
     untrained_summary = summarize_eval(baseline)
     trained_summary = summarize_eval(final)
     difference = summarize_difference(untrained_summary, trained_summary)
+    # summarize_history, not direct indexing: a resumed checkpoint that already
+    # met the budget runs no update, so the history can legitimately be empty
+    # (ROOT-014) and every aggregate below has to survive that.
+    summary = summarize_history(history)
     print(f"untrained: {untrained_summary}")
     print(f"trained:   {trained_summary}")
     print(f"delta (trained - untrained): {difference}")
@@ -417,12 +438,15 @@ def _run_external_experiment(config_path: Path) -> dict:
             "difference_trained_minus_untrained": difference,
         },
         "initial_mean_episode_reward": baseline["mean_reward"],
-        "final_train_rolling_mean_reward": history["mean_reward"][-1],
-        "final_train_rolling_mean_ext_reward": history["mean_ext_reward"][-1],
-        "train_mean_episode_length": float(np.mean(history["upd_mean_length"])),
-        "train_terminated_episodes": int(sum(history["upd_terminated"])),
-        "train_truncated_episodes": int(sum(history["upd_truncated"])),
-        "train_component_means": history["components"][-1] if history["components"] else {},
+        # updates_run makes "nothing was trained" visible in the artifact
+        # instead of letting the aggregates below read as measurements.
+        "training_updates": summary["updates_run"],
+        "final_train_rolling_mean_reward": summary["mean_reward"],
+        "final_train_rolling_mean_ext_reward": summary["mean_ext_reward"],
+        "train_mean_episode_length": summary["mean_episode_length"],
+        "train_terminated_episodes": summary["terminated_episodes"],
+        "train_truncated_episodes": summary["truncated_episodes"],
+        "train_component_means": summary["component_means"],
         "training_steps": trainer.num_timesteps,
         "training_seconds": train_seconds,
         "decision_fps": trainer.num_timesteps / max(train_seconds, 1e-6),

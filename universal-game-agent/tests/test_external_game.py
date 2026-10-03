@@ -14,6 +14,7 @@ from environment.external_game import (
     NeverTerminateProvider,
     NullReward,
     RewardProvider,
+    SessionUnavailableError,
     StepLimitTermination,
     TerminationProvider,
     WindowLifecycle,
@@ -200,9 +201,20 @@ class TestExternalGameContract(unittest.TestCase):
             _env().step(0)
 
     def test_dead_lifecycle_fails_fast(self):
+        # The type is the contract, not the base class: training/external_experiment
+        # relaunches on SessionUnavailableError alone. A bare RuntimeError here is
+        # indistinguishable from an ordinary bug, so a window lost between decisions
+        # ended the whole experiment instead of relaunching it.
         env = _env(lifecycle=FakeLifecycle(available=False, bindable=False))
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(SessionUnavailableError):
             env.reset()
+
+    def test_an_unavailable_session_is_recoverable_but_a_plain_runtime_error_is_not(self):
+        # Guards the reason the subclass exists: if it ever collapses back into
+        # RuntimeError, this pair fails even though assertRaises(RuntimeError)
+        # would keep passing.
+        self.assertTrue(issubclass(SessionUnavailableError, RuntimeError))
+        self.assertNotEqual(SessionUnavailableError, RuntimeError)
 
     def test_spaces_match_contract(self):
         env = _env()

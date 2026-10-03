@@ -12,6 +12,7 @@ __all__ = [
     "PreprocessingWrapper",
     "preprocess_frame",
     "ExternalGameEnv",
+    "SessionUnavailableError",
     "GameLifecycle",
     "WindowLifecycle",
     "Clock",

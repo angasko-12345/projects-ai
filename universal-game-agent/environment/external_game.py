@@ -37,6 +37,16 @@ from environment.termination import (
 )
 
 
+class SessionUnavailableError(RuntimeError):
+    """The game session is gone and ``attach()`` could not rebind to it.
+
+    Its own type so a caller can tell "the window died between decisions" --
+    a recoverable session loss - apart from an ordinary bug that merely
+    happens to be a RuntimeError. A RuntimeError subclass, so every existing
+    ``except RuntimeError`` still catches it.
+    """
+
+
 class Clock(ABC):
     """Injectable time source. Real runs use SystemClock; tests use fakes."""
 
@@ -121,6 +131,7 @@ class WindowLifecycle(GameLifecycle):
 
 __all__ = [
     "ExternalGameEnv",
+    "SessionUnavailableError",
     "GameLifecycle",
     "WindowLifecycle",
     "RewardProvider",
@@ -259,7 +270,8 @@ class ExternalGameEnv(_Base):
             return False
         if not self.lifecycle.is_available():
             if not self.lifecycle.attach():
-                raise RuntimeError("external game session unavailable and attach() failed")
+                raise SessionUnavailableError(
+                    "external game session unavailable and attach() failed")
             self.lifecycle.focus()  # best-effort; False is tolerated
             return True
         self.lifecycle.focus()  # best-effort; False is tolerated
