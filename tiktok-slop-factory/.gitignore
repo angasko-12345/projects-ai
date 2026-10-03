@@ -1,0 +1,26 @@
+# Secrets: never commit real API keys
+.env
+.env.*
+!.env.example
+
+# Generated output (videos, audio, captions, metadata, footage cache)
+output/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.winget_ffmpeg.log
+.winget_ffmpeg.err
+tmp_*.py
+tmp_*/
+*.partial.mp4
+*.part

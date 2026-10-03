@@ -1,0 +1,5 @@
+# Runtime dependency: reads .env. Everything else uses the standard library.
+python-dotenv>=1.0
+
+# Test-only
+pytest>=8.0
