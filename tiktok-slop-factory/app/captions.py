@@ -216,6 +216,43 @@ def simple_timestamps(text: str, duration_sec: float) -> List[Cue]:
     return speech_aware_timestamps(text, duration_sec)
 
 
+# --- narration duration estimation --------------------------------------
+#
+# Reuses the caption weights above rather than inventing a second speech
+# model: ``estimate_speech_range`` answers "how long should this text take?"
+# by asking what duration ``speech_aware_timestamps`` would need if its
+# cues were pinned to the readability bounds. Long words and punctuated words
+# raise the estimate, exactly as they do in the caption timing.
+#
+# SECONDS_PER_WEIGHT is the single calibration point: the duration one unit of
+# weight is *worth*. It is a heuristic average delivery rate, not a linguistic
+# constant and not a per-language figure, and the probed narration duration
+# always overrides it.
+SECONDS_PER_WEIGHT = 0.40
+MIN_PREDICTED_SEC = 1.0
+# Multiplicative band around the prediction. Deliberately wide: this gate
+# exists to catch impossible pairings, not to second-guess a TTS voice that is
+# merely slow or merely fast.
+DURATION_TOLERANCE = (0.60, 2.00)
+
+
+def estimate_speech_range(text: str) -> Tuple[float, float]:
+    """Heuristic duration range ``(low, high)`` for ``text``, in seconds.
+
+    Derived from the same caption weights, so long words and punctuated words
+    push the estimate up exactly as they do in the caption timing. This is a
+    drift guard, not speech alignment: it models no particular language, accent,
+    or delivery speed, and it never replaces the probed duration.
+    """
+    words = re.findall(r"\S+", text or "")
+    if not words:
+        return MIN_PREDICTED_SEC, MIN_PREDICTED_SEC
+
+    total_weight = sum(word_weight(word) for word in words)
+    predicted = max(MIN_PREDICTED_SEC, total_weight * SECONDS_PER_WEIGHT)
+    return predicted * DURATION_TOLERANCE[0], predicted * DURATION_TOLERANCE[1]
+
+
 def _ends_sentence(text: str) -> bool:
     return bool(_SENTENCE_END.search(text.rstrip()))
 

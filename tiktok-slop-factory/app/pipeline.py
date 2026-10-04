@@ -40,6 +40,93 @@ class PipelineError(Exception):
     pass
 
 
+# Digital silence measured by FFmpeg's volumedetect on 16-bit PCM reads exactly
+# -91.0 dB (the clamp floor). Real speech sits far above that: a -60 dB tone
+# still measures about -78 dB and a normal voice peaks near -18 dB. -80 dB sits
+# in the empty gap between them, so quiet-but-audible narration is never
+# rejected while a true digital-silence WAV always is. Raise this only with
+# evidence: an ordinary quiet recording must pass.
+SILENCE_MAX_DB = -80.0
+
+
+def _measure_volume_db(path: Path) -> float | None:
+    """Return the mean volume of ``path`` in dBFS, or None if unmeasurable.
+
+    Uses FFmpeg's built-in ``volumedetect`` filter, which is already a
+    dependency - no audio library, no model.
+    """
+    cmd = [
+        get_ffmpeg_path(), "-hide_banner", "-nostats",
+        "-i", str(path),
+        "-af", "volumedetect",
+        "-f", "null", "-",
+    ]
+    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if _is_windows() else 0
+    try:
+        proc = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=300,
+            creationflags=creationflags,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+    for line in (proc.stderr or "").splitlines():
+        if "mean_volume:" not in line:
+            continue
+        raw = line.split("mean_volume:", 1)[1].strip().split()[0]
+        try:
+            return float(raw)
+        except (ValueError, IndexError):
+            return None
+    return None
+
+
+def _assert_narration_coherent(narration: str, audio_path: Path, duration: float) -> None:
+    """Reject narration that cannot plausibly match its own script.
+
+    Runs after TTS and after the duration probe, before any visual rendering,
+    so an impossible text/audio pairing costs a few hundred milliseconds
+    instead of a full 1080x1920 render. Two independent failures:
+
+    * **silence** - a valid-duration file containing effectively no audio;
+    * **duration mismatch** - the probed length is far outside the range the
+      script implies.
+
+    The duration estimate is a heuristic band, not speech alignment, so it
+    rejects only impossible pairings and never touches the audio.
+    """
+    mean_db = _measure_volume_db(audio_path)
+    if mean_db is not None and mean_db <= SILENCE_MAX_DB:
+        raise PipelineError(
+            f"Narration is silent or near-silent: mean volume {mean_db:.1f} dBFS "
+            f"is at or below the {SILENCE_MAX_DB:.1f} dBFS silence threshold "
+            f"for a {duration:.1f}s file. Re-synthesize the TTS audio; a "
+            f"silent track would render a video with no voice."
+        )
+
+    low, high = cap.estimate_speech_range(narration)
+    if duration < low:
+        raise PipelineError(
+            f"Narration is too short for its script: {duration:.1f}s of audio "
+            f"for text that should take about {low:.1f}-{high:.1f}s. The audio "
+            f"is likely truncated or the wrong clip. Regenerate the narration "
+            f"rather than stretching captions over it."
+        )
+    if duration > high:
+        raise PipelineError(
+            f"Narration is too long for its script: {duration:.1f}s of audio "
+            f"for text that should take about {low:.1f}-{high:.1f}s. The audio "
+            f"likely contains long silences or padding. Regenerate the "
+            f"narration rather than stretching captions over it."
+        )
+
+
 def _tool_exists(name: str, version_flag: str = "-version") -> bool:
     creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if _is_windows() else 0
     try:
@@ -237,6 +324,10 @@ def _produce_one(idea: str, index: int) -> Dict[str, Any]:
         duration = renderer.probe_duration(audio_path)
         if not duration or duration < 1.0:
             raise PipelineError("Narration audio is empty or unreadable")
+
+        # Gate before the expensive stages: a narration that is silent or
+        # impossible for its script must not reach visual rendering.
+        _assert_narration_coherent(narration, audio_path, duration)
 
         # Visuals are generated locally from the script: no stock-media API.
         scenes = visuals.plan_scenes(script, duration=duration, seed=_seed(idea, index))

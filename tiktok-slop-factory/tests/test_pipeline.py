@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from app import gemini, pipeline, renderer, tts, visuals
+from app import captions, gemini, pipeline, renderer, script, tts, visuals
 from conftest import FFMPEG, FFPROBE, ffmpeg_required
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -283,12 +283,27 @@ def test_end_to_end_produces_vertical_video(monkeypatch, tmp_path, mp4_factory):
     monkeypatch.setattr(pipeline, "get_output_dir", lambda: tmp_path)
     monkeypatch.setenv("GEMINI_API_KEY", "g")
 
-    # Real 6-second WAV. gemini.generate_tts returns already-decoded audio
-    # bytes, so the stub hands the pipeline the raw WAV payload.
+    script_stub = {
+        "hook": "The lighthouse keeper heard his name.",
+        "story": "He had been alone for eleven winters.",
+        "twist": "The voice came from inside the wall.",
+        "ending": "Nobody believed him, so he opened it.",
+        "cta": "Would you have opened it?",
+        "title": "The Lighthouse",
+        "hashtags": ["#fiction", "#storytime"],
+    }
+    # The stubbed TTS returns a fixed tone, so its length has to agree with the
+    # narration text or the coherence gate correctly rejects the pairing.
+    low, high = captions.estimate_speech_range(script.script_text(script_stub))
+    audio_seconds = (low + high) / 2
+
+    # Real WAV sized to match. gemini.generate_tts returns already-decoded
+    # audio bytes, so the stub hands the pipeline the raw WAV payload.
     wav = tmp_path / "speech.wav"
     subprocess.run(
         [FFMPEG, "-y", "-hide_banner", "-loglevel", "error",
-         "-f", "lavfi", "-i", "sine=frequency=300:duration=6",
+         "-f", "lavfi",
+         "-i", f"sine=frequency=300:duration={audio_seconds:.3f}",
          "-c:a", "pcm_s16le", str(wav)],
         check=True,
     )
@@ -301,15 +316,7 @@ def test_end_to_end_produces_vertical_video(monkeypatch, tmp_path, mp4_factory):
     )
     monkeypatch.setattr(
         pipeline.gemini, "generate_script",
-        lambda idea: {
-            "hook": "The lighthouse keeper heard his name.",
-            "story": "He had been alone for eleven winters.",
-            "twist": "The voice came from inside the wall.",
-            "ending": "Nobody believed him, so he opened it.",
-            "cta": "Would you have opened it?",
-            "title": "The Lighthouse",
-            "hashtags": ["#fiction", "#storytime"],
-        },
+        lambda idea: script_stub,
     )
     monkeypatch.setattr(
         pipeline.gemini, "generate_tts",
@@ -342,7 +349,9 @@ def test_end_to_end_produces_vertical_video(monkeypatch, tmp_path, mp4_factory):
         assert streams["video"]["width"] == 1080
         assert streams["video"]["height"] == 1920
         assert streams["video"]["pix_fmt"] == "yuv420p"
-        assert float(info["format"]["duration"]) == pytest.approx(6.0, abs=0.6)
+        assert float(info["format"]["duration"]) == pytest.approx(
+            audio_seconds, abs=0.6
+        )
 
     # Metadata is written for each video, describing the generated scenes.
     metas = sorted((tmp_path / "metadata").glob("*.json"))
@@ -350,7 +359,7 @@ def test_end_to_end_produces_vertical_video(monkeypatch, tmp_path, mp4_factory):
     data = json.loads(metas[0].read_text(encoding="utf-8"))
     assert data["title"] == "The Lighthouse"
     assert data["hashtags"] == ["#fiction", "#storytime"]
-    assert data["duration_seconds"] == pytest.approx(6.0, abs=0.6)
+    assert data["duration_seconds"] == pytest.approx(audio_seconds, abs=0.6)
     assert "generated" in data["visual_source"]
     assert data["scenes"]
     for scene in data["scenes"]:

@@ -197,6 +197,37 @@ narration length is distributed; the probed duration always wins. The model is
 deterministic and pure Python, so identical text and duration give identical
 timestamps.
 
+## Narration coherence is checked before rendering
+
+Visual rendering is the expensive stage, so the pipeline validates the narration
+the moment it has both the script and the TTS audio — before any frames are
+drawn. Two failures stop a video that would have been obviously broken:
+
+* **Silence.** A file can have a perfectly valid duration and still contain no
+  voice. FFmpeg's `volumedetect` filter measures the mean level, and anything at
+  or below **-80 dBFS** is rejected as silent or near-silent. The threshold sits
+  in a measured gap: digital silence reads exactly -91 dB on 16-bit PCM, while
+  even a heavily attenuated -60 dB tone reads about -78 dB and ordinary speech
+  peaks near -18 dB. Quiet narration is therefore never rejected for being
+  quiet; only genuinely empty audio is.
+* **Duration mismatch.** 200 words of script compressed into 3 seconds is not
+  narration, and a 90-second padded track for a short script is not either. The
+  script implies a range, and the probed duration has to fall inside it.
+
+The expected range comes from the same caption weights described above, so
+there is one speech model rather than two, and it is a **heuristic band, not
+speech alignment**: `0.40s` per weight unit, scaled by a wide `0.6x`–`2.0x`
+tolerance. No language, accent, or delivery speed is modelled, and no
+words-per-second constant is claimed to be exact. The tolerance is deliberately
+loose — this catches impossible pairings, not slow voices.
+
+Neither failure ever modifies the audio: nothing is stretched, truncated, or
+re-timed to make the numbers agree. The narration is rejected and regenerated
+instead, and the error names the measured duration, the expected range, and what
+to do about it. If a narration passes this gate but the caption bounds still
+cannot represent its full length, that is a separate caption-policy question —
+this gate does not paper over it by touching the audio.
+
 ## Tests
 
 ```powershell
