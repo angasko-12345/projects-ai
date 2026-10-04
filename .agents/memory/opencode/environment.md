@@ -34,8 +34,6 @@ marked as such rather than asserted.
 - **No configured lint, formatter, type-check, or coverage tooling** in any product. Do
   not invent such commands.
 - `.git/info/exclude` holds machine-local paths (`.pi/`, `small-projects/`, and others).
-  There is deliberately **no root `.gitignore`** — see the 2026-09-15 commit-strategy
-  decision, item 4.
 - Regenerable artifacts that are gitignored and safe to delete: `build/`, `.pytest_cache/`,
   `*.egg-info/`, `__pycache__/`. Preserved on purpose: `agentops/dist/AgentOps.exe` (a
   release deliverable) and `agentops/.agentops/state.sqlite` (live state).

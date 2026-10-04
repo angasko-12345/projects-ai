@@ -140,3 +140,8 @@
   `checkpoints/ppo_final.pt` (1.49 MB, mtime 2026-10-03 14:45) was clobbered by the
   pre-fix audit runs; `checkpoints/ppo_untrained.pt` untouched.
 - Unchanged: exp02 verdict still SUSPENDED (Step-3 pre-flight + re-run still next).
+
+## Baseline correction + cross-product note (2026-10-04, omp session)
+
+- **Correction (memory-hierarchy rule):** the 2026-10-03 entry above says 318 tests. Canonical `project.md` and `.agents/AGENTS.md` record **349 tests, 1 skip, OK** for `universal-game-agent/` as of 2026-10-03, after the external-orchestration batch (+31 tests). 349 is current; 318 was superseded the same day. Recorded from canonical memory, not re-run this session.
+- **No UGA change this session (2026-10-04):** AgentOps-only work - Qt desktop visual system, commits `2159af6` + `c753e3e` pushed to `origin/main`; AgentOps suite now 445 tests, 4 environment skips, OK. UGA open threads unchanged: STEP-3 live pre-flight + exp02 re-run still next (ask before starting - it takes over the desktop), `data/tokenizer.json` deletion still the user's deliberate change.

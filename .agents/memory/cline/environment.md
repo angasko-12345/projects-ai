@@ -3,6 +3,42 @@
 Every line below was checked in this environment. Anything inferred is marked.
 Re-verify before relying on it; toolchains move.
 
+## Verified 2026-10-04
+
+Re-verified while completing the AgentOps Qt desktop migration (commit `5b80d9b`).
+
+- `git version 2.55.0.windows.5` (unchanged), `python 3.14.7` (unchanged).
+- **`PySide6` 6.11.2 is installed**, at
+  `C:\Users\admin\AppData\Roaming\Python\Python314\site-packages\PySide6\__init__.py`.
+  It is a **user-site** install, which is the trap below.
+- AgentOps entry points after the migration: `python -m agentops gui` and the
+  `agentops-gui` console script both resolve to `agentops/gui/__init__.py:main`.
+  The CLI prints `ERROR: GUI dependencies are unavailable: ...` when PySide6 is
+  missing rather than raising a traceback.
+
+### Trap: do not override `APPDATA` to isolate a run
+
+`APPDATA` is the root of the per-user `site-packages` on Windows. Pointing it at a
+temp directory to keep a test away from real settings **also removes every
+user-installed package**, and the CLI then reports `No module named 'PySide6'`
+as though it were a genuine install problem. It cost one false diagnosis here.
+
+Verify the real install before believing a missing-dependency error:
+
+```bat
+python -c "import sys, PySide6; print(sys.executable); print(PySide6.__file__)"
+```
+
+The GUI test helper avoids the problem entirely by taking an explicit settings
+path (`tests/qt_display.py::make_context`) instead of mutating global env state.
+
+### Running the Qt tests
+
+`QT_QPA_PLATFORM=offscreen` is set by `tests/qt_display.py` at import, so GUI
+tests need no display and no environment setup. `agentops/` suite after the
+migration: **438 tests, 4 skipped, OK**, ~55-59s — still past the 30s tool
+timeout, so background it as described in `agentops-verification-workflow.md`.
+
 ## Verified 2026-10-01
 
 - Windows, `win32`. Repo root `D:\admin\code\projects`, branch `main`, remote

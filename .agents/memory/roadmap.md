@@ -250,12 +250,32 @@ decision**. A5, A6, and A7 are NOT ordinary backlog and must not be started as r
 - **Key decision (D3):** diff viewer implementation — shell out to `git diff` (recommended, minimal) vs. bundled parser.
 - **Dependencies:** Track A (esp. A6 for merge/review visibility, A8 for degraded-state surfacing); events/artifacts already exist.
 - **Success criteria:** a first-time user can open → pick project → enter task → watch it → understand a failure → approve → see the diff → see the result, without ever reading `workflow.py`.
+- **Status 2026-10-04 (Qt migration, commit `5b80d9b`): substantially delivered in
+  the client, not as new engine work.** Now present: a persistent shell with a
+  sidebar and ten views (Dashboard with live activity feed, New Task dialog, run
+  detail/timeline, failure view, worktree inspection/cleanup/merge-retry), a
+  command palette, and toasts. **Still open: the approval screen, the diff
+  viewer (still awaiting D3), and one-click retry/repair.** A9 remains the
+  dependency for artifact lifecycle. No roadmap item was closed by the
+  migration; it replaced the presentation layer the roadmap assumed already
+  existed.
+- **Status 2026-10-04 (visual system, commits `2159af6`/`c753e3e`):** presentation
+  polish only, no new features - page/section type hierarchy, 33px controls, one
+  accent, grouped sidebar, redesigned dashboard with real persisted metrics and
+  honest empty/loading/error states, all ten views on a common PageHeader.
+  C1's open items are unchanged: approval screen, diff viewer (D3), one-click
+  retry/repair.
 
 ### C2 — "Make it smart"
 
 - Auto agent selection (B7), agent profiles, verification presets (config-driven — profiles already exist, surface them), project auto-detection (`agentops init`), AgentOps Doctor (`agentops doctor` — diagnostic read-only checks), Recovery Center (list out of `failures` + recommendations), task templates (compile to existing workflows — explicitly NOT a new engine), command palette (Ctrl+K).
 - **Dependencies:** B6/B7/B8, A1.
 - **Success criteria:** defaults are correct in ≥90% of projects with zero configuration; Doctor explains failure in plain language.
+- **Status 2026-10-04:** command palette (Ctrl+K) shipped with the Qt migration
+  (`5b80d9b`), along with agent profiles and verification-profile selection in
+  the New Task dialog. Still open: `agentops init`, AgentOps Doctor, and task
+  templates. Auto agent selection (B7) is backend-complete but the New Task
+  agent pin is operator-supplied rather than inferred.
 
 ### C3 — "Make it powerful"
 

@@ -3,7 +3,8 @@
 > Superseded for status purposes 2026-10-02. This is a UGA-specific historical roadmap.
 > The live task queue is `.agents/pending_tasks.md`; the live bug ledger is
 > `.agents/memory/opencode/bugfinding/master-bug-synthesis.md` §0. Suite counts below are
-> dated observations; the current baseline (2026-10-03, after `59f5a1b`) is 318 tests, 1 skip, OK.
+> dated observations; the current baseline (2026-10-03, after the external-orchestration
+> batch) is 349 tests, 1 skip, OK (the 318 after `59f5a1b` was superseded later the same day).
 
 ## Done (all verified green at commit time)
 - [x] Scaffold, config system, logging, README baseline

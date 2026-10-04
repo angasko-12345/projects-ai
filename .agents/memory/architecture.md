@@ -4,7 +4,7 @@
 
 ## Current system architecture
 
-- AgentOps v0.1.3 (`D:/admin/code/projects/agentops`): layered local-first orchestrator. Entry points (`cli.py`, `gui.py`+`gui_controller.py`) compose an injected `WorkflowEngine`; GUI never imports service modules directly — all Tk updates marshalled via `root.after()`, work runs on controller background threads. Audited 2026-09-13.
+- AgentOps v0.1.3 (`D:/admin/code/projects/agentops`): layered local-first orchestrator. Entry points (`cli.py`, `gui/`+`gui_controller.py`) compose an injected `WorkflowEngine`; GUI never imports service modules directly — all Qt widget updates happen on the GUI thread via signals from `gui/bridge.py`, and controller reads run on a worker pool. Work runs on controller background threads. Audited 2026-09-13; GUI re-audited 2026-10-04 after the Tk→PySide6 migration.
 
 ## Canonical instruction layout — 2026-09-20
 
@@ -62,7 +62,10 @@
 - `logging.py`: redacted file logs (600/700 perms), containment-checked `read_tail`.
 - `finalize.py`: single shared commit→merge→conflict-task path used by CLI and GUI (added 2026-09-13).
 - `gui_controller.py`: threaded facade emitting versioned event dicts with operation-ID staleness guard; one in-flight operation.
-- Packaging: `AgentOps.spec` (one-file windowed) + package-aware `agentops_gui.py` launcher; bundled Tk/SQLite/default config.
+- Packaging: `AgentOps.spec` (one-file windowed) + package-aware `agentops_gui.py` launcher; bundled Qt/SQLite/default config. **Stale as of 2026-10-04:** the spec has not been rebuilt for PySide6 and still lacks it in `hiddenimports`. Treat the packaged exe as unverified since the Qt migration (commit `5b80d9b`).
+- **Qt desktop client (2026-10-04).** `agentops/gui/` replaced the deleted single-module `agentops/gui.py`. Ten registered views (Dashboard, Tasks, Workflows, Agents, Runs, Verification, Failures, Worktrees, Artifacts, Settings) behind a persistent shell with sidebar, command palette (Ctrl+K), tray icon, and toasts. Layering: `shell.py` owns navigation/operation lifecycle/settings; `views/` own data loading; `detail.py` owns the drill-down panels; `bridge.py` is the only thread boundary. `context.py` holds `ViewContext` + `AsyncMixin` outside `views/` specifically so `detail.py` can be imported without loading the view registry — putting them in `views/base.py` created a circular import (`detail` → `views/__init__` → every view → `detail`). PySide6 is an optional `desktop` extra; the orchestration core stays stdlib-only.
+
+- **Visual layer (2026-10-04, commits `2159af6`/`c753e3e`).** `gui/tokens.py` is the styling contract: page/section/group label roles, 33px single-line controls, unified radii, exactly one accent (#4c8dff), nav checked accent bar with variant rules ordered before `:checked`; `ASSET_DIR` points at `gui/assets/` (bundled `chevron-down.svg` for combo arrows - QSS cannot draw CSS-style border triangles). `gui/widgets.PageHeader` is the mandatory header on all ten views (title, subtitle, action row). Sidebar `_NAV_GROUPS` mirrors `VIEW_SPECS` (drift-guarded by `tests/test_gui_visual_states.py`); every dashboard card keeps one Expanding occupant so Qt's spare-height split cannot inflate titles; `_fade_stack` removes its `QGraphicsOpacityEffect` on `finished` (a retained effect left stale previous-view regions).
 
 ## Data flow
 
@@ -97,7 +100,7 @@ the product they describe. A change in one product is not a change in the other.
 | Layer | File | Scope |
 |---|---|---|
 | Universal contract | `.agents/AGENTS.md` | Three-product identity, canonical locations, startup checklist, per-product command table, memory-hierarchy rule, sole-writer rule, review-collaborator policy, secret-handling rule, leaf-module rule |
-| Product-local | `agentops/AGENTS.md` | Entry points, architecture map, data flow, packaging + archive inspection, SQLite migration discipline, GUI/Tk threading, leaf-module rule, verification |
+| Product-local | `agentops/AGENTS.md` | Entry points, architecture map, data flow, packaging + archive inspection, SQLite migration discipline, GUI/Qt threading, leaf-module rule, verification |
 | Product-local | `universal-game-agent/AGENTS.md` | Layer dependency direction, toy vs external path, config/checkpoint handling, CLI entry points, known defects |
 | Product-local | `small-projects/mini-llm/AGENTS.md` | Model identity, tests, conventions, checkpoint/tokenizer path contract |
 | Tool deltas | `.agents/pi_AGENTS.md`, `.agents/ohmypiagents.md` | What is different when driving this repo with Pi or Oh-My-Pi |
@@ -106,8 +109,8 @@ the product they describe. A change in one product is not a change in the other.
 
 Two structural rules the hierarchy depends on:
 
-1. **Product facts must not live in the universal file.** Test commands, dependency sets, entry points, and packaging differ per product. AgentOps is stdlib-only at runtime (PyYAML optional, imported lazily) and ships a packaged exe; universal-game-agent requires `torch`, `gymnasium`, `numpy`, `pyyaml`, and `mss` and ships none; mini-llm requires `torch`, `tokenizers`, and `numpy` and ships none.
-2. **Rules that only one product has must be scoped to it.** Three conventions were originally filed as repo-wide but exist nowhere in universal-game-agent: Tk `root.after` threading, the Windows no-console spawn helpers, and `as_posix()` path normalization. They are now tagged `(agentops)`.
+1. **Product facts must not live in the universal file.** Test commands, dependency sets, entry points, and packaging differ per product. AgentOps is stdlib-only at runtime (PyYAML and PySide6 optional, imported lazily) and ships a packaged exe; universal-game-agent requires `torch`, `gymnasium`, `numpy`, `pyyaml`, and `mss` and ships none; mini-llm requires `torch`, `tokenizers`, and `numpy` and ships none.
+2. **Rules that only one product has must be scoped to it.** Three conventions were originally filed as repo-wide but exist nowhere in universal-game-agent: GUI-thread threading (Tk `root.after` until 2026-10-04, now Qt signal marshalling), the Windows no-console spawn helpers, and `as_posix()` path normalization. They are now tagged `(agentops)`.
 
 The Windows no-console spawn policy has a single owner: `agentops/runtime.py` (`spawn_options()`, `CREATE_NO_WINDOW`), consumed by `runner.py` and `verification_kernel.py`. `runner.py` contains no such helper of its own; it delegates to `ProcessRuntime`. `agent_run.py` and `registry.py` also carry spawn policy.
 
