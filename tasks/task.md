@@ -650,3 +650,46 @@ hardening changes implemented, nothing else touched.
 - **Not done (by rule):** no mixed precision, attention, or throughput work;
   no dependency changes; CPU fallback and checkpoint format preserved.
 - **Backup:** `/tmp/agentops-backup-mini-llm-cloud-20260929/diff.patch`
+
+---
+
+## Plan (Desktop visual system for the Qt UI - 2026-10-04)
+
+### Subtask 1 - Design tokens and shared widgets
+Agent: omp (sole writer)
+Depends on: none
+Status: done
+
+Tightened corner radii; added page/section/group label roles; unified all buttons and single-line inputs to 33px; nav checked accent bar + focus states with specificity ordered after variant rules; PageHeader widget; Card/SectionHeader title roles moved to section level; replaced the non-rendering CSS border-triangle combo arrow with a bundled SVG asset (`gui/assets/chevron-down.svg`, referenced through `tokens.ASSET_DIR`).
+
+### Subtask 2 - Application shell
+Depends on: Subtask 1
+Status: done
+
+Top bar restructured (sidebar toggle leftmost with Show/Hide text sync, repository + Change, status cluster right, New Task); sidebar brand row, Orchestrate/Inspect/Configure nav groups mirroring VIEW_SPECS, command-palette hint at the bottom; navigation fade now removes its QGraphicsOpacityEffect when finished (a persistent opacity effect buffered the whole stack offscreen and left stale previous-view regions in the Settings scroll area).
+
+### Subtask 3 - View headers, states, dashboard
+Depends on: Subtask 2
+Status: done
+
+PageHeader + `page_subtitle` on all 10 views; ListDetail first-load loading state, error state before first load, no-repository state, restored empty heading after rows arrive (`_loaded` flag); agents detail placeholder instead of a blank card; dashboard redesign with real persisted metrics, four stat cards, needs-attention and recent-activity lists hidden when empty (Expanding centered empty label fixes Qt spare-height splitting), first-load-only loading text so the 1Hz operation poll never flickers, error subtitle keeping last-good numbers.
+
+### Subtask 4 - Verification and regression tests
+Depends on: Subtask 3
+Status: done
+
+Live launch and screenshots of every view; window resized at 1024x680 / 1280x800 / 1600x900; four visual defects found and fixed during verification (activity-card title inflation, combo-arrow square, blank agents detail, stale navigation region). Added `tests/test_gui_visual_states.py` (7 tests). Full suite green.
+
+---
+
+## Output (Desktop visual system for the Qt UI)
+
+Status: complete.
+
+- Design system: `tokens.py` label hierarchy (page 17/600, section 13/600), 33px control heights, unified radii, nav checked/focus states, chevron asset.
+- Shell: top-bar restructure with always-visible sidebar toggle; sidebar brand + grouped navigation + palette hint; fade-effect cleanup (stale-region fix).
+- Views: PageHeader and subtitle on all 10 views; ListDetail loading/empty/error cycle; agents detail placeholder; dashboard real metrics (Active workflows, Current tasks, Verification health, Detected agents), attention/activity empty-state visibility, `_show_no_repo` and error states.
+- Tests: `tests/test_gui_visual_states.py` - nav-group drift guard (every VIEW_SPECS id exactly once), page-header/title contract, dashboard empty vs populated visibility with severity color and tooltip, list-detail error-state restore, top-bar sidebar toggle round trip, navigation fade releasing its graphics effect, combo-asset wiring.
+- Verification: full suite `python -m unittest discover -s tests` from `agentops/` = 445 run, 4 environment skips, OK (438 pre-existing baseline with the new file removed + 7 new); `tests.test_gui_qt` 11 OK after each shell/dashboard edit; live screenshots of all 10 views and three window sizes; no backend/routing/verification/Git/state-schema changes.
+- Files: `agentops/agentops/gui/{shell,tokens,widgets}.py`, `agentops/agentops/gui/views/*.py` (11), `agentops/agentops/gui/assets/chevron-down.svg` (new), `agentops/tests/test_gui_visual_states.py` (new).
+- Memory files untouched: `.agents/memory/**` already dirty from concurrent sessions (sole-writer rule).
