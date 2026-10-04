@@ -288,3 +288,49 @@ Documentation-only; no source, test, or artifact changed. Suite re-run: 96 tests
 - **Deliberately not redone:** `checkpoints/tinystories/final.pt` predates provenance and is now refused on `--resume`. Re-running the 10,000-step experiment is what would make it resumable; it remains usable for generation with an explicit `--tokenizer`.
 - **Docs committed as `8e7ef83`** (pushed): `AGENTS.md`, `README.md`, `docs/EXPERIMENT-tinystories.md`, the four memory files, and the mini-llm row of the canonical baseline table in `.agents/AGENTS.md`. Documentation-only; the suite was re-run at 115/1/OK after.
 - **The four `.agents/memory/*.md` files are shared dirty state and remain that way.** Another session has uncommitted edits in all of them (`hermes/` memory-folder references in architecture.md, tiktok-slop-factory entries in decisions.md / lessons.md / project.md). They were deliberately left unstaged; only this session's sections are committed. **Whoever picks them up next must stage explicit paths, never `-a`/`-A`, or they will sweep in work that is not theirs.** See the lessons.md entry on `git commit -- <paths>` ignoring the index.
+
+## Bug-fix pass 2026-10-04 (this session)
+
+Five verified defects across three products; no architecture, schema, or public-behavior change.
+
+- **agentops `gui/control_center.py`:** `next_stage()` returned the row after the first
+  non-passed stage, so any failed stage upstream of the current one made the LiveCard
+  report the running stage as both "Current" and "Next" (PLAN failed / IMPLEMENT pending,
+  IMPLEMENT failed / VERIFY running, and every custom-DAG branch with one failed and one
+  running node). It now derives the next stage from `current_stage()`'s row. +3 tests.
+- **mini-llm `src/train.py`:** a backslash inside an f-string expression (`{'\n  '.join(...)}`)
+  made the module a `SyntaxError` on Python <= 3.11 - the version `.github/workflows/mini-llm.yml`
+  pins. The join is hoisted out. New `tests/test_source_compat.py` compiles every source
+  file with no third-party dependency.
+- **universal-game-agent `tests/test_ppo_objectives.py` + `test_external_experiment_orchestration.py`:**
+  both referenced names from their own `try: import torch` guard at module scope
+  (`class FixedPolicy(nn.Module)`, `getattr(_xp, "stop", None)`), so on a torch-less box the
+  modules raised `NameError` and 43 tests were reported as errors instead of skips -
+  contrary to `universal-game-agent/AGENTS.md`. `tests/test_scaffold.py` now asserts both
+  modules import without torch.
+- **universal-game-agent `main.py`:** an empty YAML section (`eval:` with nothing under it)
+  parses as `None`, and `cfg.get("eval", {})` handed that `None` to `.get()` / `dict()` at five
+  sites, ending `train` / `evaluate` / `compare` / `smoke-test` in a traceback with exit 1
+  instead of the documented `error: ...` and exit 2. All five now read `cfg.get(x) or {}`,
+  matching `_build_curiosity` in the same file. +2 CLI tests with stubbed lazy imports.
+- **tiktok-slop-factory `tests/test_visuals.py`:** four filtergraph tests passed
+  `Path(".")` as the text directory, and `_text_chain` writes `scene<N>.txt` /
+  `scene<N>_n.txt` there, so running the documented test command from the project directory
+  left ten untracked files in the repository root. They use `tmp_path` now.
+- **Baselines measured in this environment** (Linux, Python 3.10, no PySide6 / numpy / torch /
+  tokenizers / pytest / FFmpeg; agentops needed a `StrEnum` + `asyncio.TimeoutError` shim to
+  import at all, so the counts are collection counts): agentops **515 collected** (512 before,
+  +3) with the same 7 pre-existing `test_gui_visual_states` PySide6 errors and 42 environment
+  skips before and after; universal-game-agent **165 collected** (121 before) with the 2
+  `_FailedTest` errors gone - the 11 remaining are `ModuleNotFoundError: numpy`; mini-llm's new
+  test passes and the 5 pre-existing errors are unchanged third-party imports. **The 349 / 115
+  figures in `.agents/AGENTS.md` were not re-verified here and still owe a run on a box with
+  the dependencies installed.**
+- **Investigated and deliberately not changed:** `main.py::_need_torch` still raises
+  `SystemExit(str)` (exit 1) where every other failure returns 2 - changing the documented
+  status is a contract decision, not an obvious fix; `_build_eval_model` leaks its probe env on
+  the checkpoint path (`main.py:228`); `configs/default.yaml`'s `logging:` block and
+  `training/logger.py` are dead, which `universal-game-agent/AGENTS.md` already records;
+  `src/generate.py` hashes `--tokenizer` before checking it exists, so a missing file surfaces as
+  a bare `FileNotFoundError`; `compute_gae` bootstraps an interior truncation from the post-reset
+  frame, which needs torch to confirm and is a larger algorithmic change.
