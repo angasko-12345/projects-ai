@@ -167,7 +167,9 @@ def build_metadata(
 
 
 def _build_captions(text: str, duration: float, srt_path: Path) -> Path:
-    cues = cap.simple_timestamps(text, duration)
+    # max_words matches the grouping below so the timing floor is measured on
+    # the phrase a viewer actually sees, not on an intermediate word cue.
+    cues = cap.speech_aware_timestamps(text, duration, max_words=3)
     cues = cap.group_cues(cues, max_words=3)
     return cap.to_srt(cues, srt_path)
 

@@ -169,6 +169,34 @@ Model IDs are configurable because Google retires models on a schedule. If a
 call starts failing with `404` or `NOT_FOUND`, update the two model variables
 to the current IDs from <https://ai.google.dev/gemini-api/docs/models>.
 
+## How the caption timing works
+
+Captions used to divide the narration duration evenly across the words, which
+drifts as soon as the speech is not perfectly uniform. Each word now carries a
+weight, and the probed narration duration is shared out in proportion:
+
+* `1.0` for being spoken at all;
+* `+0.35` per syllable beyond the first, estimated from vowel groups;
+* `+0.50` for a comma, `+0.70` for `;` or `:`, `+0.90` for `.`, `?`, `!`, or an
+  ellipsis, credited to the word carrying it.
+
+So "extraordinarily" earns more time than "cat", and a word before a comma
+earns more than the same word mid-sentence. Captions never merge across a
+sentence boundary, because the pause there is real time.
+
+Two bounds keep the result watchable. A caption shorter than `MIN_CUE_SEC`
+(0.40s) is unreadable, so a narration too short for its own word count raises
+`CaptionTimingError` instead of emitting a strobe; a caption longer than
+`MAX_CUE_SEC` (7.00s) stops being a caption, so a long narration over very few
+words is capped and the track ends early rather than stretching.
+
+This is a heuristic for reducing caption drift, **not** speech alignment — no
+model, no audio analysis, and no per-language speaking rate is involved, and no
+fixed words-per-second figure is assumed. It decides only how the *measured*
+narration length is distributed; the probed duration always wins. The model is
+deterministic and pure Python, so identical text and duration give identical
+timestamps.
+
 ## Tests
 
 ```powershell
