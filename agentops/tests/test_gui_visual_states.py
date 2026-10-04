@@ -19,13 +19,18 @@ from unittest.mock import patch
 from agentops.gui.tokens import ASSET_DIR, DARK, build_stylesheet
 
 try:  # `discover -s tests` puts tests/ on sys.path; direct runs do not.
-    from tests.qt_display import destroy, qt_app, wait, wait_until
+    from tests.qt_display import destroy, qt_app, requires_qt, wait, wait_until
     from tests.test_gui_qt import REPOSITORY, FakeController
 except ModuleNotFoundError:
-    from qt_display import destroy, qt_app, wait, wait_until
+    from qt_display import destroy, qt_app, requires_qt, wait, wait_until
     from test_gui_qt import REPOSITORY, FakeController
 
 
+# Every test in this class builds a real MainWindow, and `setUp` imports
+# `agentops.gui.shell` (PySide6) before `qt_app()` can raise SkipTest. Without
+# this marker the class errors on a machine without the optional desktop
+# dependency instead of skipping, which is what turned the agentops CI job red.
+@requires_qt
 class VisualStateTest(unittest.TestCase):
     def setUp(self):
         from agentops.gui.settings import AppSettings
