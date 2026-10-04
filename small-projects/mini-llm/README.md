@@ -47,7 +47,7 @@ mini-llm/
 │   ├── raw/train.txt          # plain UTF-8 continuous text (input)
 │   ├── tokenizer.json         # trained BPE tokenizer
 │   └── processed/{train,val}.bin  # uint16 token IDs (memmapped)
-│   └── processed/meta.json    # vocab size, split sizes, artifact paths + sha256
+│       processed/meta.json    # vocab size, split sizes, artifact paths + sha256
 ├── checkpoints/               # created by training: step_N.pt + final.pt
 ├── src/
 │   ├── config.py              # all defaults (model + training)
@@ -56,8 +56,10 @@ mini-llm/
 │   ├── dataset.py             # memmap dataset, x=tokens[:-1] y=tokens[1:]
 │   ├── train.py               # AdamW + warmup/cosine, eval, checkpoints
 │   └── generate.py            # autoregressive sampling (temperature, top-k)
-├── tests/{test_tokenizer,test_model}.py
-├── prepare_data.py            # tokenizer training + 99/1 split to .bin
+├── tests/                     # test_model, test_pipeline, test_prepare_streaming,
+│                              # test_throughput, test_tokenizer
+├── prepare_data.py            # tokenizer training + streaming encode/split to .bin
+├── docs/                      # experiment records (e.g. EXPERIMENT-tinystories.md)
 ├── requirements.txt
 └── README.md
 ```
@@ -103,6 +105,18 @@ python prepare_data.py --skip-training   # reuse existing tokenizer.json
 leaves too few tokens for one train sample. `--vocab-size` may not exceed
 65536, the capacity of the `uint16` `.bin` format.
 
+**Preparation streams.** The encoder reads the input in 1 MiB text chunks and
+spills encoded IDs to a temp file in bounded buffers, so a corpus far larger
+than RAM is prepared without ever holding it whole — peak usage is one text
+chunk plus one write buffer plus a batch of passages. The split is then a
+bounded copy out of that temp file. This matters for the multi-GB TinyStories
+runs; `tests/test_prepare_streaming.py` pins the output byte-for-byte against a
+small-corpus reference encoder so streaming and reference cannot drift.
+
+`meta.json` also records the train/val/tokenizer paths and their sha256 digests,
+which is what lets a later run prove it is reading the same artifacts (see
+[Resuming](#resuming)).
+
 ## Training
 
 ```bash
@@ -111,6 +125,22 @@ python -m src.train --context-length 32                # shipped 2.4 KB sample
 python -m src.train --device cuda                      # require the GPU (see below)
 # or: python src/train.py --max-steps 2000 --batch-size 8 --context-length 512
 ```
+
+Training against a non-default prepared data set names its artifacts:
+
+```bash
+python -m src.train \
+  --train-bin data/tinystories/train.bin \
+  --val-bin data/tinystories/val.bin \
+  --tokenizer data/tinystories/tokenizer.json \
+  --context-length 512
+```
+
+`--tokenizer` says which tokenizer produced the `.bin` files. It is recorded in
+every checkpoint, and `--train-bin` is usually enough on its own because
+`config_for_data()` reads the tokenizer and val paths out of `meta.json`; pass
+them explicitly when the set was prepared by an older `prepare_data.py`, or to
+override what the metadata says.
 
 `--device {auto,cpu,cuda}` picks the training device. `auto` (default) keeps
 the historical behavior: CUDA when available, else CPU. `cpu` forces CPU even
@@ -269,16 +299,22 @@ text); without it, each run samples differently.
 python -m unittest discover -s tests
 ```
 
-CPU only. Covers tokenizer load/encode/decode, output shape, finite scalar
+CPU only. **115 tests, 1 skip, OK** as of 2026-10-10.
+
+Covers tokenizer load/encode/decode, output shape, finite scalar
 loss, causal masking (future-token swap leaves past logits bit-identical),
 generation ID validity, weight tying, and checkpoint round-trip, plus the
 data pipeline: `prepare_data.py` framing and split sizing, `meta.json`,
-`TokenDataset` window coverage, empty/undersized-loader diagnostics, LR warmup,
+streaming-prepare parity against the reference encoder, `TokenDataset`
+window coverage, empty/undersized-loader diagnostics, LR warmup,
 token-weighted evaluation with a ragged final batch, the training loop end to
 end, resume (step/optimizer/schedule/RNG), device selection
 (`--device` auto/cpu/cuda fail-fast), AdamW decay groups, safe checkpoint
-loading, seeded vs unseeded generation, window-stride sample counts, and the
-agreement between the shipped corpus, tokenizer and `meta.json`.
+loading, seeded vs unseeded generation, window-stride sample counts, the
+agreement between the shipped corpus, tokenizer and `meta.json`, and
+`TestDataProvenance` — non-default tokenizer/train/val paths, matching resume
+(including a relocated-but-identical artifact tree), and refusal on
+tokenizer/data/val mismatch.
 
 ## Limitations
 

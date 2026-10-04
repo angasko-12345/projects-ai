@@ -202,10 +202,20 @@ the other subfolders, the universal files here remain authoritative.
 
 ## mini-llm checkpoint config is path-blind 2026-10-01
 
+- **SUPERSEDED 2026-10-10** by "mini-llm checkpoints are content-addressed" below. Kept as the record of the defect.
 - `Config.tokenizer_path` has no CLI flag and `prepare_data.py` does not record it in `meta.json`, so every checkpoint stores the default `data/tokenizer.json` regardless of which tokenizer was used. Only `src/generate.py --tokenizer` can override it at generation time.
 - `Config.train_bin` / `val_bin` / `checkpoint_dir` *are* settable via `src.train` flags, but a resumed run takes its config from the checkpoint, so those stored strings are authoritative unless re-passed. A checkpoint trained against non-default paths therefore resumes against the default paths.
 - That combination is load-bearing for validation: `Config.validate_against_data()` reads `meta.json` next to `train_bin` and raises when `vocab_size` disagrees, so a resume against a differently-prepped default path fails before any training happens. Reproduced on the TinyStories artifact (vocab 8192 vs the vocab-308 `data/processed/` prep).
-- Resolved in `docs/EXPERIMENT-tinystories.md`; the CLI gap itself is a known source-level wart, not fixed.
+- Resolved in `docs/EXPERIMENT-tinystories.md`; the CLI gap itself was a known source-level wart, unfixed at the time of this entry.
+## mini-llm checkpoints are content-addressed 2026-10-10
+
+- **Artifacts are identified by sha256, not by path.** `prepare_data.py` writes `train_bin` / `val_bin` / `tokenizer_path` plus `train_sha256` / `val_sha256` / `tokenizer_sha256` into `meta.json`. Paths are recorded for humans and error messages; the digests are the contract. A relocated or copied artifact tree still verifies; a *different* file at the same path does not.
+- `Config.data_provenance()` is the single writer of that identity: it validates, then returns the digest set. `validate_against_data()` extended to check vocab, provenance presence, and all three digests. A `meta.json` lacking provenance keys is rejected, never assumed.
+- `save_checkpoint()` stamps `data_provenance` (a plain dict of str/int, so `weights_only=True` still holds). `check_resume_provenance()` compares it against freshly hashed current artifacts and raises `SystemExit` naming both sides. It runs **before** `validate_against_data()` in `main()`, so a resume against foreign artifacts is reported as a mismatch rather than as whichever internal check tripped first.
+- `config_for_data()` adopts `tokenizer_path` and `val_bin` from `meta.json`, so `--train-bin` alone describes a prepared data set. `src/generate.py` applies the same digest check to `--tokenizer`.
+- Consequence worth remembering: the 168 MB `checkpoints/tinystories/final.pt` (2026-09-30) predates provenance and is now **refused** on `--resume` rather than guessed at. It is still usable for generation with an explicit `--tokenizer`. Re-running that experiment is what makes it resumable.
+- Suite: `small-projects/mini-llm/` **115 run, 1 skip, OK**.
+
 ## Desktop interactions: recovery probe and notification flow (2026-10-04)
 
 - **Detection lives beside recovery.** `StateStore.count_interrupted_work()` sits immediately before `recover_all()` in `state.py` and counts exactly the rows the three `recover_*` passes would reap (read-only SELECTs, same status predicates). `tests/test_state.py::test_count_interrupted_work_mirrors_recover_all` asserts `count_interrupted_work() == recover_all()` so the two can never drift; if a predicate changes, the parity test fails first. No second state owner, no schema change, no migration.

@@ -28,15 +28,25 @@ python -m unittest discover -s tests
 
 - CPU only. Covers tokenizer load/encode/decode, model shape/loss/causal masking,
   generation, weight tying, checkpoint round-trip, the data pipeline
-  (`prepare_data.py` framing/splits/`meta.json`), window stride, device selection,
-  and the training loop end to end including resume.
-- Current baseline (re-run 2026-10-04): **98 run, 1 skip, OK**.
+  (`prepare_data.py` framing/splits/`meta.json`), streaming-prepare parity,
+  window stride, device selection, CPU throughput, and the training loop end to
+  end including resume.
+- Current baseline (re-run 2026-10-10): **115 run, 1 skip, OK**. The 98-run
+  figure below this line before 2026-10-10 was current; the +17 is
+  `TestDataProvenance` in `tests/test_pipeline.py`, added with checkpoint
+  provenance.
+- `prepare_data.py` **streams**: it reads text in 1 MiB chunks and spills encoded
+  IDs to a temp file, so a corpus much larger than RAM never sits in memory
+  whole. `tests/test_prepare_streaming.py` pins byte-identical output against the
+  small-corpus reference encoder.
 - `data/tokenizer.json` is a **tracked artifact** and must stay in the working tree. It
   was deleted locally on 2026-10-04 and restored from git; nothing in history ever
   deleted it. Without it `generate.py` cannot load a tokenizer, which surfaces as three
   `TestGenerationSeed` errors. `TestShippedData.test_shipped_tokenizer_matches_the_committed_vocab`
   now guards it, and the committed `data/tokenizer.json` reproduces the committed
-  `data/processed/*` byte for byte.
+  `data/processed/*` byte for byte. It is present in the tree as of 2026-10-10
+  (18,261 bytes); an earlier note in `docs/EXPERIMENT-tinystories.md` saying it is
+  deleted is superseded.
 - There is no configured lint, formatter, type-check, or coverage command. Do not
   invent one.
 - The shipped sample corpus (`data/raw/train.txt`, ~2.4 KB) needs
@@ -49,8 +59,20 @@ python -m unittest discover -s tests
   completes a training run. The sample corpus teaches shape, not the world.
 - `data/processed/meta.json` records the vocab size the tokenizer actually reached;
   training adopts it (or fails) rather than building rows the data cannot produce.
+  It also records the train/val/tokenizer paths and their sha256 digests; see
+  "Checkpoint provenance and resume safety" below.
 - Checkpoints load under `weights_only=True`; stride is a data-pipeline choice not
   stored in checkpoints, so pass the same `--stride` when resuming.
+- `src/train.py` has `--tokenizer` (added 2026-10-10). `src/generate.py` also has
+  `--tokenizer`; both verify it against the digest the checkpoint recorded.
+- Default data paths are `data/processed/{train,val}.bin` and
+  `data/tokenizer.json`. Any other prepared set needs `--train-bin`,
+  `--val-bin`, and `--tokenizer` together; `config_for_data()` fills the latter two
+  from `meta.json`, so `--train-bin` alone is enough when the set was prepared by
+  the current `prepare_data.py`.
+- The shipped `data/processed/` prep is the tiny sample: vocab 308, 736 train
+  tokens, 184 val tokens, `context_length` 32. It needs `--context-length 32`
+  for both prepare and train.
 
 ## Checkpoint provenance and resume safety (added 2026-10-10)
 

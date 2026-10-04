@@ -59,11 +59,17 @@ Training below used 512.
 python -m src.train \
   --train-bin data/tinystories/train.bin \
   --val-bin data/tinystories/val.bin \
+  --tokenizer data/tinystories/tokenizer.json \
   --checkpoint-dir checkpoints/tinystories \
   --context-length 512 --batch-size 8 --max-steps 10000
 # on a cloud GPU add: --device cuda  (fail-fast if CUDA is missing; never
 # silently falls back to CPU)
 ```
+
+`--tokenizer` did not exist when this run was executed (2026-09-30); it is shown
+here because the run is reproduced on current code. On that code `--train-bin`
+alone would suffice, since `config_for_data()` reads the tokenizer and val paths
+from `meta.json`.
 
 Recorded outcome (`checkpoints/tinystories/final.pt`, 167,987,879 bytes,
 git-ignored): step 10000, train_loss 1.785, val_loss 1.833. Architecture: 6
@@ -71,6 +77,10 @@ layers, 6 heads, d_model 384, d_ff 1536, which is 13,982,976 unique parameters
 at vocab 8192 (weight-tied LM head). The run processed 40,960,000 tokens
 (10,000 steps × 8 × 512), about 13 passes over the 3,103,492-token training set
 at stride 1.
+
+These results are **historical**. They were produced on 2026-09-30 and have not
+been re-run since; they are recorded as evidence that the pipeline works at
+corpus scale, not as a current measurement.
 
 ## Generation and resume on this artifact (behavior changed 2026-10-10)
 
@@ -99,24 +109,35 @@ generation with an explicit `--tokenizer`.
 
 ## Resume (procedure; smoke-verified, not executed on this artifact)
 
+As of 2026-10-10 this checkpoint **cannot be resumed at all**: it predates
+`data_provenance`, so the resume path refuses it rather than guessing at which
+corpus it belongs to. The command below is what it would take if the run were
+redone on current code:
+
 ```bash
 python -m src.train --resume checkpoints/tinystories/final.pt \
   --train-bin data/tinystories/train.bin \
   --val-bin data/tinystories/val.bin \
+  --tokenizer data/tinystories/tokenizer.json \
   --checkpoint-dir checkpoints/tinystories \
   --max-steps 12000
 ```
 
-Resume restores model, AdamW moments, step counter, and the warmup/cosine
-schedule from the checkpoint; explicit flags still win. The data flags above are
-required for the reason given in the previous section; `--checkpoint-dir` also
-keeps the output beside the existing artifact instead of writing
-`checkpoints/final.pt`.
+On a checkpoint written by the current code, those data flags are **not**
+required — the checkpoint carries its own paths and the digests are verified, so
+a bare `--resume` is correct and a wrong one is refused. `--checkpoint-dir`
+still matters on its own terms: it keeps the output beside the existing artifact
+instead of writing `checkpoints/final.pt`.
+
+To make this artifact resumable, re-run Preparation and Training above; the
+regenerated `data/tinystories/meta.json` carries provenance and new checkpoints
+will be resumable. The 168 MB `final.pt` was deliberately not rewritten.
 
 The tiny-sample loop (prepare → 6 steps → resume 2 steps → generate) was
-verified green on 2026-10-01 with all outputs in `$TEMP/mlsmoke`, proving the
-current resume path works. Deliberately NOT re-run on this artifact: it would
-rewrite the 168 MB `final.pt`.
+verified green on 2026-10-01 with all outputs in `$TEMP/mlsmoke`, and the
+matching-resume and mismatch-refusal paths were re-verified on 2026-10-10 with
+the same shape. Deliberately NOT re-run on this artifact: it would rewrite the
+168 MB `final.pt`.
 
 ## Evaluation
 
@@ -138,12 +159,21 @@ stopping, so keep `final.pt` (and any `step_N.pt`) for every run.
 
 ## Scale notes
 
-- `data/processed/` currently holds the tiny shipped-sample prep (736 train
-  tokens, 184 val tokens, vocab 308, ctx 32) with `data/tokenizer.json` deleted
-  from the tree (staged deletion, pre-existing). The tinystories run does not
-  depend on either; its bins, tokenizer, and checkpoint are self-contained under
-  `data/tinystories/` + `checkpoints/tinystories/`.
+- `data/processed/` holds the tiny shipped-sample prep: 736 train tokens,
+  184 val tokens, vocab 308, `context_length` 32. An earlier revision of this
+  document said `data/tokenizer.json` was "deleted from the tree (staged
+  deletion, pre-existing)". **That is superseded**: it is a tracked artifact,
+  was restored from git on 2026-10-04, and is present as of 2026-10-10
+  (18,261 bytes). `TestShippedData` guards it. The tinystories run does not
+  depend on the shipped sample anyway; its bins, tokenizer, and checkpoint are
+  self-contained under `data/tinystories/` + `checkpoints/tinystories/`.
+- The corpora are still on this machine: `data/raw/tinystories-small.txt`
+  (12,988,293 bytes, the one prepared) and `data/raw/TinyStories-train.txt`
+  (1,924,281,556 bytes, staged and not used). Both remain git-ignored.
 - Next scale step is data, not code: prepare the 1.9 GB full file the same way
   (expect ~450M tokens, uint16-safe) and train with a larger step budget on GPU.
   The ~450M token figure is an estimate from corpus size, not a measured
   preparation.
+- Preparation is **streaming** (1 MiB text chunks, bounded spill buffer), so
+  the 1.9 GB file no longer needs to fit in RAM. That was true of the 13 MB run
+  above too, just not load-bearing at that size.
