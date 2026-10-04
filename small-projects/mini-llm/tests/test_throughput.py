@@ -226,6 +226,7 @@ class TestTrainThroughput(unittest.TestCase):
                   batch_size=2, max_steps=6, warmup_steps=2, eval_interval=3,
                   eval_batches=2, train_bin=self.train_bin,
                   val_bin=os.path.join(self.tmp.name, "val.bin"),
+                  tokenizer_path=os.path.join(self.tmp.name, "tokenizer.json"),
                   checkpoint_dir=self.ckpt_dir, seed=0)
         kw.update(over)
         return Config(**kw)

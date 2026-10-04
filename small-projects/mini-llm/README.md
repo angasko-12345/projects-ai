@@ -47,7 +47,7 @@ mini-llm/
 │   ├── raw/train.txt          # plain UTF-8 continuous text (input)
 │   ├── tokenizer.json         # trained BPE tokenizer
 │   └── processed/{train,val}.bin  # uint16 token IDs (memmapped)
-│   └── processed/meta.json    # real vocab size + split sizes (written by prepare_data.py)
+│   └── processed/meta.json    # vocab size, split sizes, artifact paths + sha256
 ├── checkpoints/               # created by training: step_N.pt + final.pt
 ├── src/
 │   ├── config.py              # all defaults (model + training)
@@ -149,8 +149,10 @@ python -m src.train --device cuda --max-steps 10000
 Run everything from the project root: `train_bin`, `val_bin`,
 `tokenizer_path` and `checkpoint_dir` are stored as relative paths in
 checkpoints, so a checkpoint resumed on another machine expects the same
-working-directory layout. When training runs on CUDA, the per-GPU RNG state
-is saved under `rng_state["cuda"]` and restored on resume; checkpoints
+working-directory layout. Paths are only part of the story: each checkpoint
+also records `data_provenance`, the sha256 digests of the train, val and
+tokenizer files it was trained on. When training runs on CUDA, the per-GPU RNG
+state is saved under `rng_state["cuda"]` and restored on resume; checkpoints
 without that key (all older ones) load unchanged.
 
 ### Window stride
@@ -228,6 +230,23 @@ Any flag you pass explicitly still wins (including `--max-steps`). Checkpoints
 are read with `weights_only=True`; a file that is not a mini-llm checkpoint is
 rejected rather than unpickled.
 
+**A resume only continues the same data.** The checkpoint records the sha256 of
+the train, val and tokenizer files it was trained on, and the current artifacts
+are hashed and compared before the first step. Digests, not paths, decide, so a
+copied or relocated artifact tree resumes fine while a *different* file at the
+same path does not. Any difference is a hard error naming both sides:
+
+```
+refusing to resume checkpoints/step_500.pt: its data does not match the current artifacts.
+  train_sha256: checkpoint=ee3b5453a1a1... current=b1b36e6890a4...
+  checkpoint data: train=data/tinystories/train.bin tokenizer=data/tinystories/tokenizer.json
+  current data:   train=data/processed/train.bin tokenizer=data/tokenizer.json
+```
+
+A checkpoint written before provenance was recorded is refused too, rather than
+resumed on trust. Because the paths are verified, a bare `--resume` needs no
+data flags. Generation applies the same check to `--tokenizer`.
+
 ## Generation
 
 ```bash
@@ -238,9 +257,11 @@ python src/generate.py --checkpoint checkpoints/final.pt --prompt "The fox" \
 Conditioning is truncated to `context_length`. `--temperature 0` = greedy;
 temperatures are clamped at 1e-3, and negative values are rejected. `--top-k`
 must be at least 1. Sampling stops at `<eos>` unless `--no-eos-stop` is given.
-The tokenizer defaults to the path stored in the checkpoint config. Pass
-`--seed N` for reproducible sampling (same checkpoint + prompt + seed +
-settings ⇒ same text); without it, each run samples differently.
+The tokenizer defaults to the path stored in the checkpoint config, and is
+checked against the digest the checkpoint recorded: a `--tokenizer` that is not
+the one the run used is refused instead of producing garbage. Pass `--seed N`
+for reproducible sampling (same checkpoint + prompt + seed + settings ⇒ same
+text); without it, each run samples differently.
 
 ## Testing
 

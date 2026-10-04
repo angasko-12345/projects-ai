@@ -3,5 +3,11 @@
   "train_tokens": 736,
   "val_tokens": 184,
   "dtype": "uint16",
-  "context_length": 32
+  "context_length": 32,
+  "train_bin": "data/processed/train.bin",
+  "val_bin": "data/processed/val.bin",
+  "tokenizer_path": "data/tokenizer.json",
+  "train_sha256": "b1b36e6890a4e96d96c427f0ea12a02402aea1299b657d78d6062d2f8d366ceb",
+  "val_sha256": "84f5ae99e719dcc88e7c2a1e85515540c88c2f5fe2cf6ee00197653f5bb1455a",
+  "tokenizer_sha256": "b02832365bd20669159e62036fb49c9c88c88e21aaaecff0c71ff38b053786b1"
 }

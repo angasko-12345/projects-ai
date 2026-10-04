@@ -72,44 +72,30 @@ at vocab 8192 (weight-tied LM head). The run processed 40,960,000 tokens
 (10,000 steps × 8 × 512), about 13 passes over the 3,103,492-token training set
 at stride 1.
 
-## Generation needs `--tokenizer`; training resume does not
+## Generation and resume on this artifact (behavior changed 2026-10-10)
 
-Verified against `src/train.py` and `src/generate.py` on 2026-10-01.
+This section described a stale-default wart that no longer exists. Superseded
+facts, kept for the record:
 
-- **Generation.** `src/generate.py` takes `--tokenizer` and otherwise falls back
-  to `cfg.tokenizer_path` from the checkpoint config. This checkpoint stores the
-  default `data/tokenizer.json`, not the tinystories tokenizer that was actually
-  used, so generation against it must pass
-  `--tokenizer data/tinystories/tokenizer.json`. Omitting the flag fails, because
-  `data/tokenizer.json` is deleted from the tree (see Scale notes).
-- **Training resume.** `src/train.py` has no `--tokenizer` argument, and the
-  training loop never loads a tokenizer: it reads the `.bin` files through
-  `build_dataloader`. A resumed run needs no tokenizer and there is nothing to
-  pass.
+- Before, `checkpoints/tinystories/final.pt` stored default-valued paths for
+  every field (`data/processed/...`, `data/tokenizer.json`) because
+  `Config.tokenizer_path` had no CLI flag and `prepare_data.py` recorded no
+  tokenizer in `meta.json`. Generation therefore required
+  `--tokenizer data/tinystories/tokenizer.json`, and `src/train.py` had no
+  `--tokenizer` at all. A bare `--resume` died with
+  `vocab_size=8192 but data/processed/train.bin was encoded with a vocabulary of 308`.
+- Now `src/train.py` takes `--tokenizer`, `meta.json` records the artifact paths
+  and their sha256 digests, and every checkpoint written by the training loop
+  records `data_provenance`. A resume verifies the current artifacts against the
+  recorded digests and refuses a mismatch.
 
-The stale default is not confined to `tokenizer_path`. Reading
-`checkpoints/tinystories/final.pt` shows the stored config is default-valued for
-every path:
-
-```json
-"train_bin": "data/processed/train.bin",
-"val_bin": "data/processed/val.bin",
-"checkpoint_dir": "checkpoints",
-"tokenizer_path": "data/tokenizer.json"
-```
-
-That is what breaks a bare `--resume`. Locally `data/processed/` holds the
-shipped-sample prep (vocab 308), so the resume command without data flags stops
-in validation before training:
-
-```
-ValueError: vocab_size=8192 but data/processed/train.bin was encoded with a vocabulary of 308
-```
-
-Building the config from the Training command above on current code yields
-`data/tinystories/...` instead, so the recorded artifact and the documented
-training command disagree about where the corpus lived. The checkpoint does not
-record enough to say which is right. Pass the paths explicitly.
+Consequences for **this** checkpoint specifically: it predates provenance, so
+`--resume` now refuses it rather than guessing. Regenerating the data with
+`prepare_data.py` (same command as above) rewrites `data/tinystories/meta.json`
+with provenance, and a subsequent run produces resumable checkpoints. The
+existing 168 MB `final.pt` was deliberately **not** rewritten here, so the run
+would have to be redone to make this artifact resumable; it is still usable for
+generation with an explicit `--tokenizer`.
 
 ## Resume (procedure; smoke-verified, not executed on this artifact)
 

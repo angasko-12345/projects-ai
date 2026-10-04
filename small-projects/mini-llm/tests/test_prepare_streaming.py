@@ -130,7 +130,9 @@ class TestStreamingParity(unittest.TestCase):
         meta = load_data_meta(train_bin)
         self.assertEqual(
             set(meta),
-            {"vocab_size", "train_tokens", "val_tokens", "dtype", "context_length"},
+            {"vocab_size", "train_tokens", "val_tokens", "dtype", "context_length",
+             "train_bin", "val_bin", "tokenizer_path",
+             "train_sha256", "val_sha256", "tokenizer_sha256"},
         )
         tok = load_tokenizer(os.path.join(self.tmp.name, "tokenizer.json"))
         self.assertEqual(meta["vocab_size"], tok.get_vocab_size())

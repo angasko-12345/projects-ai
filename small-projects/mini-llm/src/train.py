@@ -14,7 +14,7 @@ import torch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.config import Config, config_for_data
+from src.config import Config, config_for_data, file_sha256, provenance_mismatches
 from src.dataset import build_dataloader
 from src.model import from_config
 
@@ -188,6 +188,17 @@ def save_checkpoint(path: str, model, optimizer, step: int, cfg: Config, lr: flo
         "config": cfg.to_dict(),
         "rng_state": rng_state,
     }
+    # Which data/tokenizer set produced these weights, by content. Stored next to
+    # the config because the config's paths are what the user typed, while these
+    # digests are what a resume must be able to prove against the current artifacts.
+    try:
+        ckpt["data_provenance"] = cfg.data_provenance()
+    except (ValueError, FileNotFoundError) as exc:
+        # Saving is the wrong moment to discover a broken data set; train() and
+        # main() already refuse to start on one. Record why it is unavailable
+        # rather than writing a checkpoint that looks resumable.
+        ckpt["data_provenance"] = None
+        print(f"warning: no data provenance in {path}: {exc}", file=sys.stderr)
     if extra:
         ckpt.update(extra)
     torch.save(ckpt, path)
@@ -250,12 +261,76 @@ def evaluate(model, loader, batches: int, device: torch.device) -> float:
     return total_loss / max(1, total_tokens)
 
 
+def _digest_or_missing(path: str) -> str:
+    """sha256 of a file, or an explicit marker when it is absent.
+
+    Only for building a mismatch report: a missing artifact is itself a reason
+    not to resume, and "<missing>" compares unequal to any recorded digest.
+    """
+    try:
+        return file_sha256(path)
+    except OSError:
+        return f"<missing: {path}>"
+
+
+def check_resume_provenance(ckpt: dict, cfg: Config, checkpoint_path: str) -> None:
+    """Refuse to resume against data/tokenizer the checkpoint was not trained on.
+
+    A resumed run keeps the checkpoint's train/val/tokenizer paths unless flags
+    override them, and any of those paths may now hold different artifacts than
+    when the weights were written. Continuing would silently train a model on one
+    corpus and generate its text with another tokenizer, so a mismatch in the
+    recorded digests is a hard error naming both sides.
+    """
+    recorded = ckpt.get("data_provenance")
+    try:
+        current = cfg.data_provenance()
+    except (ValueError, FileNotFoundError):
+        # The config and the artifacts on disk already disagree. Report that in
+        # digest terms against the checkpoint rather than stopping at whichever
+        # internal check tripped first: the useful answer is "these are not the
+        # files this checkpoint was trained on".
+        current = {"vocab_size": cfg.vocab_size,
+                   "train_sha256": _digest_or_missing(cfg.train_bin),
+                   "val_sha256": _digest_or_missing(cfg.val_bin),
+                   "tokenizer_sha256": _digest_or_missing(cfg.tokenizer_path)}
+    mismatches = provenance_mismatches(recorded, current)
+    if not mismatches:
+        print(f"data matches {checkpoint_path}: train={current['train_sha256'][:12]}... "
+              f"val={current['val_sha256'][:12]}... "
+              f"tokenizer={current['tokenizer_sha256'][:12]}...")
+        return
+    raise SystemExit(
+        f"refusing to resume {checkpoint_path}: its data does not match the current "
+        f"artifacts.\n  {'\n  '.join(mismatches)}\n"
+        f"  checkpoint data: train={recorded.get('train_bin') if recorded else 'unknown'} "
+        f"tokenizer={recorded.get('tokenizer_path') if recorded else 'unknown'}\n"
+        f"  current data:   train={cfg.train_bin} tokenizer={cfg.tokenizer_path}\n"
+        "Pass the --train-bin/--val-bin/--tokenizer the run actually used, or start a "
+        "new run instead of resuming."
+    )
+
+
 def train(cfg: Config, resume_from: str | None = None, start_step: int = 1,
           stride: int = 1, device_spec: str = "auto") -> None:
     if start_step > cfg.max_steps:
         raise SystemExit(
             f"checkpoint is already at step {start_step - 1} of max_steps {cfg.max_steps}"
         )
+    # Validate the data/tokenizer set before spending any time on a model, so a
+    # mismatched or stale artifact fails before the first step, not after it.
+    try:
+        provenance = cfg.data_provenance()
+    except (ValueError, FileNotFoundError) as exc:
+        # One failure type for the command line: the data set is not the one this
+        # config describes. The cause is already an actionable message.
+        raise SystemExit(f"data/tokenizer set is not consistent:\n  {exc}") from exc
+    print(f"data: train={provenance['train_bin']} "
+          f"(sha256 {provenance['train_sha256'][:12]}...)\n"
+          f"      tokenizer={provenance['tokenizer_path']} "
+          f"(sha256 {provenance['tokenizer_sha256'][:12]}...)")
+    if resume_from:
+        check_resume_provenance(read_checkpoint(resume_from), cfg, resume_from)
     configure_torch_threads(cfg)
     set_seed(cfg.seed)
     device = resolve_device(device_spec)
@@ -356,6 +431,10 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--checkpoint-dir", default=None)
     parser.add_argument("--train-bin", default=None)
     parser.add_argument("--val-bin", default=None)
+    parser.add_argument("--tokenizer", default=None,
+                        help="tokenizer the .bin files were encoded with; defaults to "
+                             "data/tokenizer.json and is recorded in every checkpoint, "
+                             "so a resume is checked against it")
     parser.add_argument("--vocab-size", type=int, default=None)
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto",
                         help="training device: auto (default) picks CUDA when "
@@ -391,9 +470,12 @@ def main() -> None:
         resume_step = int(ckpt["step"])
     else:
         overrides = {}
-        for field in ("train_bin", "val_bin", "checkpoint_dir"):
-            if getattr(args, field) is not None:
-                overrides[field] = getattr(args, field)
+        # The tokenizer flag is --tokenizer; the config field is tokenizer_path.
+        for flag, field in (("train_bin", "train_bin"), ("val_bin", "val_bin"),
+                            ("tokenizer", "tokenizer_path"),
+                            ("checkpoint_dir", "checkpoint_dir")):
+            if getattr(args, flag) is not None:
+                overrides[field] = getattr(args, flag)
         if args.vocab_size is not None:
             overrides["vocab_size"] = args.vocab_size
         # vocab_size comes from the data unless overridden, so the model is never
@@ -406,6 +488,7 @@ def main() -> None:
                          ("context_length", args.context_length),
                          ("checkpoint_dir", args.checkpoint_dir),
                          ("train_bin", args.train_bin), ("val_bin", args.val_bin),
+                         ("tokenizer_path", args.tokenizer),
                          ("vocab_size", args.vocab_size),
                          ("torch_threads", args.torch_threads),
                          ("torch_interop_threads", args.torch_interop_threads)):
@@ -421,6 +504,10 @@ def main() -> None:
         print(f"warmup_steps {cfg.warmup_steps} > max_steps {cfg.max_steps}; shortening")
         cfg.warmup_steps = cfg.max_steps
     cfg.__post_init__()
+    if args.resume:
+        # Before validate_against_data(): a resume against other artifacts should be
+        # reported as a resume mismatch, not as whichever internal check tripped first.
+        check_resume_provenance(ckpt, cfg, args.resume)
     cfg.validate_against_data()
     if args.resume:
         print(f"resuming {args.resume}: step {resume_step} -> {start_step} of {cfg.max_steps}")

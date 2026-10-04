@@ -18,7 +18,7 @@ import time
 
 import numpy as np
 
-from src.config import meta_path_for
+from src.config import file_sha256, meta_path_for
 from src.tokenizer import encode, load_tokenizer, train_bpe_tokenizer
 
 DTYPE = np.uint16
@@ -278,19 +278,31 @@ def main() -> None:
 
     # The model must be built for the vocabulary the data was actually encoded
     # with, so publish it where Config can pick it up.
+    #
+    # The paths below are recorded as given on the command line, which keeps a
+    # re-run byte-identical to the committed file. They are provenance for humans;
+    # the sha256 digests are the contract, because a later run can verify the
+    # artifacts are the same bytes even from a different directory.
     meta = {
         "vocab_size": vocab_size,
         "train_tokens": int(n_train),
         "val_tokens": int(n_val),
         "dtype": DTYPE.__name__,
         "context_length": args.context_length,
+        "train_bin": args.train_out,
+        "val_bin": args.val_out,
+        "tokenizer_path": args.tokenizer_out,
+        "train_sha256": file_sha256(args.train_out),
+        "val_sha256": file_sha256(args.val_out),
+        "tokenizer_sha256": file_sha256(args.tokenizer_out),
     }
     meta_path = meta_path_for(args.train_out)
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(meta, f, indent=2)
         f.write("\n")  # keep re-runs byte-identical to the committed file
     print(f"wrote {args.train_out} and {args.val_out}")
-    print(f"wrote {meta_path} (vocab_size={vocab_size})")
+    print(f"wrote {meta_path} (vocab_size={vocab_size}, "
+          f"tokenizer={args.tokenizer_out} sha256={meta['tokenizer_sha256'][:12]}...)")
 
 
 if __name__ == "__main__":

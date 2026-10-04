@@ -11,8 +11,9 @@ import torch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from src.config import file_sha256
 from src.tokenizer import decode, load_tokenizer
-from src.train import load_model
+from src.train import load_model, read_checkpoint
 
 MIN_TEMPERATURE = 1e-3  # below this, logits/temperature overflow to inf/nan
 
@@ -60,6 +61,31 @@ def generate_tokens(
     return idx
 
 
+def check_tokenizer_provenance(ckpt: dict, tokenizer_path: str) -> None:
+    """Refuse to decode with a tokenizer the checkpoint was not trained against.
+
+    The checkpoint records the tokenizer by digest, so neither a --tokenizer
+    override nor a moved artifact tree can quietly produce text from the wrong
+    vocabulary. A checkpoint with no recorded provenance cannot be verified; that
+    is reported, not assumed to be fine.
+    """
+    recorded = ckpt.get("data_provenance")
+    if not recorded:
+        print("warning: this checkpoint records no tokenizer provenance, so "
+              f"{tokenizer_path} cannot be verified against it", file=sys.stderr)
+        return
+    actual = file_sha256(tokenizer_path)
+    if actual != recorded["tokenizer_sha256"]:
+        raise SystemExit(
+            f"refusing to generate: {tokenizer_path} is not the tokenizer this checkpoint "
+            f"was trained with (sha256 {actual[:12]}... != recorded "
+            f"{str(recorded['tokenizer_sha256'])[:12]}...).\n"
+            f"  checkpoint tokenizer: {recorded['tokenizer_path']}\n"
+            "Pass --tokenizer with the tokenizer the run used, or generate from the "
+            "checkpoint whose data matches."
+        )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate text with mini-llm")
     parser.add_argument("--checkpoint", required=True)
@@ -81,7 +107,9 @@ def main() -> None:
 
     model, cfg = load_model(args.checkpoint)
 
-    tok = load_tokenizer(args.tokenizer or cfg.tokenizer_path)
+    tokenizer_path = args.tokenizer or cfg.tokenizer_path
+    check_tokenizer_provenance(read_checkpoint(args.checkpoint), tokenizer_path)
+    tok = load_tokenizer(tokenizer_path)
     prompt_ids = tok.encode(args.prompt).ids if args.prompt else [tok.token_to_id("<bos>")]
     idx = torch.tensor([prompt_ids], dtype=torch.long)
     out = generate_tokens(

@@ -2,16 +2,53 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from dataclasses import asdict, dataclass
 
 META_FILENAME = "meta.json"
+HASH_CHUNK_BYTES = 1 << 20  # streaming read size for artifact digests
+
+# Provenance keys prepare_data.py writes and every run re-verifies. A meta.json
+# without all of them predates provenance tracking and cannot be trusted.
+PROVENANCE_KEYS = ("train_bin", "train_sha256", "val_bin", "val_sha256",
+                   "tokenizer_path", "tokenizer_sha256")
+
+# Digests that decide whether two runs read the same data. Paths are recorded for
+# humans and for error messages; content, not location, is the contract.
+IDENTITY_KEYS = ("vocab_size", "train_sha256", "val_sha256", "tokenizer_sha256")
 
 
 def meta_path_for(train_bin: str) -> str:
     """Path of the prepare_data.py metadata file sitting next to the .bin files."""
     return os.path.join(os.path.dirname(os.path.abspath(train_bin)), META_FILENAME)
+
+
+def file_sha256(path: str) -> str:
+    """sha256 of a file's bytes, streamed so corpus-size artifacts cost no RAM."""
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(HASH_CHUNK_BYTES), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def provenance_mismatches(recorded: dict | None, current: dict) -> list[str]:
+    """Differences between a checkpoint's recorded data and the current artifacts.
+
+    Empty list means the two are the same data by content. Paths are deliberately
+    not compared: a relocated but identical artifact tree is the same run, while
+    a same-path file with different bytes is not.
+    """
+    if not recorded:
+        return ["the checkpoint records no data provenance"]
+    out = []
+    for key in IDENTITY_KEYS:
+        was, now = recorded.get(key), current.get(key)
+        if was != now:
+            out.append(f"{key}: checkpoint={was} current={now}")
+    return out
 
 
 def load_data_meta(train_bin: str) -> dict | None:
@@ -24,11 +61,15 @@ def load_data_meta(train_bin: str) -> dict | None:
 
 
 def config_for_data(train_bin: str, **overrides) -> "Config":
-    """Build a Config whose vocab_size matches the tokenizer used for `train_bin`.
+    """Build a Config that matches the prepared data set at `train_bin`.
 
-    prepare_data.py records the real tokenizer size in meta.json; a model built for a
-    larger vocabulary than the data contains wastes rows and lets sampling land on
-    ids that do not decode, so the size is taken from the data unless overridden.
+    prepare_data.py records the real tokenizer size and the real artifact paths in
+    meta.json; a model built for a larger vocabulary than the data contains wastes
+    rows and lets sampling land on ids that do not decode, so size is taken from
+    the data unless overridden. The tokenizer and val paths are adopted for the
+    same reason: a config pointing at a different tokenizer than the one that
+    produced the .bin files is not a valid description of this data, and deriving
+    them here is not a fallback because it comes from the data's own record.
     """
     cfg = Config(train_bin=train_bin, **overrides)
     meta = load_data_meta(train_bin)
@@ -43,6 +84,13 @@ def config_for_data(train_bin: str, **overrides) -> "Config":
                 f"(from {meta_path_for(train_bin)})"
             )
         cfg.vocab_size = int(meta["vocab_size"])
+    for field in ("tokenizer_path", "val_bin"):
+        if field in overrides or field not in meta:
+            continue
+        if getattr(cfg, field) != meta[field]:
+            print(f"{field} {getattr(cfg, field)} -> {meta[field]} "
+                  f"(from {meta_path_for(train_bin)})")
+        setattr(cfg, field, meta[field])
     cfg.validate_against_data()
     return cfg
 
@@ -99,14 +147,67 @@ class Config:
                 f"{name} must be a positive int or None, got {value!r}"
 
     def validate_against_data(self) -> dict | None:
-        """Fail if the model vocabulary does not match the prepared data."""
+        """Fail unless the model, data and tokenizer are one consistent set.
+
+        Checked, in order: the vocabulary the model was built for, that the
+        prepared data records provenance at all, and that every artifact named
+        by the current config still hashes to what prepare_data.py wrote.
+        A missing artifact or a stale one is an error, never a fallback.
+        """
         meta = load_data_meta(self.train_bin)
-        if meta is not None and int(meta["vocab_size"]) != self.vocab_size:
+        if meta is None:
+            return None
+        if int(meta["vocab_size"]) != self.vocab_size:
             raise ValueError(
                 f"vocab_size={self.vocab_size} but {self.train_bin} was encoded with a "
                 f"vocabulary of {meta['vocab_size']} (see {meta_path_for(self.train_bin)})"
             )
+        missing = [k for k in PROVENANCE_KEYS if k not in meta]
+        if missing:
+            raise ValueError(
+                f"{meta_path_for(self.train_bin)} records no provenance for "
+                f"{', '.join(missing)} - it predates provenance tracking, so the data, "
+                "tokenizer and their contents cannot be verified; re-run prepare_data.py"
+            )
+        for key, path in (("train_sha256", self.train_bin),
+                          ("val_sha256", self.val_bin),
+                          ("tokenizer_sha256", self.tokenizer_path)):
+            if not os.path.exists(path):
+                raise FileNotFoundError(
+                    f"{key} names {os.path.abspath(path)}, which does not exist - pass the "
+                    "artifact prepare_data.py produced or re-run it"
+                )
+            actual = file_sha256(path)
+            if actual != meta[key]:
+                raise ValueError(
+                    f"{key} mismatch: {os.path.abspath(path)} has changed since "
+                    f"{meta_path_for(self.train_bin)} was written "
+                    f"(sha256 {actual[:12]}... != recorded {str(meta[key])[:12]}...) - "
+                    "point --train-bin/--val-bin/--tokenizer at the prepared artifacts"
+                )
         return meta
+
+    def data_provenance(self) -> dict:
+        """Identity of the data/tokenizer set this config reads.
+
+        Stored in every checkpoint the training loop writes, so a later resume can
+        prove it is continuing the same data instead of an unrelated artifact that
+        happens to sit at a default path.
+        """
+        meta = self.validate_against_data()
+        if meta is None:
+            raise FileNotFoundError(
+                f"no {META_FILENAME} next to {self.train_bin} - run prepare_data.py first"
+            )
+        return {
+            "vocab_size": int(meta["vocab_size"]),
+            "train_bin": os.path.abspath(self.train_bin),
+            "train_sha256": meta["train_sha256"],
+            "val_bin": os.path.abspath(self.val_bin),
+            "val_sha256": meta["val_sha256"],
+            "tokenizer_path": os.path.abspath(self.tokenizer_path),
+            "tokenizer_sha256": meta["tokenizer_sha256"],
+        }
 
     def to_dict(self) -> dict:
         return asdict(self)

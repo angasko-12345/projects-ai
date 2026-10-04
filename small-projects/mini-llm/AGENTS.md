@@ -52,22 +52,35 @@ python -m unittest discover -s tests
 - Checkpoints load under `weights_only=True`; stride is a data-pipeline choice not
   stored in checkpoints, so pass the same `--stride` when resuming.
 
-## Known wart — checkpoints store default paths (unfixed as of 2026-10-02)
+## Checkpoint provenance and resume safety (added 2026-10-10)
 
-- `Config.tokenizer_path` has **no CLI flag**, and `prepare_data.py` does **not** record it
-  in `meta.json`. Every checkpoint therefore stores the default `data/tokenizer.json`
-  regardless of which tokenizer was actually used. Only `src/generate.py --tokenizer` can
-  override it at generation time; `src/train.py` has no `--tokenizer` flag at all and the
-  training loop never loads a tokenizer.
-- `Config.train_bin` / `val_bin` / `checkpoint_dir` *are* settable through `src.train`
-  flags, but a resumed run takes its config from the checkpoint, so those stored strings
-  are authoritative unless re-passed. A checkpoint trained against non-default paths
-  therefore resumes against the defaults.
-- This is load-bearing because `Config.validate_against_data()` reads `meta.json` next to
-  `train_bin` and raises on a `vocab_size` mismatch. Reproduced read-only on the
-  TinyStories artifact (`checkpoints/tinystories/final.pt`, vocab 8192) resuming against
-  the vocab-308 `data/processed/` prep: `ValueError: vocab_size=8192 but
-  data/processed/train.bin was encoded with a vocabulary of 308`.
-- When documenting or reproducing an experiment, pass the data paths explicitly rather than
-  relying on what a checkpoint stores. Fixing the underlying gap is a source change and is
-  tracked in `.agents/pending_tasks.md` under mini-llm.
+`meta.json` records which artifacts produced the `.bin` files, by content:
+
+```json
+"train_bin": "data/processed/train.bin",
+"val_bin": "data/processed/val.bin",
+"tokenizer_path": "data/tokenizer.json",
+"train_sha256": "...", "val_sha256": "...", "tokenizer_sha256": "..."
+```
+
+- The paths are what was typed on the command line, for humans and for messages.
+  The sha256 digests are the contract: an artifact tree that was moved or copied
+  still verifies, and a file replaced at the same path does not.
+- `src/train.py` takes `--tokenizer` and records it in every checkpoint it writes
+  (as `config.tokenizer_path` plus a `data_provenance` block). `--train-bin` and
+  `--val-bin` behave the same way.
+- On resume, `src/train.py` compares the checkpoint's recorded digests against the
+  current artifacts and refuses with a `SystemExit` naming both sides when they
+  differ. A checkpoint written before provenance existed is refused rather than
+  resumed on trust. A bare `--resume` needs no data flags, because the checkpoint
+  carries verified paths.
+- `src/generate.py` applies the same check to `--tokenizer`, so a foreign
+  tokenizer cannot decode a checkpoint silently.
+- `config_for_data()` adopts `tokenizer_path` and `val_bin` from `meta.json` when
+  they are not passed, so pointing `--train-bin` at a prepared data set is enough.
+- A `meta.json` without provenance keys is rejected with a message asking for a
+  re-run of `prepare_data.py`. Re-running it on the shipped corpus reproduces
+  `data/processed/*.bin` and `data/tokenizer.json` byte for byte; only
+  `meta.json` gained fields.
+- Checkpoints still load with `weights_only=True`; `data_provenance` is a plain
+  dict of strings and ints.

@@ -5,6 +5,7 @@ import io
 import json
 import math
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -17,8 +18,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 import prepare_data
-from src.config import Config, config_for_data, load_data_meta
+from src.config import Config, config_for_data, file_sha256, load_data_meta
 from src.dataset import TokenDataset, build_dataloader, load_token_ids
+from src.generate import check_tokenizer_provenance
 from src.generate import generate_tokens
 from src.generate import main as generate_main
 from src.model import from_config
@@ -41,6 +43,15 @@ def write_corpus(path: str) -> str:
     return path
 
 
+# A second corpus that shares no wording with CORPUS, so a data set built from it
+# differs from a CORPUS data set in every artifact, tokenizer included.
+OTHER_CORPUS = (
+    "Rain drummed on the tin roof while the kettle whistled downstairs.\n\n"
+    "Mira counted seven grey geese crossing the flooded meadow.\n\n"
+    "Every rung of the ladder wobbled, so he tied the rope twice.\n\n"
+) * 12
+
+
 def build_data(tmp: str, context_length: int = 16, val_frac: float = 0.2) -> str:
     """Run prepare_data.main() over a temporary corpus; return the train .bin path."""
     corpus = write_corpus(os.path.join(tmp, "corpus.txt"))
@@ -61,6 +72,41 @@ def build_data(tmp: str, context_length: int = 16, val_frac: float = 0.2) -> str
     finally:
         sys.argv = argv
     return os.path.join(tmp, "train.bin")
+
+
+def build_data_set(root: str, vocab_size: int = 512, context_length: int = 16,
+                   val_frac: float = 0.2, corpus_text: str = CORPUS) -> dict:
+    """Prepare a data set under `root` and return the paths it produced.
+
+    Same contract as build_data, but named rather than fixed to one temp dir, so
+    a test can hold two independent data sets (and their tokenizers) side by side.
+    """
+    os.makedirs(root, exist_ok=True)
+    corpus = os.path.join(root, "corpus.txt")
+    with open(corpus, "w", encoding="utf-8") as f:
+        f.write(corpus_text)
+    argv = sys.argv
+    sys.argv = [
+        "prepare_data.py",
+        "--input", corpus,
+        "--tokenizer-out", os.path.join(root, "tokenizer.json"),
+        "--train-out", os.path.join(root, "train.bin"),
+        "--val-out", os.path.join(root, "val.bin"),
+        "--vocab-size", str(vocab_size),
+        "--min-frequency", "1",
+        "--val-frac", str(val_frac),
+        "--context-length", str(context_length),
+    ]
+    try:
+        prepare_data.main()
+    finally:
+        sys.argv = argv
+    return {
+        "root": root,
+        "train_bin": os.path.join(root, "train.bin"),
+        "val_bin": os.path.join(root, "val.bin"),
+        "tokenizer": os.path.join(root, "tokenizer.json"),
+    }
 
 
 class TestPrepareData(unittest.TestCase):
@@ -295,6 +341,7 @@ class TestTrainingLoop(unittest.TestCase):
                   batch_size=2, max_steps=6, warmup_steps=2, eval_interval=3,
                   eval_batches=2, train_bin=self.train_bin,
                   val_bin=os.path.join(self.tmp.name, "val.bin"),
+                  tokenizer_path=os.path.join(self.tmp.name, "tokenizer.json"),
                   checkpoint_dir=self.ckpt_dir, seed=0)
         kw.update(over)
         return Config(**kw)
@@ -355,6 +402,7 @@ class TestResume(unittest.TestCase):
                   batch_size=2, max_steps=9, warmup_steps=3, eval_interval=3,
                   eval_batches=2, train_bin=self.train_bin,
                   val_bin=os.path.join(self.tmp.name, "val.bin"),
+                  tokenizer_path=os.path.join(self.tmp.name, "tokenizer.json"),
                   checkpoint_dir=self.ckpt_dir, seed=0)
         kw.update(over)
         return Config(**kw)
@@ -711,6 +759,226 @@ class TestConfigDataAgreement(unittest.TestCase):
         cfg = Config(vocab_size=128, context_length=8, n_layers=1, n_heads=2,
                      d_model=16, d_ff=32)
         self.assertEqual(Config.from_dict(json.loads(json.dumps(cfg.to_dict()))), cfg)
+
+
+class TestDataProvenance(unittest.TestCase):
+    """Non-default data/tokenizer paths, and resuming only onto the same data.
+
+    The bug these guard: Config.tokenizer_path had no CLI flag and prepare_data.py
+    recorded no tokenizer in meta.json, so every checkpoint stored the default
+    paths and a resume could continue against an unrelated corpus/tokenizer.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        # Two independent data sets in non-default directories. The second has its
+        # own corpus and vocabulary, so every artifact differs by content; setUp
+        # asserts that rather than trusting the inputs to differ.
+        self.a = build_data_set(os.path.join(self.tmp.name, "set_a"))
+        self.b = build_data_set(os.path.join(self.tmp.name, "set_b"), vocab_size=256,
+                                corpus_text=OTHER_CORPUS)
+        self.ckpt_dir = os.path.join(self.tmp.name, "ckpts")
+        self.assertNotEqual(file_sha256(self.a["train_bin"]),
+                            file_sha256(self.b["train_bin"]))
+        self.assertNotEqual(file_sha256(self.a["tokenizer"]),
+                            file_sha256(self.b["tokenizer"]))
+
+    def cfg_for(self, data: dict, **over) -> Config:
+        kw = dict(vocab_size=load_data_meta(data["train_bin"])["vocab_size"],
+                  context_length=16, n_layers=1, n_heads=2, d_model=16, d_ff=32,
+                  batch_size=2, max_steps=9, warmup_steps=2, eval_interval=3,
+                  eval_batches=2, train_bin=data["train_bin"], val_bin=data["val_bin"],
+                  tokenizer_path=data["tokenizer"],
+                  checkpoint_dir=self.ckpt_dir, seed=0)
+        kw.update(over)
+        return Config(**kw)
+
+    def run_main(self, *argv) -> None:
+        saved = sys.argv
+        sys.argv = ["train.py", *argv]
+        try:
+            train_main()
+        finally:
+            sys.argv = saved
+
+    def train_partial(self) -> str:
+        """Train data set A to completion and return the mid-run step_3.pt path.
+
+        The full run is deliberate: the checkpoint's own max_steps is what a later
+        resume honours, so a checkpoint saved at its final step would (correctly)
+        refuse to continue. Running to 9 leaves step_3.pt resumable at step 4.
+        """
+        train(self.cfg_for(self.a))
+        return os.path.join(self.ckpt_dir, "step_3.pt")
+
+    # --- preparation metadata --------------------------------------------
+
+    def test_meta_records_tokenizer_and_data_provenance(self):
+        meta = load_data_meta(self.a["train_bin"])
+        self.assertEqual(meta["tokenizer_path"], self.a["tokenizer"])
+        self.assertEqual(meta["train_bin"], self.a["train_bin"])
+        self.assertEqual(meta["val_bin"], self.a["val_bin"])
+        for key, path in (("tokenizer_sha256", self.a["tokenizer"]),
+                          ("train_sha256", self.a["train_bin"]),
+                          ("val_sha256", self.a["val_bin"])):
+            self.assertEqual(meta[key], file_sha256(path), key)
+
+    def test_meta_without_provenance_is_refused(self):
+        """A pre-provenance meta.json is not trusted; it is not silently accepted."""
+        meta = load_data_meta(self.a["train_bin"])
+        for key in ("tokenizer_path", "tokenizer_sha256"):
+            del meta[key]
+        with open(os.path.join(self.a["root"], "meta.json"), "w", encoding="utf-8") as f:
+            json.dump(meta, f)
+        with self.assertRaises(ValueError) as ctx:
+            self.cfg_for(self.a).data_provenance()
+        self.assertIn("provenance", str(ctx.exception))
+
+    def test_changed_tokenizer_is_refused(self):
+        with open(self.a["tokenizer"], "a", encoding="utf-8") as f:
+            f.write(" ")
+        with self.assertRaises(ValueError) as ctx:
+            self.cfg_for(self.a).data_provenance()
+        self.assertIn("changed since", str(ctx.exception))
+
+    def test_missing_tokenizer_artifact_is_named(self):
+        os.remove(self.a["tokenizer"])
+        with self.assertRaises(FileNotFoundError) as ctx:
+            self.cfg_for(self.a).data_provenance()
+        self.assertIn("tokenizer.json", str(ctx.exception))
+
+
+# --- non-default paths through the CLI -------------------------------
+
+    def test_cli_records_non_default_tokenizer_and_data_paths(self):
+        """--tokenizer / --train-bin / --val-bin land in the checkpoint verbatim."""
+        # Architecture flags are not on the CLI, so this builds the default model
+        # at the data set's vocab for 2 steps; what matters is what gets recorded.
+        self.run_main("--max-steps", "2", "--context-length", "16",
+                      "--batch-size", "2",
+                      "--checkpoint-dir", self.ckpt_dir,
+                      "--train-bin", self.a["train_bin"],
+                      "--val-bin", self.a["val_bin"],
+                      "--tokenizer", self.a["tokenizer"])
+        ckpt = read_checkpoint(os.path.join(self.ckpt_dir, "final.pt"))
+        stored = ckpt["config"]
+        self.assertEqual(stored["tokenizer_path"], self.a["tokenizer"])
+        self.assertEqual(stored["train_bin"], self.a["train_bin"])
+        self.assertEqual(stored["val_bin"], self.a["val_bin"])
+        # And the checkpoint identifies that same tokenizer by content.
+        self.assertEqual(ckpt["data_provenance"]["tokenizer_sha256"],
+                         file_sha256(self.a["tokenizer"]))
+
+    def test_config_for_data_adopts_the_prepared_tokenizer(self):
+        """A non-default data set pulls its own tokenizer/val paths into the config."""
+        cfg = config_for_data(self.b["train_bin"], n_layers=1, n_heads=2,
+                              d_model=16, d_ff=32)
+        self.assertEqual(cfg.tokenizer_path, self.b["tokenizer"])
+        self.assertEqual(cfg.val_bin, self.b["val_bin"])
+        self.assertEqual(cfg.vocab_size,
+                         load_data_meta(self.b["train_bin"])["vocab_size"])
+
+    def test_checkpoint_records_data_provenance(self):
+        self.train_partial()
+        prov = read_checkpoint(os.path.join(self.ckpt_dir, "final.pt"))["data_provenance"]
+        self.assertEqual(prov["tokenizer_sha256"], file_sha256(self.a["tokenizer"]))
+        self.assertEqual(prov["train_sha256"], file_sha256(self.a["train_bin"]))
+        self.assertEqual(prov["val_sha256"], file_sha256(self.a["val_bin"]))
+        self.assertEqual(prov["vocab_size"],
+                         load_data_meta(self.a["train_bin"])["vocab_size"])
+
+    def test_checkpoint_still_loads_with_weights_only(self):
+        self.train_partial()
+        path = os.path.join(self.ckpt_dir, "final.pt")
+        self.assertIn("data_provenance",
+                      torch.load(path, map_location="cpu", weights_only=True))
+
+    # --- matching resume --------------------------------------------------
+
+    def test_matching_resume_succeeds_on_non_default_paths(self):
+        mid = self.train_partial()
+        # max_steps 12 extends the run; without it the checkpoint's own 9 is the
+        # ceiling and step 4 would be refused for being past the end.
+        train(self.cfg_for(self.a, max_steps=12), resume_from=mid, start_step=4)
+        done = read_checkpoint(os.path.join(self.ckpt_dir, "final.pt"))
+        self.assertEqual(done["step"], 12)
+        self.assertEqual(done["data_provenance"]["tokenizer_sha256"],
+                         file_sha256(self.a["tokenizer"]))
+
+    def test_matching_resume_from_checkpoint_paths_needs_no_flags(self):
+        """A bare --resume works: the checkpoint carries its own verified paths."""
+        mid = self.train_partial()
+        self.run_main("--resume", mid, "--max-steps", "12")
+        self.assertEqual(read_checkpoint(
+            os.path.join(self.ckpt_dir, "final.pt"))["step"], 12)
+
+    def test_relocated_but_identical_artifacts_still_resume(self):
+        """Digests, not paths, are the contract: a moved copy is the same data."""
+        mid = self.train_partial()
+        moved = os.path.join(self.tmp.name, "moved")
+        shutil.copytree(self.a["root"], moved)
+        moved_set = {"train_bin": os.path.join(moved, "train.bin"),
+                     "val_bin": os.path.join(moved, "val.bin"),
+                     "tokenizer": os.path.join(moved, "tokenizer.json")}
+        train(self.cfg_for(moved_set, max_steps=12), resume_from=mid, start_step=4)
+        self.assertEqual(read_checkpoint(
+            os.path.join(self.ckpt_dir, "final.pt"))["step"], 12)
+
+
+# --- mismatch is refused, never a silent fallback --------------------
+
+    def test_resume_against_another_tokenizer_is_refused(self):
+        mid = self.train_partial()
+        with self.assertRaises(SystemExit) as ctx:
+            train(self.cfg_for(self.a, tokenizer_path=self.b["tokenizer"]),
+                  resume_from=mid, start_step=4)
+        self.assertIn("tokenizer_sha256", str(ctx.exception))
+
+    def test_resume_against_another_dataset_is_refused(self):
+        mid = self.train_partial()
+        with self.assertRaises(SystemExit) as ctx:
+            train(self.cfg_for(self.b), resume_from=mid, start_step=4)
+        message = str(ctx.exception)
+        self.assertIn("train_sha256", message)
+        self.assertIn("tokenizer_sha256", message)
+
+    def test_resume_against_another_val_split_is_refused(self):
+        mid = self.train_partial()
+        mixed = dict(self.a, val_bin=self.b["val_bin"])
+        with self.assertRaises(SystemExit) as ctx:
+            train(self.cfg_for(mixed), resume_from=mid, start_step=4)
+        self.assertIn("val_sha256", str(ctx.exception))
+
+    def test_cli_resume_with_a_foreign_data_set_is_refused(self):
+        """The bug's exact failure mode: a resume whose flags point elsewhere."""
+        mid = self.train_partial()
+        with self.assertRaises(SystemExit) as ctx:
+            self.run_main("--resume", mid,
+                          "--train-bin", self.b["train_bin"],
+                          "--val-bin", self.b["val_bin"],
+                          "--tokenizer", self.b["tokenizer"],
+                          "--checkpoint-dir", self.ckpt_dir)
+        self.assertIn("refusing to resume", str(ctx.exception))
+
+    def test_resume_of_a_checkpoint_without_provenance_is_refused(self):
+        """An unverifiable checkpoint is refused, not resumed on trust."""
+        mid = self.train_partial()
+        ckpt = torch.load(mid, map_location="cpu", weights_only=True)
+        del ckpt["data_provenance"]
+        torch.save(ckpt, mid)
+        with self.assertRaises(SystemExit) as ctx:
+            train(self.cfg_for(self.a, max_steps=12), resume_from=mid, start_step=4)
+        self.assertIn("no data provenance", str(ctx.exception))
+
+    def test_a_foreign_tokenizer_cannot_generate_from_a_checkpoint(self):
+        self.train_partial()
+        path = os.path.join(self.ckpt_dir, "final.pt")
+        with self.assertRaises(SystemExit) as ctx:
+            check_tokenizer_provenance(read_checkpoint(path), self.b["tokenizer"])
+        self.assertIn("not the tokenizer", str(ctx.exception))
+        # The matching tokenizer passes.
+        check_tokenizer_provenance(read_checkpoint(path), self.a["tokenizer"])
 
 
 if __name__ == "__main__":
