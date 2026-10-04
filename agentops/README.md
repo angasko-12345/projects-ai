@@ -21,7 +21,7 @@ python -m agentops logs
 - `agentops verify [--workflow ID] [--run ID] [--task ID] [--limit N] [--offset N]` inspects persisted verification runs, reports, and checks.
 - `agentops failures [--workflow ID] [--task ID] [--category CAT] [--limit N] [--offset N]` inspects persisted failure records with recommended repair actions.
 - `agentops recover` marks agent runs, verification runs, and tasks stranded by a restart as interrupted failures (never success without evidence); worktrees are preserved.
-- `agentops gui` or `agentops-gui` launches the Tkinter desktop client.
+- `agentops gui` or `agentops-gui` launches the PySide6 desktop client (requires the `desktop` extra).
 
 ## Configuration
 
@@ -33,7 +33,7 @@ Verification profiles declare named checks with a class (`tests`, `lint`, `forma
 
 ## Desktop client
 
-The Windows desktop client uses only the Python standard library for its interface. It provides repository and configuration selection, agent detection, direct agent runs, high-level task workflows, live workflow/task status, workflow history with task, agent-run, and verification inspection, a safe log browser, preserved-worktree inspection/cleanup/merge-retry, cancellation, and graceful error reporting. Long-running operations run outside the Tk event loop, while execution, Git isolation, persistence, and verification use the same service modules as the CLI.
+The Windows desktop client is built with PySide6 (`pip install "agentops[desktop]"`); the orchestration core stays standard-library only. The client is a multi-view shell — Dashboard, Tasks, Workflows, Agents, Runs, Verification, Failures, Worktrees, Artifacts, and Settings — providing repository and configuration selection, agent detection, direct agent runs, high-level task workflows, live workflow/task status, workflow history with task, agent-run, and verification inspection, a safe log browser, preserved-worktree inspection/cleanup/merge-retry, cancellation, a command palette, and graceful error reporting. Controller reads run on a worker pool and results are delivered back as Qt signals on the GUI thread, while execution, Git isolation, persistence, and verification use the same service modules as the CLI.
 
 ```powershell
 python -m agentops gui
@@ -46,7 +46,7 @@ agentops-gui
 Prerequisites:
 
 - Windows 10/11, 64-bit
-- Python 3.11 or later with Tkinter
+- Python 3.11 or later with PySide6 (`pip install ".[desktop]"`)
 - This repository checked out with Git
 
 Build a reproducible executable:
@@ -60,7 +60,7 @@ The build creates:
 
 - `dist/AgentOps.exe`
 
-The executable bundles the AgentOps package, Tk runtime, SQLite support, and the default `agents/agents.yaml` configuration. Double-click `AgentOps.exe` to launch the GUI. A custom configuration can be selected inside the client. Target-repository state remains under `<target-repo>/.agentops/`; successful workflows merge from an isolated worktree, while cancelled, failed, or conflicted workflows preserve their worktree for inspection. Preserved worktrees can be inspected, cleaned up, or re-merged from the Worktrees tab; dirty worktrees are never removed silently, and unmerged branches are preserved unless explicitly force-deleted.
+The executable bundles the AgentOps package, the Qt runtime, SQLite support, and the default `agents/agents.yaml` configuration. Double-click `AgentOps.exe` to launch the GUI. A custom configuration can be selected inside the client. Target-repository state remains under `<target-repo>/.agentops/`; successful workflows merge from an isolated worktree, while cancelled, failed, or conflicted workflows preserve their worktree for inspection. Preserved worktrees can be inspected, cleaned up, or re-merged from the Worktrees tab; dirty worktrees are never removed silently, and unmerged branches are preserved unless explicitly force-deleted.
 
 ## State and Git
 

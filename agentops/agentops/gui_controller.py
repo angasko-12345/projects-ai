@@ -1,6 +1,6 @@
 """Service facade used by the AgentOps desktop client.
 
-This module keeps long-running operations off the Tkinter event loop and
+This module keeps long-running operations off the Qt GUI thread and
 provides a small cancellation contract.  It delegates all substantive work to
 the existing AgentOps runner, workflow, Git, logging, and persistence modules.
 """
@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import threading
 from contextlib import suppress
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable
 
@@ -28,7 +28,7 @@ from .verification import Verifier
 from .verification_kernel import VerificationKernel
 from .failure import Failure
 from .verification_model import VerificationCheck, VerificationReport, VerificationRun
-from .workflow import WorkflowEngine
+from .workflow import WorkflowEngine, STANDARD_TASK_ROLES
 
 
 def serialize_failure(failure: Failure) -> dict[str, object]:
@@ -279,6 +279,83 @@ class AgentOpsController:
     def detect_agents(self) -> dict[str, object]:
         return AgentRegistry(self._load_config()).detect()
 
+    def list_agent_profiles(self) -> list[dict[str, object]]:
+        """Capability-rich agent profiles for the Agents surface (read-only)."""
+        profiles = AgentRegistry(self._load_config()).profiles()
+        return [profile.to_dict() for profile in profiles.values()]
+
+    def task_options(self) -> dict[str, object]:
+        """Config-derived choices offered by the New Task flow."""
+        config = self._load_config()
+        return {
+            "routing_enabled": bool(config.routing_enabled),
+            "verification_profiles": sorted(config.verification_profiles),
+            "default_verification_profile": config.default_verification_profile,
+        }
+
+    def dashboard_summary(
+        self,
+        directory: str | Path,
+        workflow_limit: int = 8,
+        event_limit: int = 15,
+        failure_limit: int = 10,
+        verification_limit: int = 10,
+    ) -> dict[str, object]:
+        """One composed read for the Dashboard.
+
+        Everything comes from persisted state: aggregate task counts, active
+        workflow counts, recent workflow rollups, verification health over the
+        newest verification runs, actionable failures (retryable, repairable,
+        or carrying a recovery state), and the newest timeline events.
+        """
+        root = self._operation_root(directory)
+        state = StateStore(self._state_path(root))
+        try:
+            task_counts: dict[str, int] = {}
+            for task in state.list_tasks():
+                key = str(task.status)
+                task_counts[key] = task_counts.get(key, 0) + 1
+            active = {status: state.count_workflows(status) for status in ("pending", "running")}
+            recent = [
+                self._workflow_payload(state, workflow)
+                for workflow in state.list_workflows(limit=workflow_limit)
+            ]
+            verifications = [
+                serialize_verification_run(run)
+                for run in state.list_verification_runs(limit=verification_limit)
+            ]
+            verification_status: dict[str, int] = {}
+            for run in verifications:
+                key = str(run.get("overall_status") or run.get("status") or "unknown")
+                verification_status[key] = verification_status.get(key, 0) + 1
+            failures = [serialize_failure(failure) for failure in state.list_failures(limit=failure_limit)]
+            needs_attention = [
+                failure for failure in failures
+                if failure.get("retryable") or failure.get("repairable") or failure.get("recovery_state")
+            ]
+            total_events = state.count_events()
+            events = [
+                event.to_dict()
+                for event in state.query_events(limit=event_limit, offset=max(0, total_events - event_limit))
+            ]
+            events.reverse()  # newest first for the activity feed
+            return {
+                "repository": root.as_posix(),
+                "total_workflows": state.count_workflows(),
+                "active_workflows": active,
+                "task_counts": task_counts,
+                "recent_workflows": recent,
+                "latest_workflow_id": recent[0].get("id") if recent else None,
+                "verification_status": verification_status,
+                "recent_verifications": verifications,
+                "failure_count": len(failures),
+                "needs_attention": needs_attention,
+                "recent_failures": failures,
+                "recent_events": events,
+            }
+        finally:
+            state.close()
+
     def run_agent(
         self,
         agent_name: str,
@@ -350,10 +427,26 @@ class AgentOpsController:
         description: str,
         directory: str | Path,
         callback: EventCallback,
+        *,
+        agent: str | None = None,
+        verification_profile: str | None = None,
     ) -> None:
+        """Start a high-level task workflow on a background thread.
+
+        ``agent`` pins the operator's explicit strategy: every standard task
+        role and every configured role preference resolves to that agent
+        first. Availability, role, and capability gates still apply, so an
+        ineligible pinned agent falls back exactly as the router's documented
+        preference behavior allows. ``verification_profile`` selects the
+        verification profile for this workflow instead of the configuration
+        default; an unknown profile fails the operation with a clear error
+        instead of silently running different checks.
+        """
         event = self._begin_operation()
-        threading.Thread(target=self._run_task_operation, args=(description, Path(directory), event, callback),
-                         daemon=True, name="agentops-task-run").start()
+        threading.Thread(
+            target=self._run_task_operation,
+            args=(description, Path(directory), event, callback, agent, verification_profile),
+            daemon=True, name="agentops-task-run").start()
 
     def _run_task_operation(
         self,
@@ -361,6 +454,8 @@ class AgentOpsController:
         directory: Path,
         cancel_event: threading.Event,
         callback: EventCallback,
+        agent: str | None = None,
+        verification_profile: str | None = None,
     ) -> None:
         state: StateStore | None = None
         manager: GitWorktreeManager | None = None
@@ -370,6 +465,11 @@ class AgentOpsController:
             if not directory.is_dir():
                 raise NotADirectoryError(f"Repository directory does not exist: {directory}")
             config = self._load_config()
+            if agent is not None:
+                pinned_roles = set(config.role_preferences) | set(STANDARD_TASK_ROLES)
+                config = replace(config, role_preferences={
+                    role: (agent,) for role in pinned_roles
+                })
             root = self._operation_root(directory)
             logs = LogManager(root / ".agentops" / "logs")
             state = StateStore(self._state_path(root))
@@ -381,7 +481,11 @@ class AgentOpsController:
                                 pass_env_prefixes=config.pass_env_prefixes)
             verification_kernel = VerificationKernel(
                 profiles=config.verification_profiles,
-                default_profile=config.default_verification_profile,
+                default_profile=(
+                    verification_profile
+                    if verification_profile is not None
+                    else config.default_verification_profile
+                ),
                 legacy_commands=config.verification_commands,
                 pass_env_names=config.pass_env_names,
                 pass_env_prefixes=config.pass_env_prefixes,
@@ -429,6 +533,35 @@ class AgentOpsController:
             self._end_operation(cancel_event)
             callback({"kind": "thread-finished"})
 
+    def list_tasks(
+        self,
+        directory: str | Path,
+        workflow_id: str | None = None,
+        status: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict[str, object]]:
+        """All tasks (optionally one workflow/status), newest first.
+
+        Read-only facade for the Tasks surface; ``state.list_tasks`` stores
+        rows oldest-first, so the payload is reversed for display.
+        """
+        if not isinstance(limit, int) or not isinstance(offset, int) or limit < 0 or offset < 0:
+            raise ValueError("Task list limit and offset must be non-negative integers.")
+        root = self._operation_root(directory)
+        state = StateStore(self._state_path(root))
+        try:
+            tasks = state.list_tasks(workflow_id)
+            if status is not None:
+                tasks = [
+                    task for task in tasks
+                    if (task.status.value if hasattr(task.status, "value") else str(task.status)) == status
+                ]
+            tasks.reverse()
+            return [serialize_task(task) for task in tasks[offset:offset + limit]]
+        finally:
+            state.close()
+
     def list_workflows(
         self,
         directory: str | Path,
@@ -443,27 +576,32 @@ class AgentOpsController:
             total = state.count_workflows(status)
             workflows: list[dict[str, object]] = []
             for workflow in state.list_workflows(limit=limit, offset=offset, status=status):
-                tasks = state.list_tasks(workflow.id)
-                counts: dict[str, int] = {}
-                for task in tasks:
-                    key = str(task.status)
-                    counts[key] = counts.get(key, 0) + 1
-                runs = state.list_agent_runs(workflow.id, limit=200)
-                run_counts: dict[str, int] = {}
-                for run in runs:
-                    key = run.status.value
-                    run_counts[key] = run_counts.get(key, 0) + 1
-                payload = serialize_workflow(workflow)
-                payload.update({
-                    "task_count": len(tasks),
-                    "task_counts": counts,
-                    "run_count": len(runs),
-                    "run_counts": run_counts,
-                })
-                workflows.append(payload)
+                workflows.append(self._workflow_payload(state, workflow))
             return {"total": total, "limit": limit, "offset": offset, "workflows": workflows}
         finally:
             state.close()
+
+    @staticmethod
+    def _workflow_payload(state: StateStore, workflow: Workflow) -> dict[str, object]:
+        """One workflow header plus task/run rollups for list surfaces."""
+        tasks = state.list_tasks(workflow.id)
+        counts: dict[str, int] = {}
+        for task in tasks:
+            key = str(task.status)
+            counts[key] = counts.get(key, 0) + 1
+        runs = state.list_agent_runs(workflow.id, limit=200)
+        run_counts: dict[str, int] = {}
+        for run in runs:
+            key = run.status.value
+            run_counts[key] = run_counts.get(key, 0) + 1
+        payload = serialize_workflow(workflow)
+        payload.update({
+            "task_count": len(tasks),
+            "task_counts": counts,
+            "run_count": len(runs),
+            "run_counts": run_counts,
+        })
+        return payload
 
     def get_workflow(self, directory: str | Path, workflow_id: str) -> dict[str, object] | None:
         """Phase 1+3: DTO-backed payload with serialized tasks + stored provenance."""
@@ -511,6 +649,31 @@ class AgentOpsController:
         finally:
             state.close()
 
+    def list_recent_agent_runs(
+        self,
+        directory: str | Path,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict[str, object]]:
+        """Newest agent runs first, windowed from the end of history.
+
+        ``state.list_agent_runs`` stores rows oldest-first; the Runs surface
+        wants the newest window without paging through the whole table.
+        ``offset`` steps further back into older history.
+        """
+        if not isinstance(limit, int) or limit < 1 or not isinstance(offset, int) or offset < 0:
+            raise ValueError("Run list limit must be positive and offset non-negative.")
+        root = self._operation_root(directory)
+        state = StateStore(self._state_path(root))
+        try:
+            total = state.count_agent_runs()
+            start = max(0, total - limit - offset)
+            rows = state.list_agent_runs(limit=limit, offset=start)
+            rows.reverse()
+            return [serialize_agent_run(run) for run in rows]
+        finally:
+            state.close()
+
     def get_agent_run(self, directory: str | Path, run_id: str) -> dict[str, object] | None:
         root = self._operation_root(directory)
         state = StateStore(self._state_path(root))
@@ -537,6 +700,26 @@ class AgentOpsController:
                 serialize_verification_run(run)
                 for run in state.list_verification_runs(workflow_id, task_id, limit=limit, offset=offset)
             ]
+        finally:
+            state.close()
+
+    def list_recent_verification_runs(
+        self,
+        directory: str | Path,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict[str, object]]:
+        """Newest verification runs first, windowed from the end of history."""
+        if not isinstance(limit, int) or limit < 1 or not isinstance(offset, int) or offset < 0:
+            raise ValueError("Run list limit must be positive and offset non-negative.")
+        root = self._operation_root(directory)
+        state = StateStore(self._state_path(root))
+        try:
+            total = state.count_verification_runs()
+            start = max(0, total - limit - offset)
+            rows = state.list_verification_runs(limit=limit, offset=start)
+            rows.reverse()
+            return [serialize_verification_run(run) for run in rows]
         finally:
             state.close()
 
@@ -573,6 +756,26 @@ class AgentOpsController:
                 serialize_failure(failure)
                 for failure in state.list_failures(workflow_id, task_id, limit=limit, offset=offset)
             ]
+        finally:
+            state.close()
+
+    def list_recent_failures(
+        self,
+        directory: str | Path,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict[str, object]]:
+        """Newest failures first, windowed from the end of history."""
+        if not isinstance(limit, int) or limit < 1 or not isinstance(offset, int) or offset < 0:
+            raise ValueError("Failure list limit must be positive and offset non-negative.")
+        root = self._operation_root(directory)
+        state = StateStore(self._state_path(root))
+        try:
+            total = state.count_failures()
+            start = max(0, total - limit - offset)
+            rows = state.list_failures(limit=limit, offset=start)
+            rows.reverse()
+            return [serialize_failure(failure) for failure in rows]
         finally:
             state.close()
 

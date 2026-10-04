@@ -561,6 +561,30 @@ class StateStore:
             row = self.connection.execute(query, params).fetchone()
         return int(row["total"])
 
+    def count_events(self) -> int:
+        """Total typed-event rows; lets callers page the newest events."""
+        with self._lock:
+            row = self.connection.execute("SELECT COUNT(*) AS total FROM typed_events").fetchone()
+        return int(row["total"])
+
+    def count_agent_runs(self) -> int:
+        """Total agent-run rows; lets callers window the newest runs."""
+        with self._lock:
+            row = self.connection.execute("SELECT COUNT(*) AS total FROM agent_runs").fetchone()
+        return int(row["total"])
+
+    def count_verification_runs(self) -> int:
+        """Total verification-run rows; lets callers window the newest runs."""
+        with self._lock:
+            row = self.connection.execute("SELECT COUNT(*) AS total FROM verification_runs").fetchone()
+        return int(row["total"])
+
+    def count_failures(self) -> int:
+        """Total failure rows; lets callers window the newest failures."""
+        with self._lock:
+            row = self.connection.execute("SELECT COUNT(*) AS total FROM failures").fetchone()
+        return int(row["total"])
+
     def list_workflows(self, limit: int = 50, offset: int = 0, status: str | None = None) -> list[Workflow]:
         if not isinstance(limit, int) or not isinstance(offset, int) or limit < 0 or offset < 0:
             raise ValueError("Workflow list limit and offset must be non-negative integers.")

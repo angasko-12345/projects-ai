@@ -12,6 +12,7 @@ dependencies = []
 [project.optional-dependencies]
 yaml = ["PyYAML>=6.0"]
 windows = ["pyinstaller>=6.0"]
+desktop = ["PySide6>=6.5"]
 
 [project.scripts]
 agentops = "agentops.cli:main"

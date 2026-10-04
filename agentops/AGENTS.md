@@ -25,11 +25,11 @@ python -m unittest discover -s tests
 
 - 21 test modules, all `unittest.TestCase`. `pytest` may be used for convenience but is
   not the source of truth and is not configured in the repository.
-- GUI tests that build a real Tk root are skipped when no display is available
-  (`tests/tk_display.py`). Linux CI is headless, so those classes are marked
-  `@requires_display` rather than faking a GUI: production GUI code never
-  pretends a display exists. Controller-level GUI logic lives in non-Tk test
-  classes and runs everywhere.
+- GUI widget tests run on the Qt offscreen platform (`tests/qt_display.py`), so headless
+  Linux CI and a developer machine behave identically; those classes are marked
+  `@requires_qt` and are skipped only when the optional PySide6 dependency is
+  absent. Production GUI code never pretends a display exists. Controller-level
+  GUI logic lives in non-Qt test classes and runs everywhere.
 - The current baseline (verified 2026-10-03) is **444 tests, 4 skipped
   by environment, OK**. That is a dated observation, not a contract. Treat any new failure
   or skip as attributable to the current work until proven otherwise. Do not rely on
@@ -131,10 +131,11 @@ a task verified. Empty, interrupted, unknown, or all-skipped work is never succe
 - Preserve constructor injection and the existing seams for state, registry, runner,
   verifier, and workflow dependencies. Tests rely on fake runners, mocked registries, and
   in-memory SQLite; do not introduce global services.
-- Keep GUI updates on the Tk thread through `root.after()`; long-running work belongs on
-  controller or background threads.
+- Keep GUI updates on the Qt GUI thread. Controllers read synchronously, so widgets submit
+  them through `gui/bridge.py`, which runs the work on a worker pool and delivers results
+  as Qt signals; long-running operations belong on controller or background threads.
 - Keep presentation boundaries explicit: `StateStore` returns DTOs and plain data to the
-  controller and CLI. GUI-facing serialization belongs in `gui_controller.py`, not in Tk
+  controller and CLI. GUI-facing serialization belongs in `gui_controller.py`, not in Qt
   widgets or raw SQLite row handling.
 - Normalize paths to `as_posix()` when crossing a UI or persistence boundary.
 - Preserve legacy behavior and compatibility unless the request changes it. Several
@@ -156,7 +157,7 @@ a task verified. Empty, interrupted, unknown, or all-skipped work is never succe
   `python scripts/build_windows_exe.py`, driven by `AgentOps.spec`.
 - Rebuild and archive-inspect only when packaging-affecting code changes. A successful
   PyInstaller build is not proof of a working bundle: verify the archive contains
-  `agentops.*`, Tk, SQLite, and `agents/agents.yaml`, then smoke-test startup and
+  `agentops.*`, PySide6, SQLite, and `agents/agents.yaml`, then smoke-test startup and
   shutdown and confirm process exit.
 - Stop lingering `AgentOps.exe` processes before rebuilding. A locked executable causes
   rebuild failures.

@@ -125,6 +125,12 @@ class WorkflowResult:
     summary: str
 
 
+# Task roles created by create_standard_workflow, in dependency order.
+# Single source of truth: the GUI controller pins explicit agent preferences
+# against this tuple when an operator chooses a fixed agent for a task.
+STANDARD_TASK_ROLES = ("architecture", "implementation", "verification", "review")
+
+
 class WorkflowEngine:
     def __init__(self, config: AppConfig, state: StateStore, registry: AgentRegistry,
                  runner: AgentRunner, verifier: Verifier,
@@ -303,13 +309,13 @@ class WorkflowEngine:
 
     def create_standard_workflow(self, description: str) -> tuple[str, list[Task]]:
         workflow_id = self.state.create_workflow(description)
-        plan = self.state.add_task(Task(f"Plan a safe implementation for: {description}", "architecture", workflow_id,
+        plan = self.state.add_task(Task(f"Plan a safe implementation for: {description}", STANDARD_TASK_ROLES[0], workflow_id,
                                         max_attempts=self.config.max_attempts))
-        implementation = self.state.add_task(Task(f"Implement: {description}", "implementation", workflow_id,
+        implementation = self.state.add_task(Task(f"Implement: {description}", STANDARD_TASK_ROLES[1], workflow_id,
                                                   dependencies=(plan.id,), max_attempts=self.config.max_attempts))
-        verification = self.state.add_task(Task("Run configured project verification commands.", "verification", workflow_id,
+        verification = self.state.add_task(Task("Run configured project verification commands.", STANDARD_TASK_ROLES[2], workflow_id,
                                                 dependencies=(implementation.id,), max_attempts=1))
-        review = self.state.add_task(Task(f"Review the completed change for: {description}", "review", workflow_id,
+        review = self.state.add_task(Task(f"Review the completed change for: {description}", STANDARD_TASK_ROLES[3], workflow_id,
                                           dependencies=(verification.id,), max_attempts=self.config.max_attempts))
         return workflow_id, [plan, implementation, verification, review]
 

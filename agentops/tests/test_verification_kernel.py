@@ -6,16 +6,15 @@ import sqlite3
 import sys
 import tempfile
 import threading
-import tkinter as tk
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 try:  # `discover -s tests` puts tests/ on sys.path; direct runs do not.
-    from tests.tk_display import requires_display
+    from tests.qt_display import destroy, make_context, requires_qt, wait_until
 except ModuleNotFoundError:
-    from tk_display import requires_display
+    from qt_display import destroy, make_context, requires_qt, wait_until
 
 from agentops.cli import main as cli_main
 from agentops.config import AppConfig, AgentConfig, load_config
@@ -827,10 +826,12 @@ class VerificationInspectionTests(unittest.TestCase):
             self.assertEqual(len(workflow["verifications"]), 1)
 
 
-@requires_display
+@requires_qt
 class VerificationGuiTests(unittest.TestCase):
+    """The task detail panel must surface the task's verification runs."""
+
     def test_selected_task_shows_verification(self):
-        from agentops.gui import AgentOpsApp
+        from agentops.gui.detail import TaskDetailPanel
 
         class Controller:
             def detect_agents(self):
@@ -846,29 +847,33 @@ class VerificationGuiTests(unittest.TestCase):
             def list_verification_runs(self, directory, workflow_id=None, task_id=None,
                                        limit=50, offset=0):
                 return [{
+                    "id": "ver-1",
                     "overall_status": "passed",
                     "profile_name": "standard",
                     "passed_checks": 2,
                     "total_checks": 2,
+                    "failed_checks": 0,
                 }]
 
-        root = tk.Tk()
-        root.withdraw()
-        try:
-            app = AgentOpsApp(root, controller=Controller())
-            app._update_tasks([{
-                "id": "verify-1", "role": "verification", "status": "passed",
-                "assigned_agent": "", "attempts": 1, "dependencies": (),
-                "description": "check", "result": "ok",
-            }])
-            app.task_tree.selection_set("task-0")
-            app.show_selected_task()
-            self.assertIn("Verification:", app.output.get("1.0", "end"))
-        finally:
-            try:
-                root.destroy()
-            except tk.TclError:
-                pass
+            def list_failures(self, directory, workflow_id=None, task_id=None,
+                              limit=50, offset=0):
+                return []
+
+        context = make_context(Controller())
+        panel = TaskDetailPanel(context)
+        self.addCleanup(destroy, panel)
+        panel.set_task({
+            "id": "verify-1", "role": "verification", "status": "passed",
+            "assigned_agent": "", "attempts": 1, "dependencies": (),
+            "description": "check", "result": "ok",
+        })
+        wait_until(lambda: len(panel._verification_table.rows()) == 1)
+        rows = panel._verification_table.rows()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["overall_status"], "passed")
+        self.assertEqual(rows[0]["profile_name"], "standard")
+        self.assertEqual(rows[0]["passed_checks"], 2)
+        self.assertEqual(rows[0]["total_checks"], 2)
 
 
 class VacuousPassAndArtifactDegradationTests(unittest.TestCase):

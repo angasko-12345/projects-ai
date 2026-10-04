@@ -6,16 +6,15 @@ import sqlite3
 import sys
 import tempfile
 import threading
-import tkinter as tk
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 try:  # `discover -s tests` puts tests/ on sys.path; direct runs do not.
-    from tests.tk_display import requires_display
+    from tests.qt_display import destroy, make_context, requires_qt, wait_until
 except ModuleNotFoundError:
-    from tk_display import requires_display
+    from qt_display import destroy, make_context, requires_qt, wait_until
 
 from agentops.agent_run import (
     AgentRunContext,
@@ -509,6 +508,7 @@ class RunsGuiController:
     def list_agent_runs(self, directory, workflow_id=None, task_id=None,
                         status=None, limit=50, offset=0):
         return [{
+            "id": "run-1",
             "status": "completed",
             "agent": "demo",
             "attempt": 2,
@@ -517,37 +517,42 @@ class RunsGuiController:
             "log_path": "demo.meta.log",
         }]
 
+    def list_verification_runs(self, directory, workflow_id=None, task_id=None,
+                               limit=50, offset=0):
+        return []
 
-@requires_display
-class RunsGuiTests(unittest.TestCase):
+    def list_failures(self, directory, workflow_id=None, task_id=None,
+                      limit=50, offset=0):
+        return []
+
+
+@requires_qt
+class TaskDetailRunsTests(unittest.TestCase):
+    """The task detail panel must surface the task's own agent runs."""
+
     def test_selected_task_shows_agent_runs(self):
-        from agentops.gui import AgentOpsApp
+        from agentops.gui.detail import TaskDetailPanel
 
-        root = tk.Tk()
-        root.withdraw()
-        try:
-            app = AgentOpsApp(root, controller=RunsGuiController())
-            app._update_tasks([{
-                "id": "task-1",
-                "role": "implementation",
-                "status": "passed",
-                "assigned_agent": "demo",
-                "attempts": 2,
-                "dependencies": (),
-                "description": "do work",
-                "result": "done",
-            }])
-            app.task_tree.selection_set("task-0")
-            app.show_selected_task()
-            output = app.output.get("1.0", "end")
-            self.assertIn("Agent runs:", output)
-            self.assertIn("completed demo attempt 2", output)
-            self.assertIn("Log: demo.meta.log", output)
-        finally:
-            try:
-                root.destroy()
-            except tk.TclError:
-                pass
+        context = make_context(RunsGuiController())
+        panel = TaskDetailPanel(context)
+        self.addCleanup(destroy, panel)
+        panel.set_task({
+            "id": "task-1",
+            "role": "implementation",
+            "status": "passed",
+            "assigned_agent": "demo",
+            "attempts": 2,
+            "dependencies": (),
+            "description": "do work",
+            "result": "done",
+        })
+        wait_until(lambda: len(panel._runs_table.rows()) == 1)
+        rows = panel._runs_table.rows()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["status"], "completed")
+        self.assertEqual(rows[0]["agent"], "demo")
+        self.assertEqual(rows[0]["attempt"], 2)
+        self.assertEqual(rows[0]["log_path"], "demo.meta.log")
 
 
 class NoWindowCollectorTests(unittest.TestCase):
