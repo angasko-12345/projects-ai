@@ -26,6 +26,7 @@ from .runner import AgentRunner, OperationCancelled
 from .state import StateStore
 from .verification import Verifier
 from .verification_kernel import VerificationKernel
+from .execution_model import assess_workflow_readiness
 from .failure import Failure
 from .verification_model import VerificationCheck, VerificationReport, VerificationRun
 from .workflow import WorkflowEngine, STANDARD_TASK_ROLES
@@ -955,6 +956,32 @@ class AgentOpsController:
         return {"merged": True, "path": str(info["path"]), "branch": worktree.branch,
                 "base_branch": worktree.base_branch,
                 "used_stored_provenance": stored is not None}
+
+    def workflow_readiness(
+        self, directory: str | Path, workflow_id: str
+    ) -> dict[str, object]:
+        """READY assessment for one workflow, as read by the GUI.
+
+        A read-only projection of the single READY contract in
+        :mod:`agentops.execution_model`, which the engine already uses to gate
+        merges. The controller adds no readiness rule of its own, so a surface
+        reading this can never claim a weaker or stronger merge state than the
+        engine would act on.
+        """
+        root = self._operation_root(directory)
+        state = StateStore(self._state_path(root))
+        try:
+            readiness = assess_workflow_readiness(state.list_tasks(workflow_id), workflow_id)
+        finally:
+            state.close()
+        return {
+            "workflow_id": readiness.workflow_id,
+            "ready": readiness.ready,
+            "reasons": list(readiness.reasons),
+            "verification_ok": readiness.verification_ok,
+            "review_ok": readiness.review_ok,
+            "evidence_present": readiness.evidence_present,
+        }
 
     def get_worktree_ref(self, directory: str | Path, workflow_id: str) -> dict[str, object] | None:
         """Phase 3: expose persisted provenance for one workflow."""

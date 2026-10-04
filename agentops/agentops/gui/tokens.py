@@ -457,6 +457,12 @@ QFrame[card="true"] {{
     border: 1px solid {t.border};
     border-radius: {t.radius_lg}px;
 }}
+QFrame[card="true"][active="true"] {{
+    border-color: {t.accent};
+}}
+QFrame[card="true"]:hover {{
+    border-color: {t.border_strong};
+}}
 QFrame[role="divider"] {{
     background: {t.border};
     border: none;
@@ -542,6 +548,33 @@ QScrollBar:corner {{
     background: transparent;
 }}
 
+
+/* ---- tabs (control center) ---- */
+/* The page stack paints the palette window colour when unstyled, which reads
+   as a white slab inside the dark surface. */
+QTabWidget::pane {{
+    border: 1px solid {t.border};
+    border-radius: {t.radius_lg}px;
+    background: {t.surface};
+    top: -1px;
+}}
+QTabBar::tab {{
+    background: transparent;
+    color: {t.text_muted};
+    padding: {t.space_sm}px {t.space_md}px;
+    border: 1px solid transparent;
+    border-top-left-radius: {t.radius_md}px;
+    border-top-right-radius: {t.radius_md}px;
+    font-size: {t.size_small}px;
+}}
+QTabBar::tab:selected {{
+    color: {t.text};
+    background: {t.surface};
+    border-color: {t.border};
+}}
+QTabBar::tab:hover:!selected {{
+    color: {t.text};
+}}
 /* ---- overlays ---- */
 QWidget#ToastHost {{
     background: transparent;

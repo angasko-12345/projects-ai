@@ -39,6 +39,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .format import format_duration
 from .tokens import DARK, Theme, status_colors, with_alpha
 
 # Qt's QWIDGETSIZE_MAX (largest permitted widget maximumHeight); PySide6 does
@@ -89,6 +90,21 @@ def danger_button(text: str, parent: QWidget | None = None) -> QPushButton:
     button = QPushButton(text, parent)
     button.setProperty("variant", "danger")
     return button
+
+
+def _status_value(status: object) -> str:
+    return str(getattr(status, "value", status) or "").strip().lower()
+
+
+def _fact(name: str, value: object) -> str:
+    """``"Model: sonnet"`` - a fact line, empty when the value is unknown."""
+    text = str(value or "").strip()
+    return f"{name}: {text}" if name and text else text
+
+
+def _done_at(value: object) -> str:
+    text = str(value or "").strip()
+    return f"Done {text.replace('T', ' ')[5:16]}" if text else ""
 
 
 # ---------------------------------------------------------------------------
@@ -215,6 +231,103 @@ class EmptyState(QWidget):
     def set_state(self, heading: str, message: str = "") -> None:
         self._heading.setText(heading)
         self._message.setText(message)
+
+
+class Tally(QWidget):
+    """A real count broken into named outcomes (verification, task states).
+
+    One accent per outcome, applied to the number itself: the count is the
+    information, so the color marks it rather than a surrounding decoration.
+    """
+
+    def __init__(self, parent: QWidget | None = None, theme: Theme = DARK):
+        super().__init__(parent)
+        self._theme = theme
+        self._layout = QHBoxLayout(self)
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._layout.setSpacing(theme.space_xl)
+        self._items: dict[str, QLabel] = {}
+
+    def set_items(self, items: Sequence[tuple[str, int, str]]) -> None:
+        """``items``: (label, count, status) - status drives the count color."""
+        while self._layout.count():
+            item = self._layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        self._items = {}
+        for label, count, status in items:
+            block = QWidget()
+            column = QVBoxLayout(block)
+            column.setContentsMargins(0, 0, 0, 0)
+            column.setSpacing(0)
+            number = QLabel(str(int(count)))
+            foreground, _background = status_colors(status, self._theme)
+            number.setStyleSheet(f"color: {foreground}; font-weight: 600;")
+            column.addWidget(number)
+            caption = QLabel(label)
+            caption.setProperty("role", "faint")
+            column.addWidget(caption)
+            self._items[str(label)] = number
+            self._layout.addWidget(block)
+        self._layout.addStretch(1)
+
+    def text_for(self, label: str) -> str:
+        item = self._items.get(str(label))
+        return item.text() if item is not None else ""
+
+
+class LiveCard(QFrame):
+    """Current stage, the agent on it, the model, and the real elapsed time."""
+
+    def __init__(self, parent: QWidget | None = None, theme: Theme = DARK):
+        super().__init__(parent)
+        self._theme = theme
+        self.setProperty("card", True)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(theme.space_lg, theme.space_md,
+                                  theme.space_lg, theme.space_md)
+        layout.setSpacing(theme.space_sm)
+
+        self._stage_label = QLabel("")
+        self._stage_label.setProperty("role", "title")
+        layout.addWidget(self._stage_label)
+
+        agent_row = QHBoxLayout()
+        agent_row.setSpacing(theme.space_sm)
+        self._dot = PulsingDot(size=10, parent=self)
+        agent_row.addWidget(self._dot)
+        self._agent = QLabel("")
+        agent_row.addWidget(self._agent)
+        self._status = Badge()
+        agent_row.addWidget(self._status)
+        agent_row.addStretch(1)
+        layout.addLayout(agent_row)
+
+        self._facts = QHBoxLayout()
+        self._facts.setSpacing(theme.space_lg)
+        self._fact_labels: dict[str, QLabel] = {}
+        for key in ("model", "elapsed", "next"):
+            item = QLabel("")
+            item.setProperty("role", "faint")
+            self._facts.addWidget(item)
+            self._fact_labels[key] = item
+        self._facts.addStretch(1)
+        layout.addLayout(self._facts)
+
+    def set_live(self, live: dict) -> None:
+        running = bool(live.get("running"))
+        self._stage_label.setText(str(live.get("stage") or "No active stage"))
+        agent = str(live.get("agent") or "")
+        self._agent.setText(agent or "no agent assigned")
+        state = str(live.get("agent_status") or live.get("status") or "idle")
+        self._status.set_status(state)
+        foreground, _background = status_colors(state, self._theme)
+        self._dot.set_color(foreground)
+        self._dot.set_pulsing(running)
+        self._fact_labels["model"].setText(_fact("Model", live.get("model")))
+        self._fact_labels["elapsed"].setText(_fact("Elapsed", live.get("elapsed_text")))
+        self._fact_labels["next"].setText(_fact("Next", live.get("next_stage")))
 
 
 class CollapsibleSection(QFrame):
@@ -800,6 +913,190 @@ class PipelineBar(QWidget):
 
     def stage_keys(self) -> list[str]:
         return [stage.key for stage in self._stages]
+
+
+# ---------------------------------------------------------------------------
+# vertical stage flow (control center)
+# ---------------------------------------------------------------------------
+
+def _stage_state(stage: dict) -> object:
+    """A stage's lifecycle value.
+
+    ``state`` is what the control-center projections emit; ``status`` is the
+    older table-column spelling. Accepting both keeps this widget usable from
+    either payload without silently rendering an empty badge.
+    """
+    value = stage.get("state")
+    return stage.get("status") if value in (None, "") else value
+
+
+class StageNode(QFrame):
+    """One stage in the vertical flow: state, agent, model, duration, outcome.
+
+    A card rather than a status pill because each stage carries several
+    independent facts - who ran it, on what model, for how long, what
+    verification said, which failure stopped it - and a pill cannot hold them.
+    """
+
+    def __init__(self, stage: dict, theme: Theme = DARK, parent: QWidget | None = None):
+        super().__init__(parent)
+        self._theme = theme
+        self._key = str(stage.get("key", ""))
+        self.setProperty("card", True)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(theme.space_md, theme.space_sm,
+                                  theme.space_md, theme.space_sm)
+        layout.setSpacing(theme.space_xs)
+
+        head = QHBoxLayout()
+        head.setSpacing(theme.space_sm)
+        self.dot = PulsingDot(size=9, parent=self)
+        head.addWidget(self.dot)
+        title = QLabel(str(stage.get("label", "")))
+        title.setProperty("role", "section")
+        head.addWidget(title)
+        head.addStretch(1)
+        self.state = Badge()
+        head.addWidget(self.state)
+        layout.addLayout(head)
+
+        self.subtitle = QLabel("")
+        self.subtitle.setProperty("role", "muted")
+        layout.addWidget(self.subtitle)
+
+        self.fact_labels: dict[str, QLabel] = {}
+        facts = QHBoxLayout()
+        facts.setSpacing(theme.space_md)
+        for key in ("agent", "model", "duration", "verification", "completed"):
+            item = QLabel("")
+            item.setProperty("role", "faint")
+            facts.addWidget(item)
+            self.fact_labels[key] = item
+        facts.addStretch(1)
+        layout.addLayout(facts)
+
+        self.failure = QLabel("")
+        self.failure.setProperty("role", "muted")
+        self.failure.setWordWrap(True)
+        self.failure.setVisible(False)
+        layout.addWidget(self.failure)
+
+        self.set_status(_stage_state(stage))
+        self.set_facts(stage)
+
+    @property
+    def key(self) -> str:
+        return self._key
+
+    def set_status(self, status: object) -> None:
+        foreground, _background = status_colors(status, self._theme)
+        self.state.set_status(status)
+        self.dot.set_color(foreground)
+        self.dot.set_pulsing(_status_value(status) == "running")
+
+    def set_facts(self, stage: dict) -> None:
+        """Show only what the stage actually records; blank means unknown.
+
+        ``format_duration`` renders a missing duration as "-", which reads as a
+        real value in a fact line, so an unrecorded duration is dropped here.
+        """
+        self.subtitle.setText(str(stage.get("task_status", "") or ""))
+        self.fact_labels["agent"].setText(_fact("Agent", stage.get("agent")))
+        self.fact_labels["model"].setText(_fact("Model", stage.get("model")))
+        recorded = stage.get("duration_seconds")
+        self.fact_labels["duration"].setText(
+            format_duration(recorded) if isinstance(recorded, (int, float)) else "")
+        self.fact_labels["verification"].setText(
+            _fact("Verification", stage.get("verification")))
+        self.fact_labels["completed"].setText(_fact("", _done_at(stage.get("completed_at"))))
+        failure = str(stage.get("failure") or "")
+        self.failure.setText(failure)
+        self.failure.setVisible(bool(failure))
+
+
+class StageFlow(QWidget):
+    """Vertical stage list joined by dependency edges.
+
+    Vertical rather than the horizontal strip because the workflow is read top
+    to bottom - which stage, then what comes after - and each stage needs a
+    full-width line for its facts.
+    """
+
+    stage_selected = Signal(object)  # stage dict
+
+    def __init__(self, theme: Theme = DARK, parent: QWidget | None = None):
+        super().__init__(parent)
+        self._theme = theme
+        self._layout = QVBoxLayout(self)
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._layout.setSpacing(0)
+        self._nodes: list[StageNode] = []
+        self._stages: list[dict] = []
+
+    def set_stages(self, stages: Sequence[dict]) -> None:
+        while self._layout.count():
+            item = self._layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        self._nodes = []
+        self._stages = [dict(stage) for stage in stages]
+        for stage in self._stages:
+            if self._nodes:
+                self._layout.addWidget(self._edge(stage))
+            node = StageNode(stage, self._theme)
+            self._nodes.append(node)
+            self._layout.addWidget(node)
+        if self._stages:
+            self._layout.addStretch(1)
+
+    def _edge(self, stage: dict) -> QWidget:
+        """The connector into a stage, labelled with what it waits on."""
+        edge = QWidget()
+        layout = QVBoxLayout(edge)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        arrow = QLabel("↓")
+        arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        arrow.setStyleSheet(f"color: {self._theme.text_faint};")
+        layout.addWidget(arrow)
+        depends_on = [str(item) for item in stage.get("depends_on") or () if item]
+        if depends_on:
+            shown = ", ".join(depends_on[:3])
+            caption = QLabel("after " + shown + ("…" if len(depends_on) > 3 else ""))
+            caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            caption.setProperty("role", "faint")
+            layout.addWidget(caption)
+        return edge
+
+    def _on_clicked(self, stage: dict) -> None:
+        self.stage_selected.emit(stage)
+
+    def attach_clicks(self) -> None:
+        """Let each node report its own stage without per-node signal wiring."""
+        for node, stage in zip(self._nodes, self._stages):
+            node.mousePressEvent = (  # type: ignore[method-assign]
+                lambda _event=None, s=stage: self._on_clicked(s)
+            )
+
+    def stage_keys(self) -> list[str]:
+        return [node.key for node in self._nodes]
+
+    def stage_states(self) -> list[str]:
+        return [str(stage.get("state") or "") for stage in self._stages]
+
+    def node_for(self, key: str) -> StageNode | None:
+        return next((node for node in self._nodes if node.key == key), None)
+
+    def highlight(self, key: str) -> None:
+        """Mark one stage as the one in focus; clears the mark when empty."""
+        for node in self._nodes:
+            active = bool(key) and node.key == key
+            if bool(node.property("active")) == active:
+                continue
+            node.setProperty("active", active)
+            node.style().unpolish(node)
+            node.style().polish(node)
 
 
 # ---------------------------------------------------------------------------

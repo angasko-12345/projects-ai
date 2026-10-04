@@ -34,24 +34,40 @@ WORKFLOW = {
 TASKS = [
     {"id": "t-1", "workflow_id": "wf-1", "role": "architecture", "status": "passed",
      "description": "plan the work", "assigned_agent": "codex", "attempts": 1,
-     "max_attempts": 3, "result": "planned", "verified": True,
-     "dependencies": [], "created_at": "2026-10-03T12:00:01Z"},
+     "max_attempts": 3, "result": "planned", "verified": False,
+     "dependencies": [], "created_at": "2026-10-03T12:00:01Z",
+     "started_at": "2026-10-03T12:00:01Z", "finished_at": "2026-10-03T12:04:00Z"},
     {"id": "t-2", "workflow_id": "wf-1", "role": "implementation", "status": "running",
      "description": "do the work", "assigned_agent": "codex", "attempts": 1,
-     "max_attempts": 3, "result": None, "verified": False, "dependencies": ["t-1"],
-     "created_at": "2026-10-03T12:00:02Z"},
+     "max_attempts": 3, "result": None, "verified": False,
+     "dependencies": ["t-1"], "created_at": "2026-10-03T12:00:02Z",
+     "started_at": "2026-10-03T12:10:00Z", "finished_at": None},
+    {"id": "t-3", "workflow_id": "wf-1", "role": "verification", "status": "pending",
+     "description": "verify the work", "assigned_agent": "codex", "attempts": 0,
+     "max_attempts": 3, "result": None, "verified": False,
+     "dependencies": ["t-2"], "created_at": "2026-10-03T12:00:03Z"},
+    {"id": "t-4", "workflow_id": "wf-1", "role": "review", "status": "pending",
+     "description": "review the change", "assigned_agent": None, "attempts": 0,
+     "max_attempts": 3, "result": None, "verified": False,
+     "dependencies": ["t-3"], "created_at": "2026-10-03T12:00:04Z"},
 ]
 
 RUNS = [
     {"id": "r-1", "workflow_id": "wf-1", "task_id": "t-2", "attempt": 1,
      "agent": "codex", "status": "completed", "exit_code": 0, "duration_seconds": 12.5,
-     "model": "gpt-5-codex", "started_at": "2026-10-03T12:10:00Z", "log_path": "a1.log"},
+     "model": "gpt-5-codex", "role": "implementation", "started_at": "2026-10-03T12:10:00Z",
+     "ended_at": "2026-10-03T12:10:12Z", "log_path": "a1.log",
+     "worktree": "D:/repo/.agentops/worktrees/wf-1", "files_changed": ["src/app.py"],
+     "diff_stat": "src/app.py | 12 +", "error": None,
+     "structured_result": {"changed": ["src/app.py"]}},
     {"id": "r-2", "workflow_id": "wf-1", "task_id": "t-3", "attempt": 2,
      "agent": "claude", "status": "failed", "exit_code": 1, "duration_seconds": 3.0,
-     "model": "sonnet", "started_at": "2026-10-03T12:11:00Z", "log_path": "a2.log"},
-    {"id": "r-3", "workflow_id": "wf-1", "task_id": "t-3", "attempt": 1,
+     "model": "sonnet", "role": "verification", "started_at": "2026-10-03T12:11:00Z",
+     "log_path": "a2.log"},
+    {"id": "r-3", "workflow_id": "wf-1", "task_id": "t-2", "attempt": 1,
      "agent": "codex", "status": "running", "exit_code": None, "duration_seconds": None,
-     "model": "gpt-5-codex", "started_at": "2026-10-03T12:12:00Z", "log_path": "a3.log"},
+     "model": "gpt-5-codex", "role": "implementation", "started_at": "2026-10-03T12:12:00Z",
+     "log_path": "a3.log"},
 ]
 
 VERIFICATIONS = [
@@ -62,9 +78,11 @@ VERIFICATIONS = [
 ]
 
 FAILURES = [
-    {"id": "f-1", "workflow_id": "wf-1", "task_id": "t-2", "category": "test_failure",
-     "severity": "high", "recommended_action": "retry", "retryable": True,
-     "repairable": True, "created_at": "2026-10-03T12:08:00Z"},
+    {"id": "f-1", "workflow_id": "wf-1", "task_id": "t-2", "agent_run_id": "r-3",
+     "category": "test_failure", "source": "verification", "severity": "high",
+     "recommended_action": "retry_same_agent", "retryable": True,
+     "repairable": True, "primary_error": "assert 1 == 2", "evidence": None,
+     "created_at": "2026-10-03T12:08:00Z"},
 ]
 
 WORKTREES = [
@@ -159,6 +177,18 @@ class FakeController:
     def list_recent_failures(self, directory, limit=100, offset=0):
         self._rec("list_recent_failures", directory)
         return FAILURES
+
+    def query_events(self, directory, workflow_id=None, task_id=None,
+                     agent_run_id=None, event_type=None, limit=100, offset=0):
+        self._rec("query_events", directory, workflow_id=workflow_id)
+        return [event for event in EVENTS
+                if workflow_id is None or event.get("workflow_id") == workflow_id]
+
+    def workflow_readiness(self, directory, workflow_id):
+        self._rec("workflow_readiness", directory, workflow_id)
+        return {"workflow_id": workflow_id, "ready": False,
+                "reasons": ["no passed review task"], "verification_ok": True,
+                "review_ok": False, "evidence_present": True}
 
     def list_worktrees(self, directory):
         self._rec("list_worktrees", directory)
@@ -284,7 +314,7 @@ class MainWindowShellTests(unittest.TestCase):
 
     def test_list_views_render_their_rows(self):
         expected = {
-            "tasks": 2, "runs": 3, "verification": 2, "failures": 1,
+            "tasks": 4, "runs": 3, "verification": 2, "failures": 1,
             "worktrees": 1, "artifacts": 1, "agents": 2,
         }
         for view_id, rows in expected.items():
@@ -299,7 +329,7 @@ class MainWindowShellTests(unittest.TestCase):
         self._activate("workflows")
         self.assertTrue(wait_until(lambda: view._list.proxy.rowCount() == 1))
         view._list.select_row_index(0)
-        self.assertTrue(wait_until(lambda: view._tasks.proxy.rowCount() == 2))
+        self.assertTrue(wait_until(lambda: view._tasks.proxy.rowCount() == 4))
         self.assertEqual(view._runs.proxy.rowCount(), 3)
         self.assertTrue(wait_until(lambda: view._artifacts.proxy.rowCount() == 1))
 
