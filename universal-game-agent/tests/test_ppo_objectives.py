@@ -21,19 +21,23 @@ except ImportError:
     _HAS_TORCH = False
 
 
-class FixedPolicy(nn.Module):
-    """Deterministic policy: fixed per-call logits/values, shift-invariant dummy param."""
+if _HAS_TORCH:
+    # `nn.Module` is the base class, so the definition has to stay inside the
+    # guard: without torch the name does not exist and a module-scope class
+    # statement turns the whole file into an import error instead of a skip.
+    class FixedPolicy(nn.Module):
+        """Deterministic policy: fixed per-call logits/values, shift-invariant dummy param."""
 
-    def __init__(self, step_logits, step_values, hidden_size=8, layers=1):
-        super().__init__()
-        self.register_buffer("step_logits", step_logits.clone())
-        self.register_buffer("step_values", step_values.clone())
-        self.dummy = nn.Parameter(torch.zeros(1))
-        self.h, self.l = hidden_size, layers
+        def __init__(self, step_logits, step_values, hidden_size=8, layers=1):
+            super().__init__()
+            self.register_buffer("step_logits", step_logits.clone())
+            self.register_buffer("step_values", step_values.clone())
+            self.dummy = nn.Parameter(torch.zeros(1))
+            self.h, self.l = hidden_size, layers
 
-    def forward_sequence(self, obs, hidden):
-        logits = self.step_logits[: obs.shape[0]] + self.dummy  # shift keeps softmax identical
-        return logits, self.step_values[: obs.shape[0]], torch.zeros(self.l, 1, self.h)
+        def forward_sequence(self, obs, hidden):
+            logits = self.step_logits[: obs.shape[0]] + self.dummy  # shift keeps softmax identical
+            return logits, self.step_values[: obs.shape[0]], torch.zeros(self.l, 1, self.h)
 
 
 class ConstEnv:

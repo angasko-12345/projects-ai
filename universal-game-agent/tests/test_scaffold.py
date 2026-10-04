@@ -71,5 +71,28 @@ class TestLoggingValidation(unittest.TestCase):
                         handler.close()
 
 
+class TestOptionalDependencyGates(unittest.TestCase):
+    """A gated test module must still import when the dependency is absent.
+
+    ``tests/_bootstrap.py`` puts the product on ``sys.path``, and the
+    torch-dependent modules gate their imports on ``try: import torch`` so
+    their tests skip on a machine without it. A reference to a guarded name
+    outside that ``try`` (a class statement, a module-level ``getattr``) is a
+    ``NameError``, not an ``ImportError``, so it escapes the guard and unittest
+    reports the whole module as an error - masking every real result on that
+    box with tests that were never going to run anyway.
+    """
+
+    GATED_MODULES = (
+        "tests.test_ppo_objectives",
+        "tests.test_external_experiment_orchestration",
+    )
+
+    def test_gated_test_modules_import_without_torch(self):
+        for name in self.GATED_MODULES:
+            with self.subTest(module=name):
+                importlib.import_module(name)
+
+
 if __name__ == "__main__":
     unittest.main()

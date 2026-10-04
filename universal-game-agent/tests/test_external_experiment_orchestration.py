@@ -35,8 +35,10 @@ except ImportError:
     _HAS_DEPS = False
 
 # Captured before any test patches the module, so the real cleanup stays
-# reachable from the fake that stands in for it.
-_REAL_STOP = getattr(_xp, "stop", None)
+# reachable from the fake that stands in for it. `_xp` only exists when the
+# guarded import above succeeded, so these stay None without the dependencies
+# instead of raising NameError and turning every skipped test into an error.
+_REAL_STOP = getattr(_xp, "stop", None) if _HAS_DEPS else None
 _REAL_DUMP = json.dump
 
 _CONFIG_YAML = """\
