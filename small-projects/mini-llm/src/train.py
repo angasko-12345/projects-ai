@@ -300,9 +300,12 @@ def check_resume_provenance(ckpt: dict, cfg: Config, checkpoint_path: str) -> No
               f"val={current['val_sha256'][:12]}... "
               f"tokenizer={current['tokenizer_sha256'][:12]}...")
         return
+    # Joined outside the f-string: a backslash inside an f-string expression is
+    # a syntax error before Python 3.12, and 3.11 is the supported floor.
+    listed = "\n  ".join(mismatches)
     raise SystemExit(
         f"refusing to resume {checkpoint_path}: its data does not match the current "
-        f"artifacts.\n  {'\n  '.join(mismatches)}\n"
+        f"artifacts.\n  {listed}\n"
         f"  checkpoint data: train={recorded.get('train_bin') if recorded else 'unknown'} "
         f"tokenizer={recorded.get('tokenizer_path') if recorded else 'unknown'}\n"
         f"  current data:   train={cfg.train_bin} tokenizer={cfg.tokenizer_path}\n"
