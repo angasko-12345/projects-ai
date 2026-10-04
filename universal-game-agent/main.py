@@ -77,7 +77,7 @@ def _build_env_model(cfg: dict, base_seed: int):
     probe = make_env()
     num_actions = int(probe.action_space.n)
     probe.close()
-    model = ActorCritic(num_actions=num_actions, **cfg.get("model", {}))
+    model = ActorCritic(num_actions=num_actions, **cfg.get("model") or {})
     return make_env, model, num_actions
 
 
@@ -128,7 +128,7 @@ def cmd_smoke_test(args) -> int:
         logits, value, _ = model(torch.from_numpy(stacked).unsqueeze(0), hidden)
     print(f"model: logits={tuple(logits.shape)} value={tuple(value.shape)}")
 
-    tiny = dict(cfg.get("ppo", {}), rollout_length=8, minibatch_size=8,
+    tiny = dict(cfg.get("ppo") or {}, rollout_length=8, minibatch_size=8,
                 update_epochs=1, total_timesteps=8)
     trainer = PPOTrainer(make_env(), model, PPOConfig.from_dict(tiny))
     buf, *_ = trainer.collect_rollout()  # rollout path
@@ -166,7 +166,7 @@ def cmd_train(args) -> int:
     from training.ppo import PPOConfig, PPOTrainer
 
 
-    ppo_kwargs = dict(cfg.get("ppo", {}))
+    ppo_kwargs = dict(cfg.get("ppo") or {})
     if args.timesteps is not None:
         ppo_kwargs["total_timesteps"] = args.timesteps
     if args.seed is not None:
@@ -234,7 +234,7 @@ def _build_eval_model(cfg: dict, make_env, seed: int, checkpoint):
     import torch
 
     torch.manual_seed(seed)
-    return ActorCritic(num_actions=num_actions, **cfg.get("model", {}))
+    return ActorCritic(num_actions=num_actions, **cfg.get("model") or {})
 
 
 def _print_eval_report(title: str, rep: dict) -> None:
@@ -264,7 +264,7 @@ def cmd_evaluate(args) -> int:
     from training.experiment import make_env_from_config
 
     try:
-        episodes = args.episodes if args.episodes is not None else int(cfg.get("eval", {}).get("episodes", 20))
+        episodes = args.episodes if args.episodes is not None else int((cfg.get("eval") or {}).get("episodes", 20))
     except (ValueError, TypeError) as exc:
         return _fail(f"invalid eval.episodes value: {exc}")
     if episodes <= 0:
@@ -297,7 +297,7 @@ def cmd_compare(args) -> int:
     from training.experiment import make_env_from_config
 
     try:
-        episodes = args.episodes if args.episodes is not None else int(cfg.get("eval", {}).get("episodes", 20))
+        episodes = args.episodes if args.episodes is not None else int((cfg.get("eval") or {}).get("episodes", 20))
     except (ValueError, TypeError) as exc:
         return _fail(f"invalid eval.episodes value: {exc}")
     if episodes <= 0:

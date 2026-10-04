@@ -5,6 +5,8 @@ except ImportError:  # run as script or discovered top-level: no package context
     import _bootstrap
 
 import io
+import sys
+import types
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -415,6 +417,67 @@ class TestCLIValidation(unittest.TestCase):
             _sync_curiosity_scale(PPOTrainer(env, model, PPOConfig(
                 rollout_length=8, minibatch_size=8, update_epochs=1,
                 total_timesteps=8, checkpoint_dir=tmp)), {})  # no module: no-op
+
+
+_EVAL_REPORT = {"mean_reward": 0.0, "episode_rewards": [0.0], "action_counts": {0: 1},
+                "reward_semantics": "sign", "mean_hits": 0.0, "mean_misses": 0.0,
+                "mean_length": 1.0, "episodes": 1,
+                "terminated_episodes": 0, "truncated_episodes": 1}
+
+
+class _StubPPOConfig:
+    """Enough of PPOConfig for the config-reading path under test."""
+
+    checkpoint_dir = "checkpoints"
+
+    @classmethod
+    def from_dict(cls, values):
+        return cls()
+
+
+class TestEmptyConfigSections(unittest.TestCase):
+    """A config section with no children reads as absent, not as None.
+
+    ``eval:`` with nothing under it - a key commented out while editing a
+    config - parses as ``None``, and ``cfg.get("eval", {})`` hands that
+    ``None`` straight on: ``.get`` on it raises ``AttributeError`` and
+    ``dict(None)`` raises ``TypeError``. Neither is in the set the CLI catches,
+    so an ordinary edit of a config ends the command in a traceback with exit 1
+    instead of the documented ``error: ...`` and exit 2, and the run never gets
+    as far as reporting the real problem.
+    """
+
+    def _experiment_stub(self):
+        module = types.ModuleType("training.experiment")
+        module.make_env_from_config = lambda env_cfg: (lambda: None)
+        return module
+
+    def _ppo_stub(self):
+        module = types.ModuleType("training.ppo")
+        module.PPOConfig = _StubPPOConfig
+        module.PPOTrainer = object
+        return module
+
+    def test_evaluate_falls_back_to_the_default_episode_count(self):
+        evaluate = types.ModuleType("training.evaluate")
+        evaluate.evaluate = lambda *a, **k: dict(_EVAL_REPORT, episodes=k["episodes"])
+        with patch.object(cli_main, "_load_config", return_value=({"eval": None}, None)), \
+                patch.object(cli_main, "_need_torch"), \
+                patch.object(cli_main, "_build_eval_model", return_value=object()), \
+                patch.dict(sys.modules, {"training.evaluate": evaluate,
+                                         "training.experiment": self._experiment_stub()}):
+            code, out = _run(["evaluate", "--config", "ignored.yaml"])
+        self.assertEqual(code, 0)
+        self.assertIn("episodes=20", out)
+
+    def test_train_falls_back_to_the_default_ppo_settings(self):
+        missing = str(ROOT / "checkpoints" / "does-not-exist.pt")
+        with patch.object(cli_main, "_load_config", return_value=({"ppo": None}, None)), \
+                patch.object(cli_main, "_need_torch"), \
+                patch.dict(sys.modules, {"training.ppo": self._ppo_stub(),
+                                         "training.experiment": self._experiment_stub()}):
+            code, _ = _run(["train", "--config", "ignored.yaml", "--resume", missing])
+        self.assertEqual(code, 2)
 
 
 if __name__ == "__main__":
