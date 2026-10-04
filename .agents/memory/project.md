@@ -291,7 +291,10 @@ Documentation-only; no source, test, or artifact changed. Suite re-run: 96 tests
 
 ## Bug-fix pass 2026-10-04 (this session)
 
-Five verified defects across three products; no architecture, schema, or public-behavior change.
+Six verified defects across three products; no architecture, schema, or public-behavior change.
+**Two of them were red CI jobs on `main`, both now green on `kilo/bugfix-four-runtime-defects`
+(PR #1):** `agentops` (7 errors, `test_gui_visual_states` without `@requires_qt`) had been
+failing since `2159af6`; `mini-llm` (the f-string `SyntaxError`) since `0aad33b`.
 
 - **agentops `gui/control_center.py`:** `next_stage()` returned the row after the first
   non-passed stage, so any failed stage upstream of the current one made the LiveCard
@@ -326,6 +329,10 @@ Five verified defects across three products; no architecture, schema, or public-
   test passes and the 5 pre-existing errors are unchanged third-party imports. **The 349 / 115
   figures in `.agents/AGENTS.md` were not re-verified here and still owe a run on a box with
   the dependencies installed.**
+- **agentops `tests/test_gui_visual_states.py`:** the widget class lacked the `@requires_qt`
+  marker `agentops/AGENTS.md` mandates, and its `setUp` imports `agentops.gui.shell`
+  (PySide6) before `qt_app()` can raise `SkipTest`, so on the CI runner every test in the
+  class errored. The marker makes the suite `OK (skipped=49)` where PySide6 is absent.
 - **Investigated and deliberately not changed:** `main.py::_need_torch` still raises
   `SystemExit(str)` (exit 1) where every other failure returns 2 - changing the documented
   status is a contract decision, not an obvious fix; `_build_eval_model` leaks its probe env on
