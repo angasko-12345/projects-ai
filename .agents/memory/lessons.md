@@ -643,3 +643,17 @@
   accepted. And when auditing shipped data artifacts, check whether the tests reference the
   committed file or only regenerate a copy — the latter is silent coverage.
 
+
+## 2026-10-04 - Widget attributes and helper methods share one namespace in the shell
+
+- **Symptom:** the first offscreen run of the recovery banner failed with `TypeError: 'PySide6.QtWidgets.QLabel' object is not callable` inside `_apply_interrupted_counts`.
+- **Root cause:** the shell stored the banner label as `self._recovery_detail` and also defined a helper `def _recovery_detail(counts)`. The instance attribute (set in `_build_chrome`) shadowed the method on the instance, so every call site hit the QLabel.
+- **Fix:** renamed the helper to `_recovery_summary`; the label keeps `_recovery_detail`. Call sites are one f-string, one `setText`, and one toast.
+- **Remember:** in Qt classes that mix widgets and logic in `self`, never give a helper the same name as an attribute - Python resolves both through the instance dict. Pick a verb/noun-stacked name (`_recovery_summary` vs `_recovery_detail` widget) and let the first offscreen test run confirm it.
+
+## 2026-10-04 - restoreGeometry clamps to the screen, so geometry tests must stay inside it
+
+- **Symptom:** a geometry round-trip test resized the window to 1180x740, saved, restored into a second window, and got 1024x740 - a width equal to the shell's 1024px minimum, not the saved value.
+- **Root cause:** the Qt offscreen screen is 1024x768; `QWidget.restoreGeometry` moves/clamps a saved geometry that exceeds the available screen, while a plain `resize()` does not. The asymmetry silently masks a broken restore.
+- **Fix:** size the test window inside the offscreen screen (1024x730, above the 680 minimum) so any mismatch means the restore itself failed.
+- **Remember:** when asserting saved/restored window geometry, keep the saved size within the test screen's bounds (query `QApplication.primaryScreen().size()` if unsure) - otherwise the assertion measures the platform clamp, not your code.

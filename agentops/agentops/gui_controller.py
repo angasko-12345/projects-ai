@@ -780,6 +780,21 @@ class AgentOpsController:
         finally:
             state.close()
 
+    def interrupted_work(self, directory: str | Path) -> dict[str, int]:
+        """Read-only interrupted-work counts for the shell recovery banner.
+
+        Mirrors :meth:`recover_interrupted` without mutating anything: the
+        counts are ``StateStore.count_interrupted_work``'s read-only copy of
+        the ``recover_all()`` predicates, plus their ``total`` for display.
+        """
+        root = self._operation_root(directory)
+        state = StateStore(self._state_path(root))
+        try:
+            counts = state.count_interrupted_work()
+        finally:
+            state.close()
+        return {**counts, "total": sum(counts.values())}
+
     def recover_interrupted(
         self, directory: str | Path, workflow_id: str | None = None
     ) -> dict[str, object]:

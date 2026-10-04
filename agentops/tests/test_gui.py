@@ -82,6 +82,36 @@ class ControllerObservabilityTests(unittest.TestCase):
             self.assertIn("hi", str(content["text"]))
 
 
+class InterruptedWorkFacadeTests(unittest.TestCase):
+    """Read-only interrupted-work probe backs the shell recovery banner."""
+
+    def test_probe_counts_then_recovery_consumes_them(self):
+        from agentops.agent_run import AgentRunContext
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            controller = AgentOpsController(
+                config=AppConfig({}, {}, (), max_attempts=1, concurrency=1))
+            state = StateStore(controller._state_path(root))
+            try:
+                workflow_id = state.create_workflow("interrupted facade")
+                task = state.add_task(Task("work", "implementation",
+                                            workflow_id, max_attempts=1))
+                state.claim_task(task.id)
+                state.create_agent_run(AgentRunContext(
+                    workflow_id=workflow_id, task_id=task.id))
+            finally:
+                state.close()
+
+            counts = controller.interrupted_work(root)
+            self.assertEqual(counts, {"agent_runs": 1, "verification_runs": 0,
+                                      "tasks": 1, "total": 2})
+            summary = controller.recover_interrupted(root)
+            self.assertEqual(summary, {"agent_runs": 1, "verification_runs": 0,
+                                       "tasks": 1})
+            self.assertEqual(controller.interrupted_work(root)["total"], 0)
+
+
 class WorkflowCancellationTests(unittest.TestCase):
     def test_execute_checks_cancel_event_before_starting(self):
         config = AppConfig({}, {}, (), max_attempts=1, concurrency=1)

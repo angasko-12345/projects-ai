@@ -30,7 +30,7 @@ python -m unittest discover -s tests
   `@requires_qt` and are skipped only when the optional PySide6 dependency is
   absent. Production GUI code never pretends a display exists. Controller-level
   GUI logic lives in non-Qt test classes and runs everywhere.
-- The current baseline (verified 2026-10-03) is **444 tests, 4 skipped
+- The current baseline (verified 2026-10-04) is **512 tests, 4 skipped
   by environment, OK**. That is a dated observation, not a contract. Treat any new failure
   or skip as attributable to the current work until proven otherwise. Do not rely on
   remembered counts; run the suite.

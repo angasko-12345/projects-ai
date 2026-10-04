@@ -43,13 +43,14 @@ Before substantial work:
 There is no single repository-wide test command. Each product has its own, and each runs
 from its own directory rather than from the repository root. Read the local
 `AGENTS.md` before running anything. The baselines below are the current verified values
-as of 2026-10-03 (`agentops/` after ROOT-034 DBG-08, `universal-game-agent/` after `59f5a1b`);
+as of 2026-10-04 (`agentops/` after the desktop application interactions work,
+`universal-game-agent/` after `59f5a1b`);
 they are dated observations, not contracts, and tests
 get added, so run the suite for current truth.
 
-| Product | Test command | Baseline 2026-10-03 |
+| Product | Test command | Baseline |
 |---|---|---|
-| `agentops/` | `cd agentops` then `python -m unittest discover -s tests` | 444 tests, 4 skipped by environment, OK |
+| `agentops/` | `cd agentops` then `python -m unittest discover -s tests` | 512 tests, 4 skipped by environment, OK (2026-10-04) |
 | `universal-game-agent/` | `cd universal-game-agent` then `python -m unittest discover -s tests` | 349 tests, 1 skip, OK |
 | `small-projects/mini-llm/` | `cd small-projects/mini-llm` then `python -m unittest discover -s tests` | 98 run, 1 skip, OK (2026-10-04, after restoring the tracked `data/tokenizer.json`) |
 

@@ -117,6 +117,13 @@ class FakeController:
         self.calls: list[tuple[str, tuple, dict]] = []
         self.cancelled = False
         self.task_callback = None
+        # Recovery probe state (shell banner / recover action).
+        self.interrupted: dict[str, int] = {"agent_runs": 0, "verification_runs": 0,
+                                            "tasks": 0}
+        # Workflow-result outcome knobs; defaults mirror a healthy finish.
+        self.result_ready = True
+        self.verification_ok = True
+        self.readiness_reasons = ["no passed review task"]
 
     def _rec(self, name: str, *args: object, **kwargs: object) -> None:
         self.calls.append((name, args, kwargs))
@@ -187,8 +194,20 @@ class FakeController:
     def workflow_readiness(self, directory, workflow_id):
         self._rec("workflow_readiness", directory, workflow_id)
         return {"workflow_id": workflow_id, "ready": False,
-                "reasons": ["no passed review task"], "verification_ok": True,
+                "reasons": list(self.readiness_reasons),
+                "verification_ok": self.verification_ok,
                 "review_ok": False, "evidence_present": True}
+
+    def interrupted_work(self, directory):
+        self._rec("interrupted_work", directory)
+        counts = dict(self.interrupted)
+        return {**counts, "total": sum(counts.values())}
+
+    def recover_interrupted(self, directory, workflow_id=None):
+        self._rec("recover_interrupted", directory, workflow_id=workflow_id)
+        summary = dict(self.interrupted)
+        self.interrupted = {"agent_runs": 0, "verification_runs": 0, "tasks": 0}
+        return summary
 
     def list_worktrees(self, directory):
         self._rec("list_worktrees", directory)
@@ -240,7 +259,7 @@ class FakeController:
         callback({"kind": "workflow-started", "workflow_id": "wf-2",
                   "worktree": WORKTREES[0]["path"]})
         callback({"kind": "workflow-result", "workflow_id": "wf-2",
-                  "merged": True, "ready": True})
+                  "merged": self.result_ready, "ready": self.result_ready})
 
     def finish_task(self) -> None:
         """Release the operation the way the real controller does on exit."""
@@ -395,6 +414,197 @@ class MainWindowShellTests(unittest.TestCase):
         self.window._palette.close()
         wait(20)
         self.assertFalse(self.window._palette.isVisible())
+
+    def test_command_palette_exposes_the_desktop_commands(self):
+        expected = [
+            "New Task...", "Open Dashboard", "Open Tasks", "Open Workflows",
+            "Open Agents", "Open Runs", "Open Verification", "Open Failures",
+            "Open Worktrees", "Open Artifacts", "Recover Interrupted Work",
+            "Refresh", "Settings",
+        ]
+        self.window.open_palette()
+        wait(20)
+        titles = [command.title
+                  for command in self.window._palette.visible_commands()]
+        for title in expected:
+            with self.subTest(command=title):
+                self.assertIn(title, titles)
+        self.window._palette.close()
+
+    def test_palette_commands_run_real_shell_actions(self):
+        self.window.open_palette()
+        wait(20)
+        commands = {command.title: command
+                    for command in self.window._palette.visible_commands()}
+        # Actions are wired to live shell methods, not placeholders.
+        self.assertEqual(commands["New Task..."].run, self.window.open_new_task)
+        self.assertEqual(commands["Recover Interrupted Work"].run,
+                         self.window.recover_interrupted_work)
+        self.assertEqual(commands["Refresh"].run, self.window.refresh_active)
+        # Navigation commands actually switch the active view.
+        commands["Open Runs"].run()
+        self.assertIs(self.window.active_view(), self.window._views["runs"])
+        commands["Settings"].run()
+        self.assertIs(self.window.active_view(), self.window._views["settings"])
+        self.window._palette.close()
+
+    def test_shortcuts_cover_the_desktop_contract(self):
+        for sequence in ("Ctrl+K", "Ctrl+N", "F5", "Ctrl+R", "Ctrl+B"):
+            with self.subTest(sequence=sequence):
+                self.assertIn(sequence, self.window._shortcuts)
+                self.assertTrue(self.window._shortcuts[sequence].isEnabled())
+        # Esc is contextual: armed only while the recovery banner is shown.
+        self.assertFalse(self.window._banner_escape.isEnabled())
+
+    def test_recovery_banner_surfaces_recovers_and_notifies_once(self):
+        from PySide6.QtWidgets import QMessageBox
+
+        recorded: list[tuple[str, str, str]] = []
+        original = self.window.toast
+
+        def record(title, message="", kind="info"):
+            recorded.append((str(title), str(message), str(kind)))
+            original(title, message, kind)
+
+        self.window.toast = record  # type: ignore[method-assign]
+
+        self.controller.interrupted = {"agent_runs": 2, "verification_runs": 0,
+                                       "tasks": 0}
+        self.window._check_interrupted_work()
+        self.assertTrue(wait_until(lambda: self.window._recovery_banner.isVisible()))
+        self.assertEqual(self.window._recovery_detail.text(),
+                         "2 runs require recovery")
+        self.assertTrue(self.window._banner_escape.isEnabled())
+
+        # Repeated refreshes do not repeat the notification.
+        self.window.refresh_active()
+        wait(50)
+        self.assertEqual(
+            len([entry for entry in recorded
+                 if entry[0] == "Interrupted work detected"]), 1)
+
+        with patch("agentops.gui.shell.QMessageBox.question",
+                   return_value=QMessageBox.StandardButton.Yes) as question:
+            self.window.recover_interrupted_work()
+            self.assertTrue(wait_until(
+                lambda: any(call[0] == "recover_interrupted"
+                            for call in self.controller.calls)))
+            self.assertTrue(wait_until(
+                lambda: not self.window._recovery_banner.isVisible()))
+        self.assertEqual(question.call_count, 1)
+        self.assertFalse(self.window._banner_escape.isEnabled())
+        applied = [entry for entry in recorded if entry[0] == "Recovery applied"]
+        self.assertEqual(len(applied), 1)
+        self.assertEqual(applied[0][1], "2 runs require recovery")
+        self.assertEqual(applied[0][2], "success")
+
+    def test_recovery_banner_dismissal_sticks_until_counts_change(self):
+        self.controller.interrupted = {"agent_runs": 1, "verification_runs": 1,
+                                       "tasks": 0}
+        self.window._check_interrupted_work()
+        self.assertTrue(wait_until(lambda: self.window._recovery_banner.isVisible()))
+        self.assertEqual(self.window._recovery_detail.text(),
+                         "1 run and 1 verification run require recovery")
+
+        self.window._dismiss_recovery_banner()
+        self.assertFalse(self.window._recovery_banner.isVisible())
+        self.window.refresh_active()
+        wait(50)
+        self.assertFalse(self.window._recovery_banner.isVisible())
+
+        # A fresh interruption (different counts) re-surfaces the banner.
+        self.controller.interrupted = {"agent_runs": 3, "verification_runs": 0,
+                                       "tasks": 0}
+        self.window.refresh_active()
+        self.assertTrue(wait_until(lambda: self.window._recovery_banner.isVisible()))
+        self.assertEqual(self.window._recovery_detail.text(),
+                         "3 runs require recovery")
+
+    def test_verification_failure_is_named_after_an_unready_workflow(self):
+        recorded: list[tuple[str, str, str]] = []
+        original = self.window.toast
+
+        def record(title, message="", kind="info"):
+            recorded.append((str(title), str(message), str(kind)))
+            original(title, message, kind)
+
+        self.window.toast = record  # type: ignore[method-assign]
+        self.controller.result_ready = False
+        self.controller.verification_ok = False
+        self.controller.readiness_reasons = ["verification not passed",
+                                             "no passed review task"]
+        try:
+            self.assertTrue(self.window.start_task("ship it", repository=REPOSITORY))
+            self.assertTrue(wait_until(
+                lambda: any(entry[0] == "Verification failed" for entry in recorded)))
+            failure = next(entry for entry in recorded
+                           if entry[0] == "Verification failed")
+            self.assertEqual(failure[2], "error")
+            self.assertIn("verification not passed", failure[1])
+            # The blocked path must not also fire a generic "finished" toast.
+            self.assertFalse(any(entry[0] == "Workflow finished"
+                                 for entry in recorded))
+        finally:
+            self.controller.finish_task()
+        self.assertTrue(wait_until(lambda: not self.window._active))
+
+    def test_blocked_workflow_reports_its_readiness_reasons(self):
+        recorded: list[tuple[str, str, str]] = []
+        original = self.window.toast
+
+        def record(title, message="", kind="info"):
+            recorded.append((str(title), str(message), str(kind)))
+            original(title, message, kind)
+
+        self.window.toast = record  # type: ignore[method-assign]
+        self.controller.result_ready = False
+        self.controller.verification_ok = True
+        self.controller.readiness_reasons = ["no passed review task"]
+        try:
+            self.assertTrue(self.window.start_task("ship it", repository=REPOSITORY))
+            self.assertTrue(wait_until(
+                lambda: any(entry[0] == "Workflow blocked" for entry in recorded)))
+            blocked = next(entry for entry in recorded
+                           if entry[0] == "Workflow blocked")
+            self.assertEqual(blocked[2], "warning")
+            self.assertIn("no passed review task", blocked[1])
+        finally:
+            self.controller.finish_task()
+        self.assertTrue(wait_until(lambda: not self.window._active))
+
+    def test_tray_reports_status_and_offers_hide(self):
+        self.assertEqual(self.window._tray.toolTip(), "AgentOps - Idle")
+        self.window._mark_operation(True, "Task running...")
+        self.assertEqual(self.window._tray.toolTip(), "AgentOps - Task running...")
+        actions = [action.text()
+                   for action in self.window._tray.contextMenu().actions()]
+        for text in ("Show AgentOps", "Hide AgentOps", "New Task...", "Quit"):
+            with self.subTest(action=text):
+                self.assertIn(text, actions)
+        self.window._set_status_idle()
+        self.assertEqual(self.window._tray.toolTip(), "AgentOps - Idle")
+
+    def test_window_geometry_round_trips_through_settings(self):
+        from agentops.gui.settings import load_settings
+        from agentops.gui.shell import MainWindow
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "settings.json"
+            self.window._settings_file = path
+            # Sized inside the offscreen screen (1024x768): restore clamps
+            # to the screen, which would mask a broken round trip.
+            self.window.resize(1024, 730)
+            self.window._persist_window_state()
+            self.window._save_settings()
+            self.assertTrue(path.exists())
+            restored = load_settings(path)
+            self.assertTrue(restored.geometry)
+
+            other = MainWindow(self.controller, settings=restored,
+                               settings_file=path)
+            self.addCleanup(lambda: destroy(other))
+            other.restore_geometry()
+            self.assertEqual(other.size(), self.window.size())
 
     def test_worktree_cleanup_and_merge_retry_call_the_controller(self):
         view = self.window._views["worktrees"]

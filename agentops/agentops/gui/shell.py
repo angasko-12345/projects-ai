@@ -15,6 +15,7 @@ from PySide6.QtCore import QByteArray, QEasingCurve, QPropertyAnimation, Qt, QTi
 from PySide6.QtGui import QAction, QColor, QIcon, QKeySequence, QPainter, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QFileDialog,
+    QFrame,
     QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
@@ -43,6 +44,7 @@ _SHORTCUTS: tuple[tuple[str, str], ...] = (
     ("Ctrl+K", "open_palette"),
     ("Ctrl+N", "open_new_task"),
     ("Ctrl+R", "refresh_active"),
+    ("F5", "refresh_active"),
     ("Ctrl+B", "toggle_sidebar"),
 )
 
@@ -97,6 +99,11 @@ class MainWindow(QMainWindow, AsyncMixin):
         self._pre_workflow_id: str | None = None
         self._follow_enabled = False
         self._first_show = True
+        # Recovery-banner state: one "recovery required" notification per
+        # distinct interruption, and a dismissal that sticks until the
+        # counts change.
+        self._recovery_notified_detail = ""
+        self._recovery_dismissed_detail = ""
 
         self._views: dict[str, QWidget] = {}
         self._nav_buttons: dict[str, QPushButton] = {}
@@ -173,6 +180,37 @@ class MainWindow(QMainWindow, AsyncMixin):
         bar.addWidget(self._new_task_btn)
         root.addWidget(topbar)
 
+        # -- recovery banner ------------------------------------------
+        # App-shell visibility for interrupted work: shows only when the
+        # read-only controller probe finds rows the recovery passes would
+        # reap, and hides again once recovered, dismissed, or superseded.
+        self._recovery_banner = QFrame()
+        self._recovery_banner.setObjectName("RecoveryBanner")
+        banner = QHBoxLayout(self._recovery_banner)
+        banner.setContentsMargins(18, DARK.space_sm, 18, DARK.space_sm)
+        banner.setSpacing(DARK.space_sm)
+        heading = QLabel("Interrupted work detected")
+        heading.setProperty("role", "title")
+        banner.addWidget(heading)
+        self._recovery_detail = QLabel("")
+        self._recovery_detail.setProperty("role", "muted")
+        self._recovery_detail.setWordWrap(True)
+        banner.addWidget(self._recovery_detail, stretch=1)
+        review = QPushButton("Review")
+        review.setProperty("variant", "primary")
+        review.clicked.connect(self.recover_interrupted_work)
+        banner.addWidget(review)
+        dismiss = ghost_button("Dismiss")
+        dismiss.clicked.connect(self._dismiss_recovery_banner)
+        banner.addWidget(dismiss)
+        self._recovery_banner.hide()
+        # Esc closes the contextual banner; disabled while it is hidden so
+        # the window-level shortcut never swallows Esc needlessly.
+        self._banner_escape = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
+        self._banner_escape.setEnabled(False)
+        self._banner_escape.activated.connect(self._dismiss_recovery_banner)
+        root.addWidget(self._recovery_banner)
+
         # -- body ------------------------------------------------------
         body = QHBoxLayout()
         body.setContentsMargins(0, 0, 0, 0)
@@ -246,27 +284,34 @@ class MainWindow(QMainWindow, AsyncMixin):
                 button.setChecked(True)
 
     def _build_shortcuts(self) -> None:
+        # Registry kept for discovery/tests: sequence -> shortcut.
+        self._shortcuts: dict[str, QShortcut] = {}
         for sequence, method in _SHORTCUTS:
             shortcut = QShortcut(QKeySequence(sequence), self)
             shortcut.activated.connect(getattr(self, method))
+            self._shortcuts[sequence] = shortcut
         for index, (view_id, _title, _factory) in enumerate(VIEW_SPECS):
             if index > 9:
                 break
             digit = (index + 1) % 10
             shortcut = QShortcut(QKeySequence(f"Ctrl+{digit}"), self)
             shortcut.activated.connect(lambda vid=view_id: self.navigate(vid))
+            self._shortcuts[f"Ctrl+{digit}"] = shortcut
 
     def _build_tray(self) -> None:
         self._tray = QSystemTrayIcon(_app_icon(), self)
-        self._tray.setToolTip("AgentOps")
+        self._tray.setToolTip("AgentOps - Idle")
         menu = QMenu()
         show_action = QAction("Show AgentOps", self)
         show_action.triggered.connect(self._show_window)
+        hide_action = QAction("Hide AgentOps", self)
+        hide_action.triggered.connect(self.hide)
         new_action = QAction("New Task...", self)
         new_action.triggered.connect(self.open_new_task)
         quit_action = QAction("Quit", self)
         quit_action.triggered.connect(self.close)
         menu.addAction(show_action)
+        menu.addAction(hide_action)
         menu.addAction(new_action)
         menu.addSeparator()
         menu.addAction(quit_action)
@@ -276,6 +321,10 @@ class MainWindow(QMainWindow, AsyncMixin):
             if reason == QSystemTrayIcon.ActivationReason.Trigger else None
         )
         self._tray.show()
+
+    def _set_tray_status(self, status: str) -> None:
+        """Tray tooltip mirrors the operation status (task status at a glance)."""
+        self._tray.setToolTip(f"AgentOps - {status}" if status else "AgentOps")
 
     def _show_window(self) -> None:
         """Bring the window back from a minimized or hidden state."""
@@ -327,11 +376,16 @@ class MainWindow(QMainWindow, AsyncMixin):
         self._settings.touch_repository(cleaned)
         self._save_settings()
         self._sync_repository_label()
+        # The banner and its notification belonged to the previous repo.
+        self._recovery_notified_detail = ""
+        self._recovery_dismissed_detail = ""
+        self._hide_recovery_banner()
         self.toast("Repository switched", cleaned, "info")
         active = self._stack.currentWidget()
         refresh = getattr(active, "refresh", None)
         if callable(refresh):
             refresh()
+        self._check_interrupted_work()
 
     def choose_repository(self) -> None:
         chosen = QFileDialog.getExistingDirectory(
@@ -414,6 +468,7 @@ class MainWindow(QMainWindow, AsyncMixin):
         refresh = getattr(active, "refresh", None)
         if callable(refresh):
             refresh()
+        self._check_interrupted_work()
 
     def active_view(self) -> QWidget | None:
         return self._stack.currentWidget()
@@ -450,16 +505,139 @@ class MainWindow(QMainWindow, AsyncMixin):
             self._tray.showMessage(title, message, QSystemTrayIcon.MessageIcon.Information)
 
     # ------------------------------------------------------------------
+    # interrupted work / recovery
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _recovery_summary(counts: dict) -> str:
+        """Human summary of interrupted-work counts, e.g. "2 runs require recovery"."""
+        parts: list[str] = []
+        total = 0
+        for key, singular in (("agent_runs", "run"),
+                              ("verification_runs", "verification run"),
+                              ("tasks", "task")):
+            count = int(counts.get(key) or 0)
+            total += count
+            if count:
+                parts.append(f"{count} {singular if count == 1 else singular + 's'}")
+        verb = "requires" if total == 1 else "require"
+        return f"{' and '.join(parts)} {verb} recovery"
+
+    def _check_interrupted_work(self) -> None:
+        """Refresh the recovery banner from a read-only controller probe.
+
+        Runs only while idle: during an operation the live rows are not
+        interrupted, so flagging them would cry wolf every poll.
+        """
+        if self._active or not self._repository:
+            return
+        directory = self._repository
+        self.submit(
+            "interrupted-work",
+            lambda: self._controller.interrupted_work(directory),
+            lambda counts: self._apply_interrupted_counts(directory, counts),
+        )
+
+    def _apply_interrupted_counts(self, directory: str, counts: object) -> None:
+        if directory != self._repository or self._active or not isinstance(counts, dict):
+            return  # stale: repository switched or an operation started since submit
+        total = int(counts.get("total") or 0)
+        if total <= 0:
+            self._recovery_notified_detail = ""
+            self._recovery_dismissed_detail = ""
+            self._hide_recovery_banner()
+            return
+        detail = self._recovery_summary(counts)
+        self._recovery_detail.setText(detail)
+        if detail == self._recovery_dismissed_detail:
+            return  # operator dismissed this exact interruption
+        self._show_recovery_banner()
+        if detail != self._recovery_notified_detail:
+            # One "recovery required" notification per distinct
+            # interruption, not one per refresh/poll cycle.
+            self._recovery_notified_detail = detail
+            self.toast("Interrupted work detected", detail, "warning")
+            self._notify_tray("Interrupted work detected", detail)
+
+    def _show_recovery_banner(self) -> None:
+        self._recovery_banner.show()
+        self._banner_escape.setEnabled(True)
+
+    def _hide_recovery_banner(self) -> None:
+        self._recovery_banner.hide()
+        self._banner_escape.setEnabled(False)
+
+    def _dismiss_recovery_banner(self) -> None:
+        """Dismiss (button or Esc) until the counts or repository change."""
+        self._recovery_dismissed_detail = self._recovery_detail.text()
+        self._hide_recovery_banner()
+
+    def recover_interrupted_work(self) -> None:
+        """Palette/banner action: confirm and run the existing recovery passes."""
+        if self._active:
+            self.toast("Operation in progress",
+                       "Wait for the running operation to finish before recovering.",
+                       "warning")
+            return
+        if not self._repository:
+            self.toast("No repository", "Choose a repository before recovering.",
+                       "warning")
+            return
+        directory = self._repository
+        self.submit(
+            "recover-interrupted",
+            lambda: self._controller.interrupted_work(directory),
+            lambda counts: self._confirm_recovery(directory, counts),
+        )
+
+    def _confirm_recovery(self, directory: str, counts: object) -> None:
+        if directory != self._repository or self._active or not isinstance(counts, dict):
+            return
+        if int(counts.get("total") or 0) <= 0:
+            self.toast("Nothing to recover",
+                       "No interrupted work in this repository.", "info")
+            return
+        answer = QMessageBox.question(
+            self, "Recover interrupted work",
+            f"{self._recovery_summary(counts)}.\n\n"
+            "Mark interrupted runs, verification runs, and tasks as terminated "
+            "so the queue can proceed? Interrupted work never counts as success "
+            "and worktrees are preserved.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self.submit(
+            "recover-apply",
+            lambda: self._controller.recover_interrupted(directory),
+            lambda summary: self._on_recovered(directory, summary),
+        )
+
+    def _on_recovered(self, directory: str, summary: object) -> None:
+        if directory != self._repository:
+            return
+        counts = summary if isinstance(summary, dict) else {}
+        recovered = sum(int(counts.get(key) or 0)
+                        for key in ("agent_runs", "verification_runs", "tasks"))
+        if recovered:
+            self.toast("Recovery applied", self._recovery_summary(counts), "success")
+        else:
+            self.toast("Nothing to recover", "", "info")
+        self._recovery_notified_detail = ""
+        self._recovery_dismissed_detail = ""
+        self._hide_recovery_banner()
+        self.refresh_active()
+
+    # ------------------------------------------------------------------
     # command palette / shortcuts
     # ------------------------------------------------------------------
     def open_palette(self) -> None:
         commands: list[Command] = []
         for index, (view_id, title, _factory) in enumerate(VIEW_SPECS):
-            if index > 9:
-                break
+            if view_id == "settings":
+                continue  # exposed as the standalone "Settings" command below
             digit = (index + 1) % 10
             commands.append(Command(
-                title=f"Go to {title}",
+                title=f"Open {title}",
                 run=lambda vid=view_id: self.navigate(vid),
                 keywords=f"view open navigate {view_id}",
                 shortcut=f"Ctrl+{digit}",
@@ -467,13 +645,21 @@ class MainWindow(QMainWindow, AsyncMixin):
             ))
         commands.extend([
             Command("New Task...", self.open_new_task,
-                    keywords="create start task workflow", shortcut="Ctrl+N"),
-            Command("Refresh current view", self.refresh_active,
-                    keywords="reload update", shortcut="Ctrl+R"),
+                    keywords="create start task workflow", shortcut="Ctrl+N",
+                    group="Actions"),
+            Command("Recover Interrupted Work", self.recover_interrupted_work,
+                    keywords="recovery interrupted crashed stranded restore",
+                    group="Actions"),
+            Command("Refresh", self.refresh_active,
+                    keywords="reload update sync", shortcut="F5", group="Actions"),
+            Command("Settings", lambda: self.navigate("settings"),
+                    keywords="preferences configure options", shortcut="Ctrl+0",
+                    group="Actions"),
             Command("Toggle sidebar", self.toggle_sidebar,
-                    keywords="navigation panel", shortcut="Ctrl+B"),
+                    keywords="navigation panel", shortcut="Ctrl+B",
+                    group="Actions"),
             Command("Change repository...", self.choose_repository,
-                    keywords="repo folder path switch"),
+                    keywords="repo folder path switch", group="Actions"),
         ])
         if self._active:
             commands.append(Command(
@@ -585,19 +771,19 @@ class MainWindow(QMainWindow, AsyncMixin):
             if ready and merged:
                 self.toast("Workflow finished", "Changes merged into the base branch.",
                            "success")
+                self._notify_tray("AgentOps", "Workflow merged into the base branch")
             elif ready:
                 self.toast("Workflow finished", "Ready, but nothing was merged.",
                            "warning")
+                self._notify_tray("AgentOps", "Workflow finished; nothing was merged")
             else:
-                self.toast("Workflow finished",
-                           "Not ready - open the workflow to inspect verification.",
-                           "warning")
-            self._notify_tray("AgentOps", f"Workflow {workflow_id} finished")
+                self._notify_incomplete_workflow(workflow_id)
             if workflow_id:
                 self.open_task(workflow_id)
         elif kind == "conflict":
             self._follow_enabled = False
             self.toast("Merge conflict", str(event.get("error") or ""), "error")
+            self._notify_tray("Merge conflict", str(event.get("error") or ""))
             workflow_id = str(event.get("workflow_id") or "")
             if workflow_id:
                 self.open_task(workflow_id)
@@ -606,6 +792,7 @@ class MainWindow(QMainWindow, AsyncMixin):
         elif kind == "error":
             self._follow_enabled = False
             self.toast("Operation failed", str(event.get("error") or ""), "error")
+            self._notify_tray("Operation failed", str(event.get("error") or ""))
         elif kind == "result":
             succeeded = bool(event.get("succeeded"))
             self.toast(
@@ -613,11 +800,47 @@ class MainWindow(QMainWindow, AsyncMixin):
                 f"{event.get('agent') or ''} exit {event.get('exit_code')}",
                 "success" if succeeded else "error",
             )
+            if not succeeded:
+                self._notify_tray("Agent run failed",
+                                  str(event.get("agent") or ""))
         elif kind == "thread-finished":
             self._follow_enabled = False
             self._set_status_idle()
             self._cancel_btn.setEnabled(True)
-            self.refresh_active()
+            self.refresh_active()  # also re-probes interrupted work now idle
+
+    def _notify_incomplete_workflow(self, workflow_id: str) -> None:
+        """Name why the workflow did not reach READY: verification vs blocked."""
+        fallback = "Open the workflow to inspect verification."
+        if not workflow_id or not self._repository:
+            self.toast("Workflow not ready", fallback, "warning")
+            self._notify_tray("Workflow not ready", fallback)
+            return
+        directory = self._repository
+
+        def read_readiness() -> object:
+            return self._controller.workflow_readiness(directory, workflow_id)
+
+        def on_readiness(payload: object) -> None:
+            if not isinstance(payload, dict):
+                self.toast("Workflow not ready", fallback, "warning")
+                self._notify_tray("Workflow not ready", fallback)
+                return
+            reasons = [str(reason) for reason in payload.get("reasons") or ()]
+            detail = "; ".join(reasons[:3]) or fallback
+            if not payload.get("verification_ok", True):
+                self.toast("Verification failed", detail, "error")
+                self._notify_tray("Verification failed", detail)
+            else:
+                self.toast("Workflow blocked", detail, "warning")
+                self._notify_tray("Workflow blocked", detail)
+
+        self.submit(
+            f"readiness-{workflow_id}",
+            read_readiness,
+            on_readiness,
+            lambda _message: self.toast("Workflow not ready", fallback, "warning"),
+        )
 
     def _mark_operation(self, active: bool, status: str = "") -> None:
         if active:
@@ -630,6 +853,7 @@ class MainWindow(QMainWindow, AsyncMixin):
             self._status_dot.set_pulsing(True)
             if status:
                 self._status_label.setText(status)
+                self._set_tray_status(status)
         else:
             self._set_status_idle()
 
@@ -643,10 +867,12 @@ class MainWindow(QMainWindow, AsyncMixin):
         self._cancel_btn.setEnabled(True)
         self._new_task_btn.setEnabled(True)
         self._poll.stop()
+        self._set_tray_status("Idle")
 
     def _on_poll(self) -> None:
         elapsed = time.monotonic() - self._operation_started
         self._status_label.setText(f"Running {format_duration(elapsed)}")
+        self._set_tray_status(self._status_label.text())
         self.refresh_active()
         if self._follow_enabled:
             self._check_follow()
@@ -685,6 +911,7 @@ class MainWindow(QMainWindow, AsyncMixin):
                 initial = next(iter(self._views), "")
             if initial:
                 self.navigate(initial)
+            self._check_interrupted_work()
         self._toasts.reposition()
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt API
@@ -697,6 +924,12 @@ class MainWindow(QMainWindow, AsyncMixin):
             if answer != QMessageBox.StandardButton.Yes:
                 event.ignore()
                 return
+            # Best effort on the way out: cancel so the runner terminates its
+            # child processes instead of leaving them behind the window.
+            try:
+                self._controller.cancel()
+            except Exception:  # noqa: BLE001 - shutdown must not raise
+                pass
         self._persist_window_state()
         self._save_settings()
         self._bridge.shutdown()

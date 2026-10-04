@@ -707,3 +707,38 @@ Status: complete.
 - Verification: full suite `python -m unittest discover -s tests` from `agentops/` = 445 run, 4 environment skips, OK (438 pre-existing baseline with the new file removed + 7 new); `tests.test_gui_qt` 11 OK after each shell/dashboard edit; live screenshots of all 10 views and three window sizes; no backend/routing/verification/Git/state-schema changes.
 - Files: `agentops/agentops/gui/{shell,tokens,widgets}.py`, `agentops/agentops/gui/views/*.py` (11), `agentops/agentops/gui/assets/chevron-down.svg` (new), `agentops/tests/test_gui_visual_states.py` (new).
 - Memory files untouched: `.agents/memory/**` already dirty from concurrent sessions (sole-writer rule).
+
+## Plan (Desktop application interactions — 2026-10-04)
+
+GUI-only. Palette commands (Ctrl+K) wired to live shell actions; recovery surfaced by a new
+read-only `StateStore.count_interrupted_work()` (mirror of `recover_all()`) exposed through
+`AgentOpsController.interrupted_work()`, shown as a dismissible shell banner with confirm +
+existing `recover_interrupted()`; outcome-specific toasts reading `workflow_readiness()`;
+F5 + shortcut registry; tray status/hide; quit-cancel to kill subprocesses; tests for
+discovery/actions/facade; full suite; no workflow-semantics or persistence change.
+
+## Output (Desktop application interactions — 2026-10-04)
+
+Status: complete. UI/shell files plus two additive reads (`state.py`
+`count_interrupted_work()`, `gui_controller.py` `interrupted_work()`); New Task and recent
+repositories already existed and were untouched.
+
+- Palette: nine `Open <View>` commands + New Task (Ctrl+N), Recover Interrupted Work,
+  Refresh (F5), Settings (Ctrl+0), Toggle sidebar (Ctrl+B), Change repository, cancel-active,
+  recent repositories — actions bound to live methods, typed filtering keyboard-first.
+- Recovery: idle-only probe (first show / repository switch / refresh), `RecoveryBanner`
+  (heading, "2 runs require recovery", Review, Dismiss), notify once per distinct detail
+  (toast + tray when hidden), sticky dismissal, stale-result guards, confirm-then-recover via
+  existing `recover_interrupted()`.
+- Notifications: `ready=False` results read `workflow_readiness()` → `Verification failed`
+  (error) / `Workflow blocked` (warning) with engine reasons; tray on merge/complete/conflict/
+  error/failure.
+- Shortcuts: F5 added, `window._shortcuts` registry, Esc scoped to the armed banner.
+- Tray: live-status tooltip + Hide action; close-while-running cancels first (no orphan
+  subprocesses).
+- Tests +11 across `test_state.py` (recover_all parity), `test_gui.py` (facade round trip),
+  `test_gui_qt.py` (palette/shortcuts/banner/toasts/tray/geometry).
+- Verification: full suite `python -m unittest discover -s tests` = **512 run, 4 environment
+  skips, OK**; offscreen real-entry smoke 8 s clean; driven offscreen run with the real
+  controller (16 palette commands, banner hidden at zero counts, F5, tray tooltip, real probe,
+  clean close). Docs baselines updated to 512.

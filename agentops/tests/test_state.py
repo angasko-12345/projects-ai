@@ -28,6 +28,26 @@ class StateStoreTests(unittest.TestCase):
         self.assertEqual(self.state.ready_tasks(self.workflow_id), [])
         self.assertEqual(self.state.get_task(second.id).status, TaskStatus.BLOCKED)
 
+    def test_count_interrupted_work_mirrors_recover_all(self):
+        """The banner's read-only counts must equal what recovery reaps."""
+        from agentops.agent_run import AgentRunContext
+
+        task = self.state.add_task(Task("stranded", "implementation", self.workflow_id))
+        claimed = self.state.claim_task(task.id)
+        self.assertIsNotNone(claimed)  # RUNNING -> counted and recoverable
+        self.state.create_agent_run(AgentRunContext(
+            workflow_id=self.workflow_id, task_id=task.id))  # PENDING
+        counted = self.state.count_interrupted_work()
+        recovered = self.state.recover_all()
+        self.assertEqual(counted, recovered)
+        self.assertEqual(counted["agent_runs"], 1)
+        self.assertEqual(counted["tasks"], 1)
+        # Recovery consumed the interruption: nothing left to count.
+        self.assertEqual(
+            self.state.count_interrupted_work(),
+            {"agent_runs": 0, "verification_runs": 0, "tasks": 0},
+        )
+
     def test_events_list_in_insertion_order(self):
         self.state.event(self.workflow_id, None, "first", "one")
         self.state.event(self.workflow_id, None, "second", "two")

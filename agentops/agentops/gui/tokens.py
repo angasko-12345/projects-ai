@@ -257,6 +257,15 @@ QWidget#TopBar {{
     border-bottom: 1px solid {t.border};
 }}
 
+/* ---- recovery banner ---- */
+QFrame#RecoveryBanner {{
+    background: {with_alpha(t.warning, 0.10)};
+    border-bottom: 1px solid {with_alpha(t.warning, 0.45)};
+}}
+QFrame#RecoveryBanner QLabel[role="title"] {{
+    color: {t.warning};
+}}
+
 /* ---- buttons ---- */
 QPushButton {{
     background: {t.surface_alt};

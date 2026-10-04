@@ -1952,6 +1952,35 @@ class StateStore:
             self.refresh_workflow_status(task.workflow_id)
         return recovered
 
+    def count_interrupted_work(self) -> dict[str, int]:
+        """Read-only mirror of the ``recover_all()`` predicates.
+
+        Counts exactly the rows each recovery pass would reap (agent runs
+        PENDING/STARTING/RUNNING, verification runs PENDING/RUNNING, tasks
+        RUNNING) without mutating anything, so surfaces can advertise
+        interrupted work before an operator confirms recovery. Keep the
+        predicates identical to the ``recover_*`` queries above;
+        ``tests/test_state.py`` guards the parity.
+        """
+        with self._lock:
+            runs = self.connection.execute(
+                "SELECT COUNT(*) AS total FROM agent_runs WHERE status IN (?, ?, ?)",
+                (AgentRunStatus.PENDING, AgentRunStatus.STARTING, AgentRunStatus.RUNNING),
+            ).fetchone()
+            verifications = self.connection.execute(
+                "SELECT COUNT(*) AS total FROM verification_runs WHERE status IN (?, ?)",
+                (VerificationRunStatus.PENDING, VerificationRunStatus.RUNNING),
+            ).fetchone()
+            tasks = self.connection.execute(
+                "SELECT COUNT(*) AS total FROM tasks WHERE status = ?",
+                (TaskStatus.RUNNING,),
+            ).fetchone()
+        return {
+            "agent_runs": int(runs["total"]),
+            "verification_runs": int(verifications["total"]),
+            "tasks": int(tasks["total"]),
+        }
+
     def recover_all(self) -> dict[str, int]:
         """Run every crash-recovery pass and return counts.
 
