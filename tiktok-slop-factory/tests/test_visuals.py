@@ -1,6 +1,5 @@
 """Procedural visual stage: filtergraph construction and real FFmpeg renders."""
 import subprocess
-from pathlib import Path
 
 import pytest
 
@@ -16,34 +15,34 @@ _SCRIPT = {
 }
 
 
-def test_filtergraph_defines_every_scene():
+def test_filtergraph_defines_every_scene(tmp_path):
     scenes = visuals.plan_scenes(_SCRIPT, duration=30.0, seed=5)
-    graph = visuals.build_filtergraph(scenes, Path("."), visuals.find_font())
+    graph = visuals.build_filtergraph(scenes, tmp_path, visuals.find_font())
     for scene in scenes:
         assert f"[s{scene.index}_bg]" in graph
         assert f"[s{scene.index}_out]" in graph
     assert graph.endswith("[vout]")
 
 
-def test_filtergraph_chains_one_xfade_per_boundary():
+def test_filtergraph_chains_one_xfade_per_boundary(tmp_path):
     scenes = visuals.plan_scenes(_SCRIPT, duration=30.0, seed=5)
-    graph = visuals.build_filtergraph(scenes, Path("."), visuals.find_font())
+    graph = visuals.build_filtergraph(scenes, tmp_path, visuals.find_font())
     assert graph.count("xfade=") == len(scenes) - 1
 
 
-def test_filtergraph_xfade_offsets_are_increasing():
+def test_filtergraph_xfade_offsets_are_increasing(tmp_path):
     """A non-monotonic offset makes FFmpeg abort on the second transition."""
     import re
     scenes = visuals.plan_scenes(_SCRIPT, duration=45.0, seed=9)
-    graph = visuals.build_filtergraph(scenes, Path("."), visuals.find_font())
+    graph = visuals.build_filtergraph(scenes, tmp_path, visuals.find_font())
     offsets = [float(m) for m in re.findall(r"offset=([\d.]+)", graph)]
     assert len(offsets) == len(scenes) - 1
     assert offsets == sorted(offsets)
 
 
-def test_filtergraph_single_scene_skips_xfade():
+def test_filtergraph_single_scene_skips_xfade(tmp_path):
     scenes = visuals.plan_scenes({"hook": "One short line."}, duration=10.0, seed=2)
-    graph = visuals.build_filtergraph(scenes, Path("."), visuals.find_font())
+    graph = visuals.build_filtergraph(scenes, tmp_path, visuals.find_font())
     assert "xfade=" not in graph
 
 
