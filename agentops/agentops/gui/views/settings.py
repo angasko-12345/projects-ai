@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..settings import AppSettings
-from ..widgets import Card, KeyValueGrid, ghost_button
+from ..widgets import Card, KeyValueGrid, PageHeader, ghost_button
 from .base import BaseView
 
 _SHORTCUTS = (
@@ -38,13 +38,17 @@ class SettingsView(BaseView):
     # ------------------------------------------------------------------
     def _build(self) -> None:
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setContentsMargins(18, 18, 18, 18)
+        outer.setSpacing(12)
+        self._page_header = PageHeader(
+            self.title, "Client-side preferences for this desktop app")
+        outer.addWidget(self._page_header)
         area = QScrollArea()
         area.setWidgetResizable(True)
         area.setFrameShape(QFrame.Shape.NoFrame)
         host = QWidget()
         root = QVBoxLayout(host)
-        root.setContentsMargins(18, 18, 18, 18)
+        root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(12)
 
         # Repository -----------------------------------------------------

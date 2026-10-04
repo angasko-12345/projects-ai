@@ -107,7 +107,7 @@ class Card(QFrame):
         self.layout().setSpacing(DARK.space_md)
         self._title = QLabel(title) if title else None
         if self._title is not None:
-            self._title.setProperty("role", "title")
+            self._title.setProperty("role", "section")
             self.layout().addWidget(self._title)
 
     def body(self) -> QVBoxLayout:
@@ -128,7 +128,42 @@ class SectionHeader(QWidget):
         column = QVBoxLayout()
         column.setSpacing(0)
         self._heading = QLabel(title)
-        self._heading.setProperty("role", "title")
+        self._heading.setProperty("role", "section")
+        column.addWidget(self._heading)
+        self._subtitle = QLabel(subtitle)
+        self._subtitle.setProperty("role", "subtitle")
+        self._subtitle.setVisible(bool(subtitle))
+        column.addWidget(self._subtitle)
+        layout.addLayout(column)
+        layout.addStretch(1)
+
+    def set_title(self, text: str) -> None:
+        self._heading.setText(text)
+
+    def set_subtitle(self, text: str) -> None:
+        self._subtitle.setText(text)
+        self._subtitle.setVisible(bool(text))
+
+    def add_action(self, widget: QWidget) -> None:
+        self.layout().addWidget(widget)  # type: ignore[arg-type]
+
+
+class PageHeader(QWidget):
+    """View-level header: page title, optional subtitle, trailing actions.
+
+    Every shell view starts with one so the page title sits visibly above
+    the section titles inside cards and panes.
+    """
+
+    def __init__(self, title: str, subtitle: str = "", parent: QWidget | None = None):
+        super().__init__(parent)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(DARK.space_sm)
+        column = QVBoxLayout()
+        column.setSpacing(0)
+        self._heading = QLabel(title)
+        self._heading.setProperty("role", "page")
         column.addWidget(self._heading)
         self._subtitle = QLabel(subtitle)
         self._subtitle.setProperty("role", "subtitle")

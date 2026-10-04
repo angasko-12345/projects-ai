@@ -26,6 +26,7 @@ class WorktreesView(ListDetailView):
 
     view_id = "worktrees"
     title = "Worktrees"
+    page_subtitle = "Isolated worktrees created by workflow runs"
     columns = _COLUMNS
     empty_heading = "No worktrees"
     empty_detail = "Workflows create Git worktrees for isolated agent work."

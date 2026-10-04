@@ -11,7 +11,7 @@ from __future__ import annotations
 from PySide6.QtWidgets import QHBoxLayout, QSplitter, QVBoxLayout
 
 from ..detail import DetailPanel
-from ..widgets import SearchBox, TablePanel, TableColumn, faint
+from ..widgets import PageHeader, SearchBox, TablePanel, TableColumn, faint
 from .base import BaseView
 
 
@@ -20,6 +20,7 @@ class ListDetailView(BaseView):
 
     view_id: str = ""
     title: str = ""
+    page_subtitle: str = ""
     columns: tuple[TableColumn, ...] = ()
     empty_heading: str = "Nothing to show"
     empty_detail: str = ""
@@ -30,6 +31,9 @@ class ListDetailView(BaseView):
         root = QVBoxLayout(self)
         root.setContentsMargins(18, 18, 18, 18)
         root.setSpacing(12)
+
+        self._page_header = PageHeader(self.title, self.page_subtitle)
+        root.addWidget(self._page_header)
 
         toolbar = QHBoxLayout()
         toolbar.setSpacing(8)
@@ -56,6 +60,7 @@ class ListDetailView(BaseView):
         self._table.proxy.layoutChanged.connect(self._update_count)
 
         self._rows: list[dict] = []
+        self._loaded = False
         self._selected_id: str | None = None
         self._build_hook()
         if self._detail is not None:
@@ -88,15 +93,30 @@ class ListDetailView(BaseView):
         repository = self.repository()
         if not repository:
             self._set_rows([])
+            self._loaded = False
+            self._table.set_empty_state(
+                "No repository chosen",
+                "Pick a repository from the top bar to begin.",
+            )
             if self._detail is not None:
                 self.fill_detail(None)
             return
-        self.submit("rows", self._load, self._on_rows,
-                    lambda message: self.ctx.toast("Load failed", message, "error"))
+        if not self._loaded:
+            # First load of this view: say what is happening instead of
+            # showing the permanent empty state before rows can arrive.
+            self._table.set_empty_state("Loading...", "Reading persisted state.")
+        self.submit("rows", self._load, self._on_rows, self._on_load_error)
+
+    def _on_load_error(self, message: str) -> None:
+        if not self._loaded:
+            self._table.set_empty_state("State unavailable", message)
+        self.ctx.toast("Load failed", message, "error")
 
     def _set_rows(self, rows: list[dict]) -> None:
         self._rows = rows
+        self._loaded = True
         self._table.set_rows(rows)
+        self._table.set_empty_state(self.empty_heading, self.empty_detail)
         self._update_count()
 
     def _on_rows(self, rows: object) -> None:

@@ -29,6 +29,7 @@ class VerificationView(ListDetailView):
 
     view_id = "verification"
     title = "Verification"
+    page_subtitle = "Verification runs, checks, and reports"
     columns = _COLUMNS
     empty_heading = "No verification runs yet"
     empty_detail = "Verification runs appear here when workflow tasks verify."

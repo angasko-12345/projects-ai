@@ -33,6 +33,7 @@ class FailuresView(ListDetailView):
 
     view_id = "failures"
     title = "Failures"
+    page_subtitle = "Classified failures with recommended recovery"
     columns = _COLUMNS
     empty_heading = "No failures recorded"
     empty_detail = "Classified failures and recovery actions appear here."

@@ -5,7 +5,7 @@ from __future__ import annotations
 from PySide6.QtWidgets import QHBoxLayout
 
 from ..format import elide
-from ..widgets import Card, KeyValueGrid, TableColumn, ghost_button
+from ..widgets import Card, KeyValueGrid, TableColumn, faint, ghost_button
 from .listdetail import ListDetailView
 
 _COLUMNS = (
@@ -39,6 +39,7 @@ class AgentsView(ListDetailView):
 
     view_id = "agents"
     title = "Agents"
+    page_subtitle = "Detected and configured coding-agent CLIs"
     columns = _COLUMNS
     empty_heading = "No agents detected"
     empty_detail = "Configure agents in agentops.yaml and re-detect."
@@ -49,6 +50,9 @@ class AgentsView(ListDetailView):
         card = Card("Agent detail")
         self._grid = KeyValueGrid(columns=2)
         card.add(self._grid)
+        self._detail_placeholder = faint(
+            "Pick an agent to inspect its configuration.")
+        card.add(self._detail_placeholder)
         return card  # type: ignore[return-value]
 
     def _extend_toolbar(self, toolbar: QHBoxLayout) -> None:
@@ -79,7 +83,9 @@ class AgentsView(ListDetailView):
         grid = self._grid
         grid.clear()
         if not row:
+            self._detail_placeholder.show()
             return
+        self._detail_placeholder.hide()
         metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
         grid.add_row("Display name", row.get("display_name"))
         grid.add_row("Identifier", row.get("identifier"), mono_value=True)

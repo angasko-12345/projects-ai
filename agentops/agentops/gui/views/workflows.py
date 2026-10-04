@@ -16,6 +16,7 @@ from ..format import elide, format_duration, format_timestamp, short_id
 from ..widgets import (
     EmptyState,
     KeyValueGrid,
+    PageHeader,
     PipelineBar,
     SectionHeader,
     TablePanel,
@@ -114,6 +115,11 @@ class WorkflowsView(BaseView):
         root = QVBoxLayout(self)
         root.setContentsMargins(18, 18, 18, 18)
         root.setSpacing(12)
+        self._page_header = PageHeader(
+            self.title,
+            "Plan, implement, verify, and review in isolated worktrees",
+        )
+        root.addWidget(self._page_header)
         splitter = QSplitter()
 
         # Left: workflow list.
@@ -121,7 +127,7 @@ class WorkflowsView(BaseView):
         left_body = QVBoxLayout(left)
         left_body.setContentsMargins(12, 12, 12, 12)
         left_body.setSpacing(8)
-        left_body.addWidget(SectionHeader("Workflows", "Newest first"))
+        left_body.addWidget(SectionHeader("All workflows", "Newest first"))
         self._list = TablePanel(
             _LIST_COLUMNS, "No workflows yet",
             "Start a task to create your first workflow."

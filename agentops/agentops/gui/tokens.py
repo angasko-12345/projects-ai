@@ -11,6 +11,10 @@ stylesheet.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
+
+# Bundled image assets (combo arrows, etc.); QSS needs filesystem paths.
+ASSET_DIR = Path(__file__).resolve().parent / "assets"
 
 
 @dataclass(frozen=True)
@@ -85,9 +89,9 @@ DARK = Theme(
     space_md=12,
     space_lg=16,
     space_xl=24,
-    radius_sm=4,
-    radius_md=6,
-    radius_lg=10,
+    radius_sm=3,
+    radius_md=5,
+    radius_lg=8,
 )
 
 
@@ -199,6 +203,21 @@ QLabel[role="stat"] {{
     font-size: {t.size_heading}px;
     font-weight: 600;
 }}
+QLabel[role="page"] {{
+    font-size: {t.size_heading - 2}px;
+    font-weight: 600;
+    color: {t.text};
+}}
+QLabel[role="section"] {{
+    font-size: {t.size_base}px;
+    font-weight: 600;
+    color: {t.text};
+}}
+QLabel[role="group"] {{
+    font-size: {t.size_small}px;
+    color: {t.text_faint};
+    padding-left: {t.space_sm + 3}px;
+}}
 
 /* ---- sidebar ---- */
 QWidget#Sidebar {{
@@ -208,10 +227,11 @@ QWidget#Sidebar {{
 QPushButton[nav="true"] {{
     background: transparent;
     border: none;
+    border-left: 2px solid transparent;
     border-radius: {t.radius_md}px;
     color: {t.text_muted};
     text-align: left;
-    padding: {t.space_sm + 1}px {t.space_md}px;
+    padding: {t.space_sm - 1}px {t.space_md}px;
     font-size: {t.size_base}px;
 }}
 QPushButton[nav="true"]:hover {{
@@ -221,8 +241,13 @@ QPushButton[nav="true"]:hover {{
 QPushButton[nav="true"]:pressed {{
     background: {t.surface_alt};
 }}
+QPushButton[nav="true"]:focus {{
+    background: {t.surface_hover};
+    color: {t.text};
+}}
 QPushButton[nav="true"]:checked {{
-    background: {with_alpha(t.accent, 0.14)};
+    background: {with_alpha(t.accent, 0.13)};
+    border-left: 2px solid {t.accent};
     color: {t.text};
 }}
 
@@ -238,8 +263,8 @@ QPushButton {{
     border: 1px solid {t.border_strong};
     border-radius: {t.radius_md}px;
     color: {t.text};
-    padding: {t.space_sm}px {t.space_md + 2}px;
-    min-height: {t.size_base + 6}px;
+    padding: {t.space_sm - 1}px {t.space_md}px;
+    min-height: {t.size_base + 4}px;
 }}
 QPushButton:hover {{
     background: {t.surface_hover};
@@ -272,7 +297,7 @@ QPushButton[variant="ghost"] {{
     background: transparent;
     border: 1px solid transparent;
     color: {t.text_muted};
-    padding: {t.space_xs + 1}px {t.space_sm + 2}px;
+    padding: {t.space_sm - 1}px {t.space_md}px;
 }}
 QPushButton[variant="ghost"]:hover {{
     background: {t.surface_hover};
@@ -292,6 +317,9 @@ QPushButton[variant="danger"]:disabled {{
     color: {t.text_faint};
     background: transparent;
 }}
+QPushButton:focus {{
+    border-color: {t.accent};
+}}
 
 /* ---- inputs ---- */
 QLineEdit, QComboBox, QPlainTextEdit, QTextEdit, QSpinBox {{
@@ -303,6 +331,10 @@ QLineEdit, QComboBox, QPlainTextEdit, QTextEdit, QSpinBox {{
     selection-background-color: {with_alpha(t.accent, 0.45)};
     selection-color: {t.text};
 }}
+QLineEdit, QComboBox, QSpinBox {{
+    min-height: {t.size_base + 4}px;
+    padding: {t.space_sm - 1}px {t.space_sm + 2}px;
+}}
 QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus, QTextEdit:focus {{
     border-color: {t.accent};
 }}
@@ -313,15 +345,17 @@ QLineEdit:disabled, QComboBox:disabled {{
 QLineEdit[role="search"] {{
     padding-left: {t.space_lg}px;
 }}
+QComboBox {{
+    padding-right: {t.space_lg + t.space_sm}px;
+}}
 QComboBox::drop-down {{
+    subcontrol-origin: padding;
+    subcontrol-position: center right;
     border: none;
     width: {t.space_lg}px;
 }}
 QComboBox::down-arrow {{
-    image: none;
-    border-left: {t.space_xs}px solid transparent;
-    border-right: {t.space_xs}px solid transparent;
-    border-top: {t.space_xs}px solid {t.text_muted};
+    image: url("{(ASSET_DIR / 'chevron-down.svg').as_posix()}");
     margin-right: {t.space_sm}px;
 }}
 QComboBox QAbstractItemView {{

@@ -34,6 +34,7 @@ class TasksView(ListDetailView):
 
     view_id = "tasks"
     title = "Tasks"
+    page_subtitle = "All tasks across workflows"
     columns = _COLUMNS
     empty_heading = "No tasks yet"
     empty_detail = "Tasks appear here when workflows break work into steps."

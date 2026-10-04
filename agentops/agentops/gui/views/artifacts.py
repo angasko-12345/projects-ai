@@ -25,6 +25,7 @@ class ArtifactsView(ListDetailView):
 
     view_id = "artifacts"
     title = "Artifacts"
+    page_subtitle = "Plans, diffs, reports, and logs from workflow runs"
     columns = _COLUMNS
     empty_heading = "No artifacts stored"
     empty_detail = "Plans, diffs, reports, and logs land here as workflows run."

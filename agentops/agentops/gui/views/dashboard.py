@@ -2,21 +2,28 @@
 
 Every number comes from ``dashboard_summary`` (persisted state) plus one
 ``list_agent_profiles`` read for the agents card - no invented metrics.
+Cards keep their last good values across refreshes; loading and error text
+only shows when nothing has loaded yet.
 """
 
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QSizePolicy,
     QVBoxLayout,
 )
 
 from ..format import elide, format_timestamp, short_id
+from ..tokens import DARK
 from ..widgets import (
     Card,
+    PageHeader,
     TablePanel,
     TableColumn,
     ghost_button,
@@ -34,6 +41,18 @@ _WORKFLOW_COLUMNS = (
     TableColumn("id", "Workflow", 100, format=lambda value: short_id(value, 8)),
 )
 
+# Failure severity drives the attention-row foreground; anything unknown
+# stays at the default text color so a new severity never renders invisible.
+_SEVERITY_COLORS = {
+    "critical": DARK.danger,
+    "high": DARK.danger,
+    "medium": DARK.warning,
+    "low": DARK.text_muted,
+}
+
+_NO_REPOSITORY = "Pick a repository from the top bar to begin."
+_NO_WORKFLOWS = "Start a task to see workflows here."
+
 
 def _counts_line(counts: dict, exclude: str | None = None) -> str:
     parts = [
@@ -42,6 +61,10 @@ def _counts_line(counts: dict, exclude: str | None = None) -> str:
         if value and key != exclude
     ]
     return "  ·  ".join(parts) if parts else "none yet"
+
+
+def _pretty(text: object) -> str:
+    return str(text or "unknown").replace("_", " ")
 
 
 class DashboardView(BaseView):
@@ -56,10 +79,14 @@ class DashboardView(BaseView):
         root.setContentsMargins(18, 18, 18, 18)
         root.setSpacing(12)
 
+        self._page_header = PageHeader(self.title)
+        refresh = ghost_button("Refresh")
+        refresh.clicked.connect(self.refresh)
+        self._page_header.add_action(refresh)
+        root.addWidget(self._page_header)
+
         stats = QHBoxLayout()
         stats.setSpacing(12)
-        self._repo_card = self._stat_card("Repository")
-        self._repo_detail = self._card_detail(self._repo_card)
         self._workflows_card = self._stat_card("Active workflows")
         self._workflows_stat = self._card_stat(self._workflows_card)
         self._workflows_detail = self._card_detail(self._workflows_card)
@@ -69,8 +96,11 @@ class DashboardView(BaseView):
         self._verification_card = self._stat_card("Verification health")
         self._verification_stat = self._card_stat(self._verification_card)
         self._verification_detail = self._card_detail(self._verification_card)
-        for card in (self._repo_card, self._workflows_card,
-                     self._tasks_card, self._verification_card):
+        self._agents_card = self._stat_card("Detected agents")
+        self._agents_stat = self._card_stat(self._agents_card)
+        self._agents_detail = self._card_detail(self._agents_card)
+        for card in (self._workflows_card, self._tasks_card,
+                     self._verification_card, self._agents_card):
             stats.addWidget(card, stretch=1)
         root.addLayout(stats)
 
@@ -83,10 +113,12 @@ class DashboardView(BaseView):
         attention_body = attention_card.body()
         self._attention_count = muted("")
         attention_body.addWidget(self._attention_count)
-        self._attention_empty = muted("Nothing needs attention right now.")
+        self._attention_empty = muted(_NO_REPOSITORY)
         attention_body.addWidget(self._attention_empty)
         self._attention_list = QListWidget()
         self._attention_list.setMaximumHeight(160)
+        self._attention_list.itemActivated.connect(
+            lambda _item: self.ctx.navigate("failures"))
         attention_body.addWidget(self._attention_list)
         attention_actions = QHBoxLayout()
         attention_actions.addStretch(1)
@@ -98,32 +130,26 @@ class DashboardView(BaseView):
 
         workflows_card = Card("Recent workflows")
         self._workflows_table = TablePanel(
-            _WORKFLOW_COLUMNS, "No workflows yet",
-            "Start a task to see workflows here."
+            _WORKFLOW_COLUMNS, "No workflows yet", _NO_WORKFLOWS
         )
         workflows_card.add(self._workflows_table)
         self._workflows_table.activated.connect(
-            lambda row: self.ctx.open_task(str(row.get("id") or ""), "")
-        )
+            lambda row: self.ctx.open_task(str(row.get("id") or ""), ""))
         left.addWidget(workflows_card, stretch=1)
         main.addLayout(left, stretch=3)
 
         right = QVBoxLayout()
         right.setSpacing(12)
-        agents_card = Card("Detected agents")
-        self._agents_stat = self._card_stat(agents_card)
-        self._agents_detail = self._card_detail(agents_card)
-        agents_actions = QHBoxLayout()
-        agents_actions.addStretch(1)
-        open_agents = ghost_button("Open agents")
-        open_agents.clicked.connect(lambda: self.ctx.navigate("agents"))
-        agents_actions.addWidget(open_agents)
-        agents_card.body().addLayout(agents_actions)
-        right.addWidget(agents_card)
-
         activity_card = Card("Recent activity")
         activity_body = activity_card.body()
-        self._activity_empty = muted("No activity recorded yet.")
+        # The activity card stretches to fill its column; without an
+        # Expanding occupant Qt splits the spare height between the card
+        # title and the empty label, inflating both. Expanding + centered
+        # keeps the title at one line and mirrors the workflows card.
+        self._activity_empty = muted(_NO_REPOSITORY)
+        self._activity_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._activity_empty.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         activity_body.addWidget(self._activity_empty)
         self._activity_list = QListWidget()
         activity_body.addWidget(self._activity_list)
@@ -131,8 +157,10 @@ class DashboardView(BaseView):
         main.addLayout(right, stretch=2)
 
         root.addLayout(main, stretch=1)
-        self._show_empty("No repository chosen",
-                         "Pick a repository from the top bar to begin.")
+
+        self._summary_loaded = False
+        self._agents_loaded = False
+        self._show_no_repo()
 
     # ------------------------------------------------------------------
     def _stat_card(self, title: str) -> Card:
@@ -151,30 +179,40 @@ class DashboardView(BaseView):
         card.body().addWidget(detail)
         return detail
 
-    def _show_empty(self, heading: str, message: str) -> None:
-        self._repo_detail.setText(f"{heading} - {message}")
-        self._workflows_stat.setText("-")
-        self._workflows_detail.setText("")
-        self._tasks_stat.setText("-")
-        self._tasks_detail.setText("")
-        self._verification_stat.setText("-")
-        self._verification_detail.setText("")
-        self._agents_stat.setText("-")
-        self._agents_detail.setText("")
-        self._attention_list.clear()
+    def _show_no_repo(self) -> None:
+        """Empty state: no repository chosen, nothing loaded yet."""
+        self._summary_loaded = False
+        self._agents_loaded = False
+        self._page_header.set_subtitle("No repository chosen")
+        for stat in (self._workflows_stat, self._tasks_stat,
+                     self._verification_stat, self._agents_stat):
+            stat.setText("-")
+        for detail in (self._workflows_detail, self._tasks_detail,
+                       self._verification_detail, self._agents_detail):
+            detail.setText("")
         self._attention_count.setText("")
+        self._attention_empty.setText(_NO_REPOSITORY)
         self._attention_empty.show()
+        self._attention_list.hide()
+        self._workflows_table.set_empty_state(
+            "No repository chosen", _NO_REPOSITORY)
         self._workflows_table.set_rows([])
-        self._activity_list.clear()
+        self._activity_empty.setText(_NO_REPOSITORY)
         self._activity_empty.show()
+        self._activity_list.hide()
 
     # ------------------------------------------------------------------
     def refresh(self) -> None:
         repository = self.repository()
         if not repository:
-            self._show_empty("No repository chosen",
-                             "Pick a repository from the top bar to begin.")
+            self._show_no_repo()
             return
+        if not self._summary_loaded:
+            for detail in (self._workflows_detail, self._tasks_detail,
+                           self._verification_detail):
+                detail.setText("loading...")
+        if not self._agents_loaded:
+            self._agents_detail.setText("detecting...")
         controller = self.ctx.controller
         self.submit(
             "summary",
@@ -183,7 +221,7 @@ class DashboardView(BaseView):
                 failure_limit=10, verification_limit=10,
             ),
             self._on_summary,
-            lambda message: self._show_empty("State unavailable", message),
+            self._on_summary_error,
         )
         self.submit(
             "agents",
@@ -198,13 +236,23 @@ class DashboardView(BaseView):
             self.refresh()
 
     # ------------------------------------------------------------------
+    def _on_summary_error(self, message: str) -> None:
+        """Error state: say what failed while keeping any loaded numbers."""
+        self._page_header.set_subtitle(f"State unavailable - {message}")
+        if not self._summary_loaded:
+            for detail in (self._workflows_detail, self._tasks_detail,
+                           self._verification_detail):
+                detail.setText("unavailable")
+
     def _on_summary(self, summary: object) -> None:
         if not isinstance(summary, dict):
             return
-        self._repo_detail.setText(
-            f"{summary.get('repository') or '-'}  ·  "
+        repository = str(summary.get("repository") or self.repository())
+        self._page_header.set_subtitle(
+            f"{elide(repository, 48)}  ·  "
             f"{summary.get('total_workflows', 0)} workflows"
         )
+
         active = summary.get("active_workflows") or {}
         running = int(active.get("running") or 0)
         pending = int(active.get("pending") or 0)
@@ -224,22 +272,34 @@ class DashboardView(BaseView):
             f"{len(needs)} need attention" if needs else ""
         )
         self._attention_empty.setVisible(not needs)
+        if not needs:
+            self._attention_empty.setText("Nothing needs attention right now.")
+        self._attention_list.setVisible(bool(needs))
         self._attention_list.clear()
         for failure in needs:
-            text = (
-                f"{str(failure.get('category') or 'unknown').lower()}  ·  "
-                f"{str(failure.get('severity') or '').lower()}  -  "
-                f"{failure.get('recommended_action') or 'inspect'}"
+            severity = str(failure.get("severity") or "").lower()
+            action = _pretty(failure.get("recommended_action"))
+            text = elide(
+                f"{_pretty(failure.get('category'))}  ·  {severity}  ·  {action}",
+                70,
             )
-            item = QListWidgetItem(elide(text, 90))
-            item.setToolTip(str(failure.get("primary_error") or text))
+            item = QListWidgetItem(text)
+            item.setForeground(QColor(_SEVERITY_COLORS.get(severity, DARK.text)))
+            created = str(failure.get("created_at") or "")
+            error = str(failure.get("primary_error") or text)
+            item.setToolTip(f"{created}\n{error}" if created else error)
             self._attention_list.addItem(item)
 
         rows = list(summary.get("recent_workflows") or [])
+        self._workflows_table.set_empty_state(
+            "No workflows yet", _NO_WORKFLOWS)
         self._workflows_table.set_rows(rows)
 
         events = list(summary.get("recent_events") or [])
         self._activity_empty.setVisible(not events)
+        if not events:
+            self._activity_empty.setText("No activity recorded yet.")
+        self._activity_list.setVisible(bool(events))
         self._activity_list.clear()
         for event in events:
             message = str(event.get("message") or event.get("type") or "")
@@ -250,9 +310,13 @@ class DashboardView(BaseView):
             item.setToolTip(f"{timestamp}\n{message}")
             self._activity_list.addItem(item)
 
+        self._summary_loaded = True
+
     def _on_agents(self, profiles: object) -> None:
         if not isinstance(profiles, list):
             return
         available = sum(1 for profile in profiles if profile.get("availability"))
         self._agents_stat.setText(f"{available} / {len(profiles)}")
-        self._agents_detail.setText("available now")
+        self._agents_detail.setText(
+            "available now" if profiles else "none detected")
+        self._agents_loaded = True

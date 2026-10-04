@@ -36,6 +36,7 @@ class RunsView(ListDetailView):
 
     view_id = "runs"
     title = "Runs"
+    page_subtitle = "Persisted agent-run lifecycle records"
     columns = _RUN_COLUMNS
     empty_heading = "No agent runs yet"
     empty_detail = "Runs appear here as agents execute workflow tasks."

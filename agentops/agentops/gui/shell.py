@@ -37,13 +37,22 @@ from .toast import ToastHost
 from .tokens import DARK, status_colors
 from .views import VIEW_SPECS, create_views
 from .views.base import AsyncMixin, ViewContext
-from .widgets import PulsingDot, faint, ghost_button
+from .widgets import PulsingDot, faint, ghost_button, label
 
 _SHORTCUTS: tuple[tuple[str, str], ...] = (
     ("Ctrl+K", "open_palette"),
     ("Ctrl+N", "open_new_task"),
     ("Ctrl+R", "refresh_active"),
     ("Ctrl+B", "toggle_sidebar"),
+)
+
+# Sidebar grouping. Every view id in VIEW_SPECS must appear here exactly once
+# (enforced by tests/test_gui_qt.py); the first id of each group renders a
+# section label, and the order must follow VIEW_SPECS.
+_NAV_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("Orchestrate", ("dashboard", "tasks", "workflows", "agents")),
+    ("Inspect", ("runs", "verification", "failures", "worktrees", "artifacts")),
+    ("Configure", ("settings",)),
 )
 
 
@@ -120,9 +129,14 @@ class MainWindow(QMainWindow, AsyncMixin):
         topbar = QWidget()
         topbar.setObjectName("TopBar")
         bar = QHBoxLayout(topbar)
-        bar.setContentsMargins(DARK.space_md, DARK.space_sm,
-                               DARK.space_md, DARK.space_sm)
+        bar.setContentsMargins(18, DARK.space_sm, 18, DARK.space_sm)
         bar.setSpacing(DARK.space_sm)
+
+        # Lives in the top bar, not the sidebar, so collapsing the sidebar
+        # never traps the navigation (Ctrl+B toggles the same state).
+        self._sidebar_toggle = ghost_button("Hide sidebar")
+        self._sidebar_toggle.clicked.connect(self.toggle_sidebar)
+        bar.addWidget(self._sidebar_toggle)
 
         repo_column = QVBoxLayout()
         repo_column.setSpacing(0)
@@ -153,8 +167,6 @@ class MainWindow(QMainWindow, AsyncMixin):
         status_row.addWidget(self._cancel_btn)
         bar.addLayout(status_row)
 
-        bar.addStretch(1)
-
         self._new_task_btn = QPushButton("New Task")
         self._new_task_btn.setProperty("variant", "primary")
         self._new_task_btn.clicked.connect(self.open_new_task)
@@ -173,17 +185,24 @@ class MainWindow(QMainWindow, AsyncMixin):
         side.setContentsMargins(DARK.space_sm, DARK.space_md,
                                 DARK.space_sm, DARK.space_sm)
         side.setSpacing(2)
+
+        brand_row = QHBoxLayout()
+        brand_row.setSpacing(DARK.space_sm)
+        brand_row.setContentsMargins(DARK.space_xs, 0, 0, 0)
+        mark = QLabel()
+        mark.setPixmap(_app_icon().pixmap(16, 16))
+        brand_row.addWidget(mark)
         brand = QLabel("AgentOps")
         brand.setProperty("role", "title")
-        brand.setContentsMargins(DARK.space_sm, 0, 0, DARK.space_md)
-        side.addWidget(brand)
+        brand_row.addWidget(brand)
+        brand_row.addStretch(1)
+        side.addLayout(brand_row)
+
         self._nav_layout = QVBoxLayout()
         self._nav_layout.setSpacing(2)
         side.addLayout(self._nav_layout)
         side.addStretch(1)
-        self._sidebar_toggle = ghost_button("Hide sidebar")
-        self._sidebar_toggle.clicked.connect(self.toggle_sidebar)
-        side.addWidget(self._sidebar_toggle)
+        side.addWidget(faint("Ctrl+K  command palette"))
         body.addWidget(self._sidebar)
 
         self._stack = QStackedWidget()
@@ -205,10 +224,16 @@ class MainWindow(QMainWindow, AsyncMixin):
         )
         self._views_ctx = context
         self._views = create_views(context)
+        group_starters = {ids[0]: name for name, ids in _NAV_GROUPS}
         for index, (view_id, title, _factory) in enumerate(VIEW_SPECS):
             view = self._views.get(view_id)
             if view is None:
                 continue
+            group_name = group_starters.get(view_id)
+            if group_name is not None:
+                group_label = label(group_name, "group")
+                group_label.setContentsMargins(0, DARK.space_md, 0, 0)
+                self._nav_layout.addWidget(group_label)
             button = QPushButton(title)
             button.setProperty("nav", True)
             button.setCheckable(True)
@@ -331,7 +356,9 @@ class MainWindow(QMainWindow, AsyncMixin):
             self._save_settings()
 
     def _apply_sidebar(self) -> None:
-        self._sidebar.setVisible(not self._settings.sidebar_collapsed)
+        collapsed = bool(self._settings.sidebar_collapsed)
+        self._sidebar.setVisible(not collapsed)
+        self._sidebar_toggle.setText("Show sidebar" if collapsed else "Hide sidebar")
 
     def toggle_sidebar(self) -> None:
         self._settings.sidebar_collapsed = not self._settings.sidebar_collapsed
@@ -370,6 +397,16 @@ class MainWindow(QMainWindow, AsyncMixin):
         animation.setEasingCurve(QEasingCurve.Type.OutCubic)
         animation.setStartValue(0.0)
         animation.setEndValue(1.0)
+
+        def clear_effect() -> None:
+            # Keep the effect only for the fade itself. A permanently
+            # installed opacity effect renders the whole stack through an
+            # offscreen buffer; with the Settings scroll area that left
+            # stale regions from the previous view until a repaint.
+            if self._stack.graphicsEffect() is effect:
+                self._stack.setGraphicsEffect(None)
+
+        animation.finished.connect(clear_effect)
         animation.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
 
     def refresh_active(self) -> None:
