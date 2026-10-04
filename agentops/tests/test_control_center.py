@@ -194,6 +194,34 @@ class ControlCenterProjectionTests(unittest.TestCase):
         self.assertEqual(stages[-1]["state"], "running")
         self.assertEqual(projection.current_stage(stages)["label"], "FINALIZE")
 
+    def test_next_is_the_stage_after_the_current_one_when_an_earlier_stage_failed(self):
+        """A failed stage earlier in the flow is not the stage being worked."""
+        stages = projection.build_stage_flow(
+            _workflow("failed"),
+            _standard_tasks(architecture="failed"))
+        self.assertEqual(projection.current_stage(stages)["label"], "IMPLEMENT")
+        self.assertEqual(projection.next_stage(stages)["label"], "VERIFY")
+
+    def test_next_is_never_the_stage_that_is_currently_running(self):
+        tasks = _standard_tasks(architecture="passed", implementation="failed",
+                                verification="running")
+        stages = projection.build_stage_flow(_workflow(), tasks)
+        current = projection.current_stage(stages)
+        upcoming = projection.next_stage(stages)
+        self.assertEqual(current["label"], "VERIFY")
+        self.assertEqual(upcoming["label"], "REVIEW")
+        self.assertIsNot(upcoming, current)
+
+    def test_next_follows_the_running_stage_of_a_custom_dag(self):
+        tasks = [
+            _task("t-a", "architecture", "failed"),
+            _task("t-b", "threat_model", "running"),
+            _task("t-c", "review", "pending", dependencies=("t-b",)),
+        ]
+        stages = projection.build_stage_flow(_workflow(), tasks)
+        self.assertEqual(projection.current_stage(stages)["label"], "Threat Model")
+        self.assertEqual(projection.next_stage(stages)["label"], "Review")
+
     # ------------------------------------------------------------------
     # live panel
     # ------------------------------------------------------------------

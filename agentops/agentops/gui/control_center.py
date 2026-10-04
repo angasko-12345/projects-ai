@@ -326,9 +326,19 @@ def current_stage(stages: object) -> dict[str, object] | None:
 
 
 def next_stage(stages: object) -> dict[str, object] | None:
+    """The stage that comes after the one an operator is looking at now.
+
+    Derived from :func:`current_stage` rather than from the first
+    non-passed stage: a failed stage earlier in the flow is not the stage
+    being worked, and returning the row after it reported the stage that is
+    already running (or pending) as "Next".
+    """
     rows = _rows(stages)
+    current = current_stage(rows)
+    if current is None:
+        return None
     for index, stage in enumerate(rows):
-        if stage.get("state") in ("running", "pending", "blocked", "failed"):
+        if stage is current:
             return rows[index + 1] if index + 1 < len(rows) else None
     return None
 
