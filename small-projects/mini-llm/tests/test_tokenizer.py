@@ -47,6 +47,14 @@ class TestTokenizer(unittest.TestCase):
         self.assertTrue(len(ids) > 0)
         self.assertEqual(decode(self.tok, ids).strip(), text)
 
+    def test_missing_file_names_the_path(self):
+        missing = os.path.join(self.tmp.name, "absent.json")
+        with self.assertRaises(FileNotFoundError) as ctx:
+            load_tokenizer(missing)
+        message = str(ctx.exception)
+        self.assertIn(os.path.abspath(missing), message)
+        self.assertIn("prepare_data.py", message)
+
     def test_ids_within_vocab(self):
         vocab = self.tok.get_vocab_size()
         ids = encode(self.tok, "the quick brown fox")

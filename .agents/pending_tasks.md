@@ -38,7 +38,6 @@
 | ID | Item | Evidence |
 |---|---|---|
 | -- | Checkpoint stores default paths | `Config.tokenizer_path` has no CLI flag and `prepare_data.py` does not record it in `meta.json`, so every checkpoint stores the default `data/tokenizer.json`; `train_bin`/`val_bin`/`checkpoint_dir` come from the checkpoint on resume. Reproduced: bare `--resume` of the TinyStories artifact dies with `vocab_size=8192 but data/processed/train.bin was encoded with a vocabulary of 308`. Source-level wart, not fixed |
-| -- | 3 `TestGenerationSeed` errors | caused by the working-tree deletion of `data/tokenizer.json` (pre-existing user change, deliberately left untouched). Clears with no code change if the user restores the file |
 | -- | Full 1.9 GB TinyStories prep + GPU run | needs a cloud GPU, not this box; procedure is in `docs/EXPERIMENT-tinystories.md` |
 
 ## Frozen

@@ -51,7 +51,7 @@ get added, so run the suite for current truth.
 |---|---|---|
 | `agentops/` | `cd agentops` then `python -m unittest discover -s tests` | 444 tests, 4 skipped by environment, OK |
 | `universal-game-agent/` | `cd universal-game-agent` then `python -m unittest discover -s tests` | 349 tests, 1 skip, OK |
-| `small-projects/mini-llm/` | `cd small-projects/mini-llm` then `python -m unittest discover -s tests` | 96 run, 1 skip, 3 pre-existing `TestGenerationSeed` errors (working-tree deletion of `data/tokenizer.json`, a user change — not a code defect) |
+| `small-projects/mini-llm/` | `cd small-projects/mini-llm` then `python -m unittest discover -s tests` | 98 run, 1 skip, OK (2026-10-04, after restoring the tracked `data/tokenizer.json`) |
 
 Treat any new failure or skip as attributable to the current work until proven otherwise,
 and do not rely on remembered counts — run the suite. An empty, interrupted, all-skipped,

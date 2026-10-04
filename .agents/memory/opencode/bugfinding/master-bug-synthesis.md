@@ -22,11 +22,13 @@ superseded and must not be used as the work queue — the live queue is
 |---|---|---|
 | `agentops/` | `python -m unittest discover -s tests` | 444 tests, 4 environment skips, OK (re-verified 2026-10-03 after ROOT-034 DBG-08's real process-tree test; 443 at the 2026-10-02 root-fix batch; earlier same-day baseline: 425) |
 | `universal-game-agent/` | `python -m unittest discover -s tests` | 349 tests, 1 skip, OK (re-verified 2026-10-03 after the external-experiment orchestration batch closed the ROOT-014 external gap; 318 after `59f5a1b` closed ROOT-034 DBG-06/DBG-07; 317 at the 2026-10-02 root-fix batches; earlier same-day baseline: 295) |
-| `small-projects/mini-llm/` | `python -m unittest discover -s tests` | 96 run, 1 skip, 3 pre-existing `TestGenerationSeed` errors |
+| `small-projects/mini-llm/` | `python -m unittest discover -s tests` | 98 run, 1 skip, OK (re-verified 2026-10-04 after restoring the tracked `data/tokenizer.json`; the 96-run/3-error figure below was a working-tree deletion, not a code defect) |
 
-The 3 mini-llm errors come from the working-tree deletion of
-`small-projects/mini-llm/data/tokenizer.json` (a pre-existing user change, not
-committed). They are not a code defect.
+The 3 mini-llm errors seen 2026-10-02 through 2026-10-04 came from a working-tree
+deletion of `small-projects/mini-llm/data/tokenizer.json`. **Closed 2026-10-04:**
+restored from git (no commit had ever deleted it) and byte-verified against the
+committed `data/processed/*`; the suite is green with no test weakened. Two tests
+added, since the committed tokenizer had no coverage at all.
 
 ### 0.1 Status of all 38 canonical roots
 

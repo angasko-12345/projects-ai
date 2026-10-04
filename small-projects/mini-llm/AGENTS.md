@@ -30,11 +30,13 @@ python -m unittest discover -s tests
   generation, weight tying, checkpoint round-trip, the data pipeline
   (`prepare_data.py` framing/splits/`meta.json`), window stride, device selection,
   and the training loop end to end including resume.
-- Current baseline (re-run 2026-10-02 at commit `849e015`): **96 run, 1 skip, 3 errors**.
-  The 3 errors are all `TestGenerationSeed` and are caused by the working-tree deletion of
-  `small-projects/mini-llm/data/tokenizer.json` (a pre-existing user change, deliberately
-  not restored). They are not a code defect and clear with no code change if the file
-  comes back. Run the suite for current truth.
+- Current baseline (re-run 2026-10-04): **98 run, 1 skip, OK**.
+- `data/tokenizer.json` is a **tracked artifact** and must stay in the working tree. It
+  was deleted locally on 2026-10-04 and restored from git; nothing in history ever
+  deleted it. Without it `generate.py` cannot load a tokenizer, which surfaces as three
+  `TestGenerationSeed` errors. `TestShippedData.test_shipped_tokenizer_matches_the_committed_vocab`
+  now guards it, and the committed `data/tokenizer.json` reproduces the committed
+  `data/processed/*` byte for byte.
 - There is no configured lint, formatter, type-check, or coverage command. Do not
   invent one.
 - The shipped sample corpus (`data/raw/train.txt`, ~2.4 KB) needs

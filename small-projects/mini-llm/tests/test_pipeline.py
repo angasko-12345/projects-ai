@@ -671,6 +671,19 @@ class TestShippedData(unittest.TestCase):
             self.assertLess(int(ids.max()), meta["vocab_size"])
             self.assertEqual(len(ids), meta[f"{name}_tokens"])
 
+    def test_shipped_tokenizer_matches_the_committed_vocab(self):
+        # generate.py loads this exact path, and the sibling tests above only ever
+        # retrain into a temp dir, so nothing else covers the committed artifact:
+        # deleting or swapping it broke generation while the rest of the suite passed.
+        path = os.path.join(ROOT, "data", "tokenizer.json")
+        meta = load_data_meta(os.path.join(ROOT, "data", "processed", "train.bin"))
+        self.assertTrue(os.path.exists(path),
+                        "data/tokenizer.json is a tracked artifact; restore it from git")
+        tok = load_tokenizer(path)
+        self.assertEqual(tok.get_vocab_size(), meta["vocab_size"])
+        for special in ("<pad>", "<unk>", "<bos>", "<eos>"):
+            self.assertIsNotNone(tok.token_to_id(special), f"missing {special}")
+
 
 class TestConfigDataAgreement(unittest.TestCase):
     def setUp(self):

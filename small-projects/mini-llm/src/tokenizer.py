@@ -6,6 +6,8 @@ Trained model is saved to data/tokenizer.json and supports encode/decode.
 
 from __future__ import annotations
 
+import os
+
 from tokenizers import Tokenizer
 from tokenizers.decoders import ByteLevel as ByteLevelDecoder
 from tokenizers.models import BPE
@@ -37,6 +39,14 @@ def train_bpe_tokenizer(
 
 
 def load_tokenizer(path: str) -> Tokenizer:
+    # Tokenizer.from_file reports a missing file as a bare OSError from Rust with no
+    # path in it, which reads as "the system cannot find the file specified" and hides
+    # which artifact is missing. Name it, and say how to make it.
+    if not os.path.exists(path):
+        raise FileNotFoundError(
+            f"no tokenizer at {os.path.abspath(path)} - run prepare_data.py "
+            "(or pass --tokenizer)"
+        )
     return Tokenizer.from_file(path)
 
 

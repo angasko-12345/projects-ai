@@ -607,3 +607,39 @@
 - **Root cause:** `_fade_stack` installed a `QGraphicsOpacityEffect` on the QStackedWidget for the navigation fade and left it installed after the animation finished. A live effect routes the widget's painting through effect compositing for its whole lifetime, so content exposed later could be served from stale composited state.
 - **Solution:** Connect `animation.finished` **before** `start()` to remove the effect (guarded with `if self._stack.graphicsEffect() is effect`), with `QAnimation.DeleteWhenStopped`. Connect-first matters: a zero-duration animation can emit `finished` before a late-connected handler. Regression test: navigate, wait ~300 ms, assert `stack.graphicsEffect() is None`.
 - **Remember:** A graphics effect is not a one-shot styling tool - once installed it changes how the widget paints forever. Install it only for the animation and detach it in `finished`, connected before starting.
+
+## 2026-10-04 mini-llm: a tracked data artifact was deleted in the working tree
+
+- **Symptom:** mini-llm suite reported 96 run / 3 errors, all `TestGenerationSeed`, all
+  `Exception: The system cannot find the file specified. (os error 2)` from
+  `Tokenizer.from_file` on the default `data/tokenizer.json`. Sessions since 2026-10-01 had
+  logged this as an accepted baseline rather than a defect.
+- **Root cause:** `data/tokenizer.json` is tracked in git but was deleted in the working
+  tree (` D`, never staged). No commit ever deleted it — `git log --diff-filter=D` on the
+  path is empty and its only commit is the one that added it. A local filesystem deletion,
+  not a repository or code defect. `git status` at session start already showed it.
+- **Correct fix:** restore from git, not regenerate. `git checkout --
+  small-projects/mini-llm/data/tokenizer.json` reproduced the blob exactly (git blob id
+  `6ac1190`). Verified it is the canonical artifact rather than a lookalike: re-encoding
+  `data/raw/train.txt` with `--skip-training` regenerates the committed
+  `data/processed/train.bin`, `val.bin`, and `meta.json` **byte for byte** (vocab 308,
+  920 tokens, split 736/184 at `--context-length 32 --val-frac 0.2`).
+- **Why nothing caught it:** `TestShippedData` guarded corpus-vs-`meta.json` agreement but
+  every one of its checks *retrained* a tokenizer into a temp dir or read the `.bin` files,
+  so the committed `data/tokenizer.json` had **zero** test coverage. Generation reads it at
+  the default `Config.tokenizer_path`, so deleting it broke three tests while the rest of
+  the suite passed.
+- **Regression test:** added
+  `TestShippedData.test_shipped_tokenizer_matches_the_committed_vocab` — asserts the
+  artifact exists and its vocab and special tokens match `data/processed/meta.json`.
+  Verified it fails with `data/tokenizer.json is a tracked artifact; restore it from git`
+  when the file is removed.
+- **Diagnostic:** `load_tokenizer` now raises `FileNotFoundError` naming the absolute path
+  and the fix, matching the existing `config_for_data` convention. Previously the Rust
+  `from_file` surfaced a bare OSError with no path, which is what let this read as an
+  unrelated environment fault for three sessions.
+- **Lesson:** a "known baseline failure" repeated across sessions is a smell, not a fact.
+  Re-derive it with `git status` and `git log --diff-filter=D` before writing it down as
+  accepted. And when auditing shipped data artifacts, check whether the tests reference the
+  committed file or only regenerate a copy — the latter is silent coverage.
+

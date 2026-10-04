@@ -23,7 +23,7 @@ after `dae1415` (agentops and UGA rows re-verified 2026-10-03, after DBG-08 and 
 |---|---|
 | `agentops/` | 444 tests, 4 environment skips, OK (2026-10-03; 443 at the 2026-10-02 verification) |
 | `universal-game-agent/` | 318 tests, 1 skip, OK (2026-10-03; 317 at the 2026-10-02 verification) |
-| `small-projects/mini-llm/` | 96 run, 1 skip, 3 pre-existing `TestGenerationSeed` errors (working-tree deletion of `data/tokenizer.json`) |
+| `small-projects/mini-llm/` | 98 run, 1 skip, OK (2026-10-04; the 96-run/3-error figure was a working-tree deletion of `data/tokenizer.json`, since restored from git) |
 
 **Track A / Track B item status, 2026-10-02:**
 

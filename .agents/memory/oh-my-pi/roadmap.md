@@ -60,7 +60,9 @@
 ## Next (proposed, in order)
 
 - [ ] STEP 3 pre-flight + exp02 re-run (unchanged top item).
-- [ ] Watch: `data/tokenizer.json` deletion — if the user restores it, the
-  3 `TestGenerationSeed` errors should clear with no code change.
+- [x] Watch: `data/tokenizer.json` deletion — **closed 2026-10-04**. The file was a
+  tracked artifact deleted in the working tree (never deleted by any commit); restored
+  from git and byte-verified against the committed `data/processed/*`. The 3
+  `TestGenerationSeed` errors cleared with no test changes.
 - [ ] mini-llm scale: full 1.9 GB TinyStories prep + GPU run (procedure in
   EXPERIMENT doc; needs cloud GPU, not this box).

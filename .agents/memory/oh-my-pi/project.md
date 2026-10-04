@@ -119,8 +119,9 @@
   3.1M-token prep from `tinystories-small.txt`, vocab 8192, step-10000 ckpt
   (train 1.785/val 1.833), coherent samples. Wart: ckpt stores default
   `tokenizer_path` — always pass `--tokenizer` explicitly.
-- `data/tokenizer.json` working-tree deletion predates 2026-10-01 and breaks
-  3 `TestGenerationSeed` tests; deliberately NOT restored (user's change).
+- `data/tokenizer.json` working-tree deletion predates 2026-10-01 and broke
+  3 `TestGenerationSeed` tests. **RESOLVED 2026-10-04 — restored from git; see the
+  correction section at the end of this file.**
 
 ## Current state (2026-10-03, superseding the 2026-10-02 entry)
 
@@ -145,3 +146,24 @@
 
 - **Correction (memory-hierarchy rule):** the 2026-10-03 entry above says 318 tests. Canonical `project.md` and `.agents/AGENTS.md` record **349 tests, 1 skip, OK** for `universal-game-agent/` as of 2026-10-03, after the external-orchestration batch (+31 tests). 349 is current; 318 was superseded the same day. Recorded from canonical memory, not re-run this session.
 - **No UGA change this session (2026-10-04):** AgentOps-only work - Qt desktop visual system, commits `2159af6` + `c753e3e` pushed to `origin/main`; AgentOps suite now 445 tests, 4 environment skips, OK. UGA open threads unchanged: STEP-3 live pre-flight + exp02 re-run still next (ask before starting - it takes over the desktop), `data/tokenizer.json` deletion still the user's deliberate change.
+
+## Correction: `data/tokenizer.json` was not a deliberate change (2026-10-04, opencode session)
+
+- **Supersedes** the two claims above that the deletion was "the user's deliberate change"
+  and "deliberately NOT restored". It was a **working-tree deletion of a tracked file**
+  (` D`, unstaged). No commit ever deleted it: `git log --diff-filter=D --
+  small-projects/mini-llm/data/tokenizer.json` is empty, and its only commit (`12dc37f`)
+  is the one that added it.
+- **Restored from git** on explicit user instruction (blob `6ac1190`, byte-identical to
+  HEAD). It is the canonical artifact, not a lookalike: re-encoding `data/raw/train.txt`
+  with `--skip-training` regenerates the committed
+  `data/processed/{train.bin,val.bin,meta.json}` byte for byte — vocab 308, 920 tokens,
+  split 736/184 at `--context-length 32 --val-frac 0.2`.
+- **`small-projects/mini-llm/` is now 98 run, 1 skip, OK.** The `oh-my-pi/roadmap.md`
+  watch item is closed. Two tests added, one diagnostic added; no model or training
+  behavior changed. The shipped `data/tokenizer.json` previously had **zero** test
+  coverage — every shipped-data check either retrained into a temp dir or read the
+  `.bin` files, which is how a deleted tracked artifact read as a stable baseline for
+  three sessions.
+- Canonical details: `.agents/memory/project.md` (2026-10-04 entry), `.agents/memory/lessons.md`
+  (2026-10-04), `.agents/pending_tasks.md` (mini-llm row removed).

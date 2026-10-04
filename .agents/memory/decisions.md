@@ -392,3 +392,34 @@
 - **Verification:** `cd agentops && python -m unittest discover -s tests` -> **445 tests, 4 environment skips, OK** (438 baseline + 7 new); `tests.test_gui_qt` 11 OK after every shell/dashboard edit; live app screenshots of all 10 views at 1024x680 / 1280x800 / 1600x900; each defect above re-verified live after its fix (navigation round trip twice, toggle/chevron/row selection/focus rings observed).
 - **Deliberate non-change:** no backend/controller/state/verification/Git change; no routing change; `AgentOps.spec` rebuild still owed (unchanged from the migration decision above); `.agents/AGENTS.md` and `agentops/AGENTS.md` still say 444 and were not touched (other sessions own them).
 - **Agents involved:** omp (this session). Commits `2159af6`, `c753e3e`, pushed to `origin/main`.
+
+## 2026-10-04 — mini-llm: restore tracked data artifacts from git, never regenerate them in place
+
+- **Decision:** `small-projects/mini-llm/data/tokenizer.json` is a **tracked artifact and a
+  canonical input**, not a build output to be regenerated on demand. When it is missing,
+  restore it from git; do not retrain a substitute into `data/`. No test was weakened,
+  deleted, or skipped to clear the failure.
+- **Why:** `prepare_data.py` writes the tokenizer and the processed `.bin`/`meta.json`
+  together, and the tokenizer is the *input* to encoding — so the tokenizer defines what
+  the processed data means. A regenerated BPE is not guaranteed to reproduce the committed
+  ids (BPE output depends on trainer and library version), so regenerating would silently
+  change the meaning of the committed `data/processed/*` instead of restoring it. Verified
+  here in the restore direction: the committed tokenizer regenerates the committed
+  `data/processed/*` byte for byte (vocab 308, 920 tokens, split 736/184).
+- **Evidence the artifact was tracked, not deprecated:** `git ls-files` includes it,
+  `git log --diff-filter=D` on the path is empty, and its only commit (`12dc37f`) is the
+  one that added it. A working-tree ` D` is therefore an accident, never an intent signal.
+- **Consequence:** shipped data artifacts get a test that reads the *committed* file.
+  `TestShippedData` previously guarded corpus-vs-`meta.json` agreement while every check
+  either retrained into a temp dir or read the `.bin` files, leaving the committed
+  tokenizer with zero coverage — which is how a deleted tracked artifact read as a stable
+  three-session baseline.
+- **Diagnostic policy:** a load path must name the artifact it wanted. `load_tokenizer`
+  now raises `FileNotFoundError` with the absolute path, matching the existing
+  `config_for_data` convention, instead of leaking a bare Rust `os error 2`.
+- **Process rule adopted:** a repeated "known baseline failure" is re-derived with
+  `git status` and `git log --diff-filter=D` before being recorded as accepted. Three
+  sessions inherited this one as a fact; it was an accident each time.
+- **Agents involved:** opencode (this session). Artifacts and tests restored and verified
+  locally; commit left to the user.
+
