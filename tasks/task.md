@@ -682,6 +682,20 @@ Live launch and screenshots of every view; window resized at 1024x680 / 1280x800
 
 ---
 
+## Output (Workflow control center — 2026-10-04)
+
+Status: complete. Commit `7a5b472` (local only; no push requested).
+
+- **Qt-free projection layer** `agentops/gui/control_center.py` (new, 684 lines) owns every claim the control center makes — stage flow (standard five stages or a custom DAG's real dependency edges), live panel, current/next stage, recent activity, verification totals, failure summaries, worktree provenance, merge readiness, task/run detail, and cancellation state. No Qt, no SQLite, no I/O; `now` is injected so elapsed time is deterministic.
+- **View** `agentops/gui/views/workflows.py` rewritten: workflow list, live card (current stage, agent, status, model, elapsed, next), a vertical stage flow with labelled dependency edges and per-stage facts, tallies, and tabs for Tasks / Runs / Verification (counts → individual checks) / Failures / Worktree (branch, base branch, base commit, path, changed files, merge readiness + blocking reasons, merge/cleanup/open-folder actions).
+- **Backend untouched apart from one read:** `AgentOpsController.workflow_readiness()` delegates to the existing `assess_workflow_readiness()`, so the GUI reads the engine's READY verdict instead of re-deriving it. No new orchestration semantics, no schema or migration change.
+- **Widgets/design system:** `StageNode`, `StageFlow`, `Tally`, `LiveCard` in `gui/widgets.py`; tab styling, active-card state, and hover border in `gui/tokens.py`.
+- **Tests:** new `tests/test_control_center.py` (56) split into a display-free projection class and a `@requires_qt` view class, covering active workflow display, stage transitions, task/run/verification/failure selection, verification display, cancellation state, conflicting-action disabling, and the final ready/blocked state. `tests/test_gui_qt.py` fixtures enriched and the fake controller gained `query_events`/`workflow_readiness`.
+- **Verification:** `cd agentops && python -m unittest discover -s tests` → **501 tests, 4 environment skips, OK** (445 + 56 new). The view was also rendered offscreen and inspected, which caught two defects no assertion could.
+- **Bugs fixed during the work:** Finalize falsely reporting "running"; elapsed falling back to `updated_at`; `-` shown for an unrecorded duration; worktree enablement reading a sibling widget's property instead of recorded state.
+- **Files:** `agentops/agentops/gui/control_center.py` (new), `agentops/agentops/gui/views/workflows.py`, `agentops/agentops/gui/widgets.py`, `agentops/agentops/gui/tokens.py`, `agentops/agentops/gui_controller.py`, `agentops/tests/test_control_center.py` (new), `agentops/tests/test_gui_qt.py`.
+- **Follow-ups not done:** `.agents/AGENTS.md` and `agentops/AGENTS.md` still state a 444-test baseline (verified figure is now 501); the `AgentOps.spec` rebuild remains owed and packaging code was not touched.
+
 ## Output (Desktop visual system for the Qt UI)
 
 Status: complete.

@@ -266,6 +266,14 @@ decision**. A5, A6, and A7 are NOT ordinary backlog and must not be started as r
   C1's open items are unchanged: approval screen, diff viewer (D3), one-click
   retry/repair.
 
+- **Status 2026-10-04 (control center, commit `7a5b472`):** the Workflows surface became the
+  orchestration control center - live stage flow (PLAN/IMPLEMENT/VERIFY/REVIEW/FINALIZE, or a
+  custom DAG's real dependencies) with per-stage agent/model/duration/verification/failure, a live
+  card with the current stage and elapsed time, verification totals with per-check drill-down,
+  actionable failures, worktree provenance with merge readiness, and cancellation with immediate
+  state. Read-only over persisted state; no builder, no replay, no new engine. C1's open items are
+  still unchanged: approval screen, diff viewer (D3), one-click retry/repair.
+
 ### C2 — "Make it smart"
 
 - Auto agent selection (B7), agent profiles, verification presets (config-driven — profiles already exist, surface them), project auto-detection (`agentops init`), AgentOps Doctor (`agentops doctor` — diagnostic read-only checks), Recovery Center (list out of `failures` + recommendations), task templates (compile to existing workflows — explicitly NOT a new engine), command palette (Ctrl+K).

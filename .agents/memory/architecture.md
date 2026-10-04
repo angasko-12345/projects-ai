@@ -190,6 +190,16 @@ the other subfolders, the universal files here remain authoritative.
 - `external_experiment.launch_phase2_process` transfers proc ownership to the caller only on success (stops it on attach/liveness failure); `load_eval_model` closes the throwaway load env; `stop()` is idempotent. `evaluate()` closes each per-episode env even on exception.
 - Measurement law (documented, not enforced): external `reset(seed=)` ignores the seed (game seeded once at launch); `hits`/`misses` count reward sign and are only paddle-hits/misses for sign-based providers.
 
+## GUI projection layer (control center) 2026-10-04
+
+- `gui/control_center.py` sits **below** the Qt layer and **above** nothing else: it takes plain dicts that `AgentOpsController` already serialized and returns plain dicts. No Qt import, no SQLite, no subprocess, no filesystem, no clock except an injected `now`. This is the same leaf rule the non-GUI models already follow (`tasks.py`, `execution_model.py`), applied to presentation logic.
+- Dependency direction: `views/workflows.py` -> `gui/control_center.py` -> `gui/format.py` (pure formatters). Widgets consume already-computed stage dicts and never recompute a status, a duration, or a readiness verdict.
+- **Readiness is a read, never a re-derivation.** `AgentOpsController.workflow_readiness()` delegates to `assess_workflow_readiness()` in `execution_model.py`, the same function `WorkflowEngine.workflow_readiness()` uses to gate merges. `merge_readiness()` in the projection layer may only *add* the operational precondition the assessment does not cover (a worktree must exist to merge from); it never adds or relaxes a success condition. A surface that cannot read readiness must render "blocked", never a guessed ready.
+- **Truthfulness rule for projections:** a value is shown only when a record carries it. An absent duration is `None`/blank, not `0.0`; an absent elapsed time stays unknown rather than falling back to a field that measures something else; verification counts prefer individual check rows over a run's stored counter, because the checks are the evidence. No progress percentages are derived anywhere, because nothing measures per-stage progress.
+- Stage keys are role names for the standard pipeline (`architecture` -> PLAN ... `review` -> REVIEW, plus `finalize`) and task ids for a custom DAG. `is_custom_dag()` switches the representation so dependency edges are real rather than implied.
+- `Cancellation` is projected (`cancellation_state()`) before it is applied: `cancellable` gates the Cancel action, `cancel_requested` locks it, and `cancelled` is carried verbatim so a cancelled run is never rendered as a success. Worktree mutations gate on that recorded state, never on a sibling widget's enabled property.
+- Verified by `tests/test_control_center.py`: `ControlCenterProjectionTests` runs display-free; `ControlCenterViewTests` covers widget behavior under `@requires_qt`. Suite: 501 tests, 4 environment skips, OK.
+
 ## mini-llm checkpoint config is path-blind 2026-10-01
 
 - `Config.tokenizer_path` has no CLI flag and `prepare_data.py` does not record it in `meta.json`, so every checkpoint stores the default `data/tokenizer.json` regardless of which tokenizer was used. Only `src/generate.py --tokenizer` can override it at generation time.

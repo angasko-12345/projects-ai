@@ -566,6 +566,41 @@
 - **Solution:** Give each card exactly one Expanding occupant - the list/table when populated, a centered `Expanding` empty label otherwise - and never rely on a plain label to absorb height. Found only by screenshotting the empty state; neither code review nor the offscreen tests caught it.
 - **Remember:** "Looks right populated" says nothing about the empty state - it is a different allocation problem. Give every card one stretching occupant and screenshot both states before calling the UI done.
 
+### 2026-10-04 - A status derived from a coarser field reports the wrong subject
+
+- **Symptom:** The control center showed `FINALIZE` as the current, running stage of a workflow whose IMPLEMENT stage was still running. Every other stage rendered correctly, so nothing looked obviously broken - the pipeline just pointed at the wrong box.
+- **Root cause:** Finalize's state was derived from the *workflow* status (`running`), not from the task stages that actually precede it. A derived subject has its own state; borrowing the parent's status reports the parent's liveness and inherits its wrongness. This is the same shape as the READY-contract violation the product already warns about: signals that never coexisted in one subject.
+- **Solution:** `_finalize_stage()` now takes `stages_done` and reports running only when no task stage is pending, blocked, or running. Test: `test_finalize_is_running_only_once_every_task_stage_is_behind_it`, plus the existing stage-sequence test.
+- **Remember:** When a widget's state is computed from a coarser record than the thing it describes, the derived subject is wrong even though the inputs are right. Ask what specifically this subject is doing, not what its parent is doing. The fix is to gate the derived state on its own prerequisites.
+
+### 2026-10-04 - Elapsed time must not fall back to a field that moves for unrelated reasons
+
+- **Symptom:** A run with no recorded start time still displayed a plausible elapsed value, because the projection fell back to the workflow header's `updated_at`.
+- **Root cause:** `updated_at` is rewritten on *every* write to the workflow row, so it measures "time since the last state change of any kind", not "time since this run started". A fallback to it doesn't degrade to unknown - it invents a specific number, which is the failure mode the whole projection layer was written to avoid.
+- **Solution:** Elapsed is computed only when the work is genuinely in flight (run status in `starting`/`running`, or the task itself is `running`) and a `started_at` was actually recorded; otherwise it stays `None` and renders as "-". Test: `test_live_panel_has_no_elapsed_time_without_a_recorded_start`.
+- **Remember:** A fallback is only honest if the fallback field measures the same thing as the primary one. Before chaining `a or b or c` on timestamps, check that `b` answers the same question `a` did. If it answers a nearby question, return unknown instead.
+
+### 2026-10-04 - A placeholder character in a sentence reads as data, in a bare field it reads as unknown
+
+- **Symptom:** A stage whose duration was never recorded rendered `-`, sitting in a line of real facts beside `Agent: opencode` and `Model: gpt-5-codex`. Nothing looked broken; a reader skimming the line reasonably concluded the stage took zero seconds or was in progress.
+- **Root cause:** `format_duration(None)` returns `"-"` because that is correct for a table cell, where every row must have something and the column is uniformly meaningless when empty. The same string was reused inside a *sentence-shaped* fact line, where it is parsed as a value. `-` means different things in a column and in a clause, and the formatter has no way to know which context it is in.
+- **Solution:** The stage node reads `duration_seconds` and formats it only when it is a real number, so an unrecorded duration is a blank line. The projection still exposes `duration_text` for table use, where `-` remains right.
+- **Remember:** A placeholder is only honest where emptiness would itself be ambiguous. When a rendered string sits next to real values in the same expression, the placeholder becomes a claim. Match the emptiness style to the position: columns can use `-`, sentences should be silent. The related trap is an `or`-chained fallback - see the elapsed-time lesson above.
+
+### 2026-10-04 - An unstyled Qt container paints the palette window colour
+
+- **Symptom:** The new tabbed area rendered as a large white slab inside the dark surface, on both screenshots, with no warning and no failing test.
+- **Root cause:** `QTabWidget` had never been used in this codebase and had no rule in `build_stylesheet()`. Unstyled, its page stack paints the application window colour (light by default), which is unrelated to the `QTableView` rules that *were* styled.
+- **Solution:** Added `QTabWidget::pane` / `QTabBar::tab` rules to `tokens.py`. Also fixed the same class of defect next door: tables did not stretch their last column, leaving an unstyled viewport strip past it - fixed by marking one text column `stretch=True` per control-center table.
+- **Remember:** Introducing a new widget type into a themed app means introducing its theme rules in the same change; a missing rule shows up as a foreign-coloured rectangle, not an error. Screenshot the surface when adding a container - assertions cannot see a colour.
+
+### 2026-10-04 - Enablement state must come from recorded state, not from a sibling widget's property
+
+- **Symptom:** Worktree "Retry merge" and "Clean up" buttons were enabled while a run was live, because their enablement read `self._cancel.isEnabled()` - "is the cancel button currently clickable" - as a proxy for "is the workflow running".
+- **Root cause:** The view derived a workflow fact from a widget property. That works only while the two happen to be updated together, and it silently inverts if the cancel button is ever disabled for any other reason (already cancelled, hidden, or a future state). The projection layer already computed the correct answer; the view ignored it.
+- **Solution:** `_apply_state()` stores the cancellation projection on `self._cancellation`, and `_apply_worktree()` gates the worktree actions on that recorded state. Test: `test_conflicting_actions_are_disabled_while_a_run_is_live` plus the ready-path counterpart.
+- **Remember:** A widget's enabled/visible flag is presentation, never a source of truth. When logic needs a state, read the state that was computed for it - and if a view is reaching into another widget to ask a question about the domain, that is a missing variable.
+
 ### 2026-10-04 - An opacity effect you do not remove keeps repainting the widget through it
 
 - **Symptom:** After navigating workflows -> Settings, the Settings scroll area showed regions of the previous view; it reproduced only on the second round trip. Offscreen widget tests and code reading both looked fine.
