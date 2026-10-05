@@ -53,12 +53,21 @@ def _summarize_counts(checks: list[VerificationCheck]) -> dict[str, int]:
         if check.status in {VerificationCheckStatus.FAILED, VerificationCheckStatus.TIMED_OUT}
     )
     skipped = sum(1 for check in checks if check.status is VerificationCheckStatus.SKIPPED)
+    # A required check that did not PASS is an unresolved requirement, whatever
+    # why it did not run. SKIPPED is included here on purpose: without it, a
+    # profile whose only required check was skipped as inapplicable could still
+    # report PASSED on the strength of an unrelated optional check that did pass
+    # (required tests SKIPPED + optional lint PASSED -> passed=1,
+    # required_failures=0 -> PASSED). The invariant enforced downstream is:
+    # a verification report cannot be PASSED while any required check is
+    # unresolved.
     required_failures = sum(
         1 for check in checks
         if check.required and check.status in {
             VerificationCheckStatus.FAILED,
             VerificationCheckStatus.TIMED_OUT,
             VerificationCheckStatus.CANCELLED,
+            VerificationCheckStatus.SKIPPED,
         }
     )
     return {
@@ -364,6 +373,16 @@ class VerificationKernel:
             run_status = VerificationRunStatus.CANCELLED
         elif counts["passed"] >= 1:
             overall = VerificationReportStatus.PASSED
+            run_status = VerificationRunStatus.COMPLETED
+        elif counts["skipped"] >= 1 and counts["failed"] == 0:
+            # Every required check was skipped (typically inapplicable to this
+            # working tree) and nothing actually failed. The procedure ran, but
+            # it established nothing either way -- which is not the same as a
+            # check demonstrating a defect. Report UNVERIFIED so the caller can
+            # distinguish "no evidence" from "evidence of failure"; the workflow
+            # maps this to BLOCKED rather than sending the delegate into repair
+            # for a defect nobody demonstrated.
+            overall = VerificationReportStatus.UNVERIFIED
             run_status = VerificationRunStatus.COMPLETED
         else:
             # A1 vacuous-success rule (matches assert_report_consistent):

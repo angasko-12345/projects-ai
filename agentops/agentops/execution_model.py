@@ -247,10 +247,18 @@ def assert_report_consistent(report: VerificationReport) -> None:
     if report.overall_status is VerificationReportStatus.PASSED:
         if report.total_checks == 0:
             reasons.append("PASSED report describes an empty check suite (vacuous success)")
-        if report.required_failures != 0:
-            reasons.append(f"PASSED report has {report.required_failures} required failures")
         if report.passed_checks < 1:
             reasons.append("PASSED report has zero passed checks (no positive evidence)")
+        # The invariant: a report cannot be PASSED while any required check is
+        # unresolved. required_failures counts FAILED, TIMED_OUT, CANCELLED and
+        # SKIPPED required checks, so this single test covers all four -- including
+        # a required check skipped as inapplicable, which previously could not
+        # block a PASSED report at all.
+        if report.required_failures != 0:
+            reasons.append(
+                f"PASSED report has {report.required_failures} unresolved required "
+                f"check(s); every required check must PASS"
+            )
     if reasons:
         raise StateTransitionError(
             f"Inconsistent VerificationReport {report.id}: " + "; ".join(reasons)

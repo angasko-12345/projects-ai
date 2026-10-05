@@ -26,8 +26,9 @@ from agentops.registry import DetectedAgent
 from agentops.runner import RunResult
 from agentops.state import StateStore
 from agentops.tasks import Task, TaskStatus
-from agentops.verification_kernel import VerificationKernel
+from agentops.verification_kernel import VerificationKernel, _summarize_counts
 from agentops.verification_model import (
+    VerificationCheck,
     VerificationCheckClass,
     VerificationCheckSpec,
     VerificationCheckStatus,
@@ -196,7 +197,12 @@ class KernelExecutionTests(unittest.TestCase):
             try:
                 report = asyncio.run(kernel.run_verification(None, None, directory))
                 self.assertEqual(report.overall_status, VerificationReportStatus.FAILED)
-                self.assertEqual(report.required_failures, 1)
+                # 2, not 1: "second" FAILED and "third" is a required check left
+                # SKIPPED by fail-fast. Both are unresolved required checks, and
+                # required_failures counts every unresolved required check. The
+                # report was already FAILED before this changed, so no outcome
+                # differs -- only the count is now honest about the third check.
+                self.assertEqual(report.required_failures, 2)
                 self.assertEqual(len(calls), 2)
                 statuses = {check.name: check.status for check in report.checks}
                 self.assertEqual(statuses["third"], VerificationCheckStatus.SKIPPED)
@@ -933,6 +939,53 @@ class VacuousPassAndArtifactDegradationTests(unittest.TestCase):
         self.assertEqual(report.overall_status, VerificationReportStatus.PASSED)
         self.assertIsNone(report.checks[0].stdout_path)
         self.assertIsNone(report.checks[0].stderr_path)
+
+
+class RequiredSkipInvariantTests(unittest.TestCase):
+    """A verification report cannot be PASSED while a required check is unresolved.
+
+    Regression cover for the gap Luna found: `required_failures` counted only
+    FAILED/TIMED_OUT/CANCELLED, so a required check skipped as inapplicable could
+    not block a PASSED report. A profile with `required tests SKIPPED` plus
+    `optional lint PASSED` reported PASSED on the strength of the lint check.
+    """
+
+    @staticmethod
+    def _check(name, status, required):
+        return VerificationCheck(
+            id="1", run_id="r", workflow_id="w", task_id="t", profile_name="p",
+            name=name, check_class=VerificationCheckClass.CUSTOM, command=("x",),
+            working_directory=None, timeout_seconds=None, required=required,
+            policy=None, status=status, exit_code=None, started_at=None, ended_at=None,
+            duration_seconds=0.0, stdout_path=None, stderr_path=None,
+            failure_reason=None, created_at=None, updated_at=None,
+        )
+
+    def test_required_skip_counts_as_unresolved_requirement(self):
+        counts = _summarize_counts([
+            self._check("tests", VerificationCheckStatus.SKIPPED, True),
+            self._check("lint", VerificationCheckStatus.PASSED, False),
+        ])
+        self.assertEqual(counts["passed"], 1)
+        self.assertEqual(counts["required_failures"], 1)
+
+    def test_optional_skip_does_not_block(self):
+        counts = _summarize_counts([
+            self._check("tests", VerificationCheckStatus.PASSED, True),
+            self._check("lint", VerificationCheckStatus.SKIPPED, False),
+        ])
+        self.assertEqual(counts["required_failures"], 0)
+
+    def test_all_passed_still_passes(self):
+        counts = _summarize_counts([
+            self._check("tests", VerificationCheckStatus.PASSED, True),
+            self._check("lint", VerificationCheckStatus.PASSED, False),
+        ])
+        self.assertEqual(counts["required_failures"], 0)
+        self.assertGreaterEqual(counts["passed"], 1)
+
+    def test_unverified_status_exists(self):
+        self.assertEqual(VerificationReportStatus.UNVERIFIED.value, "unverified")
 
 
 if __name__ == "__main__":

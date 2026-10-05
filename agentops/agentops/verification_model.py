@@ -56,6 +56,13 @@ class VerificationReportStatus(StrEnum):
     FAILED = "failed"
     CANCELLED = "cancelled"
     TIMED_OUT = "timed_out"
+    # The verification procedure ran to completion but could not obtain enough
+    # applicable evidence to establish either success or a substantive failure --
+    # e.g. every configured check was skipped as inapplicable to this working tree.
+    # Distinct from FAILED: no check demonstrated a defect, so there is nothing to
+    # repair. Distinct from "not configured": checks WERE configured, they just
+    # could not run here. Persisted as TEXT, so adding the value is backward safe.
+    UNVERIFIED = "unverified"
 
 
 @dataclass(frozen=True)

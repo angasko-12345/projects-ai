@@ -527,7 +527,17 @@ class WorkflowEngine:
                     # passed VerificationReport marks a task verified.
                     task.verified = report.overall_status is VerificationReportStatus.PASSED
                     task.result = report.transcript
-                    task.status = TaskStatus.PASSED if task.verified else TaskStatus.FAILED
+                    if task.verified:
+                        task.status = TaskStatus.PASSED
+                    elif report.overall_status is VerificationReportStatus.UNVERIFIED:
+                        # The procedure ran but established nothing -- e.g. every
+                        # configured check was inapplicable to this working tree.
+                        # There is no demonstrated defect, so BLOCKED, not FAILED:
+                        # FAILED would send the workflow into repair logic for a
+                        # defect no check actually found.
+                        task.status = TaskStatus.BLOCKED
+                    else:
+                        task.status = TaskStatus.FAILED
                     if task.status is TaskStatus.FAILED:
                         self._record_verification_failure(task, report)
                 else:
