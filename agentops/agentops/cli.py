@@ -345,10 +345,13 @@ def main(argv: list[str] | None = None, services: CliServices | None = None) -> 
         return 0
     if args.command == "run":
         registry = services.registry
-        state = services.state
+        # Resolved before the agent lookup, as it was when `run` built the
+        # observer inline, so a failed lookup still leaves the same
+        # `.agentops/state.sqlite` behind.
+        runner = services.runner
         try:
             agent = registry.get(args.agent)
-            result = asyncio.run(services.runner.run_agent(agent, args.prompt, Path.cwd()))
+            result = asyncio.run(runner.run_agent(agent, args.prompt, Path.cwd()))
         except (KeyError, RuntimeError, OSError) as error:
             print(f"ERROR: {error}")
             return 1
