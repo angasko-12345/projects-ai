@@ -13,6 +13,11 @@ from agentops.registry import DetectedAgent
 from agentops.runner import RunResult
 from agentops.state import StateStore
 from agentops.tasks import TaskStatus
+from agentops.verification_kernel import VerificationKernel
+from agentops.verification_model import (
+    VerificationCheckClass, VerificationCheckSpec, VerificationExecutionPolicy,
+    VerificationProfile, VerificationProfileMode,
+)
 from agentops.workflow import WorkflowEngine
 
 
@@ -153,6 +158,81 @@ class ImplementationEvidenceTests(WorkflowTests):
         self.assertEqual(
             self.state.get_task(research_task.id).status, TaskStatus.PASSED,
             "a research task with no file changes must still be able to PASS")
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+class UnverifiedMustNotInventRepairTests(WorkflowTests):
+    """verification=BLOCKED must stay BLOCKED all the way down.
+
+    UNVERIFIED was added so "no applicable evidence" stops reading as "a check
+    failed". The report and the task now preserve that distinction -- and then
+    `run_high_level` collapsed it again: any non-PASSED verification with a
+    passed implementation fell into the repair loop and invented
+    "Repair the configured verification failure." for a failure that was never
+    demonstrated. Observed live: implementation=passed, verification=blocked,
+    debugging=passed with that repair description.
+    """
+
+    def _engine_unverifiable(self):
+        """A kernel whose only required check is inapplicable here (no tests/),
+        which is the UNVERIFIED -> BLOCKED path."""
+        profile = VerificationProfile(
+            name="standard", mode=VerificationProfileMode.FAIL_FAST,
+            concurrency=1, default_timeout_seconds=30,
+            checks=(VerificationCheckSpec(
+                "unit", VerificationCheckClass.TESTS,
+                ("python", "-m", "unittest", "discover", "-s", "tests"),
+                required=True, policy=VerificationExecutionPolicy.SEQUENTIAL),),
+        )
+        kernel = VerificationKernel(profiles={"standard": profile},
+                                    default_profile="standard", state=self.state)
+        # The repository already has a committed file, so implementation passes
+        # the evidence contract; otherwise it fails for an unrelated reason and
+        # the repair branch is skipped, making the test vacuous.
+        collector = MagicMock(return_value=AgentRunMetadata(files_changed=("base.txt",)))
+        return WorkflowEngine(self.config, self.state, self.registry,
+                              self.runner, self.verifier,
+                              verification_kernel=kernel,
+                              metadata_collector=collector)
+
+    def _git_repo_with_work(self):
+        import subprocess as sp
+        import tempfile as tf
+        directory = tf.mkdtemp()
+        self.addCleanup(shutil.rmtree, directory, ignore_errors=True)
+        for cmd in (["git", "init", "-q"],
+                    ["git", "config", "user.email", "t@t.local"],
+                    ["git", "config", "user.name", "T"]):
+            sp.run(cmd, cwd=directory, check=True)
+        Path(directory, "base.txt").write_text("base", encoding="utf-8")
+        sp.run(["git", "add", "-A"], cwd=directory, check=True)
+        sp.run(["git", "commit", "-qm", "base"], cwd=directory, check=True)
+        return Path(directory)
+
+    def test_unverified_verification_does_not_create_a_repair_task(self):
+        engine = self._engine_unverifiable()
+        directory = self._git_repo_with_work()
+        result = asyncio.run(engine.run_high_level("Do the work", directory))
+        tasks = self.state.list_tasks(result.workflow_id)
+        descriptions = [t.description for t in tasks]
+        self.assertFalse(
+            any("Repair the configured verification failure" in d for d in descriptions),
+            "UNVERIFIED/BLOCKED verification must not invent a repair task for a "
+            "failure no check demonstrated")
+        self.assertFalse(result.ready,
+                         "an unverified workflow must never be READY")
+
+    def test_blocked_verification_is_not_collapsed_into_failed(self):
+        engine = self._engine_unverifiable()
+        directory = self._git_repo_with_work()
+        result = asyncio.run(engine.run_high_level("Do the work", directory))
+        statuses = {t.role: t.status for t in self.state.list_tasks(result.workflow_id)}
+        self.assertIs(statuses["implementation"], TaskStatus.PASSED)
+        self.assertIs(statuses["verification"], TaskStatus.BLOCKED,
+                      "UNVERIFIED must reach the task as BLOCKED, not FAILED")
 
 
 if __name__ == "__main__":

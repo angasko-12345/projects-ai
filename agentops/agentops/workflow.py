@@ -1320,6 +1320,21 @@ class WorkflowEngine:
         implementation = self.state.get_task(tasks[1].id)
         if implementation.status is not TaskStatus.PASSED:
             return WorkflowResult(workflow_id, False, "Implementation did not pass; verification was not run.")
+        if verification.status is not TaskStatus.FAILED:
+            # A repair cycle is warranted only by a DEMONSTRATED verification
+            # failure. BLOCKED means verification could not obtain applicable
+            # evidence (report UNVERIFIED) -- there is no failure to repair, and
+            # sending a "Repair the configured verification failure" task would
+            # re-introduce exactly the semantic collapse UNVERIFIED exists to
+            # prevent: "I could not prove this succeeded" becoming "this failed".
+            # Nothing was demonstrated wrong, so there is nothing to fix and no
+            # review to gate. An operator needs applicable verification, not a
+            # repair loop against an absent signal.
+            return WorkflowResult(
+                workflow_id, False,
+                f"Verification was {verification.status.value}; no verification "
+                f"failure was demonstrated, so no repair was attempted.",
+            )
         for _ in range(self.config.max_repair_cycles):
             repair = self.state.add_task(Task("Repair the configured verification failure.\n" + (verification.result or ""),
                                               "debugging", workflow_id, dependencies=(implementation.id,),
