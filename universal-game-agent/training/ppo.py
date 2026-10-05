@@ -154,11 +154,10 @@ class PPOTrainer:
     def __init__(self, env, model: ActorCritic, config: PPOConfig, device="cpu", curiosity=None,
                  env_config=None):
         self.env, self.model, self.config = env, model, config
-        # A 1-slot SyncVectorEnv behaves exactly like the env it contains;
-        # wider vectors are rejected: multi-env batching is not designed yet.
+        # Any SyncVectorEnv width is accepted; single envs keep the legacy
+        # rollout below byte-for-byte. Only the vector path batches slots.
         self._vec = isinstance(env, SyncVectorEnv)
-        if self._vec and env.num_envs != 1:
-            raise ValueError(f"PPO supports a 1-slot SyncVectorEnv only, got {env.num_envs}")
+        self._num_slots = env.num_envs if self._vec else 1
         self.device = torch.device(device)
         self.model.to(self.device)
         self.optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
@@ -201,6 +200,8 @@ class PPOTrainer:
     # -- rollout ---------------------------------------------------------
     @torch.no_grad()
     def collect_rollout(self):
+        if self._vec:
+            return self._collect_vector()
         cfg = self.config
         # Fresh trainer (or one restored from checkpoint, which carries no
         # mid-episode state) starts a new episode; otherwise continue.
@@ -299,8 +300,124 @@ class PPOTrainer:
         buf["comp_steps"] = cfg.rollout_length
         return buf, ep_rewards, ep_lengths, ep_ext, ep_int, ep_term
 
+    @torch.no_grad()
+    def _collect_vector(self):
+        """Rollout over ``[time, env]``: one hidden slice per slot.
+
+        Same boundary contract as the single path, applied per slot: the
+        terminal step's own data is stored untouched, only finished slots
+        are reset (via ``reset_env``), only their hidden slice is zeroed,
+        and only their episode accumulators restart. No autoreset.
+        Terminated slots bootstrap to zero; truncated slots bootstrap from
+        their own final pre-reset observation and hidden state.
+        """
+        cfg = self.config
+        slots = self._num_slots
+        if self.num_timesteps == 0 or not hasattr(self, "_carry_obs"):
+            obs_list, _ = self.env.reset(
+                seeds=[cfg.seed + self.num_updates + e for e in range(slots)])
+            hidden = self.model.initial_state(slots, self.device)
+        else:
+            obs_list, hidden = self._carry_obs, self._carry_hidden
+        buf = {k: [] for k in ("obs", "actions", "logprobs", "values", "ext", "terminated", "truncated", "dones")}
+        buf["h0"] = hidden.clone()
+        hidden_traj = []  # post-step hidden (L,N,H) per step, pre-reset
+        next_list = []  # true post-step frames per step, pre-reset
+        for _ in range(cfg.rollout_length):
+            t = torch.stack([torch.from_numpy(
+                np.ascontiguousarray(o, dtype=np.float32)) for o in obs_list]).to(self.device)
+            logits, value, hidden = self.model(t, hidden)
+            dist = Categorical(logits=logits)
+            actions = dist.sample()
+            logps = dist.log_prob(actions)
+            step_obs, rewards, terms, truncs, _ = self.env.step(
+                [int(a) for a in actions.cpu()])
+            buf["obs"].append(t.cpu())
+            buf["actions"].append(actions.cpu())
+            buf["logprobs"].append(logps.cpu())
+            buf["values"].append(value.cpu())
+            hidden_traj.append(hidden.clone())
+            next_list.append(torch.stack([torch.from_numpy(
+                np.ascontiguousarray(o, dtype=np.float32)) for o in step_obs]))
+            buf["ext"].append(torch.tensor([float(r) for r in rewards]))
+            buf["terminated"].append(torch.tensor([bool(x) for x in terms]))
+            buf["truncated"].append(torch.tensor([bool(x) for x in truncs]))
+            buf["dones"].append(torch.tensor(
+                [bool(a or b) for a, b in zip(terms, truncs)]))
+            self.num_timesteps += slots
+            for e in range(slots):
+                if terms[e] or truncs[e]:
+                    obs_list[e] = self.env.reset_env(e)[0]
+                    hidden[:, e, :] = 0
+                else:
+                    obs_list[e] = step_obs[e]
+        self._carry_obs, self._carry_hidden = obs_list, hidden
+        for name in ("actions", "logprobs", "values", "ext", "terminated", "truncated", "dones"):
+            buf[name] = torch.stack(buf[name])
+        buf["obs"] = torch.stack(buf["obs"])  # (T, N, C, H, W), cpu
+        buf["ext"] = buf["ext"].float()
+        buf["next_obs"] = torch.stack(next_list)  # (T, N, C, H, W), cpu
+        valid = ~buf["dones"]
+        if self.curiosity is not None:
+            flat = cfg.rollout_length * slots
+            int_scaled, int_raw = self.curiosity.intrinsic(
+                buf["obs"].reshape(flat, *buf["obs"].shape[2:]),
+                buf["actions"].reshape(flat),
+                buf["next_obs"].reshape(flat, *buf["next_obs"].shape[2:]),
+                valid.reshape(flat))
+            buf["int_rewards"] = int_scaled.float().reshape(cfg.rollout_length, slots)
+        else:
+            int_scaled = torch.zeros(cfg.rollout_length * slots)
+            int_raw = torch.zeros(cfg.rollout_length * slots)
+            buf["int_rewards"] = torch.zeros(cfg.rollout_length, slots)
+        buf["rewards"] = buf["ext"] + buf["int_rewards"]
+        buf["pixel_change"] = (
+            float(torch.abs(buf["obs"][1:] - buf["obs"][:-1]).mean())
+            if buf["obs"].shape[0] > 1
+            else 0.0
+        )
+        acc_e = list(getattr(self, "_vacc_e", [0.0] * slots))
+        acc_i = list(getattr(self, "_vacc_i", [0.0] * slots))
+        acc_l = list(getattr(self, "_vacc_l", [0] * slots))
+        ep_rewards, ep_lengths, ep_ext, ep_int, ep_term = [], [], [], [], []
+        flat_scaled = int_scaled.reshape(cfg.rollout_length, slots)
+        for t in range(cfg.rollout_length):
+            for e in range(slots):
+                acc_e[e] += float(buf["ext"][t, e])
+                acc_i[e] += float(flat_scaled[t, e])
+                acc_l[e] += 1
+                if buf["dones"][t, e]:
+                    ep_rewards.append(acc_e[e] + acc_i[e])
+                    ep_ext.append(acc_e[e])
+                    ep_int.append(acc_i[e])
+                    ep_lengths.append(acc_l[e])
+                    ep_term.append(bool(buf["terminated"][t, e]))
+                    acc_e[e], acc_i[e], acc_l[e] = 0.0, 0.0, 0
+        self._vacc_e, self._vacc_i, self._vacc_l = acc_e, acc_i, acc_l
+        next_value = torch.zeros(slots)
+        for e in range(slots):
+            if buf["terminated"][-1, e]:
+                continue  # bootstrap value stays zero
+            if buf["truncated"][-1, e]:
+                bv_obs = buf["next_obs"][-1, e].unsqueeze(0).to(self.device)
+                bv_h = hidden_traj[-1][:, e, :].unsqueeze(1).to(self.device)
+            else:
+                bv_obs = torch.from_numpy(
+                    np.ascontiguousarray(obs_list[e], dtype=np.float32)).unsqueeze(0).to(self.device)
+                bv_h = hidden[:, e, :].unsqueeze(1).to(self.device)
+            next_value[e] = self.model(bv_obs, bv_h)[1].squeeze(0).cpu()
+        buf["next_value"] = next_value
+        buf["int_raw_mean"] = float(int_raw.float().mean())
+        # Component breakdowns are a single-env diagnostic (per-env
+        # ``last_breakdown``); vector mode reports none rather than mixing.
+        buf["comp_sums"] = {}
+        buf["comp_steps"] = cfg.rollout_length * slots
+        return buf, ep_rewards, ep_lengths, ep_ext, ep_int, ep_term
+
     # -- update ----------------------------------------------------------
     def update(self, buf) -> dict[str, float]:
+        if self._vec:
+            return self._update_vector(buf)
         cfg = self.config
         values = buf["values"].float().reshape(-1)
         rewards = buf["rewards"].float()
@@ -362,6 +479,109 @@ class PPOTrainer:
         pred_loss = 0.0
         if self.curiosity is not None:
             pred_loss = self.curiosity.update(buf["obs"], buf["actions"], buf["next_obs"], ~buf["dones"])
+        metrics["predictor_loss"].append(pred_loss)
+        self.num_updates += 1
+        out = {k: float(np.mean(v)) for k, v in metrics.items()}
+        out["timesteps"] = t0
+        return out
+
+    def _update_vector(self, buf) -> dict[str, float]:
+        """PPO update over a ``[time, env]`` rollout, one pooled chunk mean.
+
+        GAE runs independently per slot (masks never cross slots); the
+        resulting advantages are normalized globally, exactly like the
+        single path normalizes over its rollout. Replay runs each slot's
+        segments through ``forward_sequence`` with that slot's own hidden
+        carry (zeros after its dones), then pools every step of the time
+        chunk into one loss. For one slot this reduces to the single path.
+        """
+        cfg = self.config
+        slots = self._num_slots
+        steps = cfg.rollout_length
+        values = buf["values"].float()  # (T, N)
+        flat = steps * slots
+        advantages = torch.zeros(steps, slots)
+        returns = torch.zeros(steps, slots)
+        for e in range(slots):
+            adv_e, ret_e = compute_gae(
+                buf["rewards"][:, e].float(), values[:, e],
+                buf["terminated"][:, e].float(),
+                buf["next_value"][e].float(), cfg.gamma, cfg.gae_lambda)
+            advantages[:, e], returns[:, e] = adv_e, ret_e
+        adv_std = advantages.std()
+        if not torch.isfinite(adv_std):
+            adv_std = torch.ones(())  # single-sample rollout: center only
+        advantages = (advantages - advantages.mean()) / (adv_std + 1e-8)
+        flat_adv = advantages.reshape(-1).to(self.device)
+        flat_ret = returns.reshape(-1).to(self.device)
+        flat_old_lp = buf["logprobs"].float().reshape(-1).to(self.device)
+        flat_values = values.reshape(-1).to(self.device)
+        metrics: dict[str, list[float]] = {"policy_loss": [], "value_loss": [], "entropy": [], "predictor_loss": []}
+        t0 = self.num_timesteps
+        for _ in range(cfg.update_epochs):
+            hidden = buf["h0"].to(self.device).clone()  # (L,N,H); slots mutated below
+            for start in range(0, steps, cfg.minibatch_size):
+                end = min(start + cfg.minibatch_size, steps)
+                chunk_lp = torch.empty((end - start) * slots, device=self.device)
+                chunk_v = torch.empty((end - start) * slots, device=self.device)
+                chunk_ent = torch.empty((end - start) * slots, device=self.device)
+                carries = []
+                for e in range(slots):
+                    h_e = hidden[:, e, :].unsqueeze(1)
+                    slot_a = buf["actions"][start:end, e].to(self.device)
+                    seg_lp, seg_v, seg_ent = [], [], []
+                    seg_start = start
+                    while seg_start < end:
+                        done_idx = next(
+                            (i for i in range(seg_start, end) if buf["dones"][i, e]), None
+                        )
+                        seg_end = done_idx + 1 if done_idx is not None else end
+                        chunk_obs = buf["obs"][seg_start:seg_end, e].to(self.device)
+                        out_l, out_v, h_e = self.model.forward_sequence(chunk_obs, h_e.detach())
+                        seg_dist = Categorical(logits=out_l)
+                        seg_lp.append(seg_dist.log_prob(slot_a[seg_start - start:seg_end - start]))
+                        seg_v.append(out_v.reshape(-1))
+                        seg_ent.append(seg_dist.entropy())
+                        h_e = (
+                            self.model.initial_state(1, self.device)
+                            if done_idx is not None
+                            else h_e.detach()
+                        )
+                        seg_start = seg_end
+                    slot_lp = torch.cat(seg_lp)
+                    slot_v = torch.cat(seg_v)
+                    slot_ent = torch.cat(seg_ent)
+                    for t in range(start, end):
+                        chunk_lp[(t - start) * slots + e] = slot_lp[t - start]
+                        chunk_v[(t - start) * slots + e] = slot_v[t - start]
+                        chunk_ent[(t - start) * slots + e] = slot_ent[t - start]
+                    carries.append(h_e.detach().squeeze(1))
+                hidden = torch.stack(carries, dim=1)
+                entropy = chunk_ent.mean()
+                idx = torch.arange(start * slots, end * slots, device=self.device)
+                ratio = torch.exp(chunk_lp - flat_old_lp[idx])
+                adv = flat_adv[idx]
+                policy_loss = -torch.min(ratio * adv, torch.clamp(ratio, 1 - cfg.clip_range, 1 + cfg.clip_range) * adv).mean()
+                ret = flat_ret[idx]
+                v = chunk_v
+                v_old = flat_values[idx]
+                v_clipped = v_old + torch.clamp(v - v_old, -cfg.clip_range, cfg.clip_range)
+                value_loss = 0.5 * torch.max((v - ret) ** 2, (v_clipped - ret) ** 2).mean()
+                loss = policy_loss + cfg.value_coef * value_loss - cfg.entropy_coef * entropy
+                self.optimizer.zero_grad()
+                loss.backward()
+                nn.utils.clip_grad_norm_(self.model.parameters(), cfg.max_grad_norm)
+                self.optimizer.step()
+                metrics["policy_loss"].append(policy_loss.item())
+                metrics["value_loss"].append(value_loss.item())
+                metrics["entropy"].append(entropy.item())
+        pred_loss = 0.0
+        if self.curiosity is not None:
+            pred_loss = self.curiosity.update(
+                buf["obs"].reshape(flat, *buf["obs"].shape[2:]),
+                buf["actions"].reshape(flat),
+                buf["next_obs"].reshape(flat, *buf["next_obs"].shape[2:]),
+                (~buf["dones"]).reshape(flat))
         metrics["predictor_loss"].append(pred_loss)
         self.num_updates += 1
         out = {k: float(np.mean(v)) for k, v in metrics.items()}

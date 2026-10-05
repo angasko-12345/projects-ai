@@ -94,13 +94,16 @@ def _rollout(trainer):
 
 
 def _assert_same_rollout(test, single_out, vec_out):
+    # Vec bufs carry an explicit slot dim [T,1,...]; squeeze it: the 1-env
+    # vector path must reproduce the single path's logical rollout data.
     buf1, *rest1 = single_out
     buf2, *rest2 = vec_out
     for key in ("obs", "actions", "logprobs", "values", "ext", "terminated",
-                "truncated", "dones", "next_obs", "next_value"):
-        test.assertTrue(torch.equal(buf1[key], buf2[key]), key)
+                "truncated", "dones", "next_obs"):
+        test.assertTrue(torch.equal(buf1[key], buf2[key].squeeze(1)), key)
+    test.assertTrue(torch.equal(buf1["next_value"], buf2["next_value"][0]))
     for key in ("rewards", "int_rewards"):
-        test.assertTrue(torch.equal(buf1[key], buf2[key]), key)
+        test.assertTrue(torch.equal(buf1[key], buf2[key].squeeze(1)), key)
     for key in ("pixel_change", "int_raw_mean"):
         test.assertEqual(buf1[key], buf2[key], key)
     test.assertEqual(buf1["comp_sums"], buf2["comp_sums"])
@@ -108,8 +111,8 @@ def _assert_same_rollout(test, single_out, vec_out):
     adv1, ret1 = compute_gae(buf1["rewards"].float(), buf1["values"].float().reshape(-1),
                              buf1["terminated"].float(), buf1["next_value"].float(),
                              0.99, 0.95)
-    adv2, ret2 = compute_gae(buf2["rewards"].float(), buf2["values"].float().reshape(-1),
-                             buf2["terminated"].float(), buf2["next_value"].float(),
+    adv2, ret2 = compute_gae(buf2["rewards"][:, 0].float(), buf2["values"][:, 0].float(),
+                             buf2["terminated"][:, 0].float(), buf2["next_value"][0].float(),
                              0.99, 0.95)
     test.assertTrue(torch.equal(adv1, adv2))
     test.assertTrue(torch.equal(ret1, ret2))
@@ -184,10 +187,10 @@ class TestVecPPOEquivalence(unittest.TestCase):
         self.assertTrue(len(calls["slot"]) >= 1)
         self.assertTrue(all(i == 0 for i in calls["slot"]))
 
-    def test_multi_slot_vec_rejected(self):
+    def test_multi_slot_vec_accepted(self):
         vec = SyncVectorEnv([lambda: ScriptedEnv([]), lambda: ScriptedEnv([])])
-        with self.assertRaises(ValueError):
-            PPOTrainer(vec, ActorCritic(num_actions=2), _config(4, "/tmp/never4"))
+        trainer = PPOTrainer(vec, ActorCritic(num_actions=2), _config(4, "/tmp/never4"))
+        self.assertEqual(trainer._num_slots, 2)
 
     def test_short_train_matches_except_fps(self):
         script = [(1.0, True, False), (0.0, False, False), (0.0, False, True)]
