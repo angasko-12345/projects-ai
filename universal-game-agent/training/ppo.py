@@ -9,6 +9,7 @@ between chunks, so recurrence stays consistent) -> checkpoints + metrics.
 from __future__ import annotations
 
 import argparse
+import os
 import time
 from collections import deque
 from dataclasses import asdict, dataclass, fields
@@ -20,6 +21,7 @@ import torch.nn as nn
 from torch.distributions import Categorical
 
 from agent.model import ActorCritic
+from training.telemetry import FIELDNAMES, PPOUpdateCSVWriter
 
 
 @dataclass
@@ -38,6 +40,11 @@ class PPOConfig:
     seed: int = 0
     checkpoint_dir: str = "checkpoints"
     checkpoint_every_updates: int = 10
+    # None (or "") disables per-update CSV telemetry; otherwise the path of
+    # the CSV file that gets one row per completed PPO update
+    # (training/telemetry.py). A relative path resolves against the process
+    # working directory, so configs should normally use an absolute path.
+    telemetry_path: str | None = None
 
     def __post_init__(self):
         for name in (
@@ -59,6 +66,10 @@ class PPOConfig:
             raise ValueError(f"seed must be a non-negative int, got {self.seed!r}")
         if not 0 <= self.gamma <= 1 or not 0 <= self.gae_lambda <= 1:
             raise ValueError("gamma and gae_lambda must be in [0, 1]")
+        if self.telemetry_path is not None and not isinstance(self.telemetry_path, (str, os.PathLike)):
+            raise ValueError(
+                "telemetry_path must be a path string or None "
+                f"(None disables telemetry), got {self.telemetry_path!r}")
 
     @classmethod
     def from_dict(cls, data: dict) -> "PPOConfig":
@@ -401,6 +412,10 @@ class PPOTrainer:
     def train(self) -> dict[str, list]:
         cfg = self.config
         ckpt_dir = Path(cfg.checkpoint_dir)
+        # Created before the is_complete() early return so an already-finished
+        # run still leaves a header-only CSV. None means disabled: no file,
+        # no extra work, training output is byte-for-byte the legacy result.
+        tel = PPOUpdateCSVWriter(cfg.telemetry_path) if cfg.telemetry_path else None
         start = time.perf_counter()
         episodes_seen = 0
         if self.is_complete():
@@ -458,6 +473,10 @@ class PPOTrainer:
             steps = buf.get("comp_steps", cfg.rollout_length)
             self.history["components"].append(
                 {k: float(v) / steps for k, v in buf.get("comp_sums", {}).items()})
+            # One CSV row per completed update, straight from the history row
+            # above: no duplicated metric math, nothing PPO reads back.
+            if tel is not None:
+                tel.append({key: self.history[key][-1] for key in FIELDNAMES})
             print(
                 f"update {self.num_updates}: steps={self.num_timesteps} "
                 f"episodes={episodes_seen} mean_total_100={self.history['mean_reward'][-1]:.2f} "

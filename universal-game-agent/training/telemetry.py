@@ -6,9 +6,9 @@ exactly the scalar per-update series ``PPOTrainer.train`` appends to its
 (``components``, ``upd_action_share``) are dicts and have no CSV encoding,
 so they are excluded rather than stringified.
 
-Not wired into training yet: construct ``PPOUpdateCSVWriter`` with the
-destination path, then ``append()`` one flat record per update or
-``write_history()`` a trainer history dict. Files are only ever opened in
+Wired into training via ``PPOConfig.telemetry_path``: when set,
+``PPOTrainer.train`` writes one row per completed update straight from its
+history row. Files are only ever opened in
 append mode, so existing rows are never truncated; the header is written
 exactly once, when the file is created (or empty).
 """
