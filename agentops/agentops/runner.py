@@ -68,7 +68,19 @@ class RunResult:
 
     @property
     def succeeded(self) -> bool:
-        return not self.timed_out and self.exit_code == 0
+        """True only for a run that completed on its own terms.
+
+        A cancelled or terminated run never succeeded, whatever its exit code.
+        `cancelled` and `terminated` were being carried on this dataclass and
+        read nowhere, so a killed agent with `exit_code` left at 0 reported
+        success and carried a task to PASSED -- and then to READY.
+        """
+        return (
+            not self.timed_out
+            and not self.cancelled
+            and not self.terminated
+            and self.exit_code == 0
+        )
 
 
 class AgentRunner:

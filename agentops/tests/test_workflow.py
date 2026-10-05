@@ -237,3 +237,74 @@ class UnverifiedMustNotInventRepairTests(WorkflowTests):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CancelledAndTerminatedAreNotSuccessTests(WorkflowTests):
+    """A run that was killed or cancelled is not a successful run.
+
+    `RunResult.succeeded` was `not timed_out and exit_code == 0`, which ignores
+    the `cancelled` and `terminated` flags sitting right beside it on the same
+    dataclass. `workflow.py` read only `succeeded` at the task decision, so a
+    terminated agent with exit_code left at 0 carried implementation ->
+    verification -> review -> READY.
+
+    Same signature as the files_changed defect: the evidence exists in the
+    translation object, and the decision-maker cannot see it. Proven live with
+    a stub; the runner does not currently return exit_code=0 together with
+    those flags, so this guards the latent path rather than a live one.
+    """
+
+    def _engine_returning(self, **result_kwargs):
+        async def _run(agent, prompt, directory, task_id, cancel_event=None):
+            return RunResult(agent.config.name, ("fake",), result_kwargs["exit_code"],
+                             "partial output", "", 0.01, result_kwargs["timed_out"],
+                             Path(f"{task_id}.log"),
+                             cancelled=result_kwargs.get("cancelled", False),
+                             terminated=result_kwargs.get("terminated", False))
+        self.runner.run_agent = _run
+        collector = MagicMock(return_value=AgentRunMetadata(files_changed=("a.txt",)))
+        passed = MagicMock(succeeded=True, output="tests passed")
+        self.verifier.run = MagicMock(return_value=asyncio.sleep(0, result=[passed]))
+        return WorkflowEngine(self.config, self.state, self.registry,
+                              self.runner, self.verifier, metadata_collector=collector)
+
+    def _git_repo(self):
+        import subprocess as sp
+        import tempfile as tf
+        directory = tf.mkdtemp()
+        self.addCleanup(shutil.rmtree, directory, ignore_errors=True)
+        for cmd in (["git", "init", "-q"],
+                    ["git", "config", "user.email", "t@t.local"],
+                    ["git", "config", "user.name", "T"]):
+            sp.run(cmd, cwd=directory, check=True)
+        Path(directory, "base.txt").write_text("base", encoding="utf-8")
+        sp.run(["git", "add", "-A"], cwd=directory, check=True)
+        sp.run(["git", "commit", "-qm", "base"], cwd=directory, check=True)
+        return Path(directory)
+
+    def _assert_not_ready(self, result):
+        self.assertFalse(result.ready,
+                         "a cancelled/terminated run must never reach READY")
+        for task in self.state.list_tasks(result.workflow_id):
+            self.assertNotEqual(task.status, TaskStatus.PASSED,
+                                f"{task.role} PASSED on a cancelled/terminated run")
+
+    def test_terminated_run_does_not_reach_ready(self):
+        engine = self._engine_returning(exit_code=0, timed_out=False, terminated=True)
+        self._assert_not_ready(
+            asyncio.run(engine.run_high_level("Do it", self._git_repo())))
+
+    def test_cancelled_run_does_not_reach_ready(self):
+        engine = self._engine_returning(exit_code=0, timed_out=False, cancelled=True)
+        self._assert_not_ready(
+            asyncio.run(engine.run_high_level("Do it", self._git_repo())))
+
+    def test_clean_run_still_reaches_ready(self):
+        # The guard must not break the ordinary success path.
+        engine = self._engine_returning(exit_code=0, timed_out=False)
+        result = asyncio.run(engine.run_high_level("Do it", self._git_repo()))
+        self.assertTrue(result.ready, result.summary)
+
+
+if __name__ == "__main__":
+    unittest.main()
