@@ -10,6 +10,7 @@ from pathlib import Path
 from . import __version__
 from .agent_run import AgentRunStatus, GitRunMetadataCollector
 from .artifacts import ArtifactError
+from .tasks import TaskStatus
 from .config import _load_data, load_config
 from .finalize import WorktreeFinalization, finalize_worktree, record_worktree_provenance
 from .git import GitError, GitWorktreeManager
@@ -21,6 +22,21 @@ from .state import StateStore
 from .verification import Verifier
 from .verification_kernel import VerificationKernel
 from .workflow import WorkflowEngine, WorkflowResult
+
+
+def _implementation_passed(state, workflow_id: str) -> bool:
+    """True when the implementation task itself reached PASSED.
+
+    Used to decide whether delegate work should be committed and merged even
+    though verification did not reach PASSED. A FAILED implementation is never
+    merged; an UNVERIFIED verification is not by itself a reason to discard work.
+    """
+    try:
+        tasks = state.list_tasks(workflow_id)
+    except Exception:
+        return False
+    return any(task.role == "implementation" and task.status is TaskStatus.PASSED
+               for task in tasks)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -404,7 +420,18 @@ def main(argv: list[str] | None = None) -> int:
         record_worktree_provenance(state, worktree, workflow_id, DegradationRecorder(
             emit=event_emitter(state.record_typed_event)))
         finalization = WorktreeFinalization(changed=False, merged=False, conflict_error=None)
-        if result.ready:
+        # Finalize whenever the IMPLEMENTATION succeeded, even if verification did
+        # not reach PASSED. Previously only `result.ready` finalized, so a workflow
+        # whose required verification check was inapplicable (report UNVERIFIED,
+        # task BLOCKED) printed "no worktree changes to merge" and threw away
+        # correct work: a delegate wrote PROOF.md, and the file was left untracked
+        # in a worktree that got preserved "for inspection". Refusing to merge
+        # work nobody proved is wrong is the opposite mistake, so readiness is
+        # deliberately NOT the gate here -- a substantive verification FAILURE
+        # still keeps the work unmerged, because finalization is only attempted
+        # when the implementation task itself passed.
+        implementation_ok = _implementation_passed(state, workflow_id)
+        if result.ready or implementation_ok:
             finalization = finalize_worktree(manager, state, worktree, description, workflow_id,
                                              config.max_attempts)
             if finalization.conflict_error is not None:
