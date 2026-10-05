@@ -261,5 +261,125 @@ class TestSyncVectorEnv(unittest.TestCase):
         self.assertEqual([e.closes for e in made], [1, 1])
 
 
+class TestVecEpisodeBoundaries(unittest.TestCase):
+    """Boundary semantics decided from ``training/ppo.py:collect_rollout``.
+
+    The rollout needs every terminal step's own observation, reward, and
+    flags untouched (truncation bootstrap, curiosity masking, GAE masking),
+    resets exactly the finished episode inline, and keeps hidden state
+    caller-side. So: no autoreset, separate terminated/truncated flags, and
+    selective per-slot reset.
+    """
+
+    def test_early_termination_leaves_final_step_intact(self):
+        # A terminates on step 2 with reward 1.0; B runs on.
+        a = FakeEnv(script=[(0.0, False, False), (1.0, True, False)], obs_value=1.0)
+        b = FakeEnv(script=[(0.0, False, False)] * 5, obs_value=2.0)
+        vec = SyncVectorEnv([lambda: a, lambda: b])
+        try:
+            vec.reset()
+            vec.step([0, 0])
+            obs, rewards, terminateds, truncateds, _ = vec.step([0, 0])
+            # A's final step is exact: terminal obs, reward, flags.
+            self.assertEqual(terminateds, [True, False])
+            self.assertEqual(truncateds, [False, False])
+            self.assertEqual(rewards, [1.0, 0.0])
+            self.assertTrue((obs[0] == 2.0).all())  # A's own post-step frame
+            # No autoreset: the next step still goes to the same envs.
+            vec.step([0, 0])
+            self.assertEqual(a.resets, 1)
+            self.assertEqual(b.resets, 1)
+            self.assertEqual(a.seen_actions, [0, 0, 0])
+            self.assertEqual(b.step_index, 3)  # B continued independently
+        finally:
+            vec.close()
+
+    def test_mixed_termination_and_truncation_stay_distinct(self):
+        a = FakeEnv(script=[(1.0, True, False)])
+        b = FakeEnv(script=[(0.5, False, True)])
+        vec = SyncVectorEnv([lambda: a, lambda: b])
+        try:
+            vec.reset()
+            _, rewards, terminateds, truncateds, _ = vec.step([0, 0])
+            self.assertEqual(terminateds, [True, False])
+            self.assertEqual(truncateds, [False, True])
+            self.assertEqual(rewards, [1.0, 0.5])
+        finally:
+            vec.close()
+
+    def test_truncation_case_no_autoreset(self):
+        a = FakeEnv(script=[(0.0, False, False), (0.5, False, True)], obs_value=3.0)
+        b = FakeEnv(obs_value=4.0)
+        vec = SyncVectorEnv([lambda: a, lambda: b])
+        try:
+            vec.reset()
+            vec.step([0, 0])
+            obs, rewards, terminateds, truncateds, _ = vec.step([0, 0])
+            self.assertEqual(terminateds, [False, False])
+            self.assertEqual(truncateds, [True, False])
+            self.assertEqual(rewards, [0.5, 0.0])
+            self.assertTrue((obs[0] == 2.0).all())  # pre-reset frame survives
+            vec.step([0, 0])
+            self.assertEqual(a.resets, 1)  # still no autoreset
+        finally:
+            vec.close()
+
+    def test_full_reset_resets_both(self):
+        a = FakeEnv(script=[(1.0, True, False)])
+        b = FakeEnv()
+        vec = SyncVectorEnv([lambda: a, lambda: b])
+        try:
+            vec.reset()
+            vec.step([0, 0])
+            obs, _ = vec.reset()
+            self.assertEqual([e.resets for e in (a, b)], [2, 2])
+            self.assertTrue((obs[0] == 0.0).all())
+            self.assertTrue((obs[1] == 0.0).all())
+        finally:
+            vec.close()
+
+    def test_selective_reset_touches_only_finished_slot(self):
+        a = FakeEnv(script=[(1.0, True, False)], obs_value=1.0)
+        b = FakeEnv(obs_value=2.0)
+        vec = SyncVectorEnv([lambda: a, lambda: b])
+        try:
+            vec.reset()
+            vec.step([0, 0])
+            vec.step([0, 0])
+            obs, _ = vec.reset_env(0)
+            self.assertTrue((obs == 1.0).all())  # A fresh
+            self.assertEqual(a.resets, 2)
+            self.assertEqual(b.resets, 1)  # B untouched, still mid-episode
+            self.assertEqual(b.step_index, 2)
+            obs, _ = vec.reset_env(1, seed=7)
+            self.assertEqual(b.seen_seeds, [None, 7])
+            self.assertTrue((obs == 2.0).all())
+        finally:
+            vec.close()
+
+    def test_selective_reset_rejects_bad_index(self):
+        vec = SyncVectorEnv([lambda: FakeEnv()])
+        try:
+            vec.reset()
+            with self.assertRaises(IndexError):
+                vec.reset_env(1)
+            with self.assertRaises(IndexError):
+                vec.reset_env(-1)
+        finally:
+            vec.close()
+
+    def test_boundary_scenario_still_closes_cleanly(self):
+        a = FakeEnv(script=[(1.0, True, False)])
+        b = FakeEnv(script=[(0.5, False, True)])
+        vec = SyncVectorEnv([lambda: a, lambda: b])
+        vec.reset()
+        vec.step([0, 0])
+        vec.reset_env(0)
+        vec.reset_env(1)
+        vec.close()
+        self.assertEqual([e.closes for e in (a, b)], [1, 1])
+
+
+
 if __name__ == "__main__":
     unittest.main()
