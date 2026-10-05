@@ -76,6 +76,45 @@ def _truncate(text: str, limit: int = _MAX_TRANSCRIPT_OUTPUT) -> str:
     return text[:limit] + f"\n...[truncated {len(text) - limit} characters]..."
 
 
+def _inapplicable_reason(command: tuple[str, ...], working_directory: Path) -> str | None:
+    """Return why ``command`` cannot run here, or None when it can.
+
+    A verification command that cannot apply to the working tree must not be
+    allowed to fail the workflow. The motivating case: the default
+    ``python -m unittest discover -s tests`` raises
+    ``ImportError: Start directory is not importable: 'tests'`` on any repo
+    without a ``tests/`` directory. That surfaced as a FAILED verification, and
+    therefore "Implementation did not pass", masking a delegate that had in fact
+    written its file. Absence of an applicable check is not a failing check --
+    it is an absent signal, and reporting it as failure manufactures evidence
+    that does not exist.
+
+    Deliberately narrow: only a discovery command whose argv explicitly targets
+    a missing start directory is treated as inapplicable. Anything else still
+    runs and still decides the outcome.
+    """
+    argv = list(command)
+    if not argv:
+        return None
+    # Scan the whole argv, not just the first two entries: the real form is
+    # `python -m unittest discover -s tests`, where "unittest" is argv[2]. An
+    # earlier version checked argv[:2], found nothing, and silently disabled
+    # this guard for exactly the command it was written for.
+    if not any("unittest" in part or "pytest" in part for part in argv):
+        return None
+    for index, part in enumerate(argv):
+        if part == "-s" and index + 1 < len(argv):
+            target = Path(argv[index + 1])
+            if not target.is_absolute():
+                target = working_directory / target
+            if not target.is_dir():
+                return (
+                    f"start directory {argv[index + 1]!r} does not exist in {working_directory}"
+                )
+            break
+    return None
+
+
 class VerificationKernel:
     def __init__(
         self,
@@ -239,11 +278,33 @@ class VerificationKernel:
                     self._skip_specs(group, checks, texts, "cancelled", degraded)
                     stop = True
                     continue
-                await self._run_group(profile, base, group, checks, texts, cancel_event,
+                # A check that cannot apply to this working tree is recorded as
+                # SKIPPED and never executed: `python -m unittest discover -s tests`
+                # on a repo with no tests/ raises ImportError, which failed the run and
+                # reported "Implementation did not pass" for a delegate that had in fact
+                # written its file. An absent check is an absent signal, not a failing
+                # one. A run whose every check is inapplicable still falls through to the
+                # existing vacuous-success rule and FAILS, so this can never manufacture
+                # a pass out of no evidence.
+                applicable = [
+                    spec for spec in group
+                    if not _inapplicable_reason(
+                        spec.command,
+                        Path(spec.working_directory) if spec.working_directory else base,
+                    )
+                ]
+                if len(applicable) != len(group):
+                    self._skip_specs(
+                        [spec for spec in group if spec not in applicable],
+                        checks, texts, "inapplicable", degraded,
+                    )
+                if not applicable:
+                    continue
+                await self._run_group(profile, base, applicable, checks, texts, cancel_event,
                                       degraded)
                 group_checks = [checks[spec.name] for spec in group]
                 if profile.mode is VerificationProfileMode.FAIL_FAST and any(
-                    check.status is not VerificationCheckStatus.PASSED for check in group_checks
+                    check.status is VerificationCheckStatus.FAILED for check in group_checks
                 ):
                     stop = True
         except asyncio.CancelledError:
