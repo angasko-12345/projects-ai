@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import subprocess
+import sys
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -22,6 +24,7 @@ from .agent_run import (
     GitRunMetadataCollector,
 )
 from .agent_result import parse_agent_result
+from .evidence import TaskEvidence, expected_evidence
 from .execution_model import (
     StateTransitionError,
     WorkflowReadiness,
@@ -128,6 +131,25 @@ class WorkflowResult:
 # Task roles created by create_standard_workflow, in dependency order.
 # Single source of truth: the GUI controller pins explicit agent preferences
 # against this tuple when an operator chooses a fixed agent for a task.
+def _is_git_working_tree(path: str | Path) -> bool:
+    """True when ``path`` is inside a git working tree.
+
+    GitRunMetadataCollector reads `git status --porcelain`, which prints nothing
+    outside a repository. Without this check an empty result is ambiguous
+    between "nothing changed" and "there was nothing to look at".
+    """
+    try:
+        completed = subprocess.run(
+            ("git", "rev-parse", "--is-inside-work-tree"),
+            cwd=str(path), capture_output=True, text=True, timeout=5,
+            encoding="utf-8", errors="replace",
+            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
+        )
+    except Exception:
+        return False
+    return completed.returncode == 0 and "true" in (completed.stdout or "").lower()
+
+
 STANDARD_TASK_ROLES = ("architecture", "implementation", "verification", "review")
 
 
@@ -592,7 +614,15 @@ class WorkflowEngine:
                     ).strip()
                     if cancel_event is not None and cancel_event.is_set():
                         raise OperationCancelled
-                    task.status = TaskStatus.PASSED if result.succeeded else TaskStatus.FAILED
+                    # exit 0 is evidence the PROCESS ran, not that the WORK was
+                    # done. Check the role's evidence contract before crediting
+                    # success: an agent that exited cleanly having changed nothing
+                    # must not PASS a role whose job is to change code.
+                    satisfied, reason = self._evidence_satisfied(task, result, working_directory)
+                    task.status = TaskStatus.PASSED if (result.succeeded and satisfied) \
+                        else TaskStatus.FAILED
+                    if not satisfied and result.succeeded:
+                        task.result = f"{task.result}\n\n{reason}".strip()
                     if task.status is TaskStatus.FAILED:
                         self._record_agent_failure(task, result)
         except StateTransitionError:
@@ -680,6 +710,40 @@ class WorkflowEngine:
             # violation propagates instead of becoming a task failure.
             assert_task_completion(task)
         self.state.update_task(task)
+
+    def _evidence_satisfied(self, task: Task, result, working_directory) -> tuple[bool, str]:
+        """Apply the role's evidence contract to a successful agent run.
+
+        Measures the working tree directly instead of trusting the persisted
+        AgentRunOutcome. Two reasons: `RunResult` does not carry `files_changed`
+        at all, and a runner double that accepts but ignores the metadata
+        collector still produces a row whose empty `files_changed` means "not
+        measured" rather than "nothing changed". Measuring here makes the check
+        independent of who ran the agent.
+        """
+        requirement = expected_evidence(task.role)
+        if requirement is not TaskEvidence.WORKTREE_CHANGE:
+            return True, ""
+        try:
+            collector = self.metadata_collector or GitRunMetadataCollector()
+            metadata = collector(working_directory)
+        except Exception:
+            # Could not measure: report satisfied and let verification decide,
+            # rather than failing work on a measurement failure.
+            return True, ""
+        if not _is_git_working_tree(working_directory):
+            # The collector reads `git status`, so outside a repository it
+            # reports nothing at all. That is "cannot observe", not "observed
+            # empty" -- conflating the two would fail every workflow run
+            # against a plain directory, which several tests and some real
+            # invocations do.
+            return True, ""
+        if metadata.files_changed:
+            return True, ""
+        return False, (
+            "no_evidence: the agent exited cleanly but changed no files in "
+            f"{working_directory}, so it did not do the work it was asked to do"
+        )
 
     def _record_agent_failure(self, task: Task, result) -> None:
         try:

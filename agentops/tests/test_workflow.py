@@ -1,12 +1,18 @@
 import asyncio
+import shutil
+import subprocess
+import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from agentops.agent_run import AgentRunMetadata
 from agentops.config import AppConfig, AgentConfig
 from agentops.registry import DetectedAgent
 from agentops.runner import RunResult
 from agentops.state import StateStore
+from agentops.tasks import TaskStatus
 from agentops.workflow import WorkflowEngine
 
 
@@ -59,3 +65,95 @@ class WorkflowTests(unittest.TestCase):
         ])
         asyncio.run(engine.execute(workflow_id, Path.cwd()))
         self.assertTrue(all(self.state.get_task(task.id).status.value == "passed" for task in tasks))
+
+
+class ImplementationEvidenceTests(WorkflowTests):
+    """exit 0 is a CLAIM of success, not evidence of it.
+
+    Live defect (2026-10-05): a constrained opencode task returned exit_code=0 and
+    `implementation` was recorded PASSED while the worktree held no MERGED.md --
+    the delegate did nothing at all.
+
+    `files_changed` is collected onto the persisted AgentRunOutcome, not onto
+    RunResult, so these tests persist a run row the way the real runner does.
+    """
+
+    def _engine_with(self, files_changed, config=None, real_collector=False):
+        # The workflow only enforces the evidence contract inside a git working
+        # tree, because that is all GitRunMetadataCollector can observe. Case 1
+        # therefore needs a REAL repo with nothing changed in it; cases 2 and 3
+        # declare their evidence through an injected collector.
+        self._git_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self._git_dir, ignore_errors=True)
+        env_dir = Path(self._git_dir)
+        (env_dir / ".keep").write_text("", encoding="utf-8")
+        subprocess.run(["git", "init", "-q"], cwd=env_dir, check=True)
+        subprocess.run(["git", "config", "user.email", "t@t.local"], cwd=env_dir, check=True)
+        subprocess.run(["git", "config", "user.name", "T"], cwd=env_dir, check=True)
+        subprocess.run(["git", "add", "-A"], cwd=env_dir, check=True)
+        subprocess.run(["git", "commit", "-qm", "base"], cwd=env_dir, check=True)
+        collector = MagicMock(return_value=AgentRunMetadata(files_changed=files_changed))
+        self._collector = collector
+
+        engine_cfg = config or self.config
+        # The workflow measures the working tree with its metadata collector.
+        # Tests declare the evidence explicitly rather than depending on what
+        # happens to be in the real cwd.
+        collector = MagicMock(return_value=AgentRunMetadata(files_changed=files_changed))
+        engine = WorkflowEngine(engine_cfg, self.state, self.registry,
+                                self.runner, self.verifier,
+                                metadata_collector=collector)
+        original = self.runner.run_agent
+
+        async def _run(agent, prompt, directory, task_id, cancel_event=None):
+            return await original(agent, prompt, directory, task_id,
+                                  cancel_event=cancel_event)
+
+        self.runner.run_agent = _run
+        return engine
+
+    def _implementation(self, workflow_id):
+        tasks = [t for t in self.state.list_tasks(workflow_id) if t.role == "implementation"]
+        self.assertTrue(tasks, "no implementation task recorded")
+        return tasks[0]
+
+    def test_success_with_no_worktree_change_is_not_passed(self):
+        # Case 1: the exact live failure. Agent claimed success, wrote nothing.
+        engine = self._engine_with(files_changed=(), real_collector=True)
+        result = asyncio.run(engine.run_high_level("Create PROOF.md", Path(self._git_dir)))
+        task = self._implementation(result.workflow_id)
+        self.assertNotEqual(
+            task.status, TaskStatus.PASSED,
+            "exit 0 with an empty worktree must not be a PASSED implementation")
+        self.assertIn("no_evidence", task.result)
+
+    def test_success_with_worktree_change_is_passed(self):
+        # Case 2: the legitimate case must keep working.
+        engine = self._engine_with(files_changed=("proof.md",))
+        result = asyncio.run(engine.run_high_level("Create PROOF.md", Path(self._git_dir)))
+        self.assertEqual(self._implementation(result.workflow_id).status, TaskStatus.PASSED)
+
+    def test_research_task_with_no_files_is_allowed_to_pass(self):
+        # Case 3: "investigate why X fails and report" legitimately changes no
+        # files. A blanket "no changes = failure" rule would be wrong, so the
+        # requirement must be scoped by role.
+        config = AppConfig(
+            {"fallback": AgentConfig("fallback", "fake", ("{prompt}",),
+                                     ("architecture", "research", "verification"))},
+            {role: ("fallback",) for role in ("architecture", "research", "verification")},
+            (("test",),), max_attempts=2, concurrency=2,
+        )
+        engine = self._engine_with(files_changed=(), config=config)
+        workflow_id, tasks = engine.create_workflow("research", [
+            {"id": "investigate", "description": "Investigate the failure",
+             "role": "research"},
+        ])
+        asyncio.run(engine.execute(workflow_id, Path.cwd()))
+        research_task = next(t for t in tasks if t.role == "research")
+        self.assertEqual(
+            self.state.get_task(research_task.id).status, TaskStatus.PASSED,
+            "a research task with no file changes must still be able to PASS")
+
+
+if __name__ == "__main__":
+    unittest.main()
