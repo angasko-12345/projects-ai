@@ -226,6 +226,25 @@ Documentation-only; no source, test, or artifact changed. Suite re-run: 96 tests
 - End-to-end `python make_videos.py --count 3` was blocked by an external Gemini free-tier quota (20 requests/day on `gemini-3.8-flash`, HTTP 429). This is not a code defect; rerun after the quota resets (~2026-10-04). No videos have been validated yet.
 - Constraints honored: no Pexels/database/browser-automation reintroduction, no new dependencies.
 
+## tiktok-slop-factory speech-aware caption timing 2026-10-04 (commit 58d50c2)
+
+- Caption timing moved from even duration slicing to a weighted model. `captions.speech_aware_timestamps` weights each word `1.0 + 0.35 × (syllables − 1) + pause(trailing punctuation)`, where syllables are a vowel-group count and pause is `,` 0.50, `;`/`:` 0.70, `.`/`?`/`!`/ellipsis 0.90. The scale factor is found by bisection so `Σ clamp(k·wᵢ, MIN, MAX)` equals the probed narration duration.
+- Bounds: `MIN_CUE_SEC = 0.40`, `MAX_CUE_SEC = 7.00`, applied **per on-screen caption** via a new `max_words=3` parameter that matches the pipeline's grouping. Below the floor raises `CaptionTimingError` instead of emitting unreadable cues; above `count × MAX_CUE_SEC` every cue caps and the track ends early (a deliberate behavior change — see the decisions entry).
+- `simple_timestamps` is retained as an alias for the new function, so `test_renderer.py` and `test_visuals.py` are unchanged. Timing and grouping share `_group_words`, so neither merges across a sentence boundary.
+- Documented as a drift-reduction heuristic, **not** speech alignment: no Whisper, no audio analysis, no hard-coded English words-per-second. The probed duration stays authoritative.
+- **Test baseline 2026-10-04: `python -m pytest tests` → 109 passed, 2 failed** (was 97 passed). The two failures — `test_config.py::test_loads_dotenv_from_project_root` and `test_gemini_parsing.py::test_generate_ideas_rejects_duplicate_padding` — are environmental (`ConfigError: GEMINI_API_KEY not set`) and were reproduced on the untouched tree before any edit. 14 caption tests added, none needing network.
+- **This product is pytest, not unittest.** `python -m unittest discover -s tests` collects **0 tests**, prints `NO TESTS RAN`, and exits **5**. Always check the collected count and exit code together.
+- Scope held: no Gemini, TTS, renderer, visual, output-verification, batch, CLI, or manifest/resume changes. `.agents/pending_tasks.md` deliberately untouched.
+
+## tiktok-slop-factory narration coherence gate 2026-10-04 (commit f31221f)
+
+- `pipeline._assert_narration_coherent()` runs in `_produce_one` immediately after the duration probe and **before `visuals.plan_scenes`**, so an impossible text/audio pairing fails in milliseconds instead of reaching a full 1080x1920 render. Two independent rejections: **silence** (FFmpeg `volumedetect` mean ≤ `SILENCE_MAX_DB = -80.0` dBFS) and **duration mismatch** (probed length outside the estimated band).
+- The expected range comes from `captions.estimate_speech_range(text)` → `(low, high)`: `SECONDS_PER_WEIGHT = 0.40` summed over the *same* caption `word_weight` values, scaled by `DURATION_TOLERANCE = (0.60, 2.00)`, floored at `MIN_PREDICTED_SEC = 1.0`. One speech model shared with the caption timing, so the two cannot drift apart. Documented as a heuristic band, not speech alignment; no words-per-second constant is claimed exact.
+- **The -80 dBFS threshold is measured, not guessed:** digital silence reads exactly -91.0 dB, a -60 dB tone -78.3 dB, a -50 dB tone -71.1 dB, an ordinary tone -21.1 dB. -80 sits in the empty gap, so quiet narration always passes and only genuinely empty audio fails. Do not retune without repeating the measurement.
+- The gate never modifies audio — nothing is stretched, truncated, or re-timed; the narration is rejected and regenerated. `MIN_CUE_SEC`/`MAX_CUE_SEC` unchanged.
+- **Test baseline 2026-10-04 (current): `python -m pytest tests` → 125 passed, 2 failed** (628s). The same two environmental `GEMINI_API_KEY` failures as the caption pass, reproduced pre-edit and out of scope. 16 new tests in `tests/test_narration_coherence.py`; all 32 caption tests still green.
+- **Two facts a future session needs.** (1) `test_end_to_end_produces_vertical_video` no longer hard-codes a 6s stub tone — its length is derived from `estimate_speech_range`, because a 6s tone for that 32-word script is ~5.3 words/sec and the gate correctly rejects it; do not restore the hard-coded 6s. (2) Suite runtime is now **~630s, not ~300s**, because that test renders ~22s videos instead of 6s — budget for it and run it in the background, not under a short foreground timeout.
+
 ## AgentOps Qt desktop migration 2026-10-04 (commit 5b80d9b, pushed as 7d5e7e1)
 
 - The Tkinter desktop client (`agentops/agentops/gui.py`, 1007 lines) was replaced by a PySide6 package `agentops/agentops/gui/` (15 modules + 13 view modules). Commit `5b80d9b`, 40 files, +6286/-1398. Pushed to `origin/main` via merge commit `7d5e7e1`.
