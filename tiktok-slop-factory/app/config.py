@@ -18,6 +18,13 @@ class ConfigError(Exception):
     pass
 
 
+# Text-generation backends. "gemini" is the default and the only one that
+# needs an API key; "local" reads its text from a JSON file and synthesizes
+# narration with Edge TTS, which is keyless.
+BACKENDS = ("gemini", "local")
+DEFAULT_BACKEND = "gemini"
+
+
 def get_project_root() -> Path:
     return Path(__file__).parent.parent
 
@@ -68,6 +75,60 @@ def get_gemini_tts_model() -> str:
 def get_tts_voice() -> str:
     _load_dotenv_once()
     return os.getenv("TTS_VOICE", "Kore").strip()
+
+
+def normalize_backend(name: str | None) -> str:
+    """Return a validated backend name, or raise ConfigError.
+
+    An unset value falls back to ``DEFAULT_BACKEND`` so the Gemini path is
+    what runs when nothing is configured. Anything else is a typo the user
+    needs to see, not a silent fallback.
+    """
+    raw = (name or "").strip().lower()
+    if not raw:
+        return DEFAULT_BACKEND
+    if raw not in BACKENDS:
+        raise ConfigError(
+            f"Unknown backend {name!r}. Choose one of: {', '.join(BACKENDS)}."
+        )
+    return raw
+
+
+def get_backend() -> str:
+    """The backend named by ``TEXT_BACKEND``, defaulting to Gemini."""
+    _load_dotenv_once()
+    return normalize_backend(os.getenv("TEXT_BACKEND"))
+
+
+def get_local_text_path() -> Path:
+    """Path to the local backend's text file.
+
+    Defaults to ``<project root>/local_text.json`` so the value does not
+    depend on the current working directory, and is read per call rather than
+    frozen at import time.
+    """
+    _load_dotenv_once()
+    raw = os.getenv("TEXT_PROVIDER_JSON", "").strip()
+    if raw:
+        return Path(raw).expanduser().resolve()
+    return (get_project_root() / "local_text.json").resolve()
+
+
+def get_edge_tts_voice() -> str:
+    """Edge TTS voice for the local backend.
+
+    Deliberately a separate variable from ``TTS_VOICE``: that names a Gemini
+    prebuilt voice (``Kore``), which Edge TTS would reject outright. One
+    variable per backend keeps either setting unambiguous.
+    """
+    _load_dotenv_once()
+    return os.getenv("EDGE_TTS_VOICE", "en-GB-SoniaNeural").strip()
+
+
+def get_edge_tts_rate() -> str:
+    """Edge TTS speaking rate for the local backend."""
+    _load_dotenv_once()
+    return os.getenv("EDGE_TTS_RATE", "+8%").strip()
 
 
 def get_output_dir() -> Path:

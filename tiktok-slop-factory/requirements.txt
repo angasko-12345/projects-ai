@@ -1,5 +1,9 @@
-# Runtime dependency: reads .env. Everything else uses the standard library.
+# Runtime dependency: reads .env; edge-tts is the `--backend local` narrator.
 python-dotenv>=1.0
+
+# Narration for `--backend local` (free, keyless Microsoft Edge TTS).
+# Not used by `--backend gemini`.
+edge-tts>=6.1
 
 # Test-only
 pytest>=8.0
