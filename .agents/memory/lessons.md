@@ -692,3 +692,31 @@
 - **Root cause:** PEP 701 relaxed f-string expressions in 3.12. The construct was written and reviewed on a newer interpreter, and every test that would have noticed imports torch first, so on a machine without torch the module failed on the missing dependency and the syntax error was never reached.
 - **Fix:** the join is hoisted into a local before the f-string. `tests/test_source_compat.py` compiles every source file, needs no third-party dependency, and fails on any construct the running interpreter cannot parse.
 - **Remember:** when a project pins a minimum interpreter in CI, "compiles on the floor" is a testable invariant on its own - `compile()` needs nothing installed and catches the whole class. Without it, the only signal is a CI job that was already red for a reason nobody had looked at.
+
+### 2026-10-05 - An experiment artifact is only as valid as the code that produced it
+
+- **Symptom:** `exp_external_pong_compare01_results.json` read as a damning current result — untrained outscored trained, both policies pinned at the 200-step cap, with its own note "the task rewards survival, not skill".
+- **Root cause:** the run's `timestamp_utc` is 2026-09-25T12:27Z; the reward/termination fix `b77bf4d` landed 2026-09-26. Pre-fix, the MISS banner downscaled to 61 px — inside the hit band — so misses paid +1, `miss_min` never fired, nothing terminated, and both policies accumulated event counts (10.83 vs 11.83), not skill signal. The artifact faithfully recorded a buggy world.
+- **Fix:** before citing a results JSON, compare its timestamp against `git log` of the code it exercised. Post-fix, exp01/exp02 episodes end on the first miss exactly as the protocol says.
+- **Remember:** a tracked artifact is immutable evidence of a moment, not of current code. `timestamp_utc` + `git log -- <module>` settles it in one command.
+
+### 2026-10-05 - Reward protocol: +1 pays once per miss-cycle, not per episode
+
+- **Symptom:** a perfect synthetic policy (never misses, survives every 200-step episode) scored a 10-episode mean of +0.1 instead of +1, looking like a broken reward.
+- **Root cause:** `ExternPongReward` pays +1 only on the first hit after a serve; the hit latch clears only on a re-serve, and only a miss triggers a re-serve. A sustained rally therefore pays 0 forever after the first served hit.
+- **Fix:** read means under the asymmetry — floor −1.0 (die immediately), sustained play ≈ 0, first-cycle +1 diluted by episode count (~+0.1 over 10 episodes). Discrimination still exists (~1.1 spread between oracle and random); verify with probes, not with the absolute mean.
+- **Remember:** when an eval mean looks too low for a good policy, count how many reward events the protocol can actually emit before assuming a learning failure.
+
+### 2026-10-05 - Split timing into frequency × displacement, and probe each before blaming the loop rate
+
+- **Symptom:** the working theory was that the slow 147.6 ms decision cadence made the external game unlearnable.
+- **Root cause:** the controlled 4-cell matrix showed the lookahead oracle surviving all 200 steps at 147.6, 33.3, and 16.7 ms periods — provided the key hold delivered enough displacement. At the same 147.6 ms period with a 16.667 ms hold (~5 px per press), control authority drops to ~34 px/s and even the oracle dies at 7.9 steps. Displacement per decision (15-20 px at the real 60 ms hold), not decisions per second, gates control.
+- **Fix:** when timing feels wrong, decompose it into decision frequency × per-actor displacement and run an oracle probe (upper bound) plus random/no-op (floor) per cell — seconds of compute, and "timing feels slow" becomes a measured binding constraint.
+- **Remember:** the first hypothesis (cadence) was rejected by its own experiment; the probe design, not the budget, is what made that possible.
+
+### 2026-10-05 - Constant greedy behaviour is not evidence of policy collapse
+
+- **Symptom:** exp02's trained policy emitted 381/381 `PRESS_LEFT` at greedy eval — read as PPO collapse, which fed the DISPROVEN ROOT-015..018/028 claims.
+- **Root cause:** entropy moved 1.082 → 1.020 against ln 3 = 1.0986 — near-uniform throughout. Greedy argmax over a near-uniform logit vector returns whichever action happens to lead; the policy never sharpened.
+- **Fix:** check entropy and per-update action shares (`upd_action_share`, added this session) before diagnosing collapse. The matrix produced a genuine collapse as reference: entropy 0.06 with ≥98 % one action from update 1.
+- **Remember:** eval reports argmax of logits, not confidence. Constant action + ~ln 3 entropy = indecision, not collapse. ROOT-015..018/028 stay DISPROVEN — do not revive them on behaviour alone.
