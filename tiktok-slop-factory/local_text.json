@@ -1,0 +1,35 @@
+{
+  "_comment": "Text content for tiktok-slop-factory, supplied locally because there is no GEMINI_API_KEY. Audio is synthesized with Edge TTS by app/local_text.py. All stories are explicitly fictional.",
+  "scripts": [
+    {
+      "idea": "A small town's library lends out books that have never been written yet",
+      "hook": "The library in my town started lending out books nobody had written yet.",
+      "story": "It started with a blank hardcover on the shelf, no title, no author. A librarian typed a few words into the catalogue and handed it to a retired teacher. By Friday she had read a novel about a lighthouse keeper who befriended a whale. The next blank one is gone too, and three more blanks have appeared overnight. Nobody panics. They queue up for them.",
+      "twist": "The books are not being written by anyone. The retired teacher asked a colleague, who asked her book club, and now the entire town is quietly arguing about chapter nine of a story that exists only in the books they are reading.",
+      "ending": "The head librarian has started a waiting list. It is three months long. She has also quietly stopped ordering new stock, because nobody finishes what they are reading.",
+      "cta": "Would you be first in line, or would you be scared to see what the blank book wrote about you?",
+      "title": "The Library That Writes Its Own Books",
+      "hashtags": ["books", "fiction", "storytime", "weird", "shortstory"]
+    },
+    {
+      "idea": "A courier discovers the parcels he delivers are messages from his own future",
+      "hook": "My courier route contains parcels addressed to me, from me.",
+      "story": "They started as a mistake. A padded envelope in zone four with my surname and a postmark dated next month. Inside, a printed work rota for a job I do not have yet, with my handwriting in the notes column. Then another, listing a flat I will apparently live in, with a reminder to fix the leak in the bathroom. Each one is signed by me. None of them are from a postmark I recognise.",
+      "twist": "I have started checking my deliveries against my own calendar, and the ones that arrive early are always right. The ones that arrive late are the ones where I did something differently.",
+      "ending": "Today a parcel arrived early with a note that says do not open this one yet. So I left it under the counter, and I have never wanted to know what I was going to do in a month more than I do right now.",
+      "cta": "If tomorrow's post ever arrived early, would you read it?",
+      "title": "Post From Next Month",
+      "hashtags": ["scifi", "time", "shortstory", "creepy", "fiction"]
+    },
+    {
+      "idea": "The last lighthouse keeper starts receiving letters from ships that no longer exist",
+      "hook": "The lighthouse keeper receives letters from ships that sank before he was born.",
+      "story": "They arrive in the post bag with the tide times, addressed in a neat hand to the keeper of a light that has been automated for thirty years. The names on them are all on the memorial wall. The first was apologetic about the weather. The second asked him to keep the lamp warm for a vessel coming in on Thursday. He has not told the authority, because there is no box on the form for this.",
+      "twist": "The letters are not from the past. They are apologies being written by whoever is on the boats now, sent backwards because the dead are the only ones who can say sorry without it costing anything.",
+      "ending": "He has started writing back. He leaves them in the post room with a lamp on. Sometimes, on a clear night, there is a reply by morning, and the handwriting is his own from twenty years before he started.",
+      "cta": "What would you write back if a letter like that arrived for you?",
+      "title": "Letters to the Keeper",
+      "hashtags": ["ghost", "sea", "storytime", "fiction", "mystery"]
+    }
+  ]
+}
