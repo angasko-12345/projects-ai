@@ -44,7 +44,7 @@ There is no single repository-wide test command. Each product has its own, and e
 from its own directory rather than from the repository root. Read the local
 `AGENTS.md` before running anything. The baselines below are the current verified values
 as of 2026-10-04 (`agentops/` after the desktop application interactions work,
-`universal-game-agent/` after `59f5a1b`);
+`universal-game-agent/` after `59f5a1b`, `mini-llm/` after checkpoint consistency validation);
 they are dated observations, not contracts, and tests
 get added, so run the suite for current truth.
 
@@ -52,7 +52,7 @@ get added, so run the suite for current truth.
 |---|---|---|
 | `agentops/` | `cd agentops` then `python -m unittest discover -s tests` | 512 tests, 4 skipped by environment, OK (2026-10-04) |
 | `universal-game-agent/` | `cd universal-game-agent` then `python -m unittest discover -s tests` | 369 tests, 1 skip, OK (2026-10-05) |
-| `small-projects/mini-llm/` | `cd small-projects/mini-llm` then `python -m unittest discover -s tests` | 115 run, 1 skip, OK (2026-10-10; supersedes 98 run from 2026-10-04, +17 `TestDataProvenance` for checkpoint data/tokenizer provenance) |
+| `small-projects/mini-llm/` | `cd small-projects/mini-llm` then `python -m unittest discover -s tests` | 142 run, 1 skip, OK (2026-10-05; supersedes 115 run from 2026-10-10, +6 checkpoint consistency/resume/shape tests, +21 checkpoint metadata tests) |
 
 Treat any new failure or skip as attributable to the current work until proven otherwise,
 and do not rely on remembered counts — run the suite. An empty, interrupted, all-skipped,

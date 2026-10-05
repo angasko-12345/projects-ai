@@ -58,3 +58,6 @@ survives, schema/version handling, invalid/incomplete checkpoints refused.
 
 - 2026-10-05: `python -m unittest discover -s tests` → **136 tests, OK,
   1 skip** (from 116 before this work).
+- 2026-10-05: `python -m unittest discover -s tests` → **142 tests, OK,
+  1 skip** (from 136; +6 checkpoint consistency validation, programmatic
+  resume fix, and model-state shape checks).
