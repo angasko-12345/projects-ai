@@ -162,7 +162,7 @@ def cmd_train(args) -> int:
     if err is not None:
         return err
     _need_torch("train")
-    from training.experiment import make_env_from_config
+    from training.experiment import make_env_for_training, make_env_from_config
     from training.ppo import PPOConfig, PPOTrainer
 
 
@@ -182,7 +182,8 @@ def cmd_train(args) -> int:
         if not Path(args.resume).is_file():
             return _fail(f"checkpoint not found: {args.resume} (--resume PATH)")
         try:
-            trainer = PPOTrainer.load_checkpoint(args.resume, make_env_from_config(cfg.get("env", {}))())
+            make_env = make_env_from_config(cfg.get("env", {}))
+            trainer = PPOTrainer.load_checkpoint(args.resume, make_env_for_training(make_env, ppo_config.num_envs))
         except (ValueError, RuntimeError, OSError) as exc:
             return _fail(f"cannot resume training: {exc}")
         trainer.config = ppo_config  # overrides (timesteps/seed/dir) apply to resumed run
@@ -195,8 +196,8 @@ def cmd_train(args) -> int:
             make_env, model, num_actions = _build_env_model(cfg, seed)
         except (ValueError, RuntimeError, OSError) as exc:
             return _fail(f"cannot build environment: {exc}")
-        trainer = PPOTrainer(make_env(), model, ppo_config,
-                             curiosity=_build_curiosity(cfg, num_actions),
+        trainer = PPOTrainer(make_env_for_training(make_env, ppo_config.num_envs), model,
+                             ppo_config, curiosity=_build_curiosity(cfg, num_actions),
                              env_config=cfg.get("env"))
     history = trainer.train()
     from training.ppo import summarize_history

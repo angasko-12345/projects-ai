@@ -450,6 +450,7 @@ class TestEmptyConfigSections(unittest.TestCase):
     def _experiment_stub(self):
         module = types.ModuleType("training.experiment")
         module.make_env_from_config = lambda env_cfg: (lambda: None)
+        module.make_env_for_training = lambda make_env, num_envs: make_env()
         return module
 
     def _ppo_stub(self):

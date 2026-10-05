@@ -63,6 +63,24 @@ def make_env_from_config(env_cfg: dict):
     return make
 
 
+def make_env_for_training(make_env, num_envs: int):
+    """Build a single env or a SyncVectorEnv of ``num_envs`` envs.
+
+    ``make_env`` is a zero-argument factory (as returned by
+    :func:`make_env_from_config`).  When ``num_envs == 1`` the result is a
+    plain env instance — identical to legacy single-environment training.
+    When ``num_envs > 1`` the factories are wrapped in a
+    :class:`~environment.vec.SyncVectorEnv`, which calls each factory in its
+    constructor to create independent env instances.  No environment-specific
+    construction logic is duplicated here; ``make_env`` is the single source.
+    """
+    from environment.vec import SyncVectorEnv
+
+    if num_envs <= 1:
+        return make_env()
+    return SyncVectorEnv([make_env] * num_envs)
+
+
 def run_experiment(config_path: str | Path) -> dict:
     config_path = Path(config_path)
     cfg = load_experiment(config_path)
@@ -95,7 +113,9 @@ def run_experiment(config_path: str | Path) -> dict:
             num_actions=model._config["num_actions"], config=CuriosityConfig.from_dict(cur_cfg)
         )
         print(f"curiosity enabled: scale={curiosity.config.scale}")
-    trainer = PPOTrainer(make_env(), model, ppo_config, curiosity=curiosity)
+    env = make_env_for_training(make_env, ppo_config.num_envs)
+    trainer = PPOTrainer(env, model, ppo_config, curiosity=curiosity,
+                         env_config=cfg.get("env"))
     t0 = time.perf_counter()
     history = trainer.train()
     train_seconds = time.perf_counter() - t0

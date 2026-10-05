@@ -39,6 +39,7 @@ class PPOConfig:
     total_timesteps: int = 10000
     max_grad_norm: float = 0.5
     seed: int = 0
+    num_envs: int = 1
     checkpoint_dir: str = "checkpoints"
     checkpoint_every_updates: int = 10
     # None (or "") disables per-update CSV telemetry; otherwise the path of
@@ -65,6 +66,8 @@ class PPOConfig:
                 f"(0 disables periodic checkpoints), got {self.checkpoint_every_updates!r}")
         if not isinstance(self.seed, int) or isinstance(self.seed, bool) or self.seed < 0:
             raise ValueError(f"seed must be a non-negative int, got {self.seed!r}")
+        if not isinstance(self.num_envs, int) or isinstance(self.num_envs, bool) or self.num_envs < 1:
+            raise ValueError(f"num_envs must be an integer >= 1, got {self.num_envs!r}")
         if not 0 <= self.gamma <= 1 or not 0 <= self.gae_lambda <= 1:
             raise ValueError("gamma and gae_lambda must be in [0, 1]")
         if self.telemetry_path is not None and not isinstance(self.telemetry_path, (str, os.PathLike)):
@@ -736,16 +739,20 @@ class PPOTrainer:
         return self.history
 
 
-def run_experiment(total_timesteps=2048, rollout_length=128, seed=0, checkpoint_dir="checkpoints"):
+def run_experiment(total_timesteps=2048, rollout_length=128, seed=0, checkpoint_dir="checkpoints", num_envs=1):
     from environment.preprocessing import PreprocessingWrapper
     from environment.toy_pong import ToyPongEnv
+    from training.experiment import make_env_for_training
 
     torch.manual_seed(seed)
     np.random.seed(seed)
-    env = PreprocessingWrapper(ToyPongEnv())
-    model = ActorCritic(num_actions=int(env.action_space.n))
+    make_env = lambda: PreprocessingWrapper(ToyPongEnv())
+    probe = make_env()
+    model = ActorCritic(num_actions=int(probe.action_space.n))
+    probe.close()
+    env = make_env_for_training(make_env, num_envs)
     config = PPOConfig(total_timesteps=total_timesteps, rollout_length=rollout_length,
-                       seed=seed, checkpoint_dir=checkpoint_dir)
+                       seed=seed, checkpoint_dir=checkpoint_dir, num_envs=num_envs)
     return PPOTrainer(env, model, config).train()
 
 
@@ -755,6 +762,8 @@ if __name__ == "__main__":
     parser.add_argument("--rollout-length", type=int, default=128)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--checkpoint-dir", default="checkpoints")
+    parser.add_argument("--num-envs", type=int, default=1,
+                        help="number of environments to train in parallel (1 = single-env, >1 = SyncVectorEnv)")
     args = parser.parse_args()
     run_experiment(total_timesteps=args.total_timesteps, rollout_length=args.rollout_length,
-                   seed=args.seed, checkpoint_dir=args.checkpoint_dir)
+                   seed=args.seed, checkpoint_dir=args.checkpoint_dir, num_envs=args.num_envs)
