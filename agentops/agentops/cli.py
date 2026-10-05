@@ -12,7 +12,10 @@ from .agent_run import AgentRunStatus, GitRunMetadataCollector
 from .artifacts import ArtifactError
 from .tasks import TaskStatus
 from .config import _load_data, load_config
-from .finalize import WorktreeFinalization, finalize_worktree, record_worktree_provenance
+from .finalize import (
+    WorktreeFinalization, finalize_for_outcome, finalize_worktree,
+    implementation_passed, record_worktree_provenance, retry_merge_for_worktree,
+)
 from .git import GitError, GitWorktreeManager
 from .registry import AgentRegistry
 from .logging import LogManager
@@ -24,19 +27,9 @@ from .verification_kernel import VerificationKernel
 from .workflow import WorkflowEngine, WorkflowResult
 
 
-def _implementation_passed(state, workflow_id: str) -> bool:
-    """True when the implementation task itself reached PASSED.
-
-    Used to decide whether delegate work should be committed and merged even
-    though verification did not reach PASSED. A FAILED implementation is never
-    merged; an UNVERIFIED verification is not by itself a reason to discard work.
-    """
-    try:
-        tasks = state.list_tasks(workflow_id)
-    except Exception:
-        return False
-    return any(task.role == "implementation" and task.status is TaskStatus.PASSED
-               for task in tasks)
+# The merge rule lives in finalize.py so the CLI and the desktop client cannot
+# drift apart. This alias remains for existing imports.
+_implementation_passed = implementation_passed
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -74,6 +67,13 @@ def build_parser() -> argparse.ArgumentParser:
     failures.add_argument("--category")
     failures.add_argument("--limit", type=int, default=20)
     failures.add_argument("--offset", type=int, default=0)
+    merge = subcommands.add_parser(
+        "retry-merge",
+        help="Merge a preserved worktree left in limbo by an unverified workflow")
+    merge.add_argument("worktree", type=Path,
+                       help="Path to the preserved agentops/* worktree")
+    merge.add_argument("--directory", type=Path, default=Path.cwd(),
+                       help="Repository root (default: current directory)")
     subcommands.add_parser("recover", help="Recover interrupted agent runs, verification runs, and tasks")
     events = subcommands.add_parser("events", help="Query the durable execution timeline")
     events.add_argument("--workflow")
@@ -354,6 +354,28 @@ def main(argv: list[str] | None = None) -> int:
         finally:
             state.close()
         return 0
+    if args.command == "retry-merge":
+        # The exit from limbo. A workflow that was not READY has its work
+        # committed on the agentops/* branch and its worktree preserved; this
+        # is how an operator merges that work once verification is unblocked.
+        # Deliberately does not re-run the READY contract -- a person is
+        # deciding now, and the originating workflow may be gone from state.
+        root = _resolve_state_base(args.directory)
+        manager = GitWorktreeManager()
+        state = StateStore(state_root / "state.sqlite")
+        try:
+            outcome = retry_merge_for_worktree(manager, state, root,
+                                               args.worktree)
+        except GitError as error:
+            print(f"ERROR: {error}")
+            return 1
+        finally:
+            state.close()
+        print(f"merged {outcome['branch']} into {outcome['base_branch']}")
+        if not outcome.get("used_stored_provenance"):
+            print("WARNING: no stored provenance for this worktree; merged "
+                  "against the current HEAD of the base branch.")
+        return 0
     if args.command == "recover":
         state = StateStore(state_root / "state.sqlite")
         try:
@@ -421,29 +443,38 @@ def main(argv: list[str] | None = None) -> int:
             emit=event_emitter(state.record_typed_event)))
         finalization = WorktreeFinalization(changed=False, merged=False, conflict_error=None)
         # Finalize whenever the IMPLEMENTATION succeeded, even if verification did
-        # not reach PASSED. Previously only `result.ready` finalized, so a workflow
-        # whose required verification check was inapplicable (report UNVERIFIED,
-        # task BLOCKED) printed "no worktree changes to merge" and threw away
-        # correct work: a delegate wrote PROOF.md, and the file was left untracked
-        # in a worktree that got preserved "for inspection". Refusing to merge
-        # work nobody proved is wrong is the opposite mistake, so readiness is
-        # deliberately NOT the gate here -- a substantive verification FAILURE
-        # still keeps the work unmerged, because finalization is only attempted
-        # when the implementation task itself passed.
-        implementation_ok = _implementation_passed(state, workflow_id)
-        if result.ready or implementation_ok:
-            finalization = finalize_worktree(manager, state, worktree, description, workflow_id,
-                                             config.max_attempts)
+        # One authoritative rule, shared with the desktop client:
+        # READY merges; not READY commits and PRESERVES the worktree. Unverified
+        # work is neither thrown away nor merged -- it waits for
+        # `agentops retry-merge`.
+        #
+        # The previous gate was `result.ready or implementation_passed`, which
+        # could not tell a FAILED verification from an UNVERIFIED one, so both
+        # a demonstrated failure and a merely-unproven change merged. That is
+        # the merge-gate half of the same semantic-collapse bug that
+        # `UNVERIFIED` was introduced to prevent one layer up.
+        changed = False
+        merged = False
+        if result.ready or _implementation_passed(state, workflow_id):
+            finalization = finalize_for_outcome(
+                manager, state, worktree, description, workflow_id,
+                config.max_attempts, ready=result.ready)
             if finalization.conflict_error is not None:
                 print(f"CONFLICT: {finalization.conflict_error}")
                 print("A persisted conflict-resolution task was created; the worktree is preserved.")
                 return 1
-        changed = finalization.changed
+            changed = finalization.changed
+            merged = finalization.merged
         remove_worktree = result.ready
         print(f"RESULT: {result.summary}")
         print(f"workflow: {result.workflow_id}")
-        print("merged worktree changes" if changed else "no worktree changes to merge")
-        return 0 if result.ready else 1
+        if merged:
+            print("merged worktree changes")
+        elif changed:
+            # Limbo: committed to the agentops branch, deliberately not merged.
+            print("work committed but NOT merged (workflow not READY)")
+        else:
+            print("no worktree changes")
     except Exception as error:
         print(f"ERROR: {error}")
         return 1

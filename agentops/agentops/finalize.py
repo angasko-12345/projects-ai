@@ -10,13 +10,14 @@ preserve the worktree and persist a debugging task on conflict.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from uuid import uuid4
 
 from .failure import FailureCategory, FailureClassifier, FailureSource
 from .git import GitError, GitWorktreeManager, Worktree, WorktreeRef
 from .persistence import DegradationRecorder
 from .state import StateStore
-from .tasks import Task, utc_now
+from .tasks import Task, TaskStatus, utc_now
 
 
 @dataclass(frozen=True)
@@ -102,3 +103,92 @@ def finalize_worktree(
         ))
         return WorktreeFinalization(changed=True, merged=False, conflict_error=str(error))
     return WorktreeFinalization(changed=True, merged=True, conflict_error=None)
+
+
+def implementation_passed(state: StateStore, workflow_id: str) -> bool:
+    """True when the implementation task itself reached PASSED.
+
+    Part of the merge rule, so it lives here rather than in ``cli``: both the
+    CLI and the desktop controller need it, and a controller importing the CLI
+    module for a predicate is the wrong direction of dependency.
+    """
+    try:
+        tasks = state.list_tasks(workflow_id)
+    except Exception:
+        return False
+    return any(task.role == "implementation" and task.status is TaskStatus.PASSED
+               for task in tasks)
+
+def finalize_for_outcome(
+    manager: GitWorktreeManager,
+    state: StateStore,
+    worktree: Worktree,
+    description: str,
+    workflow_id: str,
+    max_attempts: int,
+    *,
+    ready: bool,
+) -> WorktreeFinalization:
+    """Finalize a worktree according to the ONE authoritative merge rule.
+
+    Every entry point (CLI, desktop, anything added later) must call this
+    rather than re-deriving the gate. The two call sites previously disagreed:
+    the CLI merged whenever the implementation task passed, while the desktop
+    client merged only on ``result.ready``. Same run, same work, different
+    outcome depending on how it was invoked.
+
+    The rule, per the operator's decision:
+
+      READY              -> commit and merge
+      not READY          -> commit and PRESERVE the worktree, never merge
+
+    Unverified work is not discarded and not merged. It stays in the worktree
+    so it can be merged later with ``retry_merge_for_worktree`` once
+    verification is unblocked. Merging on "the implementation exited 0" was the
+    defect: it could not distinguish a FAILED verification from an UNVERIFIED
+    one, so a demonstrated failure and a merely-unproven change both merged.
+    """
+    if not ready:
+        # Limbo: commit so nothing is lost, but do not merge. The worktree is
+        # left in place and the caller reports where it is.
+        changed = manager.commit_changes(worktree, f"agentops: {description}")
+        return WorktreeFinalization(changed=changed, merged=False,
+                                    conflict_error=None)
+    return finalize_worktree(manager, state, worktree, description,
+                             workflow_id, max_attempts)
+
+
+def retry_merge_for_worktree(
+    manager: GitWorktreeManager,
+    state: StateStore,
+    root: Path,
+    path: Path,
+) -> dict[str, object]:
+    """Merge a preserved worktree on explicit operator request.
+
+    Deliberately does not run the READY contract: this is a person deciding
+    now, not the workflow deciding for them, and the originating workflow may
+    no longer exist in state. The safety gates that still matter for a blind
+    re-merge are kept: the worktree must be clean, must be a managed
+    ``agentops/*`` branch, and must merge against the stored base branch and
+    commit when provenance exists, so a moved base is still refused.
+    """
+    info = manager.inspect_worktree(root, path)
+    if str(info.get("status", "")).strip():
+        raise GitError("Refusing to retry a merge with uncommitted worktree changes.")
+    branch = info.get("branch")
+    if not isinstance(branch, str) or not branch.startswith("agentops/"):
+        raise GitError("Retry is only supported for managed agentops/* worktree branches.")
+    stored = state.find_worktree_ref_by_path(str(info["path"]))
+    if stored is not None:
+        # Stored provenance wins: retry must target the original base, not
+        # whatever HEAD happens to be now.
+        worktree = Worktree(root, Path(str(info["path"])), stored.branch,
+                            stored.base_branch, stored.base_commit)
+    else:
+        worktree = Worktree(root, Path(str(info["path"])), branch,
+                            manager.current_branch(root), manager.current_commit(root))
+    manager.merge(worktree)
+    return {"merged": True, "path": str(info["path"]), "branch": worktree.branch,
+            "base_branch": worktree.base_branch,
+            "used_stored_provenance": stored is not None}

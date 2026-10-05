@@ -17,7 +17,10 @@ from typing import Callable
 from .agent_run import AgentRun, AgentRunStatus, GitRunMetadataCollector
 from .artifacts import ArtifactError, ArtifactStore
 from .config import AppConfig, load_config
-from .finalize import finalize_worktree, record_worktree_provenance
+from .finalize import (
+    finalize_for_outcome, finalize_worktree, implementation_passed,
+    record_worktree_provenance, retry_merge_for_worktree,
+)
 from .git import GitError, GitWorktreeManager, Worktree, WorktreeRef
 from .tasks import Task, Workflow
 from .logging import LogManager
@@ -509,15 +512,21 @@ class AgentOpsController:
             if cancel_event.is_set():
                 raise OperationCancelled
             changed = False
-            if result.ready:
-                finalization = finalize_worktree(manager, state, worktree, description, result.workflow_id,
-                                                 config.max_attempts)
+            if result.ready or implementation_passed(state, result.workflow_id):
+                # One authoritative rule (finalize.finalize_for_outcome): READY
+                # merges, not-READY commits and preserves. Previously the GUI
+                # merged only on `result.ready` while the CLI also merged on
+                # implementation-passed, so identical work was finalized
+                # differently depending on the entry point.
+                finalization = finalize_for_outcome(
+                    manager, state, worktree, description, result.workflow_id,
+                    config.max_attempts, ready=result.ready)
                 if finalization.conflict_error is not None:
                     callback({"kind": "conflict", "error": finalization.conflict_error,
                               "worktree": str(worktree.path), "workflow_id": result.workflow_id})
                     return
-                changed = finalization.changed
-                remove_worktree = True
+                changed = finalization.merged
+                remove_worktree = result.ready
             callback({"kind": "workflow-result", "result": result, "ready": result.ready,
                       "workflow_id": result.workflow_id, "worktree": str(worktree.path),
                       "merged": changed})

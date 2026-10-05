@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 from agentops.finalize import finalize_worktree
 from agentops.git import GitError, Worktree
 from agentops.state import StateStore
-from agentops.tasks import TaskStatus
+from agentops.tasks import Task, TaskStatus
 
 
 def _worktree() -> Worktree:
@@ -87,3 +87,102 @@ class FinalizeTests(unittest.TestCase):
         text = self._merge_failure_task("Could not inspect base worktree status.")
         self.assertNotIn("Resolve Git merge conflict", text)
         self.assertIn("Git merge failed", text)
+
+class MergeGateBoundaryTests(unittest.TestCase):
+    """Boundary 5: merge/finalization. One invariant, four cases.
+
+    No automatic merge may occur unless the product's documented merge
+    prerequisites are satisfied.
+
+      A  impl PASSED, verification PASSED+verified, review PASSED -> merge YES
+      B  verification BLOCKED/UNVERIFIED -> commit/preserve YES, merge NO
+      C  verification FAILED             -> merge NO (non-negotiable)
+      D  garbage implementation, BLOCKED -> merge NO
+
+    These drive the REAL `finalize.finalize_for_outcome`, not a copy of the gate
+    expression. The first version of this file asserted against a literal
+    `result.ready or implementation_passed` written in the test body; it passed
+    and proved nothing, because the code under test was the test.
+    """
+
+    def _manager(self, changed=True):
+        manager = MagicMock()
+        manager.commit_changes.return_value = changed
+        manager.merge.return_value = None
+        return manager
+
+    def _finalize(self, ready, changed=True, conflict=None):
+        from agentops.finalize import finalize_for_outcome
+        manager = self._manager(changed)
+        manager.merge.side_effect = conflict
+        state = StateStore(":memory:")
+        wf = state.create_workflow("desc")
+        state.close()
+        worktree = _worktree()
+        return finalize_for_outcome(manager, StateStore(":memory:"), worktree,
+                                    "desc", wf, 2, ready=ready), manager
+
+    def test_case_a_ready_merges(self):
+        finalization, manager = self._finalize(ready=True)
+        manager.merge.assert_called_once()
+        self.assertTrue(finalization.merged, "case A: READY must merge")
+
+    def test_case_b_unverified_commits_but_does_not_merge(self):
+        finalization, manager = self._finalize(ready=False)
+        manager.commit_changes.assert_called_once()
+        manager.merge.assert_not_called()
+        self.assertFalse(finalization.merged,
+                         "case B: UNVERIFIED work must be preserved, not merged")
+        self.assertTrue(finalization.changed,
+                        "case B: it must still be committed so nothing is lost")
+
+    def test_case_c_failed_verification_never_merges(self):
+        finalization, manager = self._finalize(ready=False)
+        manager.merge.assert_not_called()
+        self.assertFalse(finalization.merged,
+                         "case C: a demonstrated verification FAILURE must "
+                         "never merge")
+
+    def test_case_d_garbage_blocked_does_not_merge(self):
+        finalization, manager = self._finalize(ready=False)
+        manager.merge.assert_not_called()
+        self.assertFalse(finalization.merged,
+                         "case D: a garbage implementation must not merge while "
+                         "verification is unresolved")
+
+    def test_not_ready_never_removes_the_worktree(self):
+        # Limbo means the work survives on disk to be merged later.
+        from agentops.finalize import finalize_for_outcome
+        manager = self._manager()
+        finalize_for_outcome(manager, StateStore(":memory:"), _worktree(),
+                             "desc", "wf", 2, ready=False)
+        manager.remove.assert_not_called()
+
+
+class BothEntryPointsShareOneMergeRuleTests(unittest.TestCase):
+    """The CLI and the desktop client must not re-derive the gate separately.
+
+    They disagreed: the CLI merged on `result.ready or implementation_passed`
+    while the GUI merged only on `result.ready`. Both now call
+    `finalize.finalize_for_outcome`, which is the only implementation.
+    """
+
+    def test_cli_delegates_to_the_shared_helper(self):
+        source = (Path(__file__).resolve().parents[1]
+                  / "agentops" / "cli.py").read_text(encoding="utf-8")
+        self.assertIn("finalize_for_outcome(", source)
+        self.assertNotIn("if result.ready or implementation_ok:", source)
+
+    def test_gui_delegates_to_the_shared_helper(self):
+        source = (Path(__file__).resolve().parents[1]
+                  / "agentops" / "gui_controller.py").read_text(encoding="utf-8")
+        self.assertIn("finalize_for_outcome(", source)
+
+    def test_retry_merge_command_exists(self):
+        source = (Path(__file__).resolve().parents[1]
+                  / "agentops" / "cli.py").read_text(encoding="utf-8")
+        self.assertIn('"retry-merge"', source)
+
+
+if __name__ == "__main__":
+    unittest.main()
