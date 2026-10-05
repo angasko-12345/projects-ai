@@ -9,9 +9,9 @@ from pathlib import Path
 
 from . import __version__
 from .agent_run import AgentRunStatus, GitRunMetadataCollector
-from .artifacts import ArtifactError
+from .artifacts import ArtifactError, ArtifactStore
 from .tasks import TaskStatus
-from .config import _load_data, load_config
+from .config import AppConfig, _load_data, load_config
 from .finalize import WorktreeFinalization, finalize_worktree, record_worktree_provenance
 from .git import GitError, GitWorktreeManager
 from .registry import AgentRegistry
@@ -124,7 +124,157 @@ def _resolve_state_base(directory: Path) -> Path:
         return directory
 
 
-def main(argv: list[str] | None = None) -> int:
+def _state_root_for(args: argparse.Namespace) -> Path:
+    """Resolve the `.agentops` directory for one parsed command line.
+
+    Worktree commands require a Git repository and raise :class:`GitError`
+    otherwise; every other command falls back to the previous behaviour of
+    using the command's working directory.
+    """
+    command_base = getattr(args, "cwd", None) or Path.cwd()
+    if args.command in ("task", "workflow"):
+        # Worktrees require a Git repository, so resolve the canonical root
+        # up front: state, logs, and worktree then share one location, and a
+        # non-repository directory fails fast without stray .agentops files.
+        return GitWorktreeManager().repository_root(command_base) / ".agentops"
+    return _resolve_state_base(command_base) / ".agentops"
+
+
+class CliServices:
+    """Injectable collaborators for one CLI invocation.
+
+    Every service is constructed on first use, so each command builds only what
+    it needs: `agents` never opens the state database, `runs` never builds a
+    workflow engine, and nothing spawns a subprocess before the command that
+    needs it. Tests pass a bundle whose fields are fakes -- or an in-memory
+    :class:`StateStore` -- to :func:`main` instead of letting the CLI construct
+    real SQLite, Git, and process collaborators.
+    """
+
+    def __init__(self, config: AppConfig, args: argparse.Namespace | None = None, *,
+                 state_root: Path | None = None, logs: LogManager | None = None,
+                 state: StateStore | None = None, registry: AgentRegistry | None = None,
+                 manager: GitWorktreeManager | None = None,
+                 runner: AgentRunner | None = None,
+                 engine: WorkflowEngine | None = None,
+                 artifact_store: ArtifactStore | None = None):
+        self.config = config
+        self.args = args
+        self._state_root = state_root
+        self._logs = logs
+        self._state = state
+        self._registry = registry
+        self._manager = manager
+        self._runner = runner
+        self._engine = engine
+        self._artifact_store = artifact_store
+        # An injected store belongs to the caller: closing it here would make
+        # the bundle unusable for anything after the command returns.
+        self._owns_state = state is None
+
+    def close(self) -> None:
+        """Close the state store, but only when this bundle constructed it."""
+        if self._owns_state and self._state is not None:
+            self._state.close()
+            self._state = None
+
+    @property
+    def state_root(self) -> Path:
+        """Canonical `.agentops` directory, resolved from `args` when needed."""
+        if self._state_root is None:
+            if self.args is None:
+                raise ValueError("CliServices needs either state_root or args.")
+            self._state_root = _state_root_for(self.args)
+        return self._state_root
+
+    def require_state_root(self) -> Path:
+        """Force the up-front state-root resolution the CLI reports on.
+
+        Resolving lazily keeps `agents` from probing Git, but every other
+        command must surface a `GitError` here rather than from whichever
+        collaborator happens to touch the filesystem first.
+        """
+        return self.state_root
+
+    @property
+    def logs(self) -> LogManager:
+        if self._logs is None:
+            self._logs = LogManager(self.state_root / "logs")
+        return self._logs
+
+    @property
+    def state(self) -> StateStore:
+        if self._state is None:
+            self._state = StateStore(self.state_root / "state.sqlite")
+        return self._state
+
+    @property
+    def registry(self) -> AgentRegistry:
+        if self._registry is None:
+            self._registry = AgentRegistry(self.config)
+        return self._registry
+
+    @property
+    def manager(self) -> GitWorktreeManager:
+        if self._manager is None:
+            self._manager = GitWorktreeManager()
+        return self._manager
+
+    @property
+    def artifact_store(self) -> ArtifactStore:
+        if self._artifact_store is None:
+            self._artifact_store = ArtifactStore(self.state_root / "artifacts")
+        return self._artifact_store
+
+    @property
+    def runner(self) -> AgentRunner:
+        """Bare runner for the single-agent `run` command."""
+        if self._runner is None:
+            self._runner = AgentRunner(
+                self.logs, self.config.pass_env_names, self.config.pass_env_prefixes,
+                run_observer=self.state.agent_run_observer())
+        return self._runner
+
+    @property
+    def engine(self) -> WorkflowEngine:
+        """Fully wired engine; the only path that builds the kernel stack."""
+        if self._engine is None:
+            config = self.config
+            state = self.state
+            run_observer = state.agent_run_observer()
+            runner = AgentRunner(self.logs, config.pass_env_names, config.pass_env_prefixes,
+                                 run_observer=run_observer,
+                                 metadata_collector=GitRunMetadataCollector())
+            verifier = Verifier(config.verification_commands,
+                                pass_env_names=config.pass_env_names,
+                                pass_env_prefixes=config.pass_env_prefixes)
+            kernel = VerificationKernel(
+                profiles=config.verification_profiles,
+                default_profile=config.default_verification_profile,
+                legacy_commands=config.verification_commands,
+                pass_env_names=config.pass_env_names,
+                pass_env_prefixes=config.pass_env_prefixes,
+                logs=self.logs,
+                state=state,
+            )
+            self._engine = WorkflowEngine(
+                config, state, self.registry, runner, verifier,
+                run_observer=run_observer,
+                metadata_collector=GitRunMetadataCollector(),
+                verification_kernel=kernel)
+        return self._engine
+
+
+def _build_services(args: argparse.Namespace) -> CliServices:
+    """Construct the production service bundle for one parsed command line.
+
+    The state root is resolved lazily by :class:`CliServices`, so a failing
+    Git lookup still surfaces as the command's own error path.
+    """
+    return CliServices(config=load_config(args.config), args=args)
+
+
+def main(argv: list[str] | None = None, services: CliServices | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "gui":
         try:
@@ -138,34 +288,32 @@ def main(argv: list[str] | None = None) -> int:
             print(f"ERROR: {error}")
             return 1
         return 0
-    try:
-        config = load_config(args.config)
-    except (OSError, ValueError) as error:
-        print(f"ERROR: {error}")
-        return 2
+    if services is None:
+        try:
+            services = _build_services(args)
+        except (OSError, ValueError) as error:
+            print(f"ERROR: {error}")
+            return 2
+    config = services.config
     if args.command == "agents":
-        for name, agent in AgentRegistry(config).detect().items():
+        for name, agent in services.registry.detect().items():
             # `ONLINE` previously meant only "the executable is on PATH", which
             # reported agents as selectable that could not run (dead proxy,
             # exhausted quota). Report the health state and the reason instead.
             detail = f"  ({agent.health_detail})" if agent.health_detail else ""
             print(f"{name:<14} {agent.status:<10} {detail}")
         return 0
-    command_base = getattr(args, "cwd", None) or Path.cwd()
-    if args.command in ("task", "workflow"):
-        # Worktrees require a Git repository, so resolve the canonical root
-        # up front: state, logs, and worktree then share one location, and a
-        # non-repository directory fails fast without stray .agentops files.
-        try:
-            state_root = GitWorktreeManager().repository_root(command_base) / ".agentops"
-        except GitError as error:
-            print(f"ERROR: {error}")
-            return 1
-    else:
-        state_root = _resolve_state_base(command_base) / ".agentops"
-    logs = LogManager(state_root / "logs")
+    # Resolve the canonical location up front: state, logs, and worktree then
+    # share one root, and a non-repository `task`/`workflow` directory fails
+    # fast with its own message instead of an unrelated downstream error.
+    try:
+        services.require_state_root()
+    except GitError as error:
+        print(f"ERROR: {error}")
+        return 1
+    logs = services.logs
     if args.command == "status":
-        state = StateStore(state_root / "state.sqlite")
+        state = services.state
         try:
             workflow = state.latest_workflow()
             if workflow is None:
@@ -193,22 +341,19 @@ def main(argv: list[str] | None = None) -> int:
                 if ref is not None:
                     print(f"  worktree {ref.branch} base={ref.base_branch}@{ref.base_commit[:12]} path={ref.path}")
         finally:
-            state.close()
+            services.close()
         return 0
     if args.command == "run":
-        registry = AgentRegistry(config)
-        state = StateStore(state_root / "state.sqlite")
+        registry = services.registry
+        state = services.state
         try:
             agent = registry.get(args.agent)
-            observer = state.agent_run_observer()
-            runner = AgentRunner(logs, config.pass_env_names, config.pass_env_prefixes,
-                                 run_observer=observer)
-            result = asyncio.run(runner.run_agent(agent, args.prompt, Path.cwd()))
+            result = asyncio.run(services.runner.run_agent(agent, args.prompt, Path.cwd()))
         except (KeyError, RuntimeError, OSError) as error:
             print(f"ERROR: {error}")
             return 1
         finally:
-            state.close()
+            services.close()
         print(f"[{result.agent}] {'PASSED' if result.succeeded else 'FAILED'} ({result.duration_seconds:.1f}s)")
         if result.run_id is not None:
             print(f"run: {result.run_id}")
@@ -223,7 +368,7 @@ def main(argv: list[str] | None = None) -> int:
             print(path)
         return 0
     if args.command == "runs":
-        state = StateStore(state_root / "state.sqlite")
+        state = services.state
         try:
             try:
                 status = AgentRunStatus(args.status) if args.status else None
@@ -241,10 +386,10 @@ def main(argv: list[str] | None = None) -> int:
                     f"exit={run.exit_code} duration={duration}"
                 )
         finally:
-            state.close()
+            services.close()
         return 0
     if args.command == "verify":
-        state = StateStore(state_root / "state.sqlite")
+        state = services.state
         try:
             if args.run:
                 run = state.get_verification_run(args.run)
@@ -276,10 +421,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"ERROR: {error}")
             return 2
         finally:
-            state.close()
+            services.close()
         return 0
     if args.command == "events":
-        state = StateStore(state_root / "state.sqlite")
+        state = services.state
         try:
             found = state.query_events(
                 args.workflow, args.task, args.run, args.type, args.limit, args.offset
@@ -293,14 +438,12 @@ def main(argv: list[str] | None = None) -> int:
                     f"run={event.agent_run_id or '-'} {event.message or ''}"
                 )
         finally:
-            state.close()
+            services.close()
         return 0
     if args.command == "artifacts":
-        from .artifacts import ArtifactStore
-
-        state = StateStore(state_root / "state.sqlite")
+        state = services.state
         try:
-            store = ArtifactStore(state_root / "artifacts")
+            store = services.artifact_store
             if args.show:
                 artifact = state.get_artifact(args.show)
                 if artifact is None:
@@ -330,10 +473,10 @@ def main(argv: list[str] | None = None) -> int:
                     f"workflow={artifact.workflow_id or '-'}"
                 )
         finally:
-            state.close()
+            services.close()
         return 0
     if args.command == "failures":
-        state = StateStore(state_root / "state.sqlite")
+        state = services.state
         try:
             try:
                 failures = state.list_failures(
@@ -352,10 +495,10 @@ def main(argv: list[str] | None = None) -> int:
                     f"recovery={failure.recovery_state.value if failure.recovery_state else '-'}"
                 )
         finally:
-            state.close()
+            services.close()
         return 0
     if args.command == "recover":
-        state = StateStore(state_root / "state.sqlite")
+        state = services.state
         try:
             summary = state.recover_all()
             print(
@@ -365,7 +508,7 @@ def main(argv: list[str] | None = None) -> int:
                 "worktrees preserved."
             )
         finally:
-            state.close()
+            services.close()
         return 0
     try:
         definition = None if args.command == "task" else _load_data(args.file)
@@ -376,26 +519,9 @@ def main(argv: list[str] | None = None) -> int:
     if not isinstance(description, str) or not description.strip():
         print("ERROR: workflow file requires a string 'description'.")
         return 2
-    state = StateStore(state_root / "state.sqlite")
-    registry = AgentRegistry(config)
-    run_observer = state.agent_run_observer()
-    runner = AgentRunner(logs, config.pass_env_names, config.pass_env_prefixes,
-                         run_observer=run_observer, metadata_collector=GitRunMetadataCollector())
-    verifier = Verifier(config.verification_commands, pass_env_names=config.pass_env_names,
-                        pass_env_prefixes=config.pass_env_prefixes)
-    verification_kernel = VerificationKernel(
-        profiles=config.verification_profiles,
-        default_profile=config.default_verification_profile,
-        legacy_commands=config.verification_commands,
-        pass_env_names=config.pass_env_names,
-        pass_env_prefixes=config.pass_env_prefixes,
-        logs=logs,
-        state=state,
-    )
-    engine = WorkflowEngine(config, state, registry, runner, verifier,
-                            run_observer=run_observer, metadata_collector=GitRunMetadataCollector(),
-                            verification_kernel=verification_kernel)
-    manager = GitWorktreeManager()
+    state = services.state
+    engine = services.engine
+    manager = services.manager
     worktree = None
     workflow_id = None
     remove_worktree = False
@@ -455,4 +581,4 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"Worktree preserved at {worktree.path}: {error}")
         elif worktree is not None:
             print(f"Worktree preserved at {worktree.path} for inspection or repair.")
-        state.close()
+        services.close()
