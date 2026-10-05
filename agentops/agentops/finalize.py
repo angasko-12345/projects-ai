@@ -142,6 +142,23 @@ def finalize_for_outcome(
       READY              -> commit and merge
       not READY          -> commit and PRESERVE the worktree, never merge
 
+    Two distinct authorities, deliberately not conflated:
+
+      READY is the SOLE automatic merge authority. Nothing else reaches merge().
+      implementation_passed decides only whether the work is PRESERVED.
+
+    implementation status    preservation    automatic merge
+    -------------------------------------------------------
+    PASSED                    yes             only if READY
+    FAILED                    yes             never
+
+    A commit here is a checkpoint, not a correctness claim: it records "this is
+    the state produced by this attempt, preserved with provenance so it can be
+    inspected, repaired, or retried." The irreversible action is merge; commit
+    is the reversible evidence-preservation mechanism. That is why a FAILED
+    implementation is still committed -- dropping it would discard recoverable
+    partial work, which is the mistake this design exists to prevent.
+
     Unverified work is not discarded and not merged. It stays in the worktree
     so it can be merged later with ``retry_merge_for_worktree`` once
     verification is unblocked. Merging on "the implementation exited 0" was the
