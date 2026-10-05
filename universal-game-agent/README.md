@@ -106,6 +106,22 @@ keep training (new episode started; counters preserved). Via CLI:
 - Shipped configs: `exp_toy_ppo_01.yaml` (seed 0, 30k steps),
   `exp_toy_ppo_02_nocur.yaml` / `exp_toy_ppo_03_cur.yaml` (A/B pair,
   seed 1, 30k steps each).
+- External-game experiments: `python -m training.external_experiment
+  --config experiments/exp_external_pong_0N.yaml` — three phases against a
+  real window with real SendInput keystrokes; **ask before starting a long
+  run**. Results: `exp_external_pong_01-14676_results.json`,
+  `exp_external_pong_02-15516_results.json`, and
+  `exp_external_pong_compare01_results.json` (pre-detector-fix — its
+  "rewards survival" note describes a bug fixed in `b77bf4d`, do not read it
+  as a learning result).
+- Synthetic cadence matrix (no window, no input backend):
+  `python -m training.cadence_experiment --config
+  experiments/exp_cadence_synthetic.yaml` runs probe policies plus
+  baseline/train/eval per timing cell on a synthetic Pong that mirrors the
+  measured external cadence, and writes
+  `exp_cadence_synthetic_results.json`. Measured results, controlled
+  variables, and supported/rejected hypotheses are recorded in
+  `AGENTS.md` § "Cadence / reward investigation".
 
 ## Toy results (toy environment only)
 
@@ -146,6 +162,8 @@ python -m unittest discover -s tests -v
 | Train (PPO) | `python main.py train [--config CONFIG] [--timesteps N] [--seed S] [--checkpoint-dir DIR] [--resume CKPT]` |
 | Evaluate | `python main.py evaluate [--config CONFIG] [--checkpoint CKPT] [--episodes N] [--seed S] [--sampled]` |
 | Full experiment | `python main.py experiment --config experiments/exp_toy_ppo_01.yaml` |
+| External-window experiment (real keystrokes — ask first) | `python -m training.external_experiment --config experiments/exp_external_pong_02.yaml` |
+| Synthetic cadence matrix (no window) | `python -m training.cadence_experiment --config experiments/exp_cadence_synthetic.yaml` |
 | Full test suite | `python -m unittest discover -s tests` |
 | Toy env demo (pixels-only policy) | `python -m environment.toy_pong --episodes 5 --seed 0` |
 | Vision pipeline demo | `python -m environment.preprocessing --episodes 3 --seed 0 --skip 2` |

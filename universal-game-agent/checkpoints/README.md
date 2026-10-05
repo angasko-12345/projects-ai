@@ -61,6 +61,10 @@ because it drives a real window in real time.
 - Toy environment: `python main.py train --config experiments/exp_toy_ppo_01.yaml`,
   which writes `ppo_final.pt` into the directory named by
   `ppo.checkpoint_dir`.
+- Synthetic cadence matrix (cheap, no window): `python -m
+  training.cadence_experiment --config
+  experiments/exp_cadence_synthetic.yaml`, which writes one `ppo_final.pt`
+  per cell under `checkpoints/synthetic_cadence/<cell>/`.
 
 Regenerating a run overwrites the file at its `checkpoint_dir`, so copy any
 weights you want to keep out of this directory first.

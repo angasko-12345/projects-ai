@@ -127,6 +127,9 @@ METRIC_DEFINITIONS = {
     "intrinsic_reward": "curiosity bonus (0.0 here: curiosity disabled for this run)",
     "total_training_reward": "external + intrinsic per training episode",
     "decision_fps": "agent decisions per wall-clock second during training",
+    "upd_action_share": "per-update fraction of each action index in the rollout (dict index -> share); exposes action imbalance or collapse",
+    "decision_period_ms_measured": "measured wall-clock milliseconds between agent decisions (1000 / decision_fps)",
+    "history_span_ms": "wall-clock span covered by the frame stack: num_stack x decision_period_ms_measured",
 }
 
 def launch_game(title: str, seed: int, game_fps: int, phase: str, geometry=None) -> subprocess.Popen:
@@ -421,6 +424,25 @@ def _run_external_experiment(config_path: Path) -> dict:
     print(f"trained:   {trained_summary}")
     print(f"delta (trained - untrained): {difference}")
 
+    # Effective observation cadence: what the policy actually sees per decision
+    # and how far back the frame stack reaches, measured from this run.
+    decision_fps = trainer.num_timesteps / max(train_seconds, 1e-6)
+    decision_period_ms = 1000.0 / decision_fps if decision_fps > 0 else None
+    num_stack = int(env_cfg.get("num_stack", 4))
+    timing_cfg = env_cfg.get("timing", {}) or {}
+    action_table = (env_cfg.get("actions", {}) or {}).get("table", []) or []
+    observation_timing = {
+        "num_stack": num_stack,
+        "obs_size": int(env_cfg.get("obs_size", 84)),
+        "frame_skip": "none (one capture per decision on the external path)",
+        "hold_ms_by_action": {str(a.get("name", i)): float(a.get("hold_ms", 0))
+                              for i, a in enumerate(action_table)},
+        "post_action_delay_ms": float(timing_cfg.get("post_action_delay_ms", 0.0)),
+        "decision_period_ms_measured": decision_period_ms,
+        "history_span_ms": (num_stack * decision_period_ms
+                            if decision_period_ms is not None else None),
+    }
+
     report = {
         "config_file": str(config_path),
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
@@ -449,7 +471,8 @@ def _run_external_experiment(config_path: Path) -> dict:
         "train_component_means": summary["component_means"],
         "training_steps": trainer.num_timesteps,
         "training_seconds": train_seconds,
-        "decision_fps": trainer.num_timesteps / max(train_seconds, 1e-6),
+        "decision_fps": decision_fps,
+        "observation_timing": observation_timing,
         "window_relaunches": relaunches,
         "checkpoint": ckpt,
         "dependencies": dependency_versions(),

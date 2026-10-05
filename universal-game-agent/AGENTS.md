@@ -31,8 +31,9 @@ cd universal-game-agent
 python -m unittest discover -s tests
 ```
 
-- The current baseline (verified 2026-10-03) is **349 tests, 1 skip,
-  OK**. That is a dated observation, not a contract; the count is volatile because tests
+- The current baseline (verified 2026-10-05) is **366 tests, 1 skip,
+  OK** (349 at the 2026-10-03 orchestration batch; +17 from the 2026-10-05
+  cadence/reward investigation). That is a dated observation, not a contract; the count is volatile because tests
   get added. Run the suite for current truth. All tests are `unittest.TestCase`, and
   `tests/__init__.py` exists so discovery works as a package. Every test module imports
   `tests/_bootstrap.py` first, which puts `universal-game-agent/` on `sys.path`, so the
@@ -85,7 +86,9 @@ python main.py <smoke-test|train|evaluate|experiment> --config <path>
 is the **toy** path. The external pipeline is run through
 `python -m training.external_experiment --config <path>`, as recorded in the header of
 `experiments/exp_external_pong_01.yaml`. Do not route external runs through `main.py
-train`.
+train`. The synthetic cadence matrix needs no window or input backend and runs through
+`python -m training.cadence_experiment --config experiments/exp_cadence_synthetic.yaml`
+(see "Cadence / reward investigation" below).
 
 ## Layering
 
@@ -110,27 +113,93 @@ The dependency direction is deliberate. Preserve it.
   `yaml.safe_load` with a top-level-mapping check: **there is no inheritance or `extends`
   mechanism.** Compose configs by copying.
 - Experiment configs live in `experiments/`. The `model:` block is byte-identical across all
-  five YAMLs, and nine `ppo:` keys are identical everywhere: `rollout_length`,
+  six YAMLs, and nine `ppo:` keys are identical everywhere: `rollout_length`,
   `minibatch_size`, `learning_rate`, `gamma`, `gae_lambda`, `clip_range`, `entropy_coef`,
   `value_coef`, `max_grad_norm`. The remaining `ppo:` keys vary per config:
   `total_timesteps`, `update_epochs`, `seed`, `checkpoint_dir`, and
   `checkpoint_every_updates`. This is known duplication, not an endorsed pattern.
 - `experiments/*_results.json` are tracked. New result files are not ignored, so a fresh
   run always shows up in `git status`. That is intentional: results are evidence.
-- `checkpoint_every_updates` varies across configs (10, 50, 1000, 1000, 1000). It is now
+- `checkpoint_every_updates` varies across configs (10, 50, 1000, 1000, 1000, 0). It is now
   validated as a non-negative int on config construction (`PPOConfig.__post_init__`), and
   `0` disables periodic writes while `train()` always writes `ppo_final.pt`. The old claim
   that a `1000` interval silently "never fires" described the pre-validation behaviour and
   is stale; intervals above the run length now simply produce no periodic checkpoint.
 - `checkpoint_dir` differs per config (`checkpoints`, `checkpoints/exp02_nocur`,
-  `checkpoints/exp03_cur`, `checkpoints/extern_pong_01`). Exactly two trained
-  `ppo_final.pt` files exist: `checkpoints/ppo_final.pt` and
+  `checkpoints/exp03_cur`, `checkpoints/extern_pong_01`, `checkpoints/extern_pong_02`,
+  `checkpoints/synthetic_cadence`). Exactly two *documented* trained `ppo_final.pt` files
+  exist: `checkpoints/ppo_final.pt` and
   `checkpoints/extern_pong_01/ppo_final.pt`, which is what `checkpoints/README.md:8`
-  records. The third `.pt` is `ppo_untrained.pt`, which is untrained. They are not
+  records. Run-isolated `run-<pid>/` subdirectories and the four
+  `checkpoints/synthetic_cadence/<cell>/` files written by the cadence matrix are
+  regenerable in minutes and are deliberately undocumented (the third top-level `.pt`,
+  `ppo_untrained.pt`, is untrained). They are not
   interchangeable; identify a checkpoint by directory, never by filename alone.
 - `configs/default.yaml` declares a `logging:` block, but no production path calls
   `training.logger.setup_logging`. That config key and that module are both dead. Do not
   rely on either without wiring it up first.
+
+## Cadence / reward investigation (2026-10-05, synthetic — no window, no SendInput)
+
+Run it: `python -m training.cadence_experiment --config experiments/exp_cadence_synthetic.yaml`.
+Tracked evidence: `experiments/exp_cadence_synthetic_results.json`.
+
+Controls: a synthetic Pong session on a 60 fps virtual clock mirrors the external game's
+timing model (per-decision key hold then release, red-ball hit latch, 1.0 s MISS banner,
+auto re-serve) and is driven through the REAL `ExternalGameEnv`, `ExternPongReward`, and
+`ExternPongTermination` with `env.timing.post_action_delay_ms: 0`, so the matrix owns the
+decision period outright. The `model:` block and all nine shared `ppo:` keys are
+byte-identical to exp01/exp02; only two knobs vary, across four cells:
+
+| cell (artifact name) | decision period | key hold |
+|---|---|---|
+| current (matches exp01/02) | 147.6 ms | 60 ms |
+| fast | 16.667 ms | 16.667 ms |
+| current period + short hold | 147.6 ms | 16.667 ms |
+| medium | 33.333 ms | 16.667 ms |
+
+Per cell: six probe policies (lookahead oracle, reactive oracle, random, constant left,
+constant right, no-op) for reward discrimination, then baseline eval → 16384-step PPO
+(5 updates, seed 0) → final eval, 10 episodes each.
+
+Findings, hypothesis by hypothesis (all read from the tracked results file):
+
+- **Reward discrimination — SUPPORTED: the reward does discriminate.** At the current cell
+  the lookahead oracle survives all 200 steps (10-episode mean +0.1) while random dies at
+  5.6 steps (mean −1.0). Protocol asymmetry to know when reading means: `+1` pays only on
+  the first hit after a serve, the latch clears only on a re-serve, and only a miss
+  re-serves — a sustained rally pays 0, so a perfect policy's multi-episode mean converges
+  to ~+0.1, not +1.
+- **"compare01 proves the setup cannot learn" — REJECTED as evidence.** That run
+  (`timestamp_utc 2026-09-25T12:27Z`) predates detector fix `b77bf4d` (2026-09-26): the
+  ~607 px MISS banner was downscaled to 61 px, inside the hit band, so misses paid +1,
+  `miss_min` never fired, no episode terminated, and both policies sat at the 200-step
+  cap (10.83 vs 11.83 = event counts, skill-blind). Post-fix exp01/exp02 episodes end on
+  the first miss.
+- **"Slow decision cadence destroys learnability" — NOT SUPPORTED.** The lookahead oracle
+  never misses at 147.6, 33.3, or 16.7 ms periods whenever the hold provides enough
+  displacement. The binding constraint is control authority, not period: at 147.6 ms with
+  a 16.667 ms hold (~5 px per press) the oracle dies at 7.9 steps, while that same cell's
+  trained policy still improved hits 0.2 → 0.6 inside the pilot budget.
+- **"Constant PRESS_LEFT in exp01/exp02 is PPO collapse" — REJECTED.** exp01 entropy is
+  pinned at 1.0986 (= ln 3) over every recorded update and exp02 moves 1.082 → 1.020;
+  greedy argmax over a near-uniform policy is a fixed action, no collapse needed. One
+  matrix cell (medium) *did* collapse (entropy 0.06, ≥98 % action index 1 from update 1),
+  so collapse happens — it just is not what exp01/exp02 exhibited. ROOT-015..018 and
+  ROOT-028 remain DISPROVEN; nothing here revives them.
+- **Convergence — no claim.** Final rolling reward was −0.47..−0.52 in every cell against
+  the oracle's +0.1; 16384 steps is a pilot budget, not a convergence result.
+
+Still requires a real external run: live confirmation of the 15-20 px per-decision
+paddle displacement, and the STEP-3 exp02 re-run — both tracked in
+`.agents/pending_tasks.md`. **Ask before any run that sends real `SendInput`.**
+
+Observability shipped with this work: external results artifacts carry an
+`observation_timing` fingerprint (`num_stack`, `obs_size`, `frame_skip`, per-action
+`hold_ms`, `post_action_delay_ms`, `decision_period_ms_measured`, `history_span_ms`) plus
+`metric_definitions`; PPO history carries a per-update `upd_action_share` dict; and
+`env.timing.reset_settle_poll_s` (default 0.05, behaviour unchanged) exposes the
+previously hard-coded reset-settle poll stride.
 
 ## Checkpoints
 
@@ -200,10 +269,18 @@ tracked as canonical roots.
   Counts of `1..7` red pixels do occur (23 steps) — below `hit_min=8`, so they classify
   as "normal" and cannot produce a false hit; a subsequent in-band frame still pays the
   rising-edge `+1`. `env.reward_semantics` reports `"sign"` for this provider, as the
-  ROOT-036 contract requires. Caveat for anyone reading exp01/exp02 hit counts: the
-  decision cadence (60 ms key hold + 80 ms delay) moves the paddle 5 px per decision
-  while the ball travels roughly 34 px in the same time, so even a pixel-chase policy
-  scores about 2 hits per 7 misses. Low hit yield is that cadence, not detector loss.
+  ROOT-036 contract requires.
+- **Decision cadence and paddle displacement (measured/derived 2026-10-05).** The
+  exp01/exp02 results artifacts measure 6.68 and 6.78 decisions/s = 149.7 / 147.6 ms per
+  decision; the configured 60 ms key hold + 80 ms post-action delay accounts for 140 ms
+  of that, the rest overhead. Per-decision paddle displacement is **15-20 px**: 60 ms of
+  key-down spans 3-4 ticks of the 60 fps game loop at 5 px per tick, and the synthetic
+  cadence cell (`tests/test_cadence_experiment.py::TestPressTiming`) verifies exactly
+  that against the mirrored tick model. The earlier "5 px per decision" claim in this
+  file conflated one frame with one decision and is withdrawn; a live-window measurement
+  of the real displacement is still pending (`.agents/pending_tasks.md`). The hit-yield
+  caveat for exp01/exp02 readers still holds: a pixel-chase policy scored about 2 hits
+  per 7 misses, so low hit yield is cadence/control, not detector loss.
 - `training/external_experiment.py` orchestration is covered end to end by
   `tests/test_external_experiment_orchestration.py` (fakes only, no window): the exact
   phase order, state and config propagation into both envs, the isolated run-checkpoint

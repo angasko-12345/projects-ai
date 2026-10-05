@@ -1,0 +1,56 @@
+# Synthetic cadence / action-hold control experiment (no window, no SendInput).
+# Reproduces the measured external timing (147.6 ms decisions, 60 ms key hold,
+# 60 fps game) in virtual time over the real games/pong_logic dynamics and the
+# real ExternPongReward/ExternPongTermination/ExternalGameEnv/FrameStack path.
+# Run: python -m training.cadence_experiment --config experiments/exp_cadence_synthetic.yaml
+# Writes experiments/exp_cadence_synthetic_results.json (tracked evidence).
+game:
+  seed: 0
+  fps: 60
+
+# Fixed-policy probe: reward discrimination per cell (privileged bounds, not
+# learnable policies).
+probe:
+  episodes: 10
+
+# Cells: at least two cadences and two action-hold durations, everything else
+# fixed. "current_*" reproduces the measured real default cadence.
+cells:
+  - {name: current_period147.6ms_hold60ms, decision_period_ms: 147.6, hold_ms: 60}
+  - {name: fast_period16.667ms_hold16.667ms, decision_period_ms: 16.667, hold_ms: 16.667}
+  - {name: current_period_hold16.667ms, decision_period_ms: 147.6, hold_ms: 16.667}
+  - {name: medium_period33.333ms_hold16.667ms, decision_period_ms: 33.333, hold_ms: 16.667}
+
+env:
+  max_episode_steps: 200
+  max_episode_seconds: 120.0
+
+model:
+  in_channels: 4
+  frame_size: 84
+  feature_dim: 256
+  hidden_size: 128
+  num_layers: 1
+
+# Nine invariant keys identical to experiments/exp_external_pong_0*.yaml.
+ppo:
+  total_timesteps: 16384
+  rollout_length: 128
+  minibatch_size: 32
+  update_epochs: 2
+  learning_rate: 0.00025
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  entropy_coef: 0.01
+  value_coef: 0.5
+  max_grad_norm: 0.5
+  seed: 0
+  checkpoint_dir: "checkpoints/synthetic_cadence"
+  checkpoint_every_updates: 0
+
+curiosity:
+  enabled: false
+
+eval:
+  episodes: 10

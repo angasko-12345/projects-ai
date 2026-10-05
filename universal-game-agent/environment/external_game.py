@@ -155,8 +155,6 @@ class ExternalGameEnv(_Base):
 
     metadata = {"render_modes": ["rgb_array"]}
 
-    _SETTLE_POLL_S = 0.05
-
     def __init__(self, interface, reward_provider: RewardProvider,
                  termination_provider: TerminationProvider,
                  lifecycle: GameLifecycle | None = None,
@@ -167,7 +165,8 @@ class ExternalGameEnv(_Base):
                  reset_settle_timeout_s: float | None = 5.0,
                  max_episode_steps: int | None = None,
                  max_episode_seconds: float | None = None,
-                 clock: Clock | None = None):
+                 clock: Clock | None = None,
+                 reset_settle_poll_s: float = 0.05):
         """Timing semantics (separate concepts, no hidden stacking):
 
         1. hold time: per ActionDef, applied once by ActionMapper.
@@ -197,6 +196,8 @@ class ExternalGameEnv(_Base):
                 raise ValueError(f"{name} must be >= 0, got {value!r}")
         if reset_settle_timeout_s is not None and reset_settle_timeout_s < 0:
             raise ValueError(f"reset_settle_timeout_s must be >= 0 or None, got {reset_settle_timeout_s!r}")
+        if reset_settle_poll_s <= 0:
+            raise ValueError(f"reset_settle_poll_s must be > 0, got {reset_settle_poll_s!r}")
         if max_episode_steps is not None and max_episode_steps <= 0:
             raise ValueError(f"max_episode_steps must be positive, got {max_episode_steps!r}")
         if max_episode_seconds is not None and max_episode_seconds <= 0:
@@ -212,6 +213,7 @@ class ExternalGameEnv(_Base):
         self.reset_delay_ms = float(reset_delay_ms)
         self.reset_settle_timeout_s = (None if reset_settle_timeout_s is None
                                        else float(reset_settle_timeout_s))
+        self.reset_settle_poll_s = float(reset_settle_poll_s)
         self.max_episode_steps = max_episode_steps
         self.max_episode_seconds = max_episode_seconds
         self.stack = FrameStack(num_stack=num_stack, size=size)
@@ -293,7 +295,7 @@ class ExternalGameEnv(_Base):
         while bool(signal(raw, 0)):
             if self.clock.now() >= deadline:
                 break
-            self.clock.sleep(self._SETTLE_POLL_S)
+            self.clock.sleep(self.reset_settle_poll_s)
             raw = self.interface.capture()
             self._validate_raw(raw)
         return raw
@@ -531,6 +533,7 @@ def make_external_env_from_config(env_cfg: dict, clock=None):
             startup_delay_ms=float(timing.get("startup_delay_ms", 0.0)),
             reset_delay_ms=float(timing.get("reset_delay_ms", 0.0)),
             reset_settle_timeout_s=None if settle is None else float(settle),
+            reset_settle_poll_s=float(timing.get("reset_settle_poll_s", 0.05)),
             max_episode_steps=_timeout(timing.get("max_episode_steps"), int),
             max_episode_seconds=_timeout(timing.get("max_episode_seconds"), float),
             clock=clock,

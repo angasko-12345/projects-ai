@@ -129,11 +129,29 @@ class TestDiagnostics(unittest.TestCase):
         self.assertTrue((Path(ckpt_dir) / "ppo_final.pt").is_file())  # written to ckpt_dir, not the CWD
         for key in ("upd_episodes", "upd_mean_length", "upd_terminated", "upd_truncated",
                     "upd_mean_ext", "upd_mean_int", "upd_mean_total", "components",
-                    "mean_ext_reward", "mean_int_reward"):
+                    "mean_ext_reward", "mean_int_reward", "upd_action_share"):
             self.assertIn(key, history)
             self.assertTrue(len(history[key]) > 0)
         self.assertEqual(history["upd_terminated"], [2, 2])
         self.assertEqual(history["upd_truncated"], [0, 0])
+
+    def test_upd_action_share_is_a_normalized_per_update_distribution(self):
+        script = [(0.0, True, False)] * 4
+        ckpt_dir = _scratch_checkpoint_dir(self)
+        trainer = _trainer(script, rollout_length=4, total=4)
+        trainer.config.checkpoint_dir = ckpt_dir
+        history = trainer.train()
+        shares = history["upd_action_share"]
+        self.assertEqual(len(shares), len(history["timesteps"]),
+                         "one action-share entry per update")
+        for share in shares:
+            self.assertTrue(share, "an update must report at least one action")
+            self.assertTrue(set(share) <= {"0", "1"},
+                            f"keys must be action indices of a 2-action space: {share}")
+            self.assertAlmostEqual(sum(share.values()), 1.0, places=6)
+            for value in share.values():
+                self.assertGreater(value, 0.0)
+                self.assertLessEqual(value, 1.0)
 
 
 if __name__ == "__main__":

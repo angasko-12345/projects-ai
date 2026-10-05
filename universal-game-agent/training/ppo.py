@@ -159,6 +159,7 @@ class PPOTrainer:
             "episodes": [], "upd_episodes": [], "upd_mean_length": [],
             "upd_terminated": [], "upd_truncated": [], "upd_mean_ext": [],
             "upd_mean_int": [], "upd_mean_total": [], "components": [],
+            "upd_action_share": [],
         }
 
     # -- rollout ---------------------------------------------------------
@@ -443,6 +444,14 @@ class PPOTrainer:
             self.history["upd_mean_length"].append(float(np.mean(ep_lengths)) if ep_lengths else 0.0)
             self.history["upd_terminated"].append(upd_terminated)
             self.history["upd_truncated"].append(n_ep - upd_terminated)
+            # Action-distribution diagnostic: per-update share of each action
+            # index over the rollout, e.g. {"0": 0.1, "1": 0.8, "2": 0.1}.
+            rollout_actions = buf["actions"].detach().cpu().numpy().reshape(-1)
+            uniq, counts = np.unique(rollout_actions, return_counts=True)
+            total_actions = max(rollout_actions.size, 1)
+            self.history["upd_action_share"].append(
+                {str(int(a)): float(c) / float(total_actions)
+                 for a, c in zip(uniq, counts)})
             self.history["upd_mean_ext"].append(float(np.mean(ep_ext)) if ep_ext else 0.0)
             self.history["upd_mean_int"].append(float(np.mean(ep_int)) if ep_int else 0.0)
             self.history["upd_mean_total"].append(float(np.mean(ep_rewards)) if ep_rewards else 0.0)

@@ -595,6 +595,21 @@ class TestExternalFactory(unittest.TestCase):
         self.assertEqual(len(acted), 4)  # step_limit max_steps
         self.assertEqual(total, 0.0)  # null reward throughout
 
+    def test_factory_reads_settle_poll_from_timing_config(self):
+        from environment.external_game import make_external_env_from_config
+
+        default_env = make_external_env_from_config(self._synthetic_cfg())()
+        try:
+            self.assertEqual(default_env.reset_settle_poll_s, 0.05)
+        finally:
+            default_env.close()
+        tuned_env = make_external_env_from_config(
+            self._synthetic_cfg(timing={"reset_settle_poll_s": 0.02}))()
+        try:
+            self.assertEqual(tuned_env.reset_settle_poll_s, 0.02)
+        finally:
+            tuned_env.close()
+
     def test_toy_default_unchanged(self):
         from training.experiment import make_env_from_config
 
@@ -775,6 +790,35 @@ class TestResetSettle(unittest.TestCase):
             ExternalGameEnv(FakeInterface([_frame(0)]), NullReward(),
                             StepLimitTermination(max_steps=10),
                             reset_settle_timeout_s=-1.0)
+
+    def test_settle_poll_interval_is_configurable(self):
+        from environment.extern_pong_rewards import ExternPongTermination
+
+        clock = AdvancingClock()
+        env = self._env([_banner_frame()], ExternPongTermination(), clock=clock,
+                        reset_settle_timeout_s=0.12, reset_settle_poll_s=0.04)
+        env.reset(seed=0)  # banner never clears: polls at the configured stride
+        self.assertEqual(env.reset_settle_poll_s, 0.04)
+        self.assertEqual(clock.sleeps, [0.04, 0.04, 0.04])
+
+    def test_default_settle_poll_interval_unchanged(self):
+        from environment.extern_pong_rewards import ExternPongTermination
+
+        clock = AdvancingClock()
+        env = self._env([_banner_frame()], ExternPongTermination(), clock=clock,
+                        reset_settle_timeout_s=0.12)
+        env.reset(seed=0)
+        self.assertEqual(env.reset_settle_poll_s, 0.05)
+        self.assertEqual(clock.sleeps, [0.05, 0.05, 0.05])
+
+    def test_non_positive_settle_poll_rejected(self):
+        from environment.external_game import ExternalGameEnv
+
+        for bad in (0.0, -0.01):
+            with self.assertRaises(ValueError):
+                ExternalGameEnv(FakeInterface([_frame(0)]), NullReward(),
+                                StepLimitTermination(max_steps=10),
+                                lifecycle=None, reset_settle_poll_s=bad)
 
 
 if __name__ == "__main__":
