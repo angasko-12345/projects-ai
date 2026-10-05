@@ -40,6 +40,15 @@ MODEL_FIELDS = ("vocab_size", "context_length", "n_layers", "n_heads", "d_model"
 # just continue the RNG stream instead of restoring it.
 REQUIRED_CHECKPOINT_KEYS = ("model_state", "config", "step")
 
+# Marker read_checkpoint() stamps on the dict it hands back. Passing that same
+# dict to load_model()/load_checkpoint() skips a second validation pass, so the
+# in-tree callers still read each checkpoint file exactly once. A dict from
+# anywhere else has no marker and is validated on the way in, so passing a
+# dictionary is not a way around validate_checkpoint(). read_checkpoint() always
+# validates what it reads, so a marker that reached a file is never trusted:
+# only the in-memory dict this process validated carries it.
+VALIDATED_KEY = "_mini_llm_validated"
+
 
 def build_checkpoint_metadata(cfg: Config, step: int, *, epoch: float | None = None,
                               tokens_seen: int | None = None,
@@ -177,6 +186,10 @@ def validate_checkpoint(ckpt: dict, path: str) -> dict:
     if not isinstance(config, dict):
         raise ValueError(f"{path} has a config of type {type(config).__name__}, "
                          "not a dict of settings")
+    model_state = ckpt["model_state"]
+    if not isinstance(model_state, dict):
+        raise ValueError(f"{path} has a model_state of type {type(model_state).__name__}, "
+                         "not a dict of tensors")
     stale = []
     for name in MODEL_FIELDS:
         if name not in config:
@@ -184,13 +197,59 @@ def validate_checkpoint(ckpt: dict, path: str) -> dict:
         elif config[name] != meta["model"][name]:
             stale.append(f"{name}: metadata={meta['model'][name]!r} "
                          f"config={config[name]!r}")
+
+    # Progress step vs checkpoint step
+    meta_step = meta.get("progress", {}).get("step")
+    ckpt_step = ckpt.get("step")
+    if meta_step is not None and ckpt_step is not None and meta_step != ckpt_step:
+        stale.append(f"step: metadata={meta_step!r} checkpoint={ckpt_step!r}")
+
+    # Tokenizer path vs config tokenizer_path
+    meta_tok_path = meta.get("tokenizer", {}).get("path")
+    cfg_tok_path = config.get("tokenizer_path")
+    if meta_tok_path is not None and cfg_tok_path is not None and meta_tok_path != cfg_tok_path:
+        stale.append(f"tokenizer_path: metadata={meta_tok_path!r} config={cfg_tok_path!r}")
+
+    # Progress max_steps vs config max_steps (when both exist)
+    meta_max_steps = meta.get("progress", {}).get("max_steps")
+    cfg_max_steps = config.get("max_steps")
+    if meta_max_steps is not None and cfg_max_steps is not None and meta_max_steps != cfg_max_steps:
+        stale.append(f"max_steps: metadata={meta_max_steps!r} config={cfg_max_steps!r}")
+
+    # Metadata tokenizer sha256 vs data_provenance tokenizer_sha256 (when both exist)
+    meta_tok_sha = meta.get("tokenizer", {}).get("sha256")
+    prov = ckpt.get("data_provenance")
+    prov_tok_sha = prov.get("tokenizer_sha256") if isinstance(prov, dict) else None
+    if meta_tok_sha is not None and prov_tok_sha is not None and meta_tok_sha != prov_tok_sha:
+        stale.append(f"tokenizer_sha256: metadata={meta_tok_sha!r} provenance={prov_tok_sha!r}")
+
+    # Model tensor shapes vs model metadata
+    model_meta = meta.get("model", {})
+    wte = model_state.get("wte.weight")
+    if hasattr(wte, "shape"):
+        vocab_size = model_meta.get("vocab_size")
+        d_model = model_meta.get("d_model")
+        if vocab_size is not None and len(wte.shape) > 0 and wte.shape[0] != vocab_size:
+            stale.append(f"wte.weight vocab_size: tensor={wte.shape[0]} metadata={vocab_size}")
+        if d_model is not None and len(wte.shape) > 1 and wte.shape[1] != d_model:
+            stale.append(f"wte.weight d_model: tensor={wte.shape[1]} metadata={d_model}")
+
+    wpe = model_state.get("wpe.weight")
+    if hasattr(wpe, "shape"):
+        context_length = model_meta.get("context_length")
+        d_model = model_meta.get("d_model")
+        if context_length is not None and len(wpe.shape) > 0 and wpe.shape[0] != context_length:
+            stale.append(f"wpe.weight context_length: tensor={wpe.shape[0]} metadata={context_length}")
+        if d_model is not None and len(wpe.shape) > 1 and wpe.shape[1] != d_model:
+            stale.append(f"wpe.weight d_model: tensor={wpe.shape[1]} metadata={d_model}")
+
     if stale:
         # Joined outside the f-string: a backslash inside an f-string expression is
         # a syntax error before Python 3.12, and 3.11 is the supported floor.
         listed = "\n  ".join(stale)
         raise ValueError(
-            f"{path} is internally inconsistent: its config and its checkpoint "
-            f"metadata describe different models.\n  {listed}\n"
+            f"{path} is internally inconsistent: its checkpoint metadata contradicts "
+            f"the checkpoint data or configuration.\n  {listed}\n"
             "One of the two was edited after the checkpoint was written; load an "
             "untouched checkpoint."
         )
@@ -411,11 +470,30 @@ def read_checkpoint(path: str) -> dict:
     # A schema 1 checkpoint comes back carrying the metadata its config implies,
     # in memory only, so callers can read the same key either way.
     ckpt["checkpoint_metadata"] = validate_checkpoint(ckpt, path)
+    ckpt[VALIDATED_KEY] = True
     return ckpt
 
 
-def load_checkpoint(path: str, model, optimizer=None) -> dict:
-    ckpt = read_checkpoint(path)
+def validated_checkpoint(checkpoint: str | dict) -> dict:
+    """The checkpoint dict, guaranteed to have passed validate_checkpoint().
+
+    Takes a path (read once from disk and validated) or an already-read dict.
+    A dict read_checkpoint() validated carries the marker and is returned as-is;
+    any other dict is validated here first, so no caller can hand the loaders an
+    unchecked checkpoint. Validating is cheap and pure - it reads no files - so
+    this adds no second read of the checkpoint.
+    """
+    if not isinstance(checkpoint, dict):
+        return read_checkpoint(checkpoint)
+    if checkpoint.get(VALIDATED_KEY) is not True:
+        checkpoint["checkpoint_metadata"] = validate_checkpoint(
+            checkpoint, "<in-memory checkpoint>")
+        checkpoint[VALIDATED_KEY] = True
+    return checkpoint
+
+
+def load_checkpoint(checkpoint: str | dict, model, optimizer=None) -> dict:
+    ckpt = validated_checkpoint(checkpoint)
     model.load_state_dict(ckpt["model_state"])
     if optimizer is not None and "optimizer_state" in ckpt:
         optimizer.load_state_dict(ckpt["optimizer_state"])
@@ -423,9 +501,9 @@ def load_checkpoint(path: str, model, optimizer=None) -> dict:
     return ckpt
 
 
-def load_model(path: str):
+def load_model(checkpoint: str | dict):
     """Rebuild the model a checkpoint describes and load its weights. Returns (model, cfg)."""
-    ckpt = read_checkpoint(path)
+    ckpt = validated_checkpoint(checkpoint)
     cfg = Config.from_dict(ckpt["config"])
     model = from_config(cfg)
     model.load_state_dict(ckpt["model_state"])  # strict: a mismatch must not pass silently
@@ -509,8 +587,16 @@ def check_resume_provenance(ckpt: dict, cfg: Config, checkpoint_path: str) -> No
     )
 
 
-def train(cfg: Config, resume_from: str | None = None, start_step: int = 1,
+def train(cfg: Config, resume_from: str | None = None, start_step: int | None = None,
           stride: int = 1, device_spec: str = "auto") -> None:
+    ckpt = None
+    if resume_from:
+        ckpt = read_checkpoint(resume_from)
+        if start_step is None:
+            start_step = int(ckpt["step"]) + 1
+    elif start_step is None:
+        start_step = 1
+
     if start_step > cfg.max_steps:
         raise SystemExit(
             f"checkpoint is already at step {start_step - 1} of max_steps {cfg.max_steps}"
@@ -528,7 +614,7 @@ def train(cfg: Config, resume_from: str | None = None, start_step: int = 1,
           f"      tokenizer={provenance['tokenizer_path']} "
           f"(sha256 {provenance['tokenizer_sha256'][:12]}...)")
     if resume_from:
-        check_resume_provenance(read_checkpoint(resume_from), cfg, resume_from)
+        check_resume_provenance(ckpt, cfg, resume_from)
     configure_torch_threads(cfg)
     set_seed(cfg.seed)
     device = resolve_device(device_spec)
@@ -561,7 +647,7 @@ def train(cfg: Config, resume_from: str | None = None, start_step: int = 1,
 
     tokens_before = 0  # tokens a resumed run had already consumed
     if resume_from:
-        ckpt = load_checkpoint(resume_from, model, optimizer)
+        ckpt = load_checkpoint(ckpt, model, optimizer)
         # The LR schedule is a pure function of the step number, so continuing from
         # the checkpoint's step continues the original warmup/cosine curve.
         print(f"resumed {resume_from} at step {ckpt['step']} -> next {ckpt['step'] + 1}")

@@ -105,10 +105,11 @@ def main() -> None:
         # Same checkpoint + prompt + seed + settings => same tokens.
         torch.manual_seed(args.seed)
 
-    model, cfg = load_model(args.checkpoint)
+    ckpt = read_checkpoint(args.checkpoint)
+    model, cfg = load_model(ckpt)
 
     tokenizer_path = args.tokenizer or cfg.tokenizer_path
-    check_tokenizer_provenance(read_checkpoint(args.checkpoint), tokenizer_path)
+    check_tokenizer_provenance(ckpt, tokenizer_path)
     tok = load_tokenizer(tokenizer_path)
     prompt_ids = tok.encode(args.prompt).ids if args.prompt else [tok.token_to_id("<bos>")]
     idx = torch.tensor([prompt_ids], dtype=torch.long)

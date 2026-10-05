@@ -27,7 +27,8 @@ from src.model import from_config
 from src.tokenizer import load_tokenizer, train_bpe_tokenizer
 from src.train import (build_checkpoint_metadata, build_param_groups, evaluate, load_checkpoint,
                        load_model, lr_at_step, read_checkpoint, resolve_device, restore_rng_state,
-                       save_checkpoint, train, validate_checkpoint, CHECKPOINT_SCHEMA_VERSION)
+                       save_checkpoint, train, validate_checkpoint, CHECKPOINT_SCHEMA_VERSION,
+                       VALIDATED_KEY)
 from src.train import main as train_main
 
 CORPUS = (
@@ -815,6 +816,122 @@ class TestCheckpointMetadata(unittest.TestCase):
         self.assertIn("internally inconsistent", message)
         self.assertIn("context_length", message)
 
+    def test_metadata_step_contradicting_checkpoint_step_is_refused(self):
+        path = self.save(self.cfg(), step=4)
+        self.rewrite(path, lambda c: c["checkpoint_metadata"]["progress"].update(step=5))
+        with self.assertRaises(ValueError) as ctx:
+            read_checkpoint(path)
+        message = str(ctx.exception)
+        self.assertIn("internally inconsistent", message)
+        self.assertIn("step", message)
+
+    def test_metadata_tokenizer_path_contradicting_config_is_refused(self):
+        path = self.save(self.cfg())
+        self.rewrite(path, lambda c: c["checkpoint_metadata"]["tokenizer"].update(
+            path="data/other_tokenizer.json"))
+        with self.assertRaises(ValueError) as ctx:
+            read_checkpoint(path)
+        message = str(ctx.exception)
+        self.assertIn("internally inconsistent", message)
+        self.assertIn("tokenizer_path", message)
+
+    def test_metadata_max_steps_contradicting_config_is_refused(self):
+        path = self.save(self.cfg())
+        self.rewrite(path, lambda c: c["checkpoint_metadata"]["progress"].update(
+            max_steps=self.cfg().max_steps + 10))
+        with self.assertRaises(ValueError) as ctx:
+            read_checkpoint(path)
+        message = str(ctx.exception)
+        self.assertIn("internally inconsistent", message)
+        self.assertIn("max_steps", message)
+
+    def test_metadata_tokenizer_sha256_contradicting_provenance_is_refused(self):
+        path = self.save(self.cfg())
+        self.rewrite(path, lambda c: c["checkpoint_metadata"]["tokenizer"].update(
+            sha256="0" * 64))
+        with self.assertRaises(ValueError) as ctx:
+            read_checkpoint(path)
+        message = str(ctx.exception)
+        self.assertIn("internally inconsistent", message)
+        self.assertIn("tokenizer_sha256", message)
+
+    def test_model_state_shape_contradicting_metadata_is_refused(self):
+        path = self.save(self.cfg())
+        self.rewrite(path, lambda c: c["model_state"].update(
+            {"wte.weight": torch.zeros((c["checkpoint_metadata"]["model"]["vocab_size"] + 8,
+                                        c["checkpoint_metadata"]["model"]["d_model"]))}))
+        with self.assertRaises(ValueError) as ctx:
+            read_checkpoint(path)
+        message = str(ctx.exception)
+        self.assertIn("internally inconsistent", message)
+        self.assertIn("vocab_size", message)
+
+    def test_position_embedding_shape_contradicting_context_length_is_refused(self):
+        """wpe.weight is the second tensor the shape check exists for.
+
+        The embedding table pins vocab_size; the position table pins
+        context_length. A position table whose row count disagrees with the
+        recorded context_length describes a different model, so it is refused
+        on the same terms as the embedding one.
+        """
+        path = self.save(self.cfg())
+        self.rewrite(path, lambda c: c["model_state"].update(
+            {"wpe.weight": torch.zeros((c["checkpoint_metadata"]["model"]["context_length"] - 4,
+                                        c["checkpoint_metadata"]["model"]["d_model"]))}))
+        with self.assertRaises(ValueError) as ctx:
+            read_checkpoint(path)
+        message = str(ctx.exception)
+        self.assertIn("internally inconsistent", message)
+        self.assertIn("context_length", message)
+
+    def test_embedding_shape_contradicting_d_model_is_refused(self):
+        """Both tensors are checked against d_model, not only against vocab_size."""
+        path = self.save(self.cfg())
+        self.rewrite(path, lambda c: c["model_state"].update(
+            {"wte.weight": torch.zeros((c["checkpoint_metadata"]["model"]["vocab_size"],
+                                        c["checkpoint_metadata"]["model"]["d_model"] + 4))}))
+        with self.assertRaises(ValueError) as ctx:
+            read_checkpoint(path)
+        message = str(ctx.exception)
+        self.assertIn("internally inconsistent", message)
+        self.assertIn("d_model", message)
+
+    def test_raw_unvalidated_dict_cannot_bypass_validation(self):
+        """Passing a dict is not a way around validate_checkpoint().
+
+        load_model()/load_checkpoint() accept an already-read dict so the
+        in-tree callers avoid a second read. That must not become a way to load
+        an unchecked checkpoint: a dict straight from torch.load, with metadata
+        that contradicts its own config, is still refused.
+        """
+        path = self.save(self.cfg())
+        raw = torch.load(path, map_location="cpu", weights_only=True)
+        # A raw torch.load result carries no validation marker.
+        self.assertNotIn(VALIDATED_KEY, raw)
+        raw["checkpoint_metadata"]["model"]["d_ff"] = self.cfg().d_ff + 64
+        # validate_checkpoint rejects it...
+        with self.assertRaises(ValueError) as ctx:
+            validate_checkpoint(raw, "<in-memory checkpoint>")
+        self.assertIn("internally inconsistent", str(ctx.exception))
+        # ...so the loaders must refuse it too rather than trusting the dict.
+        with self.assertRaises(ValueError):
+            load_model(raw)
+        model = from_config(self.cfg())
+        opt = torch.optim.AdamW(build_param_groups(model, self.cfg().weight_decay), lr=1e-3)
+        with self.assertRaises(ValueError):
+            load_checkpoint(raw, model, opt)
+
+    def test_a_validated_dict_still_loads_through_both_loaders(self):
+        """The marker skips re-validation, not validation of the checkpoint."""
+        path = self.save(self.cfg())
+        ckpt = read_checkpoint(path)
+        self.assertIs(ckpt.get(VALIDATED_KEY), True)
+        loaded, loaded_cfg = load_model(ckpt)
+        self.assertEqual(loaded_cfg.to_dict(), self.cfg().to_dict())
+        fresh = from_config(self.cfg())
+        opt = torch.optim.AdamW(build_param_groups(fresh, self.cfg().weight_decay), lr=1e-3)
+        self.assertEqual(load_checkpoint(ckpt, fresh, opt)["step"], 1)
+
     def test_a_checkpoint_missing_a_field_the_loader_needs_is_refused(self):
         for key in ("model_state", "step"):
             with self.subTest(missing=key):
@@ -859,6 +976,28 @@ class TestCheckpointMetadata(unittest.TestCase):
                          2 * 3 * cfg.batch_size * cfg.context_length)
         self.assertGreater(progress["epoch"],
                            first["checkpoint_metadata"]["progress"]["epoch"])
+
+    def test_programmatic_resume_without_start_step_resumes_from_checkpoint_step(self):
+        """train(cfg, resume_from=...) without start_step continues at ckpt['step'] + 1."""
+        cfg = self.cfg(max_steps=3, warmup_steps=1, eval_interval=3)
+        train(cfg)
+        step_3_ckpt = read_checkpoint(os.path.join(self.ckpt_dir, "step_3.pt"))
+        self.assertEqual(step_3_ckpt["step"], 3)
+        tokens_at_step_3 = step_3_ckpt["checkpoint_metadata"]["progress"]["tokens_seen"]
+        self.assertEqual(tokens_at_step_3, 3 * cfg.batch_size * cfg.context_length)
+
+        # Call train() with resume_from without passing start_step
+        train(self.cfg(max_steps=6, warmup_steps=1, eval_interval=3),
+              resume_from=os.path.join(self.ckpt_dir, "step_3.pt"))
+        final_ckpt = read_checkpoint(os.path.join(self.ckpt_dir, "final.pt"))
+        progress = final_ckpt["checkpoint_metadata"]["progress"]
+        self.assertEqual(final_ckpt["step"], 6)
+        self.assertEqual(progress["step"], 6)
+        # Earlier steps 1..3 must NOT have been rerun; tokens_seen must account for exactly 6 steps
+        expected_tokens = 6 * cfg.batch_size * cfg.context_length
+        self.assertEqual(progress["tokens_seen"], expected_tokens)
+        n_train_tokens = len(load_token_ids(self.data["train_bin"]))
+        self.assertAlmostEqual(progress["epoch"], expected_tokens / n_train_tokens)
 
     def test_validate_checkpoint_reports_without_loading_from_disk(self):
         """The check is a pure function of the dict, so it is usable before a load."""
