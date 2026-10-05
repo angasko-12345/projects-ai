@@ -32,7 +32,6 @@ Bugs fixed here, each reproduced against a real FFmpeg build first:
 import json
 import math
 import os
-import stat
 import subprocess
 from pathlib import Path
 from typing import List, Optional
@@ -91,15 +90,16 @@ def validate_final_output(path: Path, *, min_duration: Optional[float] = None) -
     3. ffprobe can read the file
     4. File contains at least one video stream
     5. Video has a positive duration
+    6. File decodes completely without errors (integrity check)
 
     If *min_duration* is given, also checks that duration >= 1.0 and
-    >= min_duration * 0.9 (to catch truncation).
+    >= min_duration * 0.9 (to catch container-level truncation).
 
     Returns the probed duration on success.
 
     Raises:
         OutputValidationError — with a human-readable message that preserves
-        the underlying ffprobe error when available.
+        the underlying ffprobe/ffmpeg error when available.
     """
     # 1. Exists and is a regular file.
     try:
@@ -118,18 +118,6 @@ def validate_final_output(path: Path, *, min_duration: Optional[float] = None) -
         raise OutputValidationError(
             f"Final output validation failed: not a regular file: {path}"
         )
-
-    # Also check file mode — on POSIX, is_file follows symlinks; catch
-    # directory masquerading via extra guard.
-    try:
-        if stat.S_ISDIR(st.st_mode):
-            raise OutputValidationError(
-                f"Final output validation failed: path is a directory: {path}"
-            )
-    except OutputValidationError:
-        raise
-    except Exception:
-        pass  # best-effort guard, primary check is is_file() above
 
     # 2. Non-empty.
     if st.st_size == 0:
@@ -165,7 +153,7 @@ def validate_final_output(path: Path, *, min_duration: Optional[float] = None) -
             f"for file: {path}"
         )
 
-    # Optional: truncation check when expected duration is known.
+    # Optional: truncation check when expected duration is known (container level).
     if min_duration is not None and min_duration > 0:
         threshold = max(1.0, float(min_duration) * 0.9)
         if duration < threshold:
@@ -174,6 +162,15 @@ def validate_final_output(path: Path, *, min_duration: Optional[float] = None) -
                 f"but expected at least {threshold:.1f}s "
                 f"(narration ~{float(min_duration):.1f}s); likely truncated: {path}"
             )
+
+    # 6. Real integrity check: decode the whole file with FFmpeg.
+    # This catches physically truncated files that ffprobe may still report
+    # a valid duration for (e.g., partial downloads, interrupted writes).
+    if not probe_integrity(path):
+        raise OutputValidationError(
+            f"Final output validation failed: file failed full decode "
+            f"(truncated or corrupt stream data): {path}"
+        )
 
     return duration
 
@@ -266,6 +263,34 @@ def probe_has_audio(path: Path) -> bool:
         )
         return "audio" in proc.stdout
     except Exception:
+        return False
+
+
+def probe_integrity(path: Path) -> bool:
+    """Decode the entire file with FFmpeg to verify it is not truncated/corrupt.
+
+    Runs ``ffmpeg -v error -i <path> -f null -`` and returns True if the
+    decode succeeds (exit code 0). This catches physically truncated files
+    that ffprobe may still report a valid duration for.
+    """
+    cmd = [
+        get_ffmpeg_path(),
+        "-v", "error",
+        "-i", str(path),
+        "-f", "null", "-",
+    ]
+    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
+    try:
+        proc = subprocess.run(
+            cmd,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=180,
+            creationflags=creationflags,
+        )
+        return proc.returncode == 0
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
         return False
 
 

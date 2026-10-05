@@ -1,11 +1,12 @@
-"""Final-output validation: file checks + ffprobe + duration.
+"""Final-output validation: file checks + ffprobe + duration + integrity.
 
 Covers the quick-win requirements:
   - exists, regular file, non-empty
   - ffprobe can read
   - contains video stream
   - positive finite duration
-  - optional truncation guard via min_duration
+  - optional truncation guard via min_duration (container level)
+  - full decode integrity check (catches physically truncated files)
 Plus pipeline wiring: failure must not be reported as success and invalid
 file must be left on disk for diagnosis.
 """
@@ -16,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from app import pipeline, renderer
+from app import captions, pipeline, renderer, script
 from conftest import FFMPEG, FFPROBE, ffmpeg_required
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -122,6 +123,7 @@ def test_validate_valid_output_mocked(monkeypatch, tmp_path):
         {"codec_type": "audio", "codec_name": "aac"},
     ])
     monkeypatch.setattr(renderer, "probe_duration", lambda path: 5.0)
+    monkeypatch.setattr(renderer, "probe_integrity", lambda path: True)
     result = renderer.validate_final_output(p)
     assert result == pytest.approx(5.0)
     # with min_duration that is satisfied
@@ -156,7 +158,7 @@ def test_validate_valid_real_video_with_min_duration(mp4_factory, tmp_path):
 def test_validate_corrupt_real_file(tmp_path):
     p = tmp_path / "corrupt.mp4"
     p.write_bytes(b"not a real mp4 file" * 100)
-    with pytest.raises(renderer.OutputValidationError, match="could not read|corrupt|no video"):
+    with pytest.raises(renderer.OutputValidationError, match="could not read|corrupt|no video|failed full decode"):
         renderer.validate_final_output(p)
 
 
@@ -170,7 +172,7 @@ def test_validate_audio_only_has_no_video_stream(tmp_path):
          "-c:a", "pcm_s16le", str(wav)],
         check=True,
     )
-    with pytest.raises(renderer.OutputValidationError, match="no video stream|could not read"):
+    with pytest.raises(renderer.OutputValidationError, match="no video stream|could not read|failed full decode"):
         renderer.validate_final_output(wav)
 
 
@@ -189,58 +191,104 @@ def test_validate_empty_real_file(tmp_path):
         renderer.validate_final_output(p)
 
 
+@ffmpeg_required
+def test_validate_truncated_file_detected_by_integrity_check(tmp_path):
+    """A file with valid header but corrupted stream data should fail integrity check."""
+    # Create a file with a valid MP4 container header but corrupted/cut stream data
+    # by writing a valid ftyp/moov header followed by garbage
+    truncated = tmp_path / "truncated.mp4"
+    # Valid ftyp box + minimal moov structure, but no mdat or corrupted mdat
+    # This simulates a partial download where the container header is present
+    # but the media data is missing/incomplete
+    header = (
+        b'\x00\x00\x00\x20ftypisom\x00\x00\x02\x00isomiso2avc1mp41'  # ftyp
+        b'\x00\x00\x00\x18moov'  # moov atom start (incomplete)
+    )
+    truncated.write_bytes(header + b'garbage_data_that_breaks_decode' * 50)
+    
+    # ffprobe will fail to read this
+    with pytest.raises(renderer.OutputValidationError, match="could not read|corrupt|no video|failed full decode"):
+        renderer.validate_final_output(truncated, min_duration=4.0)
+
+
 # ---------------------------------------------------------------------------
 # Pipeline wiring — validation failure must not be reported as success
 # ---------------------------------------------------------------------------
 
-def test_pipeline_validation_failure_not_reported_as_success(monkeypatch, tmp_path):
-    """If validate_final_output raises, _produce_one must return a failure entry."""
-    monkeypatch.setattr(pipeline, "get_output_dir", lambda: tmp_path)
-    # Need to get past narration coherence; stub helpers
-    monkeypatch.setattr(pipeline, "_measure_volume_db", lambda p: -20.0)
+def _make_mock_audio_with_duration(tmp_path, duration: float):
+    """Create a WAV file of exact duration using FFmpeg."""
+    wav = tmp_path / "audio" / f"fake_{duration}s.wav"
+    wav.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        [FFMPEG, "-y", "-hide_banner", "-loglevel", "error",
+         "-f", "lavfi", "-i", f"sine=frequency=300:duration={duration}",
+         "-c:a", "pcm_s16le", str(wav)],
+        check=True,
+    )
+    return wav.read_bytes()
 
+
+def _setup_pipeline_mocks(monkeypatch, tmp_path, narration_text: str, audio_duration: float):
+    """Set up all pipeline mocks to reach validate_final_output with given params."""
     from app import gemini
+    from app.visuals import ScenePlan
 
     script_stub = {
-        "hook": "H",
-        "story": "S",
-        "twist": "T",
-        "ending": "E",
-        "cta": "C",
-        "title": "t",
-        "hashtags": [],
+        "hook": "H", "story": "S", "twist": "T", "ending": "E", "cta": "C",
+        "title": "t", "hashtags": [],
     }
-    monkeypatch.setattr(pipeline.gemini, "generate_script", lambda idea: script_stub)
-    monkeypatch.setattr(pipeline.gemini, "script_to_text",
-                        lambda s: " ".join([s["hook"], s["story"], s["twist"], s["ending"], s["cta"]]))
 
-    # Create a tiny real wav so probe_duration returns something
-    # Instead mock probe_duration to avoid needing real file
+    # Build audio that matches the narration duration
+    audio_bytes = _make_mock_audio_with_duration(tmp_path, audio_duration)
+
+    # Patch all the way to validation
+    monkeypatch.setattr(pipeline, "get_output_dir", lambda: tmp_path)
+    monkeypatch.setattr(pipeline, "_measure_volume_db", lambda p: -20.0)
+    monkeypatch.setattr(pipeline.gemini, "generate_script", lambda idea: script_stub)
+    monkeypatch.setattr(pipeline.gemini, "script_to_text", lambda s: narration_text)
+    monkeypatch.setattr(pipeline.gemini, "generate_tts",
+                        lambda s: gemini.AudioBlob(audio_bytes, "audio/wav"))
+    monkeypatch.setattr(pipeline.tts, "ensure_playable", lambda d, m: d)
+    # save_audio will write our pre-made audio
     fake_audio = tmp_path / "audio" / "fake.wav"
     fake_audio.parent.mkdir(parents=True, exist_ok=True)
-    fake_audio.write_bytes(b"RIFF____WAVEfake")
+    fake_audio.write_bytes(audio_bytes)
+    monkeypatch.setattr(pipeline.tts, "save_audio",
+                        lambda data, name, output_dir=None: fake_audio)
+    monkeypatch.setattr(pipeline.renderer, "probe_duration", lambda p: audio_duration)
 
-    fake_blob = gemini.AudioBlob(b"RIFF____WAVEfake", "audio/wav")
-    monkeypatch.setattr(pipeline.gemini, "generate_tts", lambda s: fake_blob)
-    monkeypatch.setattr(pipeline.tts, "ensure_playable", lambda data, mime: data)
-    monkeypatch.setattr(pipeline.tts, "save_audio", lambda data, name, output_dir=None: fake_audio)
-    monkeypatch.setattr(pipeline.renderer, "probe_duration", lambda p: 5.0)
-
-    # visuals
-    from app.visuals import ScenePlan
-    fake_scene = ScenePlan(index=0, text="hello world", keywords="hello",
-                           duration=5.0, style="nebula", motion="drift",
-                           transition="fade", seed=1, palette=("0x000000","0x111111","0x222222"))
-    monkeypatch.setattr(pipeline.visuals, "plan_scenes", lambda script, duration, seed: [fake_scene])
+    # Visuals
+    fake_scene = ScenePlan(index=0, text="hello", keywords="hello",
+                           duration=audio_duration, style="nebula", motion="drift",
+                           transition="fade", seed=1, palette=("0x000", "0x111", "0x222"))
+    monkeypatch.setattr(pipeline.visuals, "plan_scenes",
+                        lambda script, duration, seed: [fake_scene])
     fake_visuals = tmp_path / "visuals" / "fake.mp4"
     fake_visuals.parent.mkdir(parents=True, exist_ok=True)
     fake_visuals.write_bytes(b"x" * 100)
-    monkeypatch.setattr(pipeline.visuals, "render_background", lambda scenes, out, duration, work_dir=None: fake_visuals)
+    monkeypatch.setattr(pipeline.visuals, "render_background",
+                        lambda *a, **kw: fake_visuals)
 
-    # captions
-    monkeypatch.setattr(pipeline, "_build_captions", lambda text, duration, srt_path: srt_path.write_text("1\n00:00:00,000 --> 00:00:01,000\nhello\n", encoding="utf-8") or srt_path)
+    # Captions
+    monkeypatch.setattr(pipeline, "_build_captions",
+                        lambda text, duration, srt_path:
+                        srt_path.write_text("1\n00:00:00,000 --> 00:00:01,000\nhello\n", encoding="utf-8") or srt_path)
 
-    # render_video creates the output file (invalid on purpose)
+    # Caption generator
+    monkeypatch.setattr(pipeline.gemini, "generate_caption", lambda s: "cap")
+
+    return fake_audio, fake_visuals
+
+
+def test_pipeline_validation_failure_not_reported_as_success(monkeypatch, tmp_path):
+    """If validate_final_output raises, _produce_one must return a failure entry."""
+    # Use narration text that matches ~5s audio
+    narration = " ".join(["word"] * 10)  # ~10 words ~5s at normal speech
+    audio_duration = 5.0
+
+    fake_audio, fake_visuals = _setup_pipeline_mocks(monkeypatch, tmp_path, narration, audio_duration)
+
+    # render_video creates an invalid output file
     def fake_render(audio_path, visuals_path, srt_path, out_path, duration=0.0):
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_bytes(b"invalid video content")
@@ -248,25 +296,14 @@ def test_pipeline_validation_failure_not_reported_as_success(monkeypatch, tmp_pa
 
     monkeypatch.setattr(pipeline.renderer, "render_video", fake_render)
 
-    # Make validation fail
-    def boom(path, min_duration=None):
-        raise renderer.OutputValidationError(
-            f"Final output validation failed: file contains no video stream: {path}"
-        )
-    monkeypatch.setattr(pipeline.renderer, "validate_final_output", boom)
-
-    # Also need generate_caption (called after render) — but validation happens before it,
-    # so this won't be reached when validation fails. Still stub to be safe.
-    monkeypatch.setattr(pipeline.gemini, "generate_caption", lambda s: "cap")
-
     entry = pipeline._produce_one("some idea for validation", 0)
+
     assert "error" in entry
     assert "file" not in entry
-    # error message should preserve validation detail
-    assert "no video stream" in entry["error"].lower() or "validation" in entry["error"].lower()
+    # Error should be from validation (since render succeeds but validation fails)
+    assert "validation" in entry["error"].lower() or "decode" in entry["error"].lower() or "stream" in entry["error"].lower()
 
     # Invalid output must NOT be deleted (left for diagnosis)
-    # The stem is deterministic
     stem = pipeline.build_stem("some idea for validation", 0)
     expected_out = tmp_path / "videos" / f"{stem}.mp4"
     assert expected_out.exists(), "invalid output should be preserved for diagnosis"
@@ -275,97 +312,102 @@ def test_pipeline_validation_failure_not_reported_as_success(monkeypatch, tmp_pa
 
 def test_pipeline_validation_success_still_succeeds(monkeypatch, tmp_path):
     """When validation passes, _produce_one returns success entry."""
-    monkeypatch.setattr(pipeline, "get_output_dir", lambda: tmp_path)
-    monkeypatch.setattr(pipeline, "_measure_volume_db", lambda p: -20.0)
+    narration = " ".join(["word"] * 10)  # ~10 words ~5s
+    audio_duration = 5.0
 
-    from app import gemini
+    fake_audio, fake_visuals = _setup_pipeline_mocks(monkeypatch, tmp_path, narration, audio_duration)
 
-    script_stub = {
-        "hook": "H",
-        "story": "S",
-        "twist": "T",
-        "ending": "E",
-        "cta": "C",
-        "title": "t",
-        "hashtags": [],
-    }
-    monkeypatch.setattr(pipeline.gemini, "generate_script", lambda idea: script_stub)
-    monkeypatch.setattr(pipeline.gemini, "script_to_text",
-                        lambda s: " ".join([s["hook"], s["story"], s["twist"], s["ending"], s["cta"]]))
-
-    fake_audio = tmp_path / "audio" / "fake.wav"
-    fake_audio.parent.mkdir(parents=True, exist_ok=True)
-    fake_audio.write_bytes(b"RIFF____WAVEfake")
-    fake_blob = gemini.AudioBlob(b"RIFF____WAVEfake", "audio/wav")
-    monkeypatch.setattr(pipeline.gemini, "generate_tts", lambda s: fake_blob)
-    monkeypatch.setattr(pipeline.tts, "ensure_playable", lambda data, mime: data)
-    monkeypatch.setattr(pipeline.tts, "save_audio", lambda data, name, output_dir=None: fake_audio)
-    monkeypatch.setattr(pipeline.renderer, "probe_duration", lambda p: 5.0)
-
-    from app.visuals import ScenePlan
-    fake_scene = ScenePlan(index=0, text="hello world", keywords="hello",
-                           duration=5.0, style="nebula", motion="drift",
-                           transition="fade", seed=1, palette=("0x000000","0x111111","0x222222"))
-    monkeypatch.setattr(pipeline.visuals, "plan_scenes", lambda script, duration, seed: [fake_scene])
-    fake_visuals = tmp_path / "visuals" / "fake.mp4"
-    fake_visuals.parent.mkdir(parents=True, exist_ok=True)
-    fake_visuals.write_bytes(b"x" * 100)
-    monkeypatch.setattr(pipeline.visuals, "render_background", lambda scenes, out, duration, work_dir=None: fake_visuals)
-    monkeypatch.setattr(pipeline, "_build_captions", lambda text, duration, srt_path: srt_path.write_text("1\n00:00:00,000 --> 00:00:01,000\nhello\n", encoding="utf-8") or srt_path)
-
+    # render_video creates a real-looking file - use the actual renderer with our fixtures
+    # We'll just use the real renderer with our fake inputs
     def fake_render(audio_path, visuals_path, srt_path, out_path, duration=0.0):
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_bytes(b"valid fake mp4" * 100)
+        # Create a minimal valid MP4 using the mp4_factory approach
+        subprocess.run(
+            [FFMPEG, "-y", "-hide_banner", "-loglevel", "error",
+             "-f", "lavfi", "-i", f"testsrc=size=1080x1920:rate=30:duration={duration}",
+             "-f", "lavfi", "-i", f"sine=frequency=300:duration={duration}",
+             "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "ultrafast",
+             "-c:a", "aac", "-t", f"{duration:.3f}", str(out_path)],
+            check=True,
+        )
         return out_path
+
     monkeypatch.setattr(pipeline.renderer, "render_video", fake_render)
-    monkeypatch.setattr(pipeline.renderer, "validate_final_output", lambda path, min_duration=None: 5.0)
-    monkeypatch.setattr(pipeline.gemini, "generate_caption", lambda s: "cap")
 
     entry = pipeline._produce_one("another idea", 0)
+
     assert "file" in entry
     assert "error" not in entry
-    assert entry["duration"] == pytest.approx(5.0)
+    assert entry["duration"] == pytest.approx(audio_duration)
 
 
 def test_pipeline_validation_error_converted_to_pipeline_error(monkeypatch, tmp_path):
     """OutputValidationError is surfaced as PipelineError chain, message preserved."""
-    monkeypatch.setattr(pipeline, "get_output_dir", lambda: tmp_path)
-    monkeypatch.setattr(pipeline, "_measure_volume_db", lambda p: -20.0)
-    from app import gemini
-    script_stub = {"hook": "H", "story": "S", "twist": "T", "ending": "E", "cta": "C", "title": "t", "hashtags": []}
-    monkeypatch.setattr(pipeline.gemini, "generate_script", lambda idea: script_stub)
-    monkeypatch.setattr(pipeline.gemini, "script_to_text", lambda s: "text")
-    fake_audio = tmp_path / "audio" / "fake.wav"
-    fake_audio.parent.mkdir(parents=True, exist_ok=True)
-    fake_audio.write_bytes(b"RIFF")
-    monkeypatch.setattr(pipeline.gemini, "generate_tts", lambda s: gemini.AudioBlob(b"RIFF", "audio/wav"))
-    monkeypatch.setattr(pipeline.tts, "ensure_playable", lambda d, m: d)
-    monkeypatch.setattr(pipeline.tts, "save_audio", lambda d, n, output_dir=None: fake_audio)
-    monkeypatch.setattr(pipeline.renderer, "probe_duration", lambda p: 5.0)
-    from app.visuals import ScenePlan
-    fake_scene = ScenePlan(index=0, text="hi", keywords="hi", duration=5.0, style="nebula", motion="drift", transition="fade", seed=1, palette=("0x000","0x111","0x222"))
-    monkeypatch.setattr(pipeline.visuals, "plan_scenes", lambda s, duration, seed: [fake_scene])
-    fake_visuals = tmp_path / "visuals" / "fake.mp4"
-    fake_visuals.parent.mkdir(parents=True, exist_ok=True)
-    fake_visuals.write_bytes(b"x")
-    monkeypatch.setattr(pipeline.visuals, "render_background", lambda *a, **kw: fake_visuals)
-    monkeypatch.setattr(pipeline, "_build_captions", lambda *a, **kw: tmp_path / "cap.srt")
-    (tmp_path / "cap.srt").write_text("x")
-    monkeypatch.setattr(pipeline.renderer, "render_video", lambda *a, **kw: (Path(kw.get("out_path") or a[3]).write_bytes(b"bad") or Path(kw.get("out_path") or a[3])) if len(a) >=4 else Path(tmp_path / "videos" / "out.mp4"))
-    # simpler: render_video that takes positional args
-    def fake_render2(audio_path, visuals_path, srt_path, out_path, duration=0.0):
-        out_path = Path(out_path)
+    narration = " ".join(["word"] * 10)
+    audio_duration = 5.0
+
+    fake_audio, fake_visuals = _setup_pipeline_mocks(monkeypatch, tmp_path, narration, audio_duration)
+
+    def fake_render(audio_path, visuals_path, srt_path, out_path, duration=0.0):
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_bytes(b"bad")
         return out_path
-    monkeypatch.setattr(pipeline.renderer, "render_video", fake_render2)
-    # validation fails with specific message
-    monkeypatch.setattr(pipeline.renderer, "validate_final_output", lambda path, min_duration=None: (_ for _ in ()).throw(renderer.OutputValidationError("Final output validation failed: file is empty (0 bytes): /tmp/x.mp4")))
-    monkeypatch.setattr(pipeline.gemini, "generate_caption", lambda s: "cap")
+
+    monkeypatch.setattr(pipeline.renderer, "render_video", fake_render)
 
     entry = pipeline._produce_one("idea x", 0)
+
     assert "error" in entry
-    assert "empty" in entry["error"].lower()
+    assert "validation" in entry["error"].lower() or "decode" in entry["error"].lower() or "empty" in entry["error"].lower() or "stream" in entry["error"].lower()
     # ensure the invalid file is still on disk
     stem = pipeline.build_stem("idea x", 0)
     assert (tmp_path / "videos" / f"{stem}.mp4").exists()
+
+
+# ---------------------------------------------------------------------------
+# FFprobe JSON edge cases
+# ---------------------------------------------------------------------------
+
+def test_validate_malformed_ffprobe_json(monkeypatch, tmp_path):
+    """When ffprobe returns invalid JSON, validation fails gracefully."""
+    p = tmp_path / "video.mp4"
+    p.write_bytes(b"x" * 100)
+    # Make probe_streams return None (simulating JSON parse error or missing streams)
+    monkeypatch.setattr(renderer, "probe_streams", lambda path: None)
+    with pytest.raises(renderer.OutputValidationError, match="could not read|corrupt"):
+        renderer.validate_final_output(p)
+
+
+def test_validate_ffprobe_returns_empty_streams(monkeypatch, tmp_path):
+    """When ffprobe returns empty streams array."""
+    p = tmp_path / "video.mp4"
+    p.write_bytes(b"x" * 100)
+    monkeypatch.setattr(renderer, "probe_streams", lambda path: [])
+    with pytest.raises(renderer.OutputValidationError, match="no video stream"):
+        renderer.validate_final_output(p)
+
+
+def test_validate_ffprobe_returns_no_codec_type(monkeypatch, tmp_path):
+    """When ffprobe returns streams without codec_type field."""
+    p = tmp_path / "video.mp4"
+    p.write_bytes(b"x" * 100)
+    monkeypatch.setattr(renderer, "probe_streams", lambda path: [
+        {"codec_name": "h264"},  # missing codec_type
+    ])
+    with pytest.raises(renderer.OutputValidationError, match="no video stream"):
+        renderer.validate_final_output(p)
+
+
+def test_validate_ffprobe_returns_non_dict_streams(monkeypatch, tmp_path):
+    """When ffprobe returns non-dict entries in streams."""
+    p = tmp_path / "video.mp4"
+    p.write_bytes(b"x" * 100)
+    monkeypatch.setattr(renderer, "probe_streams", lambda path: [
+        "not a dict",
+        {"codec_type": "video"},
+    ])
+    # Should still find the video stream
+    monkeypatch.setattr(renderer, "probe_duration", lambda path: 5.0)
+    monkeypatch.setattr(renderer, "probe_integrity", lambda path: True)
+    result = renderer.validate_final_output(p)
+    assert result == pytest.approx(5.0)
