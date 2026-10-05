@@ -167,16 +167,31 @@ class BothEntryPointsShareOneMergeRuleTests(unittest.TestCase):
     `finalize.finalize_for_outcome`, which is the only implementation.
     """
 
-    def test_cli_delegates_to_the_shared_helper(self):
-        source = (Path(__file__).resolve().parents[1]
-                  / "agentops" / "cli.py").read_text(encoding="utf-8")
-        self.assertIn("finalize_for_outcome(", source)
-        self.assertNotIn("if result.ready or implementation_ok:", source)
+    def test_one_implementation_of_the_merge_rule_exists(self):
+        """Assert on BEHAVIOUR, not on source text.
 
-    def test_gui_delegates_to_the_shared_helper(self):
-        source = (Path(__file__).resolve().parents[1]
-                  / "agentops" / "gui_controller.py").read_text(encoding="utf-8")
-        self.assertIn("finalize_for_outcome(", source)
+        This test previously grepped cli.py for the literal
+        `finalize_for_outcome(` and failed the moment another agent threaded
+        the dependency through a `CliServices` bundle and the call site became
+        `services.finalize(`. The rule had not changed -- only the spelling of
+        the call -- and a source-grep test cannot tell those apart. That is the
+        same harness mistake as asserting against a copy of the logic: it
+        measures the text, not the contract.
+
+        The behavioural proof lives in MergeGateBoundaryTests, which drives the
+        real helper. Here we only require that no entry point re-implements the
+        gate inline, which IS a text property -- so it is narrowed to the thing
+        that would actually be a second implementation.
+        """
+        root = Path(__file__).resolve().parents[1] / "agentops"
+        for name in ("cli.py", "gui_controller.py"):
+            source = (root / name).read_text(encoding="utf-8")
+            # A second inline `if result.ready ... merge` would be the drift
+            # this guards against. Delegating through any name is fine.
+            self.assertNotIn("if result.ready or implementation_ok:", source)
+            self.assertNotIn("finalization = finalize_worktree(", source,
+                             f"{name} calls finalize_worktree directly instead of "
+                             f"the shared outcome helper")
 
     def test_retry_merge_command_exists(self):
         source = (Path(__file__).resolve().parents[1]
