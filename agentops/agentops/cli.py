@@ -5,13 +5,15 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from . import __version__
 from .agent_run import AgentRunStatus, GitRunMetadataCollector
-from .artifacts import ArtifactError
+from .artifacts import ArtifactError, ArtifactStore
 from .tasks import TaskStatus
-from .config import _load_data, load_config
+from .config import AppConfig, _load_data, load_config
 from .finalize import (
     WorktreeFinalization, finalize_for_outcome, finalize_worktree,
     implementation_passed, record_worktree_provenance, retry_merge_for_worktree,
@@ -31,6 +33,56 @@ from .workflow import WorkflowEngine, WorkflowResult
 # The merge rule lives in finalize.py so the CLI and the desktop client cannot
 # drift apart. This alias remains for existing imports.
 _implementation_passed = implementation_passed
+
+
+@dataclass(frozen=True)
+class CliServices:
+    """Every service ``main`` builds, as one injectable bundle.
+
+    Production wiring comes from :func:`_build_services`; tests pass a
+    bundle of fakes to ``main(argv, services=...)`` instead of reaching
+    into module globals. This mirrors the constructor-injection seam
+    ``WorkflowEngine`` exposes for its own collaborators: plain callables,
+    no framework, production defaults when nothing is injected.
+
+    The services are factories rather than ready instances because most of
+    them depend on values resolved while dispatching (the repository root,
+    the workflow file) and several commands must not construct services at
+    all: ``agents`` runs no Git command and opens no store, and
+    ``task``/``workflow`` validate their file before any state is opened.
+    Calling the factories at exactly the points where the CLI used to
+    construct the classes inline keeps the production stack - and the
+    order it appears in, including which paths exist on disk after a
+    failed command - unchanged. ``config`` is the one ready instance:
+    every non-GUI command loads it up front from ``args.config``.
+    """
+
+    config: AppConfig
+    state_store: Callable[..., StateStore] = StateStore
+    log_manager: Callable[..., LogManager] = LogManager
+    artifact_store: Callable[..., ArtifactStore] = ArtifactStore
+    agent_registry: Callable[..., AgentRegistry] = AgentRegistry
+    agent_runner: Callable[..., AgentRunner] = AgentRunner
+    verifier: Callable[..., Verifier] = Verifier
+    verification_kernel: Callable[..., VerificationKernel] = VerificationKernel
+    workflow_engine: Callable[..., WorkflowEngine] = WorkflowEngine
+    worktree_manager: Callable[..., GitWorktreeManager] = GitWorktreeManager
+    finalize: Callable[..., WorktreeFinalization] = finalize_for_outcome
+    record_provenance: Callable[..., bool] = record_worktree_provenance
+    retry_merge: Callable[..., dict[str, object]] = retry_merge_for_worktree
+
+
+def _build_services(args: argparse.Namespace) -> CliServices:
+    """Construct the production service bundle for one parsed command line.
+
+    ``main`` calls this when no bundle is injected, so this function is the
+    single home of production wiring: anything argv-dependent a future
+    command needs built belongs here. Today the config is the only
+    argv-dependent dependency and every other factory is the real
+    constructor bound as a default on :class:`CliServices`. Tests
+    substitute the bundle wholesale through ``main(argv, services=...)``.
+    """
+    return CliServices(config=load_config(args.config))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -113,19 +165,22 @@ def _print_text(text: str) -> None:
         sys.stdout.buffer.flush()
 
 
-def _resolve_state_base(directory: Path) -> Path:
+def _resolve_state_base(
+    directory: Path,
+    worktree_manager: Callable[[], GitWorktreeManager] = GitWorktreeManager,
+) -> Path:
     """Resolve the canonical repository root for state and worktree locations.
 
     Falls back to the given directory when it is not inside a Git repository,
     preserving the previous behaviour for non-Git usage (agents/run/logs).
     """
     try:
-        return GitWorktreeManager().repository_root(directory)
+        return worktree_manager().repository_root(directory)
     except GitError:
         return directory
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, services: CliServices | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "gui":
         try:
@@ -140,12 +195,16 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         return 0
     try:
-        config = load_config(args.config)
+        # The injected bundle is used as-is; only an absent one gets the
+        # production wiring, so a test that passes fakes never touches the
+        # real constructors.
+        services = _build_services(args) if services is None else services
     except (OSError, ValueError) as error:
         print(f"ERROR: {error}")
         return 2
+    config = services.config
     if args.command == "agents":
-        for name, agent in AgentRegistry(config).detect().items():
+        for name, agent in services.agent_registry(config).detect().items():
             # `ONLINE` previously meant only "the executable is on PATH", which
             # reported agents as selectable that could not run (dead proxy,
             # exhausted quota). Report the health state and the reason instead.
@@ -158,15 +217,15 @@ def main(argv: list[str] | None = None) -> int:
         # up front: state, logs, and worktree then share one location, and a
         # non-repository directory fails fast without stray .agentops files.
         try:
-            state_root = GitWorktreeManager().repository_root(command_base) / ".agentops"
+            state_root = services.worktree_manager().repository_root(command_base) / ".agentops"
         except GitError as error:
             print(f"ERROR: {error}")
             return 1
     else:
-        state_root = _resolve_state_base(command_base) / ".agentops"
-    logs = LogManager(state_root / "logs")
+        state_root = _resolve_state_base(command_base, services.worktree_manager) / ".agentops"
+    logs = services.log_manager(state_root / "logs")
     if args.command == "status":
-        state = StateStore(state_root / "state.sqlite")
+        state = services.state_store(state_root / "state.sqlite")
         try:
             workflow = state.latest_workflow()
             if workflow is None:
@@ -197,13 +256,13 @@ def main(argv: list[str] | None = None) -> int:
             state.close()
         return 0
     if args.command == "run":
-        registry = AgentRegistry(config)
-        state = StateStore(state_root / "state.sqlite")
+        registry = services.agent_registry(config)
+        state = services.state_store(state_root / "state.sqlite")
         try:
             agent = registry.get(args.agent)
             observer = state.agent_run_observer()
-            runner = AgentRunner(logs, config.pass_env_names, config.pass_env_prefixes,
-                                 run_observer=observer)
+            runner = services.agent_runner(logs, config.pass_env_names, config.pass_env_prefixes,
+                                           run_observer=observer)
             result = asyncio.run(runner.run_agent(agent, args.prompt, Path.cwd()))
         except (KeyError, RuntimeError, OSError) as error:
             print(f"ERROR: {error}")
@@ -224,7 +283,7 @@ def main(argv: list[str] | None = None) -> int:
             print(path)
         return 0
     if args.command == "runs":
-        state = StateStore(state_root / "state.sqlite")
+        state = services.state_store(state_root / "state.sqlite")
         try:
             try:
                 status = AgentRunStatus(args.status) if args.status else None
@@ -245,7 +304,7 @@ def main(argv: list[str] | None = None) -> int:
             state.close()
         return 0
     if args.command == "verify":
-        state = StateStore(state_root / "state.sqlite")
+        state = services.state_store(state_root / "state.sqlite")
         try:
             if args.run:
                 run = state.get_verification_run(args.run)
@@ -288,7 +347,7 @@ def main(argv: list[str] | None = None) -> int:
             state.close()
         return 0
     if args.command == "events":
-        state = StateStore(state_root / "state.sqlite")
+        state = services.state_store(state_root / "state.sqlite")
         try:
             found = state.query_events(
                 args.workflow, args.task, args.run, args.type, args.limit, args.offset
@@ -305,11 +364,9 @@ def main(argv: list[str] | None = None) -> int:
             state.close()
         return 0
     if args.command == "artifacts":
-        from .artifacts import ArtifactStore
-
-        state = StateStore(state_root / "state.sqlite")
+        state = services.state_store(state_root / "state.sqlite")
         try:
-            store = ArtifactStore(state_root / "artifacts")
+            store = services.artifact_store(state_root / "artifacts")
             if args.show:
                 artifact = state.get_artifact(args.show)
                 if artifact is None:
@@ -342,7 +399,7 @@ def main(argv: list[str] | None = None) -> int:
             state.close()
         return 0
     if args.command == "failures":
-        state = StateStore(state_root / "state.sqlite")
+        state = services.state_store(state_root / "state.sqlite")
         try:
             try:
                 failures = state.list_failures(
@@ -369,12 +426,12 @@ def main(argv: list[str] | None = None) -> int:
         # is how an operator merges that work once verification is unblocked.
         # Deliberately does not re-run the READY contract -- a person is
         # deciding now, and the originating workflow may be gone from state.
-        root = _resolve_state_base(args.directory)
-        manager = GitWorktreeManager()
-        state = StateStore(state_root / "state.sqlite")
+        root = _resolve_state_base(args.directory, services.worktree_manager)
+        manager = services.worktree_manager()
+        state = services.state_store(state_root / "state.sqlite")
         try:
-            outcome = retry_merge_for_worktree(manager, state, root,
-                                               args.worktree)
+            outcome = services.retry_merge(manager, state, root,
+                                           args.worktree)
         except GitError as error:
             print(f"ERROR: {error}")
             return 1
@@ -386,7 +443,7 @@ def main(argv: list[str] | None = None) -> int:
                   "against the current HEAD of the base branch.")
         return 0
     if args.command == "recover":
-        state = StateStore(state_root / "state.sqlite")
+        state = services.state_store(state_root / "state.sqlite")
         try:
             summary = state.recover_all()
             print(
@@ -407,14 +464,14 @@ def main(argv: list[str] | None = None) -> int:
     if not isinstance(description, str) or not description.strip():
         print("ERROR: workflow file requires a string 'description'.")
         return 2
-    state = StateStore(state_root / "state.sqlite")
-    registry = AgentRegistry(config)
+    state = services.state_store(state_root / "state.sqlite")
+    registry = services.agent_registry(config)
     run_observer = state.agent_run_observer()
-    runner = AgentRunner(logs, config.pass_env_names, config.pass_env_prefixes,
-                         run_observer=run_observer, metadata_collector=GitRunMetadataCollector())
-    verifier = Verifier(config.verification_commands, pass_env_names=config.pass_env_names,
-                        pass_env_prefixes=config.pass_env_prefixes)
-    verification_kernel = VerificationKernel(
+    runner = services.agent_runner(logs, config.pass_env_names, config.pass_env_prefixes,
+                                  run_observer=run_observer, metadata_collector=GitRunMetadataCollector())
+    verifier = services.verifier(config.verification_commands, pass_env_names=config.pass_env_names,
+                                 pass_env_prefixes=config.pass_env_prefixes)
+    verification_kernel = services.verification_kernel(
         profiles=config.verification_profiles,
         default_profile=config.default_verification_profile,
         legacy_commands=config.verification_commands,
@@ -423,10 +480,10 @@ def main(argv: list[str] | None = None) -> int:
         logs=logs,
         state=state,
     )
-    engine = WorkflowEngine(config, state, registry, runner, verifier,
-                            run_observer=run_observer, metadata_collector=GitRunMetadataCollector(),
-                            verification_kernel=verification_kernel)
-    manager = GitWorktreeManager()
+    engine = services.workflow_engine(config, state, registry, runner, verifier,
+                                      run_observer=run_observer, metadata_collector=GitRunMetadataCollector(),
+                                      verification_kernel=verification_kernel)
+    manager = services.worktree_manager()
     worktree = None
     workflow_id = None
     remove_worktree = False
@@ -448,7 +505,7 @@ def main(argv: list[str] | None = None) -> int:
         workflow_id = result.workflow_id
         # Phase 3: persist provenance so retry/merge validate against the
         # stored base even after restart (never memory-only).
-        record_worktree_provenance(state, worktree, workflow_id, DegradationRecorder(
+        services.record_provenance(state, worktree, workflow_id, DegradationRecorder(
             emit=event_emitter(state.record_typed_event)))
         finalization = WorktreeFinalization(changed=False, merged=False, conflict_error=None)
         # One authoritative rule, shared with the desktop client:
@@ -464,7 +521,7 @@ def main(argv: list[str] | None = None) -> int:
         changed = False
         merged = False
         if result.ready or _implementation_passed(state, workflow_id):
-            finalization = finalize_for_outcome(
+            finalization = services.finalize(
                 manager, state, worktree, description, workflow_id,
                 config.max_attempts, ready=result.ready)
             if finalization.conflict_error is not None:
@@ -509,3 +566,9 @@ def main(argv: list[str] | None = None) -> int:
         elif worktree is not None:
             print(f"Worktree preserved at {worktree.path} for inspection or repair.")
         state.close()
+    # Every other dispatch path returns an exit code; the
+    # task/workflow tail is the only one that can fall through
+    # its try/finally, so close main() with the success code
+    # it otherwise omitted (sys.exit(None) already exited 0,
+    # so the console script is unchanged).
+    return 0
