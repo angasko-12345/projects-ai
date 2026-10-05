@@ -24,6 +24,7 @@ from .runner import AgentRunner
 from .state import StateStore
 from .verification import Verifier
 from .verification_kernel import VerificationKernel
+from .verification_model import VerificationReportStatus
 from .workflow import WorkflowEngine, WorkflowResult
 
 
@@ -270,8 +271,16 @@ def main(argv: list[str] | None = None) -> int:
                     print(
                         f"{run.id}  {overall}  profile={run.profile_name}  "
                         f"task={run.task_id or '-'} passed={run.passed_checks}/{run.total_checks}  "
+                        f"skipped={run.skipped_checks}  "
                         f"required_failures={run.required_failures}"
                     )
+                    if run.skipped_checks:
+                        # A skipped check is an ABSENT signal, not a pass. Say so
+                        # here rather than letting the count speak for itself,
+                        # and point at the detail view.
+                        print(f"  ^ {run.skipped_checks} check(s) did not run. "
+                              f"This run is UNVERIFIED, not verified-and-fine. "
+                              f"Run `agentops verify --run {run.id}` for per-check reasons.")
         except (KeyError, ValueError) as error:
             print(f"ERROR: {error}")
             return 2
@@ -442,7 +451,6 @@ def main(argv: list[str] | None = None) -> int:
         record_worktree_provenance(state, worktree, workflow_id, DegradationRecorder(
             emit=event_emitter(state.record_typed_event)))
         finalization = WorktreeFinalization(changed=False, merged=False, conflict_error=None)
-        # Finalize whenever the IMPLEMENTATION succeeded, even if verification did
         # One authoritative rule, shared with the desktop client:
         # READY merges; not READY commits and PRESERVES the worktree. Unverified
         # work is neither thrown away nor merged -- it waits for
@@ -468,6 +476,20 @@ def main(argv: list[str] | None = None) -> int:
         remove_worktree = result.ready
         print(f"RESULT: {result.summary}")
         print(f"workflow: {result.workflow_id}")
+        # Surface unresolved verification in the run summary itself. A user
+        # reading only this output must be able to tell "verified and passing"
+        # from "we could not obtain applicable evidence".
+        for run in state.list_verification_runs(workflow_id):
+            try:
+                report = state.get_verification_report_by_run(run.id)
+            except (KeyError, ValueError):
+                continue
+            if report.skipped_checks and report.overall_status is not VerificationReportStatus.PASSED:
+                print(f"verification {report.overall_status.value}: "
+                      f"{report.skipped_checks} of {report.total_checks} check(s) SKIPPED "
+                      f"-- no evidence was gathered for them, so this is UNVERIFIED "
+                      f"rather than verified. `agentops verify --run {run.id}` "
+                      f"lists each reason.")
         if merged:
             print("merged worktree changes")
         elif changed:
