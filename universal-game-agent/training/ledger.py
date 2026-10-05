@@ -44,9 +44,11 @@ Field provenance:
 """
 from __future__ import annotations
 
+import argparse
 import json
+import sys
 from collections.abc import Mapping
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
 #: Normalized record columns, in order. Append-only contract: never reorder
 #: or remove; add new trailing columns only.
@@ -237,3 +239,124 @@ def load_artifact(path):
     except json.JSONDecodeError as exc:
         raise LedgerError(f"cannot load {path}: invalid JSON: {exc}") from exc
     return normalize_artifact(data, source=str(path))
+
+TABLE_COLUMNS: tuple[str, ...] = (
+    "name",
+    "kind",
+    "seed",
+    "training_steps",
+    "training_updates",
+    "baseline_mean_reward",
+    "final_mean_reward",
+    "improvement",
+    "decision_period_ms",
+    "hold_ms",
+)
+
+#: Table rendering for unavailable values. ``--json`` keeps real nulls.
+MISSING = "n/a"
+
+
+def _default_dir() -> Path:
+    """Tracked experiments directory, next to the package: CWD-independent."""
+    return Path(__file__).resolve().parent.parent / "experiments"
+
+
+def collect_artifact_paths(inputs) -> list:
+    """Files to normalize, in deterministic order.
+
+    No inputs means default discovery (``experiments/*_results.json``).
+    Explicit directories contribute their ``*_results.json`` files sorted;
+    explicit files are taken as given (a missing file surfaces later as a
+    diagnostic, not a traceback).
+    """
+    if not inputs:
+        base = _default_dir()
+        if not base.is_dir():
+            return []
+        return sorted(str(p) for p in base.glob("*_results.json"))
+    paths = []
+    for raw in inputs:
+        candidate = Path(raw)
+        if candidate.is_dir():
+            paths.extend(sorted(str(p) for p in candidate.glob("*_results.json")))
+        else:
+            paths.append(str(raw))
+    return paths
+
+
+def gather(paths) -> tuple:
+    """Normalize every path: ``(records, diagnostics)``.
+
+    Records are sorted by ``(kind, name)`` so output is deterministic.
+    One malformed artifact never kills the rest; each failure becomes a
+    diagnostic naming the file. Artifacts are only read, never modified.
+    """
+    records, problems = [], []
+    for path in paths:
+        try:
+            records.extend(load_artifact(path))
+        except (LedgerError, OSError) as exc:
+            problems.append(f"skip {path}: {exc}")
+    records.sort(key=lambda r: (r["kind"] or "", r["name"] or ""))
+    return records, problems
+
+
+def _cell_text(value) -> str:
+    if value is None:
+        return MISSING
+    if isinstance(value, float):
+        return f"{value:.4f}"
+    return str(value)
+
+
+def format_table(records) -> str:
+    """Fixed-width comparison table over :data:`TABLE_COLUMNS`."""
+    widths = []
+    for column in TABLE_COLUMNS:
+        wide = len(column)
+        for record in records:
+            wide = max(wide, len(_cell_text(record[column])))
+        widths.append(wide)
+    lines = [
+        " | ".join(column.ljust(width) for column, width in zip(TABLE_COLUMNS, widths)),
+        "-+-".join("-" * width for width in widths),
+    ]
+    for record in records:
+        lines.append(" | ".join(
+            _cell_text(record[column]).ljust(width)
+            for column, width in zip(TABLE_COLUMNS, widths)))
+    return "\n".join(lines)
+
+
+def format_json(records) -> str:
+    """Full records (including ``timestamp_utc``) as indented JSON."""
+    return json.dumps(records, indent=2)
+
+
+def main(argv=None) -> int:
+    """Compare experiment artifacts. Returns 0 with records, else 1."""
+    parser = argparse.ArgumentParser(
+        description="Compare normalized experiment result artifacts.")
+    parser.add_argument("paths", nargs="*",
+                        help="result files and/or directories (default: "
+                             "tracked experiments/*_results.json)")
+    parser.add_argument("--json", action="store_true",
+                        help="emit normalized records as JSON instead of a table")
+    args = parser.parse_args(argv)
+    paths = collect_artifact_paths(args.paths)
+    records, problems = gather(paths)
+    for problem in problems:
+        print(problem, file=sys.stderr)
+    if not records:
+        if not paths:
+            print("no result artifacts found", file=sys.stderr)
+        else:
+            print("no valid experiment records", file=sys.stderr)
+        return 1
+    print(format_json(records) if args.json else format_table(records))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
