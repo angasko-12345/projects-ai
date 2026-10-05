@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from agentops.config import load_config
 from agentops.registry import AgentRegistry
@@ -24,9 +24,11 @@ class ConfigAndRegistryTests(unittest.TestCase):
             ("/bin/pi", "--print", "do it"),
         )
 
+    @patch("agentops.registry.subprocess.run")
     @patch("agentops.registry.shutil.which")
-    def test_detects_installed_agents_and_falls_back_by_role(self, which):
+    def test_detects_installed_agents_and_falls_back_by_role(self, which, run):
         which.side_effect = lambda command: "C:/bin/opencode" if command == "opencode" else None
+        run.return_value = MagicMock(stdout="1.0.0\n", stderr="", returncode=0)
         registry = AgentRegistry(load_config())
         self.assertTrue(registry.detect()["opencode"].available)
         self.assertEqual(registry.select("implementation").config.name, "opencode")
@@ -79,18 +81,22 @@ class ConfigAndRegistryTests(unittest.TestCase):
             config = load_config()
         self.assertEqual(config.agents["a"].capabilities, ("telepathy",))
 
+    @patch("agentops.registry.subprocess.run")
     @patch("agentops.registry.shutil.which")
-    def test_select_without_requirements_ignores_capabilities(self, which):
+    def test_select_without_requirements_ignores_capabilities(self, which, run):
         which.side_effect = lambda command: f"C:/bin/{command}"
+        run.return_value = MagicMock(stdout="1.0.0\n", stderr="", returncode=0)
         registry = AgentRegistry(load_config())
         selected = registry.select("implementation")
         self.assertIsNotNone(selected)
         # Same result with an empty requirement tuple (legacy path).
         self.assertEqual(registry.select("implementation", required_capabilities=()), selected)
 
+    @patch("agentops.registry.subprocess.run")
     @patch("agentops.registry.shutil.which")
-    def test_select_filters_by_required_capabilities(self, which):
+    def test_select_filters_by_required_capabilities(self, which, run):
         which.side_effect = lambda command: f"C:/bin/{command}"
+        run.return_value = MagicMock(stdout="1.0.0\n", stderr="", returncode=0)
         registry = AgentRegistry(load_config())
         selected = registry.select("implementation", required_capabilities=("coding",))
         self.assertIsNotNone(selected)
@@ -100,9 +106,11 @@ class ConfigAndRegistryTests(unittest.TestCase):
         self.assertIsNone(registry.select("implementation", required_capabilities=("telepathy",)))
 
     @patch("agentops.config._load_data")
+    @patch("agentops.registry.subprocess.run")
     @patch("agentops.registry.shutil.which")
-    def test_declared_capability_unlocks_selection(self, which, load_data):
+    def test_declared_capability_unlocks_selection(self, which, run, load_data):
         which.side_effect = lambda command: f"C:/bin/{command}"
+        run.return_value = MagicMock(stdout="1.0.0\n", stderr="", returncode=0)
         load_data.return_value = {"agents": {
             "plain": {"command": "plain", "roles": ["implementation"]},
             "rich": {"command": "rich", "roles": ["implementation"],
@@ -114,9 +122,11 @@ class ConfigAndRegistryTests(unittest.TestCase):
         assert selected is not None
         self.assertEqual(selected.config.name, "rich")
 
+    @patch("agentops.registry.subprocess.run")
     @patch("agentops.registry.shutil.which")
-    def test_adapter_accessor_and_unknown_name(self, which):
+    def test_adapter_accessor_and_unknown_name(self, which, run):
         which.side_effect = lambda command: f"C:/bin/{command}"
+        run.return_value = MagicMock(stdout="1.0.0\n", stderr="", returncode=0)
         registry = AgentRegistry(load_config())
         adapter = registry.adapter("opencode")
         self.assertEqual(adapter.name, "opencode")
@@ -124,9 +134,11 @@ class ConfigAndRegistryTests(unittest.TestCase):
         with self.assertRaises(KeyError):
             registry.adapter("no-such-agent")
 
+    @patch("agentops.registry.subprocess.run")
     @patch("agentops.registry.shutil.which")
-    def test_disabled_agents_are_never_selected(self, which):
+    def test_disabled_agents_are_never_selected(self, which, run):
         which.side_effect = lambda command: f"C:/bin/{command}"
+        run.return_value = MagicMock(stdout="1.0.0\n", stderr="", returncode=0)
         registry = AgentRegistry(load_config())
         detected = registry.detect()
         self.assertFalse(detected["claude"].available)

@@ -129,8 +129,11 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if args.command == "agents":
         for name, agent in AgentRegistry(config).detect().items():
-            status = "ONLINE" if agent.available else ("DISABLED" if not agent.config.enabled else "OFFLINE")
-            print(f"{name:<14} {status}")
+            # `ONLINE` previously meant only "the executable is on PATH", which
+            # reported agents as selectable that could not run (dead proxy,
+            # exhausted quota). Report the health state and the reason instead.
+            detail = f"  ({agent.health_detail})" if agent.health_detail else ""
+            print(f"{name:<14} {agent.status:<10} {detail}")
         return 0
     command_base = getattr(args, "cwd", None) or Path.cwd()
     if args.command in ("task", "workflow"):

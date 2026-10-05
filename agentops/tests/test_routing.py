@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 from agentops.agent_adapter import adapter_for
 from agentops.config import AgentConfig, AppConfig, load_config
 from agentops.events import EventType
-from agentops.registry import AgentRegistry, DetectedAgent
+from agentops.registry import AgentHealth,  AgentRegistry, DetectedAgent
 from agentops.routing import (
     AgentCapabilityResolver,
     AgentProfile,
@@ -53,6 +53,12 @@ def _detected(config: AgentConfig, available: bool = True) -> DetectedAgent:
 def _profiles(*detected: DetectedAgent) -> tuple[AgentProfile, ...]:
     resolver = AgentCapabilityResolver()
     return tuple(resolver.profile(item) for item in detected)
+
+
+
+def _registry_with(name):
+    return AppConfig({name: _config(name, ("implementation",))},
+                     {"implementation": (name,)})
 
 
 class AgentCapabilityResolverTests(unittest.TestCase):
@@ -293,9 +299,11 @@ class AgentRouterTests(unittest.TestCase):
 
 
     @patch("agentops.config._load_data")
+    @patch("agentops.registry.subprocess.run")
     @patch("agentops.registry.shutil.which")
-    def test_registry_select_accepts_single_string_requirement(self, which, load_data):
+    def test_registry_select_accepts_single_string_requirement(self, which, run, load_data):
         which.side_effect = lambda command: f"/bin/{command}"
+        run.return_value = MagicMock(stdout="1.0.0\n", stderr="", returncode=0)
         load_data.return_value = {
             "agents": {
                 "plain": {"command": "plain", "roles": ["implementation"]},
@@ -310,9 +318,11 @@ class AgentRouterTests(unittest.TestCase):
         self.assertEqual(selected.config.name, "rich")
 
     @patch("agentops.config._load_data")
+    @patch("agentops.registry.subprocess.run")
     @patch("agentops.registry.shutil.which")
-    def test_registry_select_matches_role_derived_task_capabilities(self, which, load_data):
+    def test_registry_select_matches_role_derived_task_capabilities(self, which, run, load_data):
         which.side_effect = lambda command: f"/bin/{command}"
+        run.return_value = MagicMock(stdout="1.0.0\n", stderr="", returncode=0)
         load_data.return_value = {
             "agents": {
                 "coder": {"command": "coder", "roles": ["implementation"]},
@@ -482,6 +492,54 @@ class WorkflowRoutingTests(unittest.TestCase):
         result = asyncio.run(engine.run_high_level("Add routing", Path.cwd()))
         self.assertTrue(result.ready)
         self.assertEqual(self.state.query_events(event_type=EventType.ROUTING_DECISION), [])
+
+
+class AgentHealthTests(unittest.TestCase):
+    """`ONLINE` used to mean only "shutil.which found the binary", which reported
+    agents as selectable that could not run: codex answered --version while its
+    quota was exhausted until 2026-10-12, and fcc-claude answered while its proxy
+    on 127.0.0.1:8082 was dead. Both were dispatched to; both failed at runtime.
+    """
+
+    @patch("agentops.registry.subprocess.run")
+    @patch("agentops.registry.shutil.which")
+    def test_healthy_probe_is_available(self, which, run):
+        which.return_value = "/bin/ok"
+        run.return_value = MagicMock(stdout="1.0.0\n", stderr="", returncode=0)
+        agent = AgentRegistry(_registry_with("ok")).detect()["ok"]
+        self.assertIs(agent.health, AgentHealth.AVAILABLE)
+        self.assertEqual(agent.status, "ONLINE")
+        self.assertTrue(agent.available)
+
+    @patch("agentops.registry.subprocess.run")
+    @patch("agentops.registry.shutil.which")
+    def test_nonzero_probe_is_unhealthy_and_not_selectable(self, which, run):
+        which.return_value = "/bin/dead"
+        run.return_value = MagicMock(stdout="", stderr="proxy unreachable", returncode=1)
+        registry = AgentRegistry(_registry_with("dead"))
+        agent = registry.detect()["dead"]
+        self.assertIs(agent.health, AgentHealth.UNHEALTHY)
+        self.assertEqual(agent.status, "UNHEALTHY")
+        self.assertFalse(agent.available, "an unhealthy agent must not be selectable")
+        self.assertIsNone(registry.select("implementation"))
+        self.assertIn("exited 1", agent.health_detail)
+
+    @patch("agentops.registry.shutil.which")
+    def test_missing_binary_is_discovered_not_offline(self, which):
+        which.return_value = None
+        agent = AgentRegistry(_registry_with("gone")).detect()["gone"]
+        self.assertIs(agent.health, AgentHealth.DISCOVERED)
+        self.assertEqual(agent.status, "MISSING")
+        self.assertFalse(agent.available)
+
+    @patch("agentops.registry.shutil.which")
+    def test_disabled_agent_is_blocked(self, which):
+        which.return_value = "/bin/off"
+        config = AppConfig({"off": _config("off", ("implementation",), enabled=False)},
+                           {"implementation": ("off",)})
+        agent = AgentRegistry(config).detect()["off"]
+        self.assertIs(agent.health, AgentHealth.BLOCKED)
+        self.assertEqual(agent.status, "DISABLED")
 
 
 if __name__ == "__main__":
