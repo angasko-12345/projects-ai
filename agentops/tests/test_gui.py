@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from agentops.agent_run import AgentRunContext, AgentRunOutcome, AgentRunStatus
 from agentops.config import AgentConfig, AppConfig
 from agentops.gui_controller import AgentOpsController
 from agentops.logging import LogManager
@@ -127,3 +128,65 @@ class WorkflowCancellationTests(unittest.TestCase):
             self.assertEqual(state.get_task(task.id).status, TaskStatus.PENDING)
         finally:
             state.close()
+
+
+class RecentRunsPaginationTests(unittest.TestCase):
+    """list_recent_* must not return more items than requested."""
+
+    def test_list_recent_agent_runs_does_not_overflow_past_end(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            controller = AgentOpsController(
+                config=AppConfig({}, {}, (), max_attempts=1, concurrency=1))
+            state = StateStore(controller._state_path(root))
+            try:
+                workflow_id = state.create_workflow("pagination workflow")
+                task = state.add_task(Task("work", "implementation",
+                                            workflow_id, max_attempts=1))
+                runs = [
+                    state.create_agent_run(AgentRunContext(
+                        agent="demo", workflow_id=workflow_id, task_id=task.id))
+                    for _ in range(5)
+                ]
+                # Finish the runs so they have deterministic terminal status
+                for run in runs:
+                    state.finish_agent_run(
+                        run.id,
+                        AgentRunOutcome(status=AgentRunStatus.COMPLETED, exit_code=0),
+                    )
+            finally:
+                state.close()
+
+            # Request page 2 (skip the 3 newest). There are only 2 older runs,
+            # so the response must contain exactly 2 items, not 3.
+            page = controller.list_recent_agent_runs(root, limit=3, offset=3)
+            self.assertEqual(len(page), 2)
+            # The two oldest runs, newest-first.
+            self.assertEqual(page[0]["id"], runs[3].id)
+            self.assertEqual(page[1]["id"], runs[2].id)
+
+    def test_list_recent_agent_runs_returns_empty_when_offset_exceeds_total(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            controller = AgentOpsController(
+                config=AppConfig({}, {}, (), max_attempts=1, concurrency=1))
+            state = StateStore(controller._state_path(root))
+            try:
+                workflow_id = state.create_workflow("pagination workflow")
+                task = state.add_task(Task("work", "implementation",
+                                            workflow_id, max_attempts=1))
+                runs = [
+                    state.create_agent_run(AgentRunContext(
+                        agent="demo", workflow_id=workflow_id, task_id=task.id))
+                    for _ in range(5)
+                ]
+                for run in runs:
+                    state.finish_agent_run(
+                        run.id,
+                        AgentRunOutcome(status=AgentRunStatus.COMPLETED, exit_code=0),
+                    )
+            finally:
+                state.close()
+
+            page = controller.list_recent_agent_runs(root, limit=3, offset=5)
+            self.assertEqual(page, [])
