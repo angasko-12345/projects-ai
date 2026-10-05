@@ -34,6 +34,17 @@ class WorkflowTests(unittest.TestCase):
         self.runner = MagicMock()
         self.runner.run_agent = self._run_agent
         self.verifier = MagicMock()
+        # These tests assert on WORKFLOW behaviour, not on git. The real
+        # collector reads the working tree, so on a clean checkout every one of
+        # these tests failed: no dirty files -> no evidence -> implementation
+        # blocked -> never READY. They passed only because the developer
+        # happened to have uncommitted files lying around, which is exactly
+        # what CI does not have.
+        #
+        # Evidence is therefore declared here, explicitly, instead of being
+        # borrowed from whatever state the repository happens to be in.
+        self.metadata_collector = MagicMock(
+            return_value=AgentRunMetadata(files_changed=("src/app.py",)))
 
     async def _run_agent(self, agent, prompt, directory, task_id, cancel_event=None):
         return RunResult(agent.config.name, ("fake",), 0, "done", "", 0.01, False, Path(f"{task_id}.log"))
@@ -44,7 +55,8 @@ class WorkflowTests(unittest.TestCase):
     def test_standard_workflow_runs_to_ready(self):
         passed_check = MagicMock(succeeded=True, output="tests passed")
         self.verifier.run = MagicMock(return_value=asyncio.sleep(0, result=[passed_check]))
-        engine = WorkflowEngine(self.config, self.state, self.registry, self.runner, self.verifier)
+        engine = WorkflowEngine(self.config, self.state, self.registry, self.runner, self.verifier,
+                              metadata_collector=self.metadata_collector)
         result = asyncio.run(engine.run_high_level("Add dark mode", Path.cwd()))
         self.assertTrue(result.ready)
         self.assertEqual(result.summary, "READY")
@@ -54,7 +66,8 @@ class WorkflowTests(unittest.TestCase):
         failed_check = MagicMock(succeeded=False, output="one test failed")
         passed_check = MagicMock(succeeded=True, output="tests passed")
         self.verifier.run = MagicMock(side_effect=[asyncio.sleep(0, result=[failed_check]), asyncio.sleep(0, result=[passed_check])])
-        engine = WorkflowEngine(self.config, self.state, self.registry, self.runner, self.verifier)
+        engine = WorkflowEngine(self.config, self.state, self.registry, self.runner, self.verifier,
+                              metadata_collector=self.metadata_collector)
         result = asyncio.run(engine.run_high_level("Fix issue", Path.cwd()))
         self.assertTrue(result.ready)
         self.assertEqual(len(self.state.list_tasks(result.workflow_id)), 7)
@@ -62,7 +75,8 @@ class WorkflowTests(unittest.TestCase):
     def test_custom_workflow_accepts_parallel_tasks(self):
         passed_check = MagicMock(succeeded=True, output="tests passed")
         self.verifier.run = MagicMock(return_value=asyncio.sleep(0, result=[passed_check]))
-        engine = WorkflowEngine(self.config, self.state, self.registry, self.runner, self.verifier)
+        engine = WorkflowEngine(self.config, self.state, self.registry, self.runner, self.verifier,
+                              metadata_collector=self.metadata_collector)
         workflow_id, tasks = engine.create_workflow("custom", [
             {"id": "a", "description": "first", "role": "implementation"},
             {"id": "b", "description": "second", "role": "implementation"},
