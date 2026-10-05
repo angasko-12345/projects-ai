@@ -21,6 +21,7 @@ import torch.nn as nn
 from torch.distributions import Categorical
 
 from agent.model import ActorCritic
+from environment.vec import SyncVectorEnv
 from training.telemetry import FIELDNAMES, PPOUpdateCSVWriter
 
 
@@ -153,6 +154,11 @@ class PPOTrainer:
     def __init__(self, env, model: ActorCritic, config: PPOConfig, device="cpu", curiosity=None,
                  env_config=None):
         self.env, self.model, self.config = env, model, config
+        # A 1-slot SyncVectorEnv behaves exactly like the env it contains;
+        # wider vectors are rejected: multi-env batching is not designed yet.
+        self._vec = isinstance(env, SyncVectorEnv)
+        if self._vec and env.num_envs != 1:
+            raise ValueError(f"PPO supports a 1-slot SyncVectorEnv only, got {env.num_envs}")
         self.device = torch.device(device)
         self.model.to(self.device)
         self.optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
@@ -173,6 +179,25 @@ class PPOTrainer:
             "upd_action_share": [],
         }
 
+    def _initial_obs(self, seed):
+        """First observation: identical data through either env shape."""
+        if self._vec:
+            return self.env.reset(seeds=[seed])[0][0]
+        return self.env.reset(seed=seed)[0]
+
+    def _boundary_obs(self):
+        """Post-episode fresh observation; the vec slot via ``reset_env(0)``."""
+        if self._vec:
+            return self.env.reset_env(0)[0]
+        return self.env.reset()[0]
+
+    def _step(self, action):
+        """One env step as a 5-tuple through either env shape."""
+        if self._vec:
+            obs, rew, term, trunc, info = self.env.step([action])
+            return obs[0], rew[0], term[0], trunc[0], info[0]
+        return self.env.step(action)
+
     # -- rollout ---------------------------------------------------------
     @torch.no_grad()
     def collect_rollout(self):
@@ -180,7 +205,7 @@ class PPOTrainer:
         # Fresh trainer (or one restored from checkpoint, which carries no
         # mid-episode state) starts a new episode; otherwise continue.
         if self.num_timesteps == 0 or not hasattr(self, "_carry_obs"):
-            obs, _ = self.env.reset(seed=cfg.seed + self.num_updates)
+            obs = self._initial_obs(cfg.seed + self.num_updates)
             hidden = self.model.initial_state(1, self.device)
         else:
             obs, hidden = self._carry_obs, self._carry_hidden
@@ -194,7 +219,7 @@ class PPOTrainer:
             logits, value, hidden = self.model(t, hidden)
             dist = Categorical(logits=logits.squeeze(0))
             action = dist.sample()
-            next_obs, reward, terminated, truncated, _ = self.env.step(int(action.item()))
+            next_obs, reward, terminated, truncated, _ = self._step(int(action.item()))
             buf["obs"].append(t.squeeze(0).cpu())
             buf["actions"].append(action.cpu())
             buf["logprobs"].append(dist.log_prob(action).cpu())
@@ -211,7 +236,7 @@ class PPOTrainer:
                     comp_sums[key] = comp_sums.get(key, 0.0) + float(value)
             self.num_timesteps += 1
             if terminated or truncated:
-                obs, _ = self.env.reset()
+                obs = self._boundary_obs()
                 hidden = self.model.initial_state(1, self.device)
             else:
                 obs = next_obs
