@@ -33,11 +33,12 @@ __all__ = [
     "NeverTerminateProvider",
     "StepLimitTermination",
     "make_external_env_from_config",
-    "ExternPongReward",
     "ExternPongTermination",
+    "SyncVectorEnv",
 ]
 
 _TOY_PONG = {"ToyPongEnv", "NOOP", "LEFT", "RIGHT"}
+_VEC = {"SyncVectorEnv"}
 _PREPROCESSING = {"FrameStack", "PreprocessingWrapper", "preprocess_frame"}
 _EXTERN_PONG = {"ExternPongReward", "ExternPongTermination"}
 _REWARD = {"RewardProvider", "NullReward", "NullRewardProvider", "RewardResult",
@@ -53,6 +54,10 @@ def __getattr__(name: str):
         from . import toy_pong
 
         return getattr(toy_pong, name)
+    if name in _VEC:
+        from . import vec
+
+        return getattr(vec, name)
     if name in _PREPROCESSING:
         from . import preprocessing
 
