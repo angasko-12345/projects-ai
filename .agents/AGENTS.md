@@ -51,7 +51,7 @@ get added, so run the suite for current truth.
 | Product | Test command | Baseline |
 |---|---|---|
 | `agentops/` | `cd agentops` then `python -m unittest discover -s tests` | 512 tests, 4 skipped by environment, OK (2026-10-04) |
-| `universal-game-agent/` | `cd universal-game-agent` then `python -m unittest discover -s tests` | 366 tests, 1 skip, OK (2026-10-05) |
+| `universal-game-agent/` | `cd universal-game-agent` then `python -m unittest discover -s tests` | 369 tests, 1 skip, OK (2026-10-05) |
 | `small-projects/mini-llm/` | `cd small-projects/mini-llm` then `python -m unittest discover -s tests` | 115 run, 1 skip, OK (2026-10-10; supersedes 98 run from 2026-10-04, +17 `TestDataProvenance` for checkpoint data/tokenizer provenance) |
 
 Treat any new failure or skip as attributable to the current work until proven otherwise,

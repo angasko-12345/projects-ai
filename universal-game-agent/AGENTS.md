@@ -31,9 +31,10 @@ cd universal-game-agent
 python -m unittest discover -s tests
 ```
 
-- The current baseline (verified 2026-10-05) is **366 tests, 1 skip,
-  OK** (349 at the 2026-10-03 orchestration batch; +17 from the 2026-10-05
-  cadence/reward investigation). That is a dated observation, not a contract; the count is volatile because tests
+- The current baseline (verified 2026-10-05) is **369 tests, 1 skip,
+  OK** (349 at the 2026-10-03 orchestration batch; +20 from the 2026-10-05
+  cadence/reward investigation — cadence matrix, timing/reward diagnostics, and
+  the observation-timing fingerprint tests). That is a dated observation, not a contract; the count is volatile because tests
   get added. Run the suite for current truth. All tests are `unittest.TestCase`, and
   `tests/__init__.py` exists so discovery works as a package. Every test module imports
   `tests/_bootstrap.py` first, which puts `universal-game-agent/` on `sys.path`, so the
