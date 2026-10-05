@@ -29,7 +29,10 @@ Bugs fixed here, each reproduced against a real FFmpeg build first:
 * **``-pix_fmt yuv420p``** is now forced, since players reject other pix fmts.
 * **Temp files** are cleaned up and the output is verified with ffprobe.
 """
+import json
+import math
 import os
+import stat
 import subprocess
 from pathlib import Path
 from typing import List, Optional
@@ -44,6 +47,135 @@ FPS = 30
 
 class RenderError(Exception):
     pass
+
+
+class OutputValidationError(RenderError):
+    """Raised when the final output fails post-render validation."""
+
+    pass
+
+
+def probe_streams(path: Path) -> Optional[List[dict]]:
+    """Return per-stream metadata from ffprobe, or None on failure."""
+    cmd = [
+        get_ffprobe_path(),
+        "-v", "error",
+        "-show_streams",
+        "-of", "json",
+        str(path),
+    ]
+    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
+    try:
+        proc = subprocess.run(
+            cmd,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=60,
+            creationflags=creationflags,
+        )
+        data = json.loads(proc.stdout)
+        return data.get("streams")
+    except Exception:
+        return None
+
+
+def validate_final_output(path: Path, *, min_duration: Optional[float] = None) -> float:
+    """Validate that *path* is a usable final video.
+
+    Checks (in order):
+
+    1. File exists and is a regular file
+    2. File is non-empty
+    3. ffprobe can read the file
+    4. File contains at least one video stream
+    5. Video has a positive duration
+
+    If *min_duration* is given, also checks that duration >= 1.0 and
+    >= min_duration * 0.9 (to catch truncation).
+
+    Returns the probed duration on success.
+
+    Raises:
+        OutputValidationError — with a human-readable message that preserves
+        the underlying ffprobe error when available.
+    """
+    # 1. Exists and is a regular file.
+    try:
+        st = path.stat()
+    except FileNotFoundError:
+        raise OutputValidationError(
+            f"Final output validation failed: file does not exist: {path}"
+        ) from None
+    except OSError as e:
+        raise OutputValidationError(
+            f"Final output validation failed: cannot stat file {path}: {e}"
+        ) from e
+
+    # stat succeeded but path may be directory/symlink/fifo etc.
+    if not path.is_file():
+        raise OutputValidationError(
+            f"Final output validation failed: not a regular file: {path}"
+        )
+
+    # Also check file mode — on POSIX, is_file follows symlinks; catch
+    # directory masquerading via extra guard.
+    try:
+        if stat.S_ISDIR(st.st_mode):
+            raise OutputValidationError(
+                f"Final output validation failed: path is a directory: {path}"
+            )
+    except OutputValidationError:
+        raise
+    except Exception:
+        pass  # best-effort guard, primary check is is_file() above
+
+    # 2. Non-empty.
+    if st.st_size == 0:
+        raise OutputValidationError(
+            f"Final output validation failed: file is empty (0 bytes): {path}"
+        )
+
+    # 3. ffprobe can read the file — try streams first, then duration.
+    streams = probe_streams(path)
+    if streams is None:
+        raise OutputValidationError(
+            f"Final output validation failed: ffprobe could not read file "
+            f"(invalid or corrupt media): {path}"
+        )
+
+    # 4. Contains a video stream.
+    has_video = any(s.get("codec_type") == "video" for s in (streams or []))
+    if not has_video:
+        raise OutputValidationError(
+            f"Final output validation failed: file contains no video stream: {path}"
+        )
+
+    # 5. Positive duration.
+    duration = probe_duration(path)
+    if duration is None:
+        raise OutputValidationError(
+            f"Final output validation failed: could not determine duration "
+            f"(ffprobe returned no duration): {path}"
+        )
+    if not math.isfinite(duration) or duration <= 0:
+        raise OutputValidationError(
+            f"Final output validation failed: invalid duration {duration!r} "
+            f"for file: {path}"
+        )
+
+    # Optional: truncation check when expected duration is known.
+    if min_duration is not None and min_duration > 0:
+        threshold = max(1.0, float(min_duration) * 0.9)
+        if duration < threshold:
+            raise OutputValidationError(
+                f"Final output validation failed: video is {duration:.1f}s "
+                f"but expected at least {threshold:.1f}s "
+                f"(narration ~{float(min_duration):.1f}s); likely truncated: {path}"
+            )
+
+    return duration
 
 
 def _run(cmd: List[str], cwd: Optional[Path] = None, timeout: int = 1800) -> str:

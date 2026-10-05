@@ -27,9 +27,10 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from . import captions as cap
-from . import gemini, renderer, script as sc, tts, visuals
+from . import gemini, providers, renderer, script as sc, tts, visuals
 from .config import (
     ConfigError,
+    get_backend,
     get_ffmpeg_path,
     get_ffprobe_path,
     get_output_dir,
@@ -182,13 +183,24 @@ def select_best_ideas(ideas: List[str], count: int = 3) -> List[str]:
     return out
 
 
-def check_dependencies() -> List[str]:
-    """Return a list of human-readable setup problems, empty when all is well."""
+def check_dependencies(provider=None) -> List[str]:
+    """Return a list of human-readable setup problems, empty when all is well.
+
+    ``provider`` is the backend module (see ``app.providers``). It defaults to
+    Gemini so the normal path is untouched; the local backend reports its own
+    text-file and edge-tts problems instead of a missing API key.
+    """
+    provider = provider if provider is not None else gemini
     problems: List[str] = []
-    try:
-        gemini.get_gemini_api_key()
-    except ConfigError as e:
-        problems.append(str(e))
+    checker = getattr(provider, "check_setup", None)
+    if callable(checker):
+        found: List[str] = list(checker())  # type: ignore[call-overload]
+        problems.extend(found)
+    elif provider is gemini:
+        try:
+            gemini.get_gemini_api_key()
+        except ConfigError as e:
+            problems.append(str(e))
     if not _tool_exists(get_ffmpeg_path()):
         problems.append(
             f"FFmpeg not found ({get_ffmpeg_path()!r}). Install it and put it on PATH, "
@@ -261,13 +273,31 @@ def _build_captions(text: str, duration: float, srt_path: Path) -> Path:
     return cap.to_srt(cues, srt_path)
 
 
-def run_pipeline(count: int = 3, dry_run: bool = False) -> Dict[str, Any]:
-    """Generate up to ``count`` videos. Never raises for per-idea failures."""
+def run_pipeline(
+    count: int = 3,
+    dry_run: bool = False,
+    backend: str | None = None,
+) -> Dict[str, Any]:
+    """Generate up to ``count`` videos. Never raises for per-idea failures.
+
+    ``backend`` selects the text provider ("gemini" or "local"); ``None`` reads
+    ``TEXT_BACKEND`` and defaults to Gemini. An unknown name returns a config
+    failure entry instead of raising, matching the rest of this function.
+    """
     result: Dict[str, Any] = {"success": [], "failed": []}
     count = max(1, int(count))
 
+    try:
+        provider = providers.resolve_backend(
+            get_backend() if backend is None else backend
+        )
+    except ConfigError as e:
+        result["failed"].append({"step": "backend", "error": str(e)})
+        return result
+    result["backend"] = providers.backend_name(provider)
+
     if dry_run:
-        problems = check_dependencies()
+        problems = check_dependencies(provider)
         for problem in problems:
             result["failed"].append({"step": "config", "error": problem})
         if not problems:
@@ -282,7 +312,7 @@ def run_pipeline(count: int = 3, dry_run: bool = False) -> Dict[str, Any]:
     cleanup_stale(out_dir / "visuals", ("*.partial.mp4",))
 
     try:
-        ideas = select_best_ideas(gemini.generate_ideas(max(count * 3, 6)), count)
+        ideas = select_best_ideas(provider.generate_ideas(max(count * 3, 6)), count)
     except Exception as e:
         result["failed"].append({"step": "ideas", "error": str(e)})
         return result
@@ -292,7 +322,7 @@ def run_pipeline(count: int = 3, dry_run: bool = False) -> Dict[str, Any]:
         return result
 
     for index, idea in enumerate(ideas):
-        entry = _produce_one(idea, index)
+        entry = _produce_one(idea, index, provider)
         if entry.get("file"):
             result["success"].append(entry)
         else:
@@ -301,20 +331,25 @@ def run_pipeline(count: int = 3, dry_run: bool = False) -> Dict[str, Any]:
     return result
 
 
-def _produce_one(idea: str, index: int) -> Dict[str, Any]:
-    """Produce a single video, returning either a success or a failure entry."""
+def _produce_one(idea: str, index: int, provider=None) -> Dict[str, Any]:
+    """Produce a single video, returning either a success or a failure entry.
+
+    ``provider`` defaults to the Gemini module, which is what the pipeline has
+    always used here.
+    """
+    provider = provider if provider is not None else gemini
     stem = build_stem(idea, index)
     out_dir = get_output_dir()
     audio_path: Path | None = None
     srt_path: Path | None = None
 
     try:
-        script = gemini.generate_script(idea)
-        narration = gemini.script_to_text(script)
+        script = provider.generate_script(idea)
+        narration = provider.script_to_text(script)
         if not narration:
             raise PipelineError("Script contained no narration text")
 
-        blob = gemini.generate_tts(script)
+        blob = provider.generate_tts(script)
         # Headerless PCM must be wrapped before it reaches FFmpeg.
         playable = tts.ensure_playable(blob.data, blob.mime_type)
         audio_path = tts.save_audio(
@@ -346,10 +381,19 @@ def _produce_one(idea: str, index: int) -> Dict[str, Any]:
             audio_path, visuals_path, srt_path, out_path, duration=duration
         )
 
+        # Final-output validation: confirm the published file is actually
+        # usable before reporting success. Any failure is surfaced as a
+        # PipelineError with the validation message preserved, and the
+        # invalid file is left on disk for diagnosis (no cleanup).
+        try:
+            renderer.validate_final_output(out_path, min_duration=duration)
+        except renderer.OutputValidationError as e:
+            raise PipelineError(str(e)) from e
+
         meta = build_metadata(
             title=script.get("title") or "Fictional story",
             script=script,
-            caption=gemini.generate_caption(script),
+            caption=provider.generate_caption(script),
             hashtags=list(script.get("hashtags") or []),
             scenes=scenes,
             filename=out_path.name,
