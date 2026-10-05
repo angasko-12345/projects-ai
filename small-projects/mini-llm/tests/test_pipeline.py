@@ -25,9 +25,9 @@ from src.generate import generate_tokens
 from src.generate import main as generate_main
 from src.model import from_config
 from src.tokenizer import load_tokenizer, train_bpe_tokenizer
-from src.train import (build_param_groups, evaluate, load_checkpoint, load_model,
-                       lr_at_step, read_checkpoint, resolve_device, restore_rng_state,
-                       save_checkpoint, train)
+from src.train import (build_checkpoint_metadata, build_param_groups, evaluate, load_checkpoint,
+                       load_model, lr_at_step, read_checkpoint, resolve_device, restore_rng_state,
+                       save_checkpoint, train, validate_checkpoint, CHECKPOINT_SCHEMA_VERSION)
 from src.train import main as train_main
 
 CORPUS = (
@@ -605,6 +605,269 @@ class TestCheckpointSafety(unittest.TestCase):
         expected = torch.rand(4)
         restore_rng_state(state)
         self.assertTrue(torch.equal(torch.rand(4), expected))
+
+
+class TestCheckpointMetadata(unittest.TestCase):
+    """A checkpoint says what it is: format version, model shape, tokenizer, progress.
+
+    The gap these guard: `config` recorded the settings but nothing named the
+    format or the fields it needed, so a reader had to assume both. A checkpoint
+    missing a field was then completed from Config defaults - a defaulted
+    vocab_size or context_length describes a different model than the weights
+    belong to, and a defaulted tokenizer decodes nothing.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.data = build_data_set(os.path.join(self.tmp.name, "set"))
+        self.ckpt_dir = os.path.join(self.tmp.name, "ckpts")
+
+    def cfg(self, **over) -> Config:
+        kw = dict(vocab_size=load_data_meta(self.data["train_bin"])["vocab_size"],
+                  context_length=16, n_layers=1, n_heads=2, d_model=16, d_ff=32,
+                  dropout=0.1, batch_size=2, max_steps=9, warmup_steps=2,
+                  eval_interval=3, eval_batches=2, train_bin=self.data["train_bin"],
+                  val_bin=self.data["val_bin"], tokenizer_path=self.data["tokenizer"],
+                  checkpoint_dir=self.ckpt_dir, seed=0)
+        kw.update(over)
+        return Config(**kw)
+
+    def save(self, cfg: Config, *, step: int = 1, progress=None, name: str | None = None) -> str:
+        """Save a checkpoint the way the loop does, without training; return its path."""
+        path = os.path.join(self.tmp.name, name or f"ckpt_{step}.pt")
+        model = from_config(cfg)
+        opt = torch.optim.AdamW(build_param_groups(model, cfg.weight_decay), lr=1e-3)
+        save_checkpoint(path, model, opt, step=step, cfg=cfg, lr=1e-3, progress=progress)
+        return path
+
+    def rewrite(self, path: str, mutate) -> None:
+        """Mutate a saved checkpoint and write it back, changing nothing else."""
+        ckpt = read_checkpoint(path)
+        mutate(ckpt)
+        torch.save(ckpt, path)
+
+    # --- saving records the metadata ---------------------------------------
+
+    def test_save_writes_self_describing_metadata(self):
+        cfg = self.cfg()
+        meta = read_checkpoint(self.save(cfg, step=4))["checkpoint_metadata"]
+        self.assertEqual(meta["schema_version"], CHECKPOINT_SCHEMA_VERSION)
+        self.assertEqual(meta["progress"]["step"], 4)
+        self.assertEqual(meta["progress"]["max_steps"], cfg.max_steps)
+        for name in ("vocab_size", "context_length", "n_layers", "n_heads",
+                     "d_model", "d_ff", "dropout"):
+            self.assertEqual(meta["model"][name], getattr(cfg, name), name)
+        self.assertEqual(meta["tokenizer"]["path"], self.data["tokenizer"])
+        self.assertEqual(sorted(meta["required_keys"]),
+                         ["config", "model_state", "step"])
+
+    def test_metadata_loads_under_weights_only(self):
+        """Plain containers only: adding the block must not cost safe loading."""
+        path = self.save(self.cfg())
+        meta = torch.load(path, map_location="cpu",
+                          weights_only=True)["checkpoint_metadata"]
+        self.assertEqual(meta["schema_version"], CHECKPOINT_SCHEMA_VERSION)
+        self.assertEqual(meta["tokenizer"]["path"], self.data["tokenizer"])
+
+    # --- loading restores it -------------------------------------------------
+
+    def test_metadata_survives_a_save_load_round_trip(self):
+        cfg = self.cfg()
+        path = self.save(cfg, step=4, progress={"epoch": 1.5, "tokens_seen": 96})
+        ckpt = read_checkpoint(path)
+        self.assertEqual(ckpt["checkpoint_metadata"],
+                         build_checkpoint_metadata(cfg, 4, epoch=1.5, tokens_seen=96,
+                                                   provenance=ckpt["data_provenance"]))
+
+    def test_the_recorded_model_is_the_model_that_loads(self):
+        """The block describes the model that actually comes back out of the file."""
+        cfg = self.cfg(n_layers=2, n_heads=4, d_model=32, d_ff=64, dropout=0.25)
+        path = self.save(cfg)
+        model, loaded_cfg = load_model(path)
+        meta = read_checkpoint(path)["checkpoint_metadata"]
+        for name in ("vocab_size", "context_length", "n_layers", "n_heads",
+                     "d_model", "d_ff", "dropout"):
+            self.assertEqual(meta["model"][name], getattr(loaded_cfg, name), name)
+        self.assertEqual(model.context_length, cfg.context_length)
+        self.assertEqual(loaded_cfg.dropout, cfg.dropout)
+        self.assertEqual(model.count_parameters(),
+                         from_config(loaded_cfg).count_parameters())
+
+    # --- tokenizer information ----------------------------------------------
+
+    def test_tokenizer_identity_survives_save_and_load(self):
+        path = self.save(self.cfg())
+        tokenizer = read_checkpoint(path)["checkpoint_metadata"]["tokenizer"]
+        self.assertEqual(tokenizer["path"], self.data["tokenizer"])
+        self.assertEqual(tokenizer["sha256"], file_sha256(self.data["tokenizer"]))
+        # The digest is the identity: replacing the file at that path does not
+        # change what the checkpoint says the run was trained with, so a foreign
+        # tokenizer cannot pass as this one by sitting at the same path.
+        with open(self.data["tokenizer"], "a", encoding="utf-8") as f:
+            f.write(" ")
+        self.assertEqual(read_checkpoint(path)["checkpoint_metadata"]["tokenizer"],
+                         tokenizer)
+        self.assertNotEqual(tokenizer["sha256"], file_sha256(self.data["tokenizer"]))
+
+    # --- schema version handling --------------------------------------------
+
+    def test_a_newer_schema_version_is_refused(self):
+        path = self.save(self.cfg())
+        self.rewrite(path, lambda c: c["checkpoint_metadata"].update(
+            schema_version=CHECKPOINT_SCHEMA_VERSION + 1))
+        with self.assertRaises(ValueError) as ctx:
+            read_checkpoint(path)
+        message = str(ctx.exception)
+        self.assertIn(f"schema {CHECKPOINT_SCHEMA_VERSION + 1}", message)
+        self.assertIn("newer mini-llm", message)
+
+    def test_an_older_metadata_version_is_refused(self):
+        """Version 1 was the unversioned layout; a block claiming it never existed."""
+        path = self.save(self.cfg())
+        self.rewrite(path, lambda c: c["checkpoint_metadata"].update(schema_version=1))
+        with self.assertRaises(ValueError) as ctx:
+            read_checkpoint(path)
+        self.assertIn("schema 1", str(ctx.exception))
+
+    def test_metadata_without_a_usable_schema_version_is_refused(self):
+        for i, version in enumerate([None, "2", True]):
+            with self.subTest(schema_version=version):
+                path = self.save(self.cfg(), name=f"unversioned_{i}.pt")
+                self.rewrite(path, lambda c: c["checkpoint_metadata"].update(
+                    schema_version=version))
+                with self.assertRaises(ValueError) as ctx:
+                    read_checkpoint(path)
+                self.assertIn("schema_version", str(ctx.exception))
+
+    def test_a_checkpoint_without_metadata_still_loads(self):
+        """Schema 1 kept these facts in `config`; they are read, not guessed."""
+        cfg = self.cfg()
+        path = self.save(cfg, step=3)
+        self.rewrite(path, lambda c: c.pop("checkpoint_metadata"))
+        meta = read_checkpoint(path)["checkpoint_metadata"]
+        self.assertEqual(meta["schema_version"], 1)
+        self.assertEqual(meta["model"]["context_length"], cfg.context_length)
+        self.assertEqual(meta["model"]["vocab_size"], cfg.vocab_size)
+        self.assertEqual(meta["tokenizer"]["path"], cfg.tokenizer_path)
+        self.assertEqual(meta["progress"]["step"], 3)
+        # The weights still rebuild, from the same config as before the change.
+        model, loaded_cfg = load_model(path)
+        self.assertEqual(model.context_length, cfg.context_length)
+        self.assertEqual(loaded_cfg.to_dict(), cfg.to_dict())
+
+    def test_a_legacy_checkpoint_without_a_config_is_refused(self):
+        path = self.save(self.cfg())
+        self.rewrite(path, lambda c: (c.pop("checkpoint_metadata"), c.pop("config")))
+        with self.assertRaises(ValueError) as ctx:
+            read_checkpoint(path)
+        message = str(ctx.exception)
+        self.assertIn("config", message)
+        self.assertIn("must not be guessed", message)
+
+    def test_a_legacy_checkpoint_missing_the_model_shape_is_refused(self):
+        """A default vocab_size/context_length is a different model, not a default."""
+        path = self.save(self.cfg())
+        self.rewrite(path, lambda c: (c.pop("checkpoint_metadata"),
+                                      c["config"].pop("context_length")))
+        with self.assertRaises(ValueError) as ctx:
+            read_checkpoint(path)
+        message = str(ctx.exception)
+        self.assertIn("context_length", message)
+        self.assertIn("must not be guessed", message)
+
+    # --- incomplete or contradictory metadata is refused --------------------
+
+    def test_metadata_without_a_tokenizer_is_refused(self):
+        for i, tokenizer in enumerate([{}, {"sha256": "0" * 64}]):
+            with self.subTest(tokenizer=tokenizer):
+                path = self.save(self.cfg(), name=f"no_tokenizer_{i}.pt")
+                self.rewrite(path, lambda c: c["checkpoint_metadata"].update(
+                    tokenizer=tokenizer))
+                with self.assertRaises(ValueError) as ctx:
+                    read_checkpoint(path)
+                self.assertIn("tokenizer.path", str(ctx.exception))
+
+    def test_metadata_without_the_model_shape_is_refused(self):
+        path = self.save(self.cfg())
+        self.rewrite(path, lambda c: c["checkpoint_metadata"]["model"].pop("d_model"))
+        with self.assertRaises(ValueError) as ctx:
+            read_checkpoint(path)
+        self.assertIn("model.d_model", str(ctx.exception))
+
+    def test_metadata_without_progress_is_refused(self):
+        for i, progress in enumerate([{}, {"step": None}]):
+            with self.subTest(progress=progress):
+                path = self.save(self.cfg(), name=f"no_progress_{i}.pt")
+                self.rewrite(path, lambda c: c["checkpoint_metadata"].update(
+                    progress=progress))
+                with self.assertRaises(ValueError) as ctx:
+                    read_checkpoint(path)
+                self.assertIn("progress.step", str(ctx.exception))
+
+    def test_metadata_contradicting_the_config_is_refused(self):
+        """config is what the loaders rebuild from, so it may not drift from the block."""
+        path = self.save(self.cfg())
+        self.rewrite(path, lambda c: c["config"].update(context_length=512))
+        with self.assertRaises(ValueError) as ctx:
+            read_checkpoint(path)
+        message = str(ctx.exception)
+        self.assertIn("internally inconsistent", message)
+        self.assertIn("context_length", message)
+
+    def test_a_checkpoint_missing_a_field_the_loader_needs_is_refused(self):
+        for key in ("model_state", "step"):
+            with self.subTest(missing=key):
+                path = self.save(self.cfg(), name=f"no_{key}.pt")
+                self.rewrite(path, lambda c, k=key: c.pop(k))
+                with self.assertRaises(ValueError) as ctx:
+                    read_checkpoint(path)
+                self.assertIn(key, str(ctx.exception))
+
+    def test_a_file_that_is_not_a_checkpoint_dict_is_refused(self):
+        path = os.path.join(self.tmp.name, "not_a_ckpt.pt")
+        torch.save(["not", "a", "checkpoint"], path)
+        with self.assertRaises(ValueError) as ctx:
+            read_checkpoint(path)
+        self.assertIn("not a mini-llm checkpoint", str(ctx.exception))
+
+    # --- progress is the whole run's, not just this segment's ----------------
+
+    def test_the_training_loop_records_step_epoch_and_tokens(self):
+        cfg = self.cfg(max_steps=3, warmup_steps=1, eval_interval=3)
+        train(cfg)
+        progress = read_checkpoint(
+            os.path.join(self.ckpt_dir, "final.pt"))["checkpoint_metadata"]["progress"]
+        n_train_tokens = len(load_token_ids(self.data["train_bin"]))
+        self.assertEqual(progress["step"], 3)
+        self.assertEqual(progress["tokens_seen"], 3 * cfg.batch_size * cfg.context_length)
+        self.assertAlmostEqual(progress["epoch"],
+                               3 * cfg.batch_size * cfg.context_length / n_train_tokens)
+
+    def test_a_resumed_run_keeps_counting_the_same_epoch(self):
+        cfg = self.cfg(max_steps=3, warmup_steps=1, eval_interval=3)
+        train(cfg)
+        first = read_checkpoint(os.path.join(self.ckpt_dir, "final.pt"))
+        train(self.cfg(max_steps=6, warmup_steps=1, eval_interval=3),
+              resume_from=os.path.join(self.ckpt_dir, "step_3.pt"), start_step=4)
+        progress = read_checkpoint(
+            os.path.join(self.ckpt_dir, "final.pt"))["checkpoint_metadata"]["progress"]
+        self.assertEqual(progress["step"], 6)
+        # The continuation adds to the count the checkpoint already carried; it
+        # does not restart the run's epoch at the resume point.
+        self.assertEqual(progress["tokens_seen"],
+                         2 * 3 * cfg.batch_size * cfg.context_length)
+        self.assertGreater(progress["epoch"],
+                           first["checkpoint_metadata"]["progress"]["epoch"])
+
+    def test_validate_checkpoint_reports_without_loading_from_disk(self):
+        """The check is a pure function of the dict, so it is usable before a load."""
+        cfg = self.cfg()
+        ckpt = read_checkpoint(self.save(cfg))
+        self.assertEqual(validate_checkpoint(ckpt, "somewhere.pt"),
+                         ckpt["checkpoint_metadata"])
+        with self.assertRaises(ValueError):
+            validate_checkpoint({"model_state": {}, "step": 1}, "somewhere.pt")
 
 
 class TestGenerationSeed(unittest.TestCase):

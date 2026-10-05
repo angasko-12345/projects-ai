@@ -153,14 +153,18 @@ and biases are excluded), linear warmup (500 steps) then
 cosine decay to 10% of peak lr, grad clip 1.0, seed 42. Prints device,
 parameter count, train/val loss, lr, and step. Checkpoints
 (`model_state`, `optimizer_state`, `scheduler_state`, `step`, `config`,
-`rng_state`, losses) land in `checkpoints/` every `eval_interval` steps plus
-`final.pt`, and load under `weights_only=True` (no pickled objects). If a
-`DataLoader` epoch ends mid-run, the iterator is rebuilt and training
-continues. `vocab_size` is read from `data/processed/meta.json` unless
-`--vocab-size` is given, so the output head matches the tokenizer. Evaluation
-never cycles the val loader: it uses at most `eval_batches` batches, or one
-full pass if the val set is smaller, and averages **per target token** so a
-ragged final batch is not over-weighted.
+`rng_state`, losses, `checkpoint_metadata`) land in `checkpoints/` every
+`eval_interval` steps plus `final.pt`, and load under `weights_only=True`
+(no pickled objects). `checkpoint_metadata` is the self-describing block
+that states the checkpoint schema version, the model shape (vocab_size,
+context_length, n_layers, n_heads, d_model, d_ff, dropout), the tokenizer
+by path and sha256 digest, and the training progress (step, epoch,
+tokens_seen). If a DataLoader epoch ends mid-run, the iterator is rebuilt
+and training continues. `vocab_size` is read from `data/processed/meta.json`
+unless `--vocab-size` is given, so the output head matches the tokenizer.
+Evaluation never cycles the val loader: it uses at most `eval_batches`
+batches, or one full pass if the val set is smaller, and averages **per
+target token** so a ragged final batch is not over-weighted.
 
 ### Cloud GPU (Kaggle, Colab, ...)
 
@@ -273,9 +277,13 @@ refusing to resume checkpoints/step_500.pt: its data does not match the current 
   current data:   train=data/processed/train.bin tokenizer=data/tokenizer.json
 ```
 
-A checkpoint written before provenance was recorded is refused too, rather than
-resumed on trust. Because the paths are verified, a bare `--resume` needs no
-data flags. Generation applies the same check to `--tokenizer`.
+A checkpoint written before provenance was recorded is refused too,
+rather than resumed on trust. A checkpoint written before the
+metadata block existed (schema 1) is loaded using its `config` — its
+model shape and tokenizer are still known — and every later run
+carries `checkpoint_metadata`. Because the paths are verified, a bare
+`--resume` needs no data flags. Generation applies the same check to
+`--tokenizer`.
 
 ## Generation
 

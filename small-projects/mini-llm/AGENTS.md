@@ -106,3 +106,36 @@ python -m unittest discover -s tests
   `meta.json` gained fields.
 - Checkpoints still load with `weights_only=True`; `data_provenance` is a plain
   dict of strings and ints.
+
+## Checkpoint metadata schema (added after 2026-10-10)
+
+Each checkpoint now carries a top-level `checkpoint_metadata` block
+(`weights_only=True`-safe plain containers). Schema version 2 is current;
+version 1 is the original layout (no block, facts stored only in `config`).
+
+```json
+"checkpoint_metadata": {
+    "schema_version": 2,
+    "model": {"vocab_size": ..., "context_length": ..., "n_layers": ...,
+              "n_heads": ..., "d_model": ..., "d_ff": ..., "dropout": ...},
+    "tokenizer": {"path": "...", "sha256": "..."},
+    "progress": {"step": ..., "epoch": ..., "tokens_seen": ..., "max_steps": ...},
+    "required_keys": ["model_state", "config", "step"]
+}
+```
+
+- The tokenizer path and digest survive save/load; the digest (not the path)
+  is what identifies the tokenizer's contents, so a renamed copy is still
+  verifiable, and a replaced file is detected.
+- `validate_checkpoint(ckpt, path)` is the single gate: missing or
+  contradictory metadata raises `ValueError` naming the problem instead of
+  filling in defaults (a defaulted vocab_size/context_length/tokenizer builds
+  a different model). A legacy v1 checkpoint with no block is accepted when its
+  `config` still carries the facts it was trained with, and is reported as
+  schema version 1 in memory only.
+- A metadata block with a schema version newer than the running code is
+  refused with a message naming both versions.
+- `tokens_seen` / `epoch` are counted across a resume: the continuation
+  carries the count the earlier run wrote, so `epoch` never restarts.
+- `save_checkpoint` writes the block; `read_checkpoint` validates and
+  returns it; `load_model` and `load_checkpoint` are unchanged callers.

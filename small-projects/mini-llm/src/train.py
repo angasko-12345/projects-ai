@@ -18,6 +18,184 @@ from src.config import Config, config_for_data, file_sha256, provenance_mismatch
 from src.dataset import build_dataloader
 from src.model import from_config
 
+# Checkpoint format versions.
+#
+# Version 1 is the original layout: a bare `config` dict, and nothing that says
+# which fields the format requires. Version 2 adds `checkpoint_metadata`, a
+# self-describing block naming the schema version and repeating what the file
+# needs in order to be read back: the model shape, the tokenizer by path and
+# digest, and the training progress. Readers then check the file instead of
+# assuming it, and a checkpoint that cannot describe itself is refused rather
+# than completed from defaults.
+CHECKPOINT_SCHEMA_VERSION = 2
+LEGACY_SCHEMA_VERSION = 1
+
+# The model fields from_config() reads: the shape and behavior needed to rebuild
+# the model without the surrounding Config.
+MODEL_FIELDS = ("vocab_size", "context_length", "n_layers", "n_heads", "d_model",
+                "d_ff", "dropout")
+
+# Top-level keys a checkpoint cannot be read without. rng_state is deliberately
+# not among them: checkpoints written before the RNG was saved still load, they
+# just continue the RNG stream instead of restoring it.
+REQUIRED_CHECKPOINT_KEYS = ("model_state", "config", "step")
+
+
+def build_checkpoint_metadata(cfg: Config, step: int, *, epoch: float | None = None,
+                              tokens_seen: int | None = None,
+                              provenance: dict | None = None) -> dict:
+    """The block stored at a checkpoint's `checkpoint_metadata` key.
+
+    Plain strings, numbers and dicts only, so a checkpoint carrying it still
+    loads under weights_only=True. The same facts are readable in `config` and
+    `data_provenance`; repeating them here is what lets one block say what the
+    file is, so a reader can verify it against the rest of the checkpoint.
+    """
+    return {
+        "schema_version": CHECKPOINT_SCHEMA_VERSION,
+        "model": {name: getattr(cfg, name) for name in MODEL_FIELDS},
+        "tokenizer": {
+            "path": cfg.tokenizer_path,
+            # Absent only when the run had no verifiable data set (no meta.json
+            # beside the .bin files). The path still identifies the tokenizer;
+            # the digest, which identifies its contents, is what can be lost.
+            "sha256": (provenance or {}).get("tokenizer_sha256"),
+        },
+        "progress": {
+            "step": int(step),
+            "epoch": epoch,
+            "tokens_seen": tokens_seen,
+            "max_steps": int(cfg.max_steps),
+        },
+        "required_keys": list(REQUIRED_CHECKPOINT_KEYS),
+    }
+
+
+def _metadata_gaps(meta: dict) -> list[str]:
+    """Fields a self-describing block must carry to describe its run."""
+    gaps = []
+    model = meta.get("model")
+    if not isinstance(model, dict):
+        gaps.append("model")
+    else:
+        gaps += [f"model.{name}" for name in MODEL_FIELDS if name not in model]
+    tokenizer = meta.get("tokenizer")
+    if not isinstance(tokenizer, dict) or not tokenizer.get("path"):
+        gaps.append("tokenizer.path")
+    progress = meta.get("progress")
+    if not isinstance(progress, dict) or progress.get("step") is None:
+        gaps.append("progress.step")
+    return gaps
+
+
+def _legacy_metadata(ckpt: dict, path: str) -> dict:
+    """Metadata for a checkpoint written before the block existed.
+
+    Schema 1 kept the same facts in `config`, so a config that still carries them
+    describes the run and is read as it stands. What is refused is a checkpoint
+    that would have to be completed by guessing: a missing `config`, or one
+    without the model shape or the tokenizer, because a defaulted vocab_size or
+    context_length describes a different model than these weights belong to.
+    """
+    config = ckpt.get("config")
+    gaps = [key for key in REQUIRED_CHECKPOINT_KEYS if key not in ckpt]
+    if not isinstance(config, dict):
+        gaps.append("config")
+    else:
+        gaps += [name for name in MODEL_FIELDS + ("tokenizer_path",)
+                 if name not in config]
+    if gaps:
+        raise ValueError(
+            f"{path} has no checkpoint metadata and records no {', '.join(gaps)}; "
+            "the model shape and tokenizer it was trained with are unknown and must "
+            "not be guessed from defaults - start a new run instead of loading it"
+        )
+    return {
+        "schema_version": LEGACY_SCHEMA_VERSION,
+        "model": {name: config[name] for name in MODEL_FIELDS},
+        "tokenizer": {"path": config["tokenizer_path"], "sha256": None},
+        "progress": {"step": int(ckpt["step"]), "epoch": None, "tokens_seen": None,
+                     "max_steps": config.get("max_steps")},
+        "required_keys": list(REQUIRED_CHECKPOINT_KEYS),
+    }
+
+
+def validate_checkpoint(ckpt: dict, path: str) -> dict:
+    """Check a checkpoint can describe its own setup; return its metadata.
+
+    Raises ValueError naming what is wrong. Refusing here is the point: a reader
+    that filled in a default model shape or tokenizer would silently load a
+    different setup than the one the checkpoint was written by.
+    """
+    if not isinstance(ckpt, dict):
+        raise ValueError(
+            f"{path} is not a mini-llm checkpoint: expected a dict of fields, got "
+            f"{type(ckpt).__name__}"
+        )
+    meta = ckpt.get("checkpoint_metadata")
+    if meta is None:
+        meta = _legacy_metadata(ckpt, path)
+    elif not isinstance(meta, dict):
+        raise ValueError(f"{path} has checkpoint_metadata of type "
+                         f"{type(meta).__name__}, not a dict of fields")
+    else:
+        version = meta.get("schema_version")
+        if isinstance(version, bool) or not isinstance(version, int):
+            raise ValueError(
+                f"{path} records checkpoint_metadata with no readable schema_version "
+                f"(got {version!r}); the file's format is unknown, so its fields "
+                "cannot be trusted to mean what this build expects"
+            )
+        if version != CHECKPOINT_SCHEMA_VERSION:
+            origin = ("a newer mini-llm" if version > CHECKPOINT_SCHEMA_VERSION
+                      else "an older checkpoint format")
+            raise ValueError(
+                f"{path} uses checkpoint schema {version}, written by {origin}; this "
+                f"build reads schema {CHECKPOINT_SCHEMA_VERSION}. Use the checkout that "
+                "wrote it, or start a new run."
+            )
+
+    missing = [key for key in REQUIRED_CHECKPOINT_KEYS if key not in ckpt]
+    gaps = _metadata_gaps(meta)
+    if missing or gaps:
+        problems = []
+        if missing:
+            problems.append(f"no {', '.join(missing)}")
+        if gaps:
+            problems.append(f"checkpoint_metadata without {', '.join(gaps)}")
+        raise ValueError(
+            f"{path} is not a usable mini-llm checkpoint: {'; '.join(problems)}. The "
+            "run it belongs to cannot be identified from the file, and the model "
+            "shape and tokenizer must not be guessed - start a new run."
+        )
+
+    # `config` is what the loaders actually rebuild the model from, so it has to
+    # agree with the metadata block. A disagreement means one of the two was
+    # edited after the checkpoint was written, and reading either one alone builds
+    # a model the other does not describe.
+    config = ckpt["config"]
+    if not isinstance(config, dict):
+        raise ValueError(f"{path} has a config of type {type(config).__name__}, "
+                         "not a dict of settings")
+    stale = []
+    for name in MODEL_FIELDS:
+        if name not in config:
+            stale.append(f"{name}: metadata={meta['model'][name]!r} config=<missing>")
+        elif config[name] != meta["model"][name]:
+            stale.append(f"{name}: metadata={meta['model'][name]!r} "
+                         f"config={config[name]!r}")
+    if stale:
+        # Joined outside the f-string: a backslash inside an f-string expression is
+        # a syntax error before Python 3.12, and 3.11 is the supported floor.
+        listed = "\n  ".join(stale)
+        raise ValueError(
+            f"{path} is internally inconsistent: its config and its checkpoint "
+            f"metadata describe different models.\n  {listed}\n"
+            "One of the two was edited after the checkpoint was written; load an "
+            "untouched checkpoint."
+        )
+    return meta
+
 
 def configure_torch_threads(cfg: Config) -> None:
     """Apply optional CPU thread settings; a no-op when both are None.
@@ -166,7 +344,7 @@ def restore_rng_state(state: dict | None) -> None:
 
 
 def save_checkpoint(path: str, model, optimizer, step: int, cfg: Config, lr: float | None = None,
-                    extra: dict | None = None) -> None:
+                    extra: dict | None = None, progress: dict | None = None) -> None:
     # LR is set manually (warmup + cosine), so scheduler state is the schedule
     # config plus the current lr value.
     rng_state = capture_rng_state()
@@ -174,6 +352,7 @@ def save_checkpoint(path: str, model, optimizer, step: int, cfg: Config, lr: flo
     # one; keyed off the model device so CPU checkpoints keep their old shape.
     if next(model.parameters()).device.type == "cuda":
         rng_state["cuda"] = torch.cuda.get_rng_state_all()
+    progress = progress or {}
     ckpt = {
         "model_state": model.state_dict(),
         "optimizer_state": optimizer.state_dict(),
@@ -199,24 +378,40 @@ def save_checkpoint(path: str, model, optimizer, step: int, cfg: Config, lr: flo
         # rather than writing a checkpoint that looks resumable.
         ckpt["data_provenance"] = None
         print(f"warning: no data provenance in {path}: {exc}", file=sys.stderr)
+    # What this file is, in one block: schema version, model shape, tokenizer and
+    # progress. Written last of the described fields so the digest above is the
+    # one the metadata names.
+    ckpt["checkpoint_metadata"] = build_checkpoint_metadata(
+        cfg, step, epoch=progress.get("epoch"),
+        tokens_seen=progress.get("tokens_seen"),
+        provenance=ckpt["data_provenance"],
+    )
     if extra:
         ckpt.update(extra)
     torch.save(ckpt, path)
 
 
 def read_checkpoint(path: str) -> dict:
-    """Load a checkpoint without unpickling arbitrary Python objects.
+    """Load and validate a checkpoint without unpickling arbitrary Python objects.
 
     Our format is tensors plus plain containers, so it loads under weights_only;
-    a file that needs custom classes is rejected rather than executed.
+    a file that needs custom classes is rejected rather than executed. The
+    checkpoint is then checked against its own metadata, so every caller either
+    gets one that describes its setup or a ValueError naming what is missing. A
+    checkpoint written before the metadata block existed comes back carrying the
+    block its config implies, in memory only, so callers never branch on version.
     """
     try:
-        return torch.load(path, map_location="cpu", weights_only=True)
+        ckpt = torch.load(path, map_location="cpu", weights_only=True)
     except Exception as exc:  # noqa: BLE001 - re-raised with actionable context below
         raise ValueError(
             f"{path} is not a loadable mini-llm checkpoint (it may contain pickled "
             f"objects): {type(exc).__name__}: {exc}"
         ) from exc
+    # A schema 1 checkpoint comes back carrying the metadata its config implies,
+    # in memory only, so callers can read the same key either way.
+    ckpt["checkpoint_metadata"] = validate_checkpoint(ckpt, path)
+    return ckpt
 
 
 def load_checkpoint(path: str, model, optimizer=None) -> dict:
@@ -350,6 +545,11 @@ def train(cfg: Config, resume_from: str | None = None, start_step: int = 1,
     train_loader = build_dataloader(cfg.train_bin, cfg.context_length, cfg.batch_size,
                                     shuffle=True, stride=stride)
     val_loader = build_dataloader(cfg.val_bin, cfg.context_length, cfg.batch_size, shuffle=False)
+    # An epoch is one pass over the corpus: tokens consumed divided by the tokens
+    # the training file holds. Counting it in tokens rather than in batches keeps
+    # it independent of --stride and --batch-size, so it means the same thing in a
+    # resumed run as in the run that wrote the checkpoint.
+    n_train_tokens = max(1, len(train_loader.dataset.tokens))
 
     optimizer = torch.optim.AdamW(
         build_param_groups(model, cfg.weight_decay),
@@ -359,12 +559,23 @@ def train(cfg: Config, resume_from: str | None = None, start_step: int = 1,
     )
     os.makedirs(cfg.checkpoint_dir, exist_ok=True)
 
+    tokens_before = 0  # tokens a resumed run had already consumed
     if resume_from:
         ckpt = load_checkpoint(resume_from, model, optimizer)
         # The LR schedule is a pure function of the step number, so continuing from
         # the checkpoint's step continues the original warmup/cosine curve.
         print(f"resumed {resume_from} at step {ckpt['step']} -> next {ckpt['step'] + 1}")
         print(f"lr at resume: {lr_at_step(ckpt['step'] + 1, cfg):.6f}")
+        # Carry the consumed-token count across the resume. This run's own
+        # total_tokens starts at 0, so without this the epoch count of a
+        # continuation would describe only the part after the resume.
+        recorded = (ckpt.get("checkpoint_metadata") or {}).get("progress") or {}
+        tokens_before = int(recorded.get("tokens_seen") or 0)
+
+    def progress_snapshot() -> dict:
+        """How far the run has read the corpus, for the checkpoint metadata."""
+        seen = tokens_before + total_tokens
+        return {"tokens_seen": seen, "epoch": seen / n_train_tokens}
 
     model.train()
     train_model.train()
@@ -409,13 +620,14 @@ def train(cfg: Config, resume_from: str | None = None, start_step: int = 1,
             )
             save_checkpoint(
                 os.path.join(cfg.checkpoint_dir, f"step_{step}.pt"),
-                model, optimizer, step, cfg, lr=lr,
+                model, optimizer, step, cfg, lr=lr, progress=progress_snapshot(),
                 extra={"train_loss": loss.item(), "val_loss": val_loss},
             )
 
     save_checkpoint(
         os.path.join(cfg.checkpoint_dir, "final.pt"), model, optimizer,
         cfg.max_steps, cfg, lr=lr_at_step(cfg.max_steps, cfg),
+        progress=progress_snapshot(),
         extra={"train_loss": last_train_loss, "val_loss": last_val_loss},
     )
     print("saved final checkpoint")
