@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from agentops.config import load_config
+from agentops.config import AgentConfig, AppConfig, load_config
 from agentops.registry import AgentRegistry
 
 
@@ -148,3 +148,26 @@ class ConfigAndRegistryTests(unittest.TestCase):
             selected = registry.select(role)
             if selected is not None:
                 self.assertNotEqual(selected.config.name, "claude")
+
+    def test_antigravity_roles_include_review(self):
+        config = load_config()
+        self.assertIn("review", config.agents["antigravity"].roles)
+
+    def test_antigravity_in_review_role_preferences(self):
+        config = load_config()
+        self.assertIn("antigravity", config.role_preferences["review"])
+
+    @patch("agentops.registry.subprocess.run")
+    @patch("agentops.registry.shutil.which")
+    def test_antigravity_is_selectable_for_review(self, which, run):
+        which.side_effect = lambda command: f"C:/bin/{command}"
+        run.return_value = MagicMock(stdout="1.0.0\n", stderr="", returncode=0)
+        config = AppConfig(
+            {"antigravity": load_config().agents["antigravity"]},
+            {"review": ("antigravity",)},
+        )
+        registry = AgentRegistry(config)
+        selected = registry.select("review")
+        self.assertIsNotNone(selected)
+        assert selected is not None
+        self.assertEqual(selected.config.name, "antigravity")
