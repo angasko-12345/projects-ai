@@ -386,12 +386,13 @@ def record_sync(
     conn.execute(
         """
         INSERT INTO collector_status (source, tool, capability, last_sync, events, error)
-        VALUES (:source, :tool, :capability, :last_sync, :events, :error)
+        VALUES (:source, :tool, :capability, :last_sync, COALESCE(:events, 0), :error)
         ON CONFLICT(source) DO UPDATE SET
             tool = excluded.tool,
             capability = excluded.capability,
             last_sync = COALESCE(excluded.last_sync, collector_status.last_sync),
-            events = COALESCE(excluded.events, collector_status.events),
+            events = CASE WHEN :events IS NULL
+                          THEN collector_status.events ELSE :events END,
             error = excluded.error
         """,
         {
