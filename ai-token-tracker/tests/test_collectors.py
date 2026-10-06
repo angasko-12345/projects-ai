@@ -252,6 +252,219 @@ def build_copilot_dir(root: Path) -> None:
     (session / "events.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+# ----------------------------------------------------------- claude fixtures
+
+
+def build_claude_dir(root: Path) -> None:
+    """Claude Code projects: one JSONL file with assistant records including duplicates."""
+    project_dir = root / "D--admin-code-projects" / "session-1"
+    project_dir.mkdir(parents=True)
+    # Record 1: normal assistant message with usage
+    rec1 = {
+        "type": "assistant",
+        "requestId": "req-1",
+        "timestamp": "2026-10-06T10:00:00.100Z",
+        "cwd": "D:/admin/code/projects",
+        "model": "anthropic/openrouter/google/gemma-4-26b-a4b-it:free",
+        "message": {
+            "role": "assistant",
+            "usage": {
+                "input_tokens": 22298,
+                "cache_read_input_tokens": 1234,
+                "cache_creation_input_tokens": 567,
+                "output_tokens": 892,
+                "output_tokens_details": {"thinking_tokens": 210},
+            },
+        },
+    }
+    # Record 2: duplicate rid, different timestamp (streaming fork)
+    rec2 = {
+        "type": "assistant",
+        "requestId": "req-1",
+        "timestamp": "2026-10-06T10:00:01.200Z",
+        "cwd": "D:/admin/code/projects",
+        "model": "anthropic/openrouter/google/gemma-4-26b-a4b-it:free",
+        "message": {
+            "role": "assistant",
+            "usage": {
+                "input_tokens": 22298,
+                "cache_read_input_tokens": 1234,
+                "cache_creation_input_tokens": 567,
+                "output_tokens": 892,
+                "output_tokens_details": {"thinking_tokens": 210},
+            },
+        },
+    }
+    # Record 3: another request, plain model (no router)
+    rec3 = {
+        "type": "assistant",
+        "requestId": "req-2",
+        "timestamp": "2026-10-06T10:05:00.000Z",
+        "cwd": "D:/admin/code/projects",
+        "model": "claude-sonnet-4-5",
+        "message": {
+            "role": "assistant",
+            "usage": {
+                "input_tokens": 5000,
+                "cache_read_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
+                "output_tokens": 1200,
+                "output_tokens_details": {"thinking_tokens": 0},
+            },
+        },
+    }
+    # Record 4: synthetic (no usage)
+    rec4 = {
+        "type": "assistant",
+        "requestId": "",
+        "timestamp": "2026-10-06T10:10:00.000Z",
+        "cwd": "D:/admin/code/projects",
+        "model": "<synthetic>",
+        "message": {"role": "assistant", "content": "placeholder"},
+    }
+    # Record 5: user message (should be skipped)
+    rec5 = {
+        "type": "user",
+        "message": {"role": "user", "content": "hello"},
+    }
+    (project_dir / "session.jsonl").write_text(
+        "\n".join(json.dumps(r) for r in [rec1, rec2, rec3, rec4, rec5]) + "\n",
+        encoding="utf-8",
+    )
+
+
+# ----------------------------------------------------------- cline fixtures
+
+
+def build_cline_dir(root: Path) -> None:
+    """Cline sessions: .messages.json + companion .json meta."""
+    session_dir = root / "sess-cline"
+    session_dir.mkdir(parents=True)
+    # Session meta
+    meta = {
+        "id": "sess-cline",
+        "cwd": "D:/work/cline-project",
+        "started_at": 1790775641047,
+        "model": "anthropic/claude-3-5-sonnet",
+        "provider": "anthropic",
+        "metadata": {"usage": {"inputTokens": 100000, "outputTokens": 20000}},
+    }
+    # Messages with metrics
+    messages = {
+        "messages": [
+            {
+                "role": "assistant",
+                "id": "msg-1",
+                "ts": 1790775641047,
+                "modelInfo": {"id": "anthropic/claude-3-5-sonnet", "provider": "anthropic"},
+                "metrics": {
+                    "inputTokens": 5000,
+                    "outputTokens": 800,
+                    "cacheReadTokens": 100,
+                    "cacheWriteTokens": 20,
+                },
+            },
+            {
+                "role": "assistant",
+                "id": "msg-2",
+                "ts": 1790775642047,
+                "modelInfo": {"id": "anthropic/claude-3-5-sonnet", "provider": "anthropic"},
+                "metrics": {
+                    "inputTokens": 5800,
+                    "outputTokens": 900,
+                    "cacheReadTokens": 5000,
+                    "cacheWriteTokens": 10,
+                    "reasoningTokenCount": 50,
+                },
+            },
+            {"role": "user", "id": "msg-user", "ts": 1790775643047},
+            {
+                "role": "assistant",
+                "id": "msg-3",
+                "ts": 1790775644047,
+                "modelInfo": {"id": "openai/gpt-4o", "provider": "openai"},
+                "metrics": {
+                    "inputTokens": 3000,
+                    "outputTokens": 600,
+                    "cacheReadTokens": 5800,
+                    "cacheWriteTokens": 5,
+                },
+            },
+        ]
+    }
+    (session_dir / "sess-cline.json").write_text(json.dumps(meta), encoding="utf-8")
+    (session_dir / "sess-cline.messages.json").write_text(
+        json.dumps(messages), encoding="utf-8"
+    )
+
+
+# ----------------------------------------------------------- dsh fixtures
+
+
+def build_dsh_dir(root: Path) -> None:
+    """DeepSeek Harness: zstd-compressed JSONL with model/selection + assistant/message."""
+    import compression.zstd as zstd
+    session_dir = root / "session-1" / "run-1"
+    session_dir.mkdir(parents=True)
+    lines = [
+        json.dumps(
+            {
+                "type": "session",
+                "data": {"cwd": "D:/work/dsh-project"},
+                "time": 1790775641047,
+            }
+        ),
+        json.dumps(
+            {
+                "type": "model/selection",
+                "data": {"provider": "codecraft", "model": "claude-opus-5.5"},
+                "time": 1790775641147,
+            }
+        ),
+        json.dumps(
+            {
+                "type": "assistant/message",
+                "id": "dsh-1",
+                "time": 1790775641247,
+                "data": {
+                    "usage": {
+                        "inputTokens": 11762,
+                        "outputTokens": 114,
+                        "totalTokens": 12033,
+                        "cacheReadTokens": 157,
+                    }
+                },
+            }
+        ),
+        json.dumps(
+            {
+                "type": "assistant/message",
+                "id": "dsh-2",
+                "time": 1790775642247,
+                "data": {
+                    "usage": {
+                        "inputTokens": 5000,
+                        "outputTokens": 500,
+                        "totalTokens": 5500,
+                        "cacheReadTokens": 0,
+                    }
+                },
+            }
+        ),
+        json.dumps(
+            {
+                "type": "assistant/attempt",
+                "id": "attempt-1",
+                "time": 1790775643247,
+                "data": {"usage": {"inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "cacheReadTokens": 0}},
+            }
+        ),
+        "{bad line",
+    ]
+    compressed = zstd.compress("\n".join(lines).encode("utf-8"))
+    (session_dir / "session.v4.jsonl.zstd").write_bytes(compressed)
+
+
 # ------------------------------------------------------------ parsing
 
 
@@ -366,6 +579,93 @@ class CollectorParsingTest(unittest.TestCase):
         self.assertEqual(event.raw_metadata["requests"], 3)
         self.assertIsNone(event.cost)  # request-cost units are not documented
         self.assertTrue(event.exact)
+
+    def test_claude_dedupes_duplicate_rids_and_splits_usage(self):
+        claude_dir = self.root / "claude"
+        build_claude_dir(claude_dir)
+        events = collectors.collect_claude(claude_dir)
+        # req-1 appears twice (different timestamps) → deduped to one
+        # req-2 is separate request; synthetic (no usage) skipped; user skipped
+        self.assertEqual(len(events), 2)
+        # Find by request_id
+        by_rid = {e.request_id: e for e in events}
+        e1 = by_rid["req-1"]
+        self.assertEqual(e1.tool, "Claude Code")
+        self.assertEqual(e1.provider, "openrouter")  # router model parsed
+        self.assertEqual(e1.model, "google/gemma-4-26b-a4b-it:free")
+        self.assertEqual(e1.project, "D:/admin/code/projects")
+        # Anthropic: input excludes cache; output includes thinking
+        self.assertEqual(e1.input_tokens, 22298)
+        self.assertEqual(e1.cache_read_tokens, 1234)
+        self.assertEqual(e1.cache_write_tokens, 567)
+        self.assertEqual(e1.reasoning_tokens, 210)
+        self.assertEqual(e1.output_tokens, 892 - 210)
+        self.assertEqual(e1.total_tokens, 22298 + 682 + 1234 + 567 + 210)
+        self.assertTrue(e1.exact)
+        e2 = by_rid["req-2"]
+        self.assertEqual(e2.provider, "anthropic")  # plain model
+        self.assertEqual(e2.model, "claude-sonnet-4-5")
+        self.assertEqual(e2.input_tokens, 5000)
+        self.assertEqual(e2.output_tokens, 1200)
+        self.assertEqual(e2.total_tokens, 6200)
+        self.assertTrue(e2.exact)
+
+    def test_cline_splits_inclusive_input_and_tracks_model(self):
+        cline_dir = self.root / "cline"
+        build_cline_dir(cline_dir)
+        events = collectors.collect_cline(cline_dir)
+        # 3 assistant messages with metrics (msg-user skipped)
+        self.assertEqual(len(events), 3)
+        e1, e2, e3 = events
+        # msg-1: input=5000, cr=100, cw=20 → input_excl=4880
+        self.assertEqual(e1.tool, "Cline")
+        self.assertEqual(e1.provider, "anthropic")
+        self.assertEqual(e1.model, "anthropic/claude-3-5-sonnet")
+        self.assertEqual(e1.project, "D:/work/cline-project")
+        self.assertEqual(e1.input_tokens, 4880)
+        self.assertEqual(e1.cache_read_tokens, 100)
+        self.assertEqual(e1.cache_write_tokens, 20)
+        self.assertEqual(e1.output_tokens, 800)
+        self.assertEqual(e1.reasoning_tokens, 0)
+        self.assertEqual(e1.total_tokens, 5800)
+        self.assertTrue(e1.exact)
+        # msg-2: input=5800, cr=5000, cw=10, reasoning=50 → input_excl=790, out_excl=850
+        self.assertEqual(e2.input_tokens, 790)
+        self.assertEqual(e2.cache_read_tokens, 5000)
+        self.assertEqual(e2.cache_write_tokens, 10)
+        self.assertEqual(e2.output_tokens, 850)
+        self.assertEqual(e2.reasoning_tokens, 50)
+        self.assertEqual(e2.total_tokens, 6700)
+        # msg-3: different model/provider
+        self.assertEqual(e3.provider, "openai")
+        self.assertEqual(e3.model, "openai/gpt-4o")
+        self.assertEqual(e3.input_tokens, 0)  # max(3000-5800-5, 0) = 0 (input < cacheRead!)
+        # input_excl clamped at 0 when cacheRead > input
+        self.assertEqual(e3.cache_read_tokens, 5800)
+        self.assertEqual(e3.output_tokens, 600)
+
+    def test_dsh_uses_file_order_provider_model_and_verifies_totals(self):
+        dsh_dir = self.root / "dsh"
+        build_dsh_dir(dsh_dir)
+        events = collectors.collect_dsh(dsh_dir)
+        # 2 assistant/message records with usage; attempt + bad line skipped
+        self.assertEqual(len(events), 2)
+        e1, e2 = events
+        self.assertEqual(e1.tool, "DeepSeek Harness")
+        self.assertEqual(e1.provider, "codecraft")
+        self.assertEqual(e1.model, "claude-opus-5.5")
+        self.assertEqual(e1.project, "D:/work/dsh-project")
+        self.assertEqual(e1.request_id, "dsh-1")
+        self.assertEqual(e1.input_tokens, 11762)
+        self.assertEqual(e1.output_tokens, 114)
+        self.assertEqual(e1.cache_read_tokens, 157)
+        self.assertEqual(e1.cache_write_tokens, 0)
+        self.assertEqual(e1.reasoning_tokens, 0)
+        self.assertEqual(e1.total_tokens, 12033)
+        self.assertTrue(e1.exact)
+        e2 = events[1]
+        self.assertEqual(e2.request_id, "dsh-2")
+        self.assertEqual(e2.total_tokens, 5500)
 
 
 # ------------------------------------------------------------- dedup

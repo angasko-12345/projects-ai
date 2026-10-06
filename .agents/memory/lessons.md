@@ -806,3 +806,31 @@
   cannot state it, the test cannot fail for the reason it claims. And never let
   a fixture leave a dependency the code under test reads in a failing-safe
   default: check the teardown order against what the helper actually consumes.
+
+## 2026-10-06 - A partial measurement re-dates the measurements it did not take
+
+- **Symptom:** the evidence mechanism recorded one `commit` per document. `generate.py
+  <product>` re-measures one product, keeps the others' records, and writes the *new*
+  HEAD at document level. Staleness compared that single commit against HEAD, so after a
+  partial run it diffed HEAD against itself and reported OK.
+- **Reproduced:** commit a change to `universal-game-agent/training/ppo.py`, run
+  `generate.py agentops`, then `check.py`. Output: `OK: evidence recorded at
+  1cc589cafa11 ... is a clean, reproducible measurement`. UGA's 495 had been measured
+  *before* `ppo.py` changed. No forgery involved - this is what the documented
+  workflow does.
+- **Root cause:** the document is not the unit of measurement, the record is. One
+  document, three measurements, three different commits after a partial run. Anything
+  keyed on the document-level field silently generalises one product's freshness to all
+  of them.
+- **Fix:** every record carries its own commit; staleness is judged per record against
+  its own directory. Same scenario now reports `universal-game-agent: evidence is
+  stale: 1 file(s) under universal-game-agent/ changed after cadb67fe891c`.
+- **Remember:** when one artifact aggregates several independently-produced facts, key
+  every freshness or validity decision on the *smallest* fact, not the container. Also
+  assert the container's identifier is not the one being trusted - here it was still
+  written, still meaningful ("when this file was last written"), and still wrong to
+  check against.
+- Related, same audit: `record["directory"]` was never validated against
+  `record["product"]`, so a record could name a directory that never changes and carry
+  a count describing code nobody looked at. A field that *selects* what gets checked
+  has to be checked too.

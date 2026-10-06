@@ -147,3 +147,49 @@ any faster.
 - `../lessons.md` — canonical dated lessons, including the same 2026-09-26 entries in full.
 - `../decisions.md` — the five decisions from the 2026-09-26 session.
 - `../architecture.md` — the instruction hierarchy and memory-folder layout.
+
+## 2026-10-06 — audit your own mechanism; the first version's gaps were all reachable by doing
+the right thing
+
+The evidence mechanism built earlier the same day looked finished: 32 checker tests passing, a
+documented limit, a CI workflow. Auditing it found a defect that the documented workflow itself
+produced, a CI job that never ran on the commits it existed for, and a claim in my own commit
+message that was too strong. All three were found by *running* the mechanism, not by reading it.
+
+### Do the wrong-looking-but-legal thing and see whether the guard catches it
+
+The defect was found by following the instructions, not by breaking them. `generate.py
+<product>` is documented for measuring one product. It re-dated the whole document while
+carrying two records it never touched, and the checker said OK. A guard that only fires on
+malicious input is not a guard.
+
+Concretely: in a throwaway clone, commit a UGA-only change, run the partial regeneration, and
+read what `check.py` reports. Every staleness case afterwards was built the same way — find a
+commit in real history that should trip the rule, and check that it does.
+
+### Verify CI by parsing it, not by trusting its filename
+
+`evidence.yml` existed, was named plausibly, and did not trigger on `agentops/**`. Reading
+the filename would have reported CI enforcement as correct. `yaml.safe_load` and asking "does
+this path appear in `on.push.paths`" took a minute and found the gap. The rule generalises: for
+any CI claim, the check is a query against the parsed configuration.
+
+### Mutation-test a claim you wrote yourself
+
+Two of my own commit-message claims were wrong in ways only execution could catch. Stating a
+limit honestly ("editing the count *and* the summary is indistinguishable from a measurement")
+was correct; claiming staleness "closes the window" was too strong, because same-commit forgery
+defeats exactly that. Neither was catchable by re-reading the diff.
+
+The fixed AgentOps tests got the same treatment: the merge-gate mutation turns cases B and C
+red, and the combined "revert the gate *and* restore the vacuous fixture" mutation stays green -
+which is precisely the pre-fix state, and the proof that the old test could not have caught the
+bug it was written for.
+
+### A stale limit is worse than no limit
+
+`test_a_self_consistent_forgery_is_the_documented_limit` exists so the mechanism's ceiling
+cannot be quietly forgotten. It asserts that a forgery *is* caught-by-the-summary-check only
+when the summary is left alone, and that changing both defeats it. A test that pins a known
+weakness is cheaper than rediscovering it later, and it makes the weakness deliberate instead
+of accidental.

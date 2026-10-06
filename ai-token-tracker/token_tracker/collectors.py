@@ -133,6 +133,331 @@ def collect_kilo(path: Path) -> list[UsageEvent]:
         except EventValidationError:
             continue
     return events
+# --------------------------------------------------------------- claude code
+
+
+def find_claude() -> Path | None:
+    env = os.environ.get("CLAUDE_PROJECTS")
+    return _first_existing(
+        ([Path(env)] if env else [])
+        + [
+            _user_home() / ".claude" / "projects",
+            Path("D:/admin/code/cli_files/claude/home/projects"),
+        ]
+    )
+
+
+def _parse_claude_model(model_str: str | None) -> tuple[str, str]:
+    """Split router model string into (provider, model).
+
+    Format observed: "<protocol>/<provider>/<vendor>/<model>" or
+    "<protocol>/<provider>/<model>". Falls back to provider="anthropic".
+    """
+    if not model_str:
+        return "anthropic", "unknown"
+    parts = model_str.split("/")
+    if len(parts) >= 3 and parts[0] in ("anthropic", "openai", "google", "bedrock", "vertex"):
+        provider = parts[1]
+        model = "/".join(parts[2:])
+        return provider, model
+    # Plain model like "claude-sonnet-4-5" or "<synthetic>"
+    return "anthropic", model_str
+
+
+def collect_claude(path: Path) -> list[UsageEvent]:
+    """Claude Code projects: JSONL files per session; assistant messages carry usage.
+
+    Usage fields follow Anthropic API: input_tokens (excludes cache), cache_read_input_tokens,
+    cache_creation_input_tokens, output_tokens (includes thinking), thinking_tokens.
+    Duplicate request_id records appear within and across session files (forked copies);
+    dedupe by keeping earliest timestamp per request_id.
+    """
+    events: list[UsageEvent] = []
+    # Group records by request_id to dedupe streaming forks and file copies.
+    by_rid: dict[str, list[dict]] = {}
+    for file in sorted(path.rglob("*.jsonl")):
+        try:
+            lines = file.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(obj, dict) or obj.get("type") != "assistant":
+                continue
+            rid = obj.get("requestId")
+            if not isinstance(rid, str) or not rid:
+                # No request id (synthetic): treat as separate event per record
+                rid = f"__no_rid_{len(by_rid)}"
+            by_rid.setdefault(rid, []).append(obj)
+
+    for rid, records in by_rid.items():
+        # Keep the earliest timestamp record for this request id.
+        canonical = min(
+            records,
+            key=lambda r: r.get("timestamp") or r.get("time") or "",
+        )
+        msg = canonical.get("message")
+        if not isinstance(msg, dict):
+            continue
+        usage = msg.get("usage")
+        if not isinstance(usage, dict):
+            continue
+        model_str = msg.get("model") or canonical.get("model")
+        provider, model = _parse_claude_model(model_str)
+        timestamp = canonical.get("timestamp") or canonical.get("time")
+        project = canonical.get("cwd")
+        cost = canonical.get("totalCostUSD")
+        # Anthropic: output_tokens includes thinking; cache_* are separate.
+        input_tok = int(usage.get("input_tokens") or 0)
+        cache_read = int(usage.get("cache_read_input_tokens") or 0)
+        cache_write = int(usage.get("cache_creation_input_tokens") or 0)
+        output_total = int(usage.get("output_tokens") or 0)
+        thinking = int((usage.get("output_tokens_details") or {}).get("thinking_tokens") or 0)
+        output_excl = max(output_total - thinking, 0)
+        try:
+            events.append(
+                normalize_event(
+                    timestamp=_canonical(timestamp),
+                    provider=provider,
+                    agent=None,
+                    tool="Claude Code",
+                    model=model,
+                    project=project,
+                    input_tokens=input_tok,
+                    output_tokens=output_excl,
+                    cache_read_tokens=cache_read,
+                    cache_write_tokens=cache_write,
+                    reasoning_tokens=thinking,
+                    cost=cost if isinstance(cost, (int, float)) else None,
+                    exact=True,
+                    source="claude",
+                    request_id=rid,
+                    raw_metadata={
+                        "entrypoint": canonical.get("entrypoint"),
+                        "version": canonical.get("version"),
+                        "model_raw": model_str,
+                    },
+                )
+            )
+        except EventValidationError:
+            continue
+    return events
+
+
+# --------------------------------------------------------------- cline
+
+
+def find_cline() -> Path | None:
+    env = os.environ.get("CLINE_SESSIONS")
+    return _first_existing(
+        ([Path(env)] if env else [])
+        + [
+            _user_home() / ".cline" / "data" / "sessions",
+            Path("D:/admin/code/cli_files/cline/home/data/sessions"),
+        ]
+    )
+
+
+def collect_cline(path: Path) -> list[UsageEvent]:
+    """Cline session directories: *.messages.json files with per-assistant-message metrics.
+
+    Metrics fields: inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens.
+    Observed pattern shows inputTokens INCLUDES cacheReadTokens (cacheRead_{k+1} == inputTokens_k
+    across consecutive messages). Compute input_excl = max(0, input - cacheRead - cacheWrite).
+    Model/provider from modelInfo per message; project from session metadata cwd.
+    """
+    events: list[UsageEvent] = []
+    for msg_file in sorted(path.rglob("*.messages.json")):
+        try:
+            data = json.loads(msg_file.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        # Read companion session meta for cwd
+        session_file = msg_file.with_suffix("").with_suffix(".json")
+        cwd: str | None = None
+        session_model: str | None = None
+        session_provider: str | None = None
+        if session_file.exists():
+            try:
+                meta = json.loads(session_file.read_text(encoding="utf-8"))
+                cwd = meta.get("cwd")
+                session_model = meta.get("model")
+                session_provider = meta.get("provider")
+            except (OSError, ValueError):
+                pass
+        for msg in data.get("messages", []):
+            if not isinstance(msg, dict) or msg.get("role") != "assistant":
+                continue
+            metrics = msg.get("metrics")
+            if not isinstance(metrics, dict):
+                continue
+            model_info = msg.get("modelInfo") or {}
+            provider = model_info.get("provider") or session_provider or "unknown"
+            model = model_info.get("id") or session_model
+            ts = msg.get("ts")
+            request_id = msg.get("id")
+            input_total = int(metrics.get("inputTokens") or 0)
+            cache_read = int(metrics.get("cacheReadTokens") or 0)
+            cache_write = int(metrics.get("cacheWriteTokens") or 0)
+            output_tok = int(metrics.get("outputTokens") or 0)
+            # Reasoning tokens occasionally present
+            reasoning = int(metrics.get("reasoningTokenCount") or 0)
+            input_excl = max(input_total - cache_read - cache_write, 0)
+            try:
+                events.append(
+                    normalize_event(
+                        timestamp=_canonical(ts),
+                        provider=provider,
+                        agent=None,
+                        tool="Cline",
+                        model=model,
+                        project=cwd,
+                        input_tokens=input_excl,
+                        output_tokens=max(output_tok - reasoning, 0),
+                        cache_read_tokens=cache_read,
+                        cache_write_tokens=cache_write,
+                        reasoning_tokens=reasoning,
+                        cost=None,
+                        exact=True,
+                        source="cline",
+                        request_id=request_id,
+                        raw_metadata={
+                            "session_file": msg_file.name,
+                            "input_total_reported": input_total,
+                        },
+                    )
+                )
+            except EventValidationError:
+                continue
+    return events
+
+
+# --------------------------------------------------------------- deepseek harness (dsh)
+
+
+def find_dsh() -> Path | None:
+    env = os.environ.get("DSH_SESSIONS")
+    return _first_existing(
+        ([Path(env)] if env else [])
+        + [
+            Path("D:/admin/code/cli_files/dsh/sessions"),
+        ]
+    )
+
+
+def _decompress_zstd(data: bytes) -> str:
+    """Decompress zstd using stdlib (3.14+) or backport."""
+    try:
+        import compression.zstd as zstd
+        return zstd.decompress(data).decode("utf-8")
+    except ImportError:
+        try:
+            import zstandard as zstd
+            return zstd.decompress(data).decode("utf-8")
+        except ImportError:
+            raise CollectorError("no zstd decoder available (need Python 3.14+ or zstandard package)")
+
+
+def collect_dsh(path: Path) -> list[UsageEvent]:
+    """DeepSeek Harness session files: zstd-compressed JSONL with assistant/message usage.
+
+    Record types: model/selection (provider+model), request/context (provider+model),
+    assistant/message (usage: inputTokens, outputTokens, totalTokens, cacheReadTokens).
+    Verified: inputTokens + outputTokens + cacheReadTokens == totalTokens (input excludes cache).
+    """
+    events: list[UsageEvent] = []
+    for file in sorted(path.rglob("session.v4.jsonl.zstd")):
+        try:
+            compressed = file.read_bytes()
+        except OSError:
+            continue
+        try:
+            text = _decompress_zstd(compressed)
+        except CollectorError:
+            # Record as error and continue other files
+            raise
+        lines = text.splitlines()
+        # Track current provider/model from preceding events in file order.
+        current_provider = "codecraft"
+        current_model = "unknown"
+        session_cwd: str | None = None
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(obj, dict):
+                continue
+            rtype = obj.get("type")
+            data = obj.get("data")
+            if not isinstance(data, dict):
+                data = {}
+            if rtype in ("model/selection", "request/context"):
+                if data.get("provider"):
+                    current_provider = data["provider"]
+                if data.get("model") or data.get("modelName"):
+                    current_model = data.get("model") or data.get("modelName") or current_model
+            elif rtype == "session":
+                session_cwd = data.get("cwd") or session_cwd
+            elif rtype == "assistant/message":
+                usage = data.get("usage")
+                if not isinstance(usage, dict):
+                    continue
+                request_id = obj.get("id")
+                timestamp = obj.get("time")
+                input_tok = int(usage.get("inputTokens") or 0)
+                output_tok = int(usage.get("outputTokens") or 0)
+                cache_read = int(usage.get("cacheReadTokens") or 0)
+                # totalTokens verified: input + output + cache_read == total
+                reasoning = 0  # not reported separately in dsh
+                try:
+                    events.append(
+                        normalize_event(
+                            timestamp=_canonical(timestamp),
+                            provider=current_provider,
+                            agent=None,
+                            tool="DeepSeek Harness",
+                            model=current_model,
+                            project=session_cwd,
+                            input_tokens=input_tok,
+                            output_tokens=output_tok,
+                            cache_read_tokens=cache_read,
+                            cache_write_tokens=0,
+                            reasoning_tokens=reasoning,
+                            cost=None,
+                            exact=True,
+                            source="dsh",
+                            request_id=request_id,
+                            raw_metadata={
+                                "session_file": file.name,
+                            },
+                        )
+                    )
+                except EventValidationError:
+                    continue
+    return events
+
+
+# --------------------------------------------------------------- unavailable markers
+
+
+def _unavailable_collector(source: str, tool: str, reason: str, kind: str = "provider") -> Collector:
+    return Collector(
+        source=source,
+        tool=tool,
+        capability="unavailable",
+        kind=kind,
+        unavailable_reason=reason,
+    )
 
 
 # ------------------------------------------------------- pi / oh-my-pi
@@ -523,6 +848,9 @@ REGISTRY: list[Collector] = [
     Collector("pi", "Pi", "exact", "agent", find_pi, collect_pi),
     Collector("omp", "Oh My Pi", "exact", "agent", find_omp, collect_omp),
     Collector("copilot", "GitHub Copilot", "exact", "agent", find_copilot, collect_copilot),
+    Collector("claude", "Claude Code", "exact", "agent", find_claude, collect_claude),
+    Collector("cline", "Cline", "exact", "agent", find_cline, collect_cline),
+    Collector("dsh", "DeepSeek Harness", "exact", "agent", find_dsh, collect_dsh),
     # Provider-side dashboards: recorded as unavailable so coverage is honest.
     Collector(
         "openrouter", "OpenRouter", "unavailable", "provider",
@@ -541,6 +869,31 @@ REGISTRY: list[Collector] = [
     Collector(
         "openai", "OpenAI", "unavailable", "provider",
         unavailable_reason="no OPENAI_API_KEY configured; usage API not queried",
+    ),
+    # Installed agents with no usable local token data:
+    _unavailable_collector(
+        "antigravity",
+        "Antigravity",
+        "local stores contain no token/usage fields (conversations are protobuf blobs, logs lack usage); no API access",
+        kind="agent",
+    ),
+    _unavailable_collector(
+        "freebuff",
+        "FreeBuff/Codebuff",
+        "only context-size telemetry (contextTokenCount, creditsUsed); no per-request input/output token counts",
+        kind="agent",
+    ),
+    _unavailable_collector(
+        "free-claude-code",
+        "free-claude-code (fcc)",
+        "local database empty (code_sessions/runs/items/prompts all 0 rows); wrappers delegate to other CLIs whose usage lands in those CLIs' own stores",
+        kind="agent",
+    ),
+    _unavailable_collector(
+        "gemini-cli",
+        "Gemini CLI",
+        "no local session/usage data found (config only); conversation data in Antigravity stores lacks usage fields",
+        kind="agent",
     ),
 ]
 

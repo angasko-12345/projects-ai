@@ -511,3 +511,37 @@
   number cannot outlive the code it describes. The record keeps the verbatim
   summary lines precisely so the ordinary case - editing one number - fails.
 - **Agents involved:** OpenCode.
+
+## 2026-10-06 - Staleness is judged per evidence record; the checker runs on product commits
+
+- **Decision:** each record in `.agents/evidence/verification.json` carries the commit it
+  was measured at, and `check.py` decides staleness per record, diffing that record's
+  commit against HEAD for that record's own directory. `.github/workflows/evidence.yml`
+  triggers on `agentops/**`, `universal-game-agent/**` and `small-projects/mini-llm/**` in
+  addition to the evidence and instruction files.
+- **Reason:** a partial `generate.py <product>` re-dates the document while carrying the
+  other products' records over unchanged. A document-level staleness check then reported
+  OK on evidence measured before the code changed - reproduced, not theorised. The
+  workflow missed the same class of commit entirely: `agentops/**` was absent from the
+  trigger list, so the one commit that makes evidence stale did not run the checker, and
+  the three per-product workflows passed it because none of them reads the evidence file.
+- **Alternatives considered:** (a) forbid partial runs and always re-measure everything -
+  rejected, it costs ~4 minutes per product touch and pushes people back to hand-editing
+  the file, which is the failure mode being fixed; (b) make a partial run write only the
+  records it measured - rejected, the document then silently loses products and
+  `check_schema` rejects the file for the wrong reason; (c) trust CI to re-run the suites
+  and compare counts - still the strongest available option, deliberately not taken here
+  (a fourth place a count lives, ~4 min per push) and recorded as the named upgrade path.
+- **Deliberate non-change:** same-commit forgery remains possible. Change product code and
+  edit the counts and the recorded summary lines together in one commit, and the checker
+  passes: nothing inside a file distinguishes that from a measurement. Closing it needs
+  either the suites re-run in this workflow or a signature. Both are out of scope here.
+  What holds is that the forgery expires at the next product commit touching that
+  product. Stated in `.github/CI.md` under "What this does not defend against" rather
+  than left as an implication.
+- **Verification:** checker tests 38 OK. Reverting `evidence.py` alone turns 5 of them
+  red, so the new tests bind the fix rather than the shape. Cases verified against real
+  history: product commit after the measurement -> stale; documentation-only commit ->
+  valid; `tiktok-slop-factory` change -> never named stale; `--in-place` on a dirty tree
+  -> rejected.
+- **Agents involved:** OpenCode.

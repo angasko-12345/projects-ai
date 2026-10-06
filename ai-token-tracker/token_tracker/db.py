@@ -73,6 +73,9 @@ _SOURCE_TOOL = {
     "codex": "Codex",
     "hermes": "Hermes",
     "copilot": "GitHub Copilot",
+    "claude": "Claude Code",
+    "cline": "Cline",
+    "dsh": "DeepSeek Harness",
 }
 
 
