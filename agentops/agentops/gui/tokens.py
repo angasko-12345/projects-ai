@@ -11,10 +11,11 @@ stylesheet.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
+
+from ..paths import resource_path
 
 # Bundled image assets (combo arrows, etc.); QSS needs filesystem paths.
-ASSET_DIR = Path(__file__).resolve().parent / "assets"
+ASSET_DIR = resource_path("agentops", "gui", "assets")
 
 
 @dataclass(frozen=True)

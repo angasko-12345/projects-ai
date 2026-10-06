@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .paths import resource_path
 from .verification_model import (
     VerificationCheckClass,
     VerificationCheckSpec,
@@ -59,7 +60,9 @@ class AppConfig:
     routing_enabled: bool = True
 
 
-DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "agents" / "agents.yaml"
+# Bundled as package data by AgentOps.spec, so it resolves identically from a
+# source checkout, an installed wheel, and the frozen executable.
+DEFAULT_CONFIG_PATH = resource_path("agents", "agents.yaml")
 
 
 def _load_data(path: Path) -> dict[str, Any]:
