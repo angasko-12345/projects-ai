@@ -512,36 +512,28 @@
   summary lines precisely so the ordinary case - editing one number - fails.
 - **Agents involved:** OpenCode.
 
-## 2026-10-06 - Staleness is judged per evidence record; the checker runs on product commits
+## 2026-10-06 - AI Token Tracker shot 3: exact-only collectors, cross-source-only dedup
 
-- **Decision:** each record in `.agents/evidence/verification.json` carries the commit it
-  was measured at, and `check.py` decides staleness per record, diffing that record's
-  commit against HEAD for that record's own directory. `.github/workflows/evidence.yml`
-  triggers on `agentops/**`, `universal-game-agent/**` and `small-projects/mini-llm/**` in
-  addition to the evidence and instruction files.
-- **Reason:** a partial `generate.py <product>` re-dates the document while carrying the
-  other products' records over unchanged. A document-level staleness check then reported
-  OK on evidence measured before the code changed - reproduced, not theorised. The
-  workflow missed the same class of commit entirely: `agentops/**` was absent from the
-  trigger list, so the one commit that makes evidence stale did not run the checker, and
-  the three per-product workflows passed it because none of them reads the evidence file.
-- **Alternatives considered:** (a) forbid partial runs and always re-measure everything -
-  rejected, it costs ~4 minutes per product touch and pushes people back to hand-editing
-  the file, which is the failure mode being fixed; (b) make a partial run write only the
-  records it measured - rejected, the document then silently loses products and
-  `check_schema` rejects the file for the wrong reason; (c) trust CI to re-run the suites
-  and compare counts - still the strongest available option, deliberately not taken here
-  (a fourth place a count lives, ~4 min per push) and recorded as the named upgrade path.
-- **Deliberate non-change:** same-commit forgery remains possible. Change product code and
-  edit the counts and the recorded summary lines together in one commit, and the checker
-  passes: nothing inside a file distinguishes that from a measurement. Closing it needs
-  either the suites re-run in this workflow or a signature. Both are out of scope here.
-  What holds is that the forgery expires at the next product commit touching that
-  product. Stated in `.github/CI.md` under "What this does not defend against" rather
-  than left as an implication.
-- **Verification:** checker tests 38 OK. Reverting `evidence.py` alone turns 5 of them
-  red, so the new tests bind the fix rather than the shape. Cases verified against real
-  history: product commit after the measurement -> stale; documentation-only commit ->
-  valid; `tiktok-slop-factory` change -> never named stale; `--in-place` on a dirty tree
-  -> rejected.
-- **Agents involved:** OpenCode.
+- **Decision:** a collector either reports exact tokens from official local data or is listed unavailable with a visible reason (gray status dot) — nothing may estimate and be labeled exact. Agent and provider are independent dimensions (persisted `tool` column plus `infer_tool` backfill for legacy rows), so OpenCode→OpenRouter→X and OMP→OpenRouter→X each keep their agent attribution while sharing one provider row. Canonical usage-event identity is `request_id` when the source provides one, otherwise the content key `ct|provider|model|tokens|epoch//5*5`; content dedup runs only when the stored row's `source` differs from the incoming row's `source` (first-seen attribution wins), so one underlying request seen through two sources counts once, while same-source events with different ids and zero-token rows are never merged.
+- **Alternatives considered:** (a) provider usage APIs (OpenRouter/OpenAI/Gemini) reported as estimates — rejected: violates the never-label-estimates-exact rule, and OpenRouter 403s without a key anyway; (b) scraping screenshots or terminal output — rejected as untrustworthy per shot constraints; (c) content dedup including same-source rows — rejected: two legitimate distinct requests with identical token counts would collapse; (d) a per-session "provider-only" counting mode — rejected: adds a second accounting path for a double-count that source-scoped dedup already prevents.
+- **Evidence:** 7/7 collectors exact against real local data (14,155 events, 2.45B tokens, 0 estimated, idempotent re-sync); Sources view shows `7/7 · exact 7/7 · unavailable 3` with per-source reasons; 41/41 tests (2026-10-06).
+- **Agents involved:** Oh-My-Pi.
+
+## 2026-10-06 - Post-reboot recovery: committed work is safe, uncommitted work is intact
+
+- **Decision:** treat the 7 ahead-commits (`eb153e2` through `9365920`) as safe without re-verification; recovery effort goes only to uncommitted state — Manicode's AgentOps packaging body (uncommitted by task design, "Do not merge anything"), OpenCode's 6 staged memory/session files (session doc index-only, restore via `git show :<path>`), and OMP/ canonical memory write-ups. OMP SHOT 4 ("find and cover the user's remaining installed AI agents") had written zero bytes when the reboot hit (`ai-token-tracker/` zero diff vs HEAD), so its resume point is HEAD + the SHOT 4 prompt recovered from `cli_files/oh-my-pi/home/agent/history.db`, step 1 (discovery listing) first. Hermes' Chrome/ChatGPT turn is server-side; no local replay. AgentOps packaging stays fenced off from OMP recovery (separate pathspec commits, never `git add -A`).
+- **Alternatives considered:** re-running suites to "confirm" committed work — rejected: commits are hash-pinned and the index-race history proves the risk is in new commits, not old ones; pushing before review — rejected: operator must review 7 ahead-commits first.
+- **Evidence:** read-only audit 2026-10-06 (cline session): EventLog 6008 ~1:07:23pm, boot 1:19:25pm, HEAD 1:07:15pm; `git status`/`git log --all`/mtime scan; `D:\admin\backup\` absent with 4 quarantine `.bdq` 1:18:01-1:18:57pm.
+- **Agents involved:** Cline (auditor).
+
+## 2026-10-06 — PR rebasing to resolve stale CI failures
+
+- **Date:** 2026-10-06
+- **Decision:** Rebase PRs #5, #6, and #7 onto origin/main (9ce33da) to resolve identical CI failures caused by pre-existing test issues fixed in main but absent from the PR base commit (66724b2).
+- **Reason:** All three PRs failed with the same 5 test errors (PermissionError on '/agentops-cli-test' from LogManager mkdir, plus 3 workflow-agent-run assertion errors) that were fixed in main by commit 42ed95c ("test(agentops): fix 2 CLI+3 workflow failures on CI's clean checkout", 2026-10-06). Rebasing each PR's branch onto current main brings in that fix without modifying the PRs' intended changes.
+- **Method:** Each PR branch was checked out into an isolated detached HEAD worktree (`.agentops/worktrees/pr-{5,6,7}-rebase`), fully fetched with `--unshallow` (the clone is shallow and lacks common ancestry for a direct rebase), then rebased onto `origin/main`. All three rebases applied cleanly with no conflicts. Resulting heads were pushed back to GitHub with `--force-with-lease`: PR #6 → c37af9a, PR #7 → 2c87398, PR #5 → 0ed030f.
+- **Verification:** Each rebased branch ran the AgentOps suite from `agentops/` (`python -m unittest discover -s tests`): #6 = 627 tests OK (skipped=4), #7 = 630 tests OK (skipped=4), #5 = 639 tests OK (skipped=4). GitHub Actions for each PR now show the `agentops` tests workflow passing. Diffs verified as still narrowly scoped to each PR's original purpose.
+- **PR-specific verdicts:** #6 merge-approve (minimal registry fix); #7 merge-approve (GUI pagination boundary fix, all 3 methods + 6 regression tests preserved); #5 needs human review of `_dependency_handoff` / `_repair_failed_review` plus a real-agent end-to-end run before merge (per Issue #4, Step 5), then it can close the loop toward Issue #4.
+- **Alternatives considered:** Editing the failing tests inside each PR (rejected — those failures are main's fix, not PR defects, and changing them would hide the real state and risk re-introducing the bug when main advances).
+- **Agents involved:** Cline (this session).
+

@@ -807,30 +807,37 @@
   a fixture leave a dependency the code under test reads in a failing-safe
   default: check the teardown order against what the helper actually consumes.
 
-## 2026-10-06 - A partial measurement re-dates the measurements it did not take
+## 2026-10-06 - Plain `git commit` in the shared tree commits another session's staged files
 
-- **Symptom:** the evidence mechanism recorded one `commit` per document. `generate.py
-  <product>` re-measures one product, keeps the others' records, and writes the *new*
-  HEAD at document level. Staleness compared that single commit against HEAD, so after a
-  partial run it diffed HEAD against itself and reported OK.
-- **Reproduced:** commit a change to `universal-game-agent/training/ppo.py`, run
-  `generate.py agentops`, then `check.py`. Output: `OK: evidence recorded at
-  1cc589cafa11 ... is a clean, reproducible measurement`. UGA's 495 had been measured
-  *before* `ppo.py` changed. No forgery involved - this is what the documented
-  workflow does.
-- **Root cause:** the document is not the unit of measurement, the record is. One
-  document, three measurements, three different commits after a partial run. Anything
-  keyed on the document-level field silently generalises one product's freshness to all
-  of them.
-- **Fix:** every record carries its own commit; staleness is judged per record against
-  its own directory. Same scenario now reports `universal-game-agent: evidence is
-  stale: 1 file(s) under universal-game-agent/ changed after cadb67fe891c`.
-- **Remember:** when one artifact aggregates several independently-produced facts, key
-  every freshness or validity decision on the *smallest* fact, not the container. Also
-  assert the container's identifier is not the one being trusted - here it was still
-  written, still meaningful ("when this file was last written"), and still wrong to
-  check against.
-- Related, same audit: `record["directory"]` was never validated against
-  `record["product"]`, so a record could name a directory that never changes and carry
-  a count describing code nobody looked at. A field that *selects* what gets checked
-  has to be checked too.
+- **Symptom:** `git add <my file> && git commit -m "..."` produced a commit with
+  6 files: mine plus 5 agentops files another session had staged minutes earlier
+  (`9c309dc`). This is the second occurrence (first was split out of `4912a1d`).
+- **Root cause:** the Git index is one per repository, not per session. A commit
+  without a pathspec commits the *entire* index — every file anyone staged —
+  regardless of what the commit message says. The sole-writer convention in
+  `.agents/AGENTS.md` does not prevent this, because the other session staged
+  first and I committed after.
+- **Fix:** `git reset --soft HEAD~1`, `git restore --staged <their paths>`, re-`git add`
+  their paths to restore their staged state, then commit with a pathspec:
+  `git commit -m "..." -- <owned paths>` (pathspec commit takes the working-tree
+  content of the listed paths and ignores the rest of the index). Verified with
+  `git show --stat HEAD` (my file only) and `git status --short` (their files
+  back to `A`).
+- **Remember:** in this repository, before any commit run
+  `git diff --cached --stat` to see what is staged, and always commit as
+  `git commit -m "..." -- <paths you own>`. Never assume the index contains only
+  your work.
+
+## 2026-10-06 - A reboot audit must separate committed-safe from uncommitted-at-risk before anything else
+
+- **Symptom:** "4 agents were working" read as "4 bodies of work may be lost" — but the 7 ahead-commits were hash-pinned and intact, while the real risk sat in unstaged/untracked/index-only state invisible to `git log`.
+- **Root cause:** commit history and working-tree state answer different questions. `git log` proves what survived; only `git status` + `git diff HEAD` + mtime scan + session-DB reads (opencode `opencode.db`, OMP `history.db`, Hermes `state.db`, all opened `mode=ro`) prove what is still in flight. A staged `AD` entry (session doc in index, absent on disk) looks committed until `Test-Path` says otherwise.
+- **Fix:** timeline first (EventLog 6008 vs HEAD timestamp vs file mtimes vs boot time), then per-agent committed/uncommitted split, then resume points. Correction handling: user's SHOT 4 / Hermes-ChatGPT corrections sent the audit back to `history.db` prompt text and `collector_status` rows instead of re-reading commits — the second pass found zero tracker diff, which is itself the finding (interrupted before first write).
+- **Remember:** never label committed work lost; never assume uncommitted work is gone; never infer task completion from ancestor commits when the latest prompt (OMP SHOT 4) postdates them. Quarantine `.bdq` timestamps corroborate AV remediation without executing anything; a missing `D:\admin\backup\` means "no hash possible", not "hash zero".
+### 2026-10-06 — Shallow clones prevent clean rebases; always `--unshallow` first
+
+
+- **Symptom:** Attempting to rebase PR branches (based on 66724b2) onto `origin/main` (9ce33da) in isolated worktrees produced massive "add/add" conflicts across hundreds of files, even though `merge-base --is-ancestor 66724b2..9ce33da` confirmed ancestry.
+- **Root cause:** The repository is cloned shallow (only recent commits). When creating a worktree with `git worktree add --detach <path> <PR-SHA>`, the detached HEAD points to a single commit object with its parent chain severed in the shallow clone. `git rebase origin/main` then finds no common ancestor because the worktree only has that one commit locally.
+- **Solution:** Run `git fetch --unshallow origin` before creating the worktrees, or fetch full history into the main repo so all refs have complete ancestry. After unshallow, the rebases applied cleanly with zero conflicts across all three PRs.
+- **Remember:** `git merge-base --is-ancestor` can succeed in a shallow clone (it uses the remote refs), but a worktree's local HEAD lacks the parent chain. Any rebase/cherry-pick operation in an isolated worktree needs full history. Always `--unshallow` first when working across branches in a shallow repo.
