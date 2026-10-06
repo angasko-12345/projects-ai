@@ -178,3 +178,32 @@ tooling rather than about product code.
 - **Remember:** More than one statement or any single quote inside means a
   script file, not `-c`. And a locked SQLite file is read via copy-then-query,
   never by killing the owner.
+
+### 2026-10-06 - PyInstaller onefile bootloader fails on ACL-restricted directories
+
+- **Symptom:** `AgentOps.exe` (PyInstaller onefile) failed with
+  `[PYI-ERROR] Could not create temporary directory!` when launched from
+  `D:\admin\code\projects\agentops\dist\`, but worked fine from `D:\t` or
+  `C:\tmp\exetest\`. Exit code -1, no `_MEI*` dir created, no log written.
+- **Root cause:** The PyInstaller onefile bootloader tries to create its
+  extraction temp directory *in the current working directory* first
+  (`runtime_tmpdir=None`). The directory `D:\admin\code\projects` (and
+  everything under it, including `dist/`) has restrictive ACLs:
+  `Everyone:(CI)(DENY)(DC)` (denies directory creation) and
+  `Mandatory Label\Low Mandatory Level:(OI)(CI)(NW)` (low integrity, no-write).
+  The bootloader cannot create the temp dir, so extraction fails before any
+  Python code runs.
+- **Path bisection:** Works from `D:\admin`, `D:\admin\code`, `D:\t`,
+  `C:\tmp\exetest\`. Fails from `D:\admin\code\projects` onward. The ACLs
+  are inherited from the parent; `icacls` on `D:\admin\code\projects` vs
+  `D:\admin\code` is the smoking gun.
+- **Fix:** Set `runtime_tmpdir=""` in the PyInstaller `EXE()` spec. An empty
+  string tells the bootloader to use `GetTempPathW()` (the system temp dir)
+  from the start, bypassing the CWD entirely. This is a one-line change in
+  `AgentOps.spec` and requires a rebuild (`python scripts/build_windows_exe.py`).
+- **Remember:** PyInstaller onefile is *not* CWD-independent by default. When
+  a frozen EXE fails to start with "Could not create temporary directory!",
+  check `icacls` on the launch directory before blaming the bundle. The fix
+  is `runtime_tmpdir=""`, not copying the EXE around. The smoke test's
+  workaround (copying to workspace) was a stopgap; the real fix belongs in
+  the spec.
