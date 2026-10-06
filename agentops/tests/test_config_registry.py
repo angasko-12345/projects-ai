@@ -157,6 +157,117 @@ class ConfigAndRegistryTests(unittest.TestCase):
         config = load_config()
         self.assertIn("antigravity", config.role_preferences["review"])
 
+    def test_new_agents_loaded_in_config(self):
+        config = load_config()
+        self.assertIn("omp", config.agents)
+        self.assertIn("kilo", config.agents)
+        self.assertIn("hermes-agent", config.agents)
+        self.assertFalse(config.agents["pi"].enabled)
+        self.assertTrue(config.agents["omp"].enabled)
+        self.assertTrue(config.agents["kilo"].enabled)
+        self.assertTrue(config.agents["hermes-agent"].enabled)
+
+    def test_new_agents_have_correct_roles(self):
+        config = load_config()
+        for name in ("omp", "kilo", "hermes-agent"):
+            agent = config.agents[name]
+            self.assertIn("architecture", agent.roles)
+            self.assertIn("implementation", agent.roles)
+            self.assertIn("debugging", agent.roles)
+            self.assertIn("review", agent.roles)
+
+    def test_new_agents_in_role_preferences(self):
+        config = load_config()
+        for role in ("architecture", "implementation", "debugging", "review"):
+            prefs = config.role_preferences[role]
+            self.assertIn("omp", prefs)
+            self.assertIn("kilo", prefs)
+            self.assertIn("hermes-agent", prefs)
+
+    def test_omp_command_construction(self):
+        from agentops.registry import DetectedAgent
+        from agentops.runner import AgentRunner
+        config = load_config()
+        agent = DetectedAgent(config.agents["omp"], True, "/bin/omp")
+        self.assertEqual(
+            AgentRunner.build_command(agent, "test prompt"),
+            ("/bin/omp", "-p", "test prompt"),
+        )
+
+    def test_kilo_command_construction(self):
+        from agentops.registry import DetectedAgent
+        from agentops.runner import AgentRunner
+        config = load_config()
+        agent = DetectedAgent(config.agents["kilo"], True, "/bin/kilo")
+        self.assertEqual(
+            AgentRunner.build_command(agent, "test prompt"),
+            ("/bin/kilo", "run", "test prompt"),
+        )
+
+    def test_hermes_agent_command_construction(self):
+        from agentops.registry import DetectedAgent
+        from agentops.runner import AgentRunner
+        config = load_config()
+        agent = DetectedAgent(config.agents["hermes-agent"], True, "/bin/hermes-agent")
+        self.assertEqual(
+            AgentRunner.build_command(agent, "test prompt"),
+            ("/bin/hermes-agent", "--query", "test prompt"),
+        )
+
+    @patch("agentops.registry.subprocess.run")
+    @patch("agentops.registry.shutil.which")
+    def test_detects_new_installed_agents(self, which, run):
+        def which_side_effect(command):
+            paths = {
+                "omp": "/home/icy/.local/bin/omp",
+                "kilo": "/home/icy/.local/bin/kilo",
+                "hermes-agent": "/home/icy/.local/bin/hermes-agent",
+            }
+            return paths.get(command)
+        which.side_effect = which_side_effect
+        run.return_value = MagicMock(stdout="1.0.0\n", stderr="", returncode=0)
+        registry = AgentRegistry(load_config())
+        detected = registry.detect()
+        self.assertTrue(detected["omp"].available)
+        self.assertTrue(detected["kilo"].available)
+        self.assertTrue(detected["hermes-agent"].available)
+        self.assertEqual(detected["omp"].executable, "/home/icy/.local/bin/omp")
+        self.assertEqual(detected["kilo"].executable, "/home/icy/.local/bin/kilo")
+        self.assertEqual(detected["hermes-agent"].executable, "/home/icy/.local/bin/hermes-agent")
+
+    @patch("agentops.registry.subprocess.run")
+    @patch("agentops.registry.shutil.which")
+    def test_new_agents_selectable_for_roles(self, which, run):
+        def which_side_effect(command):
+            paths = {
+                "omp": "/home/icy/.local/bin/omp",
+                "kilo": "/home/icy/.local/bin/kilo",
+                "hermes-agent": "/home/icy/.local/bin/hermes-agent",
+                "opencode": "/home/icy/.opencode/bin/opencode",
+            }
+            return paths.get(command)
+        which.side_effect = which_side_effect
+        run.return_value = MagicMock(stdout="1.0.0\n", stderr="", returncode=0)
+        registry = AgentRegistry(load_config())
+        for role in ("architecture", "implementation", "debugging", "review"):
+            selected = registry.select(role)
+            self.assertIsNotNone(selected)
+            self.assertIn(selected.config.name, ("opencode", "omp", "kilo", "hermes-agent"))
+
+    @patch("agentops.registry.subprocess.run")
+    @patch("agentops.registry.shutil.which")
+    def test_disabled_pi_never_selected(self, which, run):
+        which.side_effect = lambda command: f"/bin/{command}"
+        run.return_value = MagicMock(stdout="1.0.0\n", stderr="", returncode=0)
+        registry = AgentRegistry(load_config())
+        detected = registry.detect()
+        self.assertFalse(detected["pi"].available)
+        self.assertIsNone(detected["pi"].executable)
+        for role in ("architecture", "implementation", "debugging", "review"):
+            selected = registry.select(role)
+            if selected is not None:
+                self.assertNotEqual(selected.config.name, "pi")
+
     @patch("agentops.registry.subprocess.run")
     @patch("agentops.registry.shutil.which")
     def test_antigravity_is_selectable_for_review(self, which, run):

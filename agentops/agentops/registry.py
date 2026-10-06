@@ -113,7 +113,7 @@ class AgentRegistry:
         command = tuple(item.replace("{command}", executable) for item in command)
         kwargs: dict[str, object] = {
             "capture_output": True, "text": True, "encoding": "utf-8",
-            "errors": "replace", "timeout": 5, "check": False,
+            "errors": "replace", "timeout": 15, "check": False,
         }
         if sys.platform == "win32":
             kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
