@@ -678,7 +678,8 @@ class AgentOpsController:
         try:
             total = state.count_agent_runs()
             start = max(0, total - limit - offset)
-            rows = state.list_agent_runs(limit=limit, offset=start)
+            read_limit = min(limit, max(0, total - offset))
+            rows = state.list_agent_runs(limit=read_limit, offset=start)
             rows.reverse()
             return [serialize_agent_run(run) for run in rows]
         finally:
@@ -727,7 +728,8 @@ class AgentOpsController:
         try:
             total = state.count_verification_runs()
             start = max(0, total - limit - offset)
-            rows = state.list_verification_runs(limit=limit, offset=start)
+            read_limit = min(limit, max(0, total - offset))
+            rows = state.list_verification_runs(limit=read_limit, offset=start)
             rows.reverse()
             return [serialize_verification_run(run) for run in rows]
         finally:
@@ -783,7 +785,8 @@ class AgentOpsController:
         try:
             total = state.count_failures()
             start = max(0, total - limit - offset)
-            rows = state.list_failures(limit=limit, offset=start)
+            read_limit = min(limit, max(0, total - offset))
+            rows = state.list_failures(limit=read_limit, offset=start)
             rows.reverse()
             return [serialize_failure(failure) for failure in rows]
         finally:

@@ -8,12 +8,14 @@ from unittest.mock import MagicMock, patch
 
 from agentops.agent_run import AgentRunContext, AgentRunOutcome, AgentRunStatus
 from agentops.config import AgentConfig, AppConfig
+from agentops.failure import Failure, FailureCategory, FailureSeverity, FailureSource, RecoveryState, RepairAction
 from agentops.gui_controller import AgentOpsController
 from agentops.logging import LogManager
 from agentops.registry import DetectedAgent
 from agentops.runner import AgentRunner, OperationCancelled
 from agentops.state import StateStore
 from agentops.tasks import Task, TaskStatus
+from agentops.verification_model import VerificationProfile, VerificationProfileMode, VerificationRunStatus, VerificationReportStatus
 from agentops.workflow import WorkflowEngine
 
 
@@ -189,4 +191,115 @@ class RecentRunsPaginationTests(unittest.TestCase):
                 state.close()
 
             page = controller.list_recent_agent_runs(root, limit=3, offset=5)
+            self.assertEqual(page, [])
+
+    def test_list_recent_verification_runs_does_not_overflow_past_end(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            controller = AgentOpsController(
+                config=AppConfig({}, {}, (), max_attempts=1, concurrency=1))
+            state = StateStore(controller._state_path(root))
+            try:
+                workflow_id = state.create_workflow("pagination workflow")
+                task = state.add_task(Task("work", "implementation",
+                                            workflow_id, max_attempts=1))
+                profile = VerificationProfile(
+                    name="unit", mode=VerificationProfileMode.FAIL_FAST,
+                    concurrency=1, default_timeout_seconds=30, checks=())
+                runs = [
+                    state.create_verification_run(workflow_id, task.id, profile)
+                    for _ in range(5)
+                ]
+                for run in runs:
+                    state.finish_verification_run(
+                        run.id, VerificationRunStatus.COMPLETED,
+                        VerificationReportStatus.PASSED,
+                        0, 0, 0, 0, 0, 0.0)
+            finally:
+                state.close()
+
+            page = controller.list_recent_verification_runs(root, limit=3, offset=3)
+            self.assertEqual(len(page), 2)
+            self.assertEqual(page[0]["id"], runs[3].id)
+            self.assertEqual(page[1]["id"], runs[2].id)
+
+    def test_list_recent_verification_runs_returns_empty_when_offset_exceeds_total(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            controller = AgentOpsController(
+                config=AppConfig({}, {}, (), max_attempts=1, concurrency=1))
+            state = StateStore(controller._state_path(root))
+            try:
+                workflow_id = state.create_workflow("pagination workflow")
+                task = state.add_task(Task("work", "implementation",
+                                            workflow_id, max_attempts=1))
+                profile = VerificationProfile(
+                    name="unit", mode=VerificationProfileMode.FAIL_FAST,
+                    concurrency=1, default_timeout_seconds=30, checks=())
+                for _ in range(5):
+                    run = state.create_verification_run(workflow_id, task.id, profile)
+                    state.finish_verification_run(
+                        run.id, VerificationRunStatus.COMPLETED,
+                        VerificationReportStatus.PASSED,
+                        0, 0, 0, 0, 0, 0.0)
+            finally:
+                state.close()
+
+            page = controller.list_recent_verification_runs(root, limit=3, offset=5)
+            self.assertEqual(page, [])
+
+    def test_list_recent_failures_does_not_overflow_past_end(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            controller = AgentOpsController(
+                config=AppConfig({}, {}, (), max_attempts=1, concurrency=1))
+            state = StateStore(controller._state_path(root))
+            try:
+                workflow_id = state.create_workflow("pagination workflow")
+                task = state.add_task(Task("work", "implementation",
+                                            workflow_id, max_attempts=1))
+                failures = [
+                    state.create_failure(Failure(
+                        id=f"failure-{index}", workflow_id=workflow_id, task_id=task.id,
+                        agent_run_id=None, source=FailureSource.AGENT,
+                        category=FailureCategory.AGENT_ERROR,
+                        severity=FailureSeverity.HIGH,
+                        retryable=True, repairable=True, evidence=f"boom {index}",
+                        recommended_action=RepairAction.RETRY_SAME_AGENT,
+                        recovery_state=RecoveryState.INTERRUPTED_AGENT_EXECUTION,
+                    ))
+                    for index in range(5)
+                ]
+            finally:
+                state.close()
+
+            page = controller.list_recent_failures(root, limit=3, offset=3)
+            self.assertEqual(len(page), 2)
+            self.assertEqual(page[0]["id"], "failure-3")
+            self.assertEqual(page[1]["id"], "failure-2")
+
+    def test_list_recent_failures_returns_empty_when_offset_exceeds_total(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            controller = AgentOpsController(
+                config=AppConfig({}, {}, (), max_attempts=1, concurrency=1))
+            state = StateStore(controller._state_path(root))
+            try:
+                workflow_id = state.create_workflow("pagination workflow")
+                task = state.add_task(Task("work", "implementation",
+                                            workflow_id, max_attempts=1))
+                for index in range(5):
+                    state.create_failure(Failure(
+                        id=f"failure-{index}", workflow_id=workflow_id, task_id=task.id,
+                        agent_run_id=None, source=FailureSource.AGENT,
+                        category=FailureCategory.AGENT_ERROR,
+                        severity=FailureSeverity.HIGH,
+                        retryable=True, repairable=True, evidence=f"boom {index}",
+                        recommended_action=RepairAction.RETRY_SAME_AGENT,
+                        recovery_state=RecoveryState.INTERRUPTED_AGENT_EXECUTION,
+                    ))
+            finally:
+                state.close()
+
+            page = controller.list_recent_failures(root, limit=3, offset=5)
             self.assertEqual(page, [])
