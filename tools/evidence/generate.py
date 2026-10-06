@@ -56,7 +56,7 @@ def make_clean_clone(commit: str) -> Path:
     return clone
 
 
-def run_product(entry: dict, root: Path, timeout: int) -> dict:
+def run_product(entry: dict, root: Path, commit: str, timeout: int) -> dict:
     directory = root / entry["directory"]
     if not directory.is_dir():
         raise SystemExit(f"{entry['product']}: {entry['directory']} does not exist")
@@ -69,6 +69,7 @@ def run_product(entry: dict, root: Path, timeout: int) -> dict:
     except subprocess.TimeoutExpired:
         return {
             "product": entry["product"], "directory": entry["directory"],
+            "commit": commit,
             "command": argv, "total": 0, "skipped": 0, "failures": 0, "errors": 0,
             "result": "fail", "duration_seconds": None,
             "note": f"the run exceeded {timeout}s and was killed; an interrupted run "
@@ -79,6 +80,7 @@ def run_product(entry: dict, root: Path, timeout: int) -> dict:
     record = {
         "product": entry["product"],
         "directory": entry["directory"],
+        "commit": commit,
         "command": argv,
         "dirty_paths": _porcelain(entry["directory"], root),
     }
@@ -106,6 +108,10 @@ def build_document(records: list[dict], commit: str, root_kind: str) -> dict:
     return {
         "schema_version": SCHEMA_VERSION,
         "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        # The commit this file was last written at. Staleness is decided per
+        # record, against each record's own `commit`, because a partial run
+        # re-dates this field while leaving the unmeasured products' records
+        # carrying their earlier measurements.
         "commit": commit,
         "python": sys.version.split()[0],
         "platform": f"{platform.system()} {platform.release()} ({platform.machine()})",
@@ -150,7 +156,7 @@ def main(argv: list[str] | None = None) -> int:
         for entry in selected:
             print(f"running {entry['product']} ({entry['directory']}) in {root_kind} ...",
                   flush=True)
-            record = run_product(entry, root, args.timeout)
+            record = run_product(entry, root, commit, args.timeout)
             records.append(record)
             print(f"  {record['result']}: {record['total']} tests, "
                   f"{record['skipped']} skipped, {record['failures']} failures, "
@@ -159,8 +165,10 @@ def main(argv: list[str] | None = None) -> int:
         if clone is not None:
             shutil.rmtree(clone.parent, ignore_errors=True)
 
-    # Keep records for products that were not re-measured, so a partial run
-    # does not silently drop a product from the source of truth.
+    # Keep records for products that were not re-measured, so a partial run does
+    # not silently drop a product from the source of truth. Each carried-over
+    # record keeps its own `commit`, which is what lets `check.py` notice that it
+    # describes an older commit than the document does.
     existing: dict[str, dict] = {}
     if args.output.exists():
         try:
@@ -178,7 +186,11 @@ def main(argv: list[str] | None = None) -> int:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
         json.dumps(document, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    print(f"wrote {args.output.relative_to(REPO_ROOT)}")
+    try:
+        shown_path = args.output.relative_to(REPO_ROOT)
+    except ValueError:
+        shown_path = args.output
+    print(f"wrote {shown_path}")
 
     failed = [r["product"] for r in merged if r["result"] != "pass"]
     if failed:

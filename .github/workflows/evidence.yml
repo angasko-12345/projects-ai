@@ -19,6 +19,13 @@ on:
       - "agentops/AGENTS.md"
       - "universal-game-agent/AGENTS.md"
       - "small-projects/mini-llm/AGENTS.md"
+      # A product commit is what makes evidence stale, so it is what must run
+      # the checker. Without these three lines a stale-evidence commit sails
+      # through on the strength of the per-product workflows, which never look
+      # at the evidence file.
+      - "agentops/**"
+      - "universal-game-agent/**"
+      - "small-projects/mini-llm/**"
       - ".github/workflows/evidence.yml"
   pull_request:
     paths:
@@ -30,6 +37,9 @@ on:
       - "agentops/AGENTS.md"
       - "universal-game-agent/AGENTS.md"
       - "small-projects/mini-llm/AGENTS.md"
+      - "agentops/**"
+      - "universal-game-agent/**"
+      - "small-projects/mini-llm/**"
       - ".github/workflows/evidence.yml"
 
 jobs:

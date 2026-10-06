@@ -33,18 +33,32 @@ covered by non-Tk test classes, which run in CI.
 each product's measured result: product, command, test count, skipped count,
 failures, errors, pass or fail, the UTC time of the run, the commit that was
 measured, the interpreter and platform, and whether the working tree was clean.
+Each record carries its own commit, so re-measuring one product cannot re-date
+the others.
 
 - Regenerate: `python tools/evidence/generate.py`. By default each suite runs in
   a throwaway clone of the current commit, so the recorded result describes
   committed code rather than whatever is lying in the working tree. `--in-place`
   measures the working tree and records the dirty paths.
 - Verify: `python tools/evidence/check.py`. It fails when the file is malformed,
-  when a file under a measured product changed after the recorded commit, when
-  the run was made in a dirty tree, or when an instruction file restates a test
-  count instead of pointing at the evidence file.
+  when a file under a measured product changed after that product's recorded
+  commit, when the run was made in a dirty tree, or when an instruction file
+  restates a test count instead of pointing at the evidence file.
 - The checker is tested by `python -m unittest discover -s tools/evidence -t
   tools/evidence -p "test_*.py"`, which includes corruption tests that break a
   recorded value and assert the checker notices.
+
+### What this does not defend against
+
+A commit that changes product code *and* edits `verification.json` to match --
+with the counts and the recorded summary lines changed together -- passes. Nothing
+inside a file can distinguish that from a measurement; closing it would need the
+suites re-run in this workflow or a signature, and this job deliberately does
+neither. What does hold is that the forgery expires at the next product commit.
+
+`evidence.yml` triggers on the measured product directories as well as on the
+evidence and instruction files: a product commit is what makes evidence stale, so
+it is what must run the checker.
 
 `evidence.yml` runs the checker and its tests, but not a fourth copy of the
 three suites: those numbers would be a fifth place a count could live.

@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-10-06T04:02:51+00:00",
-  "commit": "42ed95cc9bdb8bed31c02ee04ac8be2fc24c1695",
+  "generated_at": "2026-10-06T05:02:01+00:00",
+  "commit": "4912a1deb5013e48c11f7542b482a6fbffd224ea",
   "python": "3.14.7",
   "platform": "Windows 11 (AMD64)",
-  "measured_in": "a clean clone of 42ed95cc9bdb",
+  "measured_in": "a clean clone of 4912a1deb501",
   "clean_checkout": true,
   "command_note": "Every command runs from its own product directory with the interpreter that ran this script. There is no repository-wide test command and these products share no dependencies.",
   "excluded": {
@@ -15,6 +15,7 @@
     {
       "product": "agentops",
       "directory": "agentops",
+      "commit": "4912a1deb5013e48c11f7542b482a6fbffd224ea",
       "command": [
         "C:\\Python314\\python.exe",
         "-m",
@@ -25,12 +26,12 @@
       ],
       "dirty_paths": [],
       "total": 624,
-      "duration_seconds": 95.371,
+      "duration_seconds": 107.417,
       "skipped": 4,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 624 tests in 95.371s",
+        "Ran 624 tests in 107.417s",
         "OK (skipped=4)"
       ],
       "result": "pass"
@@ -38,6 +39,7 @@
     {
       "product": "universal-game-agent",
       "directory": "universal-game-agent",
+      "commit": "4912a1deb5013e48c11f7542b482a6fbffd224ea",
       "command": [
         "C:\\Python314\\python.exe",
         "-m",
@@ -48,12 +50,12 @@
       ],
       "dirty_paths": [],
       "total": 495,
-      "duration_seconds": 31.921,
+      "duration_seconds": 47.43,
       "skipped": 1,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 495 tests in 31.921s",
+        "Ran 495 tests in 47.430s",
         "OK (skipped=1)"
       ],
       "result": "pass"
@@ -61,6 +63,7 @@
     {
       "product": "small-projects/mini-llm",
       "directory": "small-projects/mini-llm",
+      "commit": "4912a1deb5013e48c11f7542b482a6fbffd224ea",
       "command": [
         "C:\\Python314\\python.exe",
         "-m",
@@ -71,12 +74,12 @@
       ],
       "dirty_paths": [],
       "total": 146,
-      "duration_seconds": 25.546,
+      "duration_seconds": 34.118,
       "skipped": 1,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 146 tests in 25.546s",
+        "Ran 146 tests in 34.118s",
         "OK (skipped=1)"
       ],
       "result": "pass"

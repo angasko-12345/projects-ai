@@ -62,10 +62,12 @@ The current, measured result for each product is recorded in
 `.agents/evidence/verification.json` — product, command, test count, skipped
 count, failures and errors, pass or fail, the UTC time of the run, the commit
 that was measured, the interpreter and platform, and whether the working tree
-was clean at the time. Nothing else in this repository may quote a test count as
-current: an instruction file that carries its own number is a claim that will
-outlive the evidence behind it, and this repository already had several such
-claims disagreeing with each other and with reality.
+was clean at the time. Each product's record carries **its own** commit, so
+re-measuring one product cannot re-date the others. Nothing else in this
+repository may quote a test count as current: an instruction file that carries
+its own number is a claim that will outlive the evidence behind it, and this
+repository already had several such claims disagreeing with each other and with
+reality.
 
 - Regenerate from an actual run: `python tools/evidence/generate.py` (add a
   product name to measure one).

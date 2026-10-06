@@ -40,6 +40,7 @@ TEMPLATE = {
         {
             "product": entry["product"],
             "directory": entry["directory"],
+            "commit": "0" * 40,
             "command": ["python", *entry["command"]],
             "total": 100,
             "skipped": 1,
@@ -173,41 +174,130 @@ class SchemaTests(unittest.TestCase):
 
 
 class StalenessTests(unittest.TestCase):
-    def test_evidence_at_head_is_current(self):
-        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(REPO_ROOT),
-                              capture_output=True, text=True, check=True).stdout.strip()
+    """Judged per record, against the commit that record was measured at."""
+
+    @staticmethod
+    def _head() -> str:
+        return subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(REPO_ROOT),
+                              capture_output=True, text=True,
+                              check=True).stdout.strip()
+
+    @staticmethod
+    def _at(record: dict, commit: str) -> dict:
+        record["commit"] = commit
+        return record
+
+    def _document_at(self, commit: str) -> dict:
         document = good_document()
-        document["commit"] = head
-        self.assertEqual(check_staleness(document), [])
+        document["commit"] = commit
+        for record in document["products"]:
+            record["commit"] = commit
+        return document
+
+    def test_evidence_at_head_is_current(self):
+        self.assertEqual(check_staleness(self._document_at(self._head())), [])
 
     def test_unresolvable_commit_is_rejected(self):
-        document = good_document()
-        document["commit"] = "f" * 40
-        self.assertTrue(any("cannot resolve" in p
-                            for p in check_staleness(document)))
+        document = self._document_at(self._head())
+        self._at(document["products"][0], "f" * 40)
+        self.assertTrue(any("cannot resolve" in p for p in check_staleness(document)))
 
     def test_dirty_generation_is_rejected(self):
-        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(REPO_ROOT),
-                              capture_output=True, text=True, check=True).stdout.strip()
-        document = good_document()
-        document["commit"] = head
+        document = self._document_at(self._head())
         document["clean_checkout"] = False
-        self.assertTrue(any("dirty working tree" in p
-                            for p in check_staleness(document)))
+        self.assertTrue(any("dirty working tree" in p for p in check_staleness(document)))
 
     def test_product_change_after_the_measurement_is_stale(self):
-        # A commit that only touches documentation must NOT invalidate evidence,
-        # so build the two cases from real history: HEAD itself, and a synthetic
-        # document claiming a measurement at an older commit that did touch a
-        # product.
         commits = subprocess.run(
             ["git", "log", "--format=%H", "--", "agentops"], cwd=str(REPO_ROOT),
             capture_output=True, text=True, check=True).stdout.split()
         self.assertGreater(len(commits), 1, "expected product history to compare")
-        document = good_document()
-        document["commit"] = commits[-1]
-        problems = check_staleness(document)
+        problems = check_staleness(self._document_at(commits[-1]))
         self.assertTrue(any("stale" in p for p in problems), problems)
+
+    @staticmethod
+    def _commits_touching(paths: list[str]) -> list[str]:
+        command = ["git", "log", "--format=%H"]
+        for path in paths:
+            command += ["--", path]
+        return subprocess.run(command, cwd=str(REPO_ROOT), capture_output=True,
+                              text=True, check=True).stdout.split()
+
+    @classmethod
+    def _older_commit_touching(cls, paths: list[str]) -> str | None:
+        """The most recent commit touching `paths` that is not HEAD.
+
+        The staleness rule compares that commit to HEAD, so the candidate has to
+        be one where HEAD differs only in ways the test cares about; each test
+        picks its own path set for that reason.
+        """
+        head = cls._head()
+        for commit in cls._commits_touching(paths):
+            if commit != head:
+                return commit
+        return None
+
+    def test_documentation_only_change_does_not_invalidate(self):
+        """The point of per-product judgement: docs commits must stay cheap."""
+        older = self._older_commit_touching([".agents/"])
+        if older is None:
+            self.skipTest("no .agents/ commit other than HEAD to compare")
+        problems = check_staleness(self._document_at(older))
+        self.assertEqual([p for p in problems if p.startswith("agentops:")], [],
+                         problems)
+
+    def test_an_excluded_product_is_never_named_as_stale(self):
+        """tiktok-slop-factory is excluded from measurement, so its changes can
+        neither invalidate measured evidence nor appear in a staleness report.
+
+        Asserted across real history rather than a synthetic commit: for every
+        ancestor of HEAD, the only paths a staleness report may name are under a
+        measured product's own directory.
+        """
+        directories = [entry["directory"] for entry in PRODUCTS]
+        head = self._head()
+        checked = 0
+        for commit in self._commits_touching(["tiktok-slop-factory"]):
+            if commit == head:
+                continue
+            for problem in check_staleness(self._document_at(commit)):
+                self.assertTrue(
+                    any(directory in problem for directory in directories),
+                    f"stale report named a path outside the measured products: "
+                    f"{problem}")
+            checked += 1
+        if not checked:
+            self.skipTest("no tiktok-slop-factory history to compare")
+
+    def test_a_partial_regeneration_cannot_date_stale_records_as_current(self):
+        """`generate.py <product>` re-dates the document but carries the other
+        products' records over. Judging per record is what catches that: the
+        carried-over record still names the older commit, and the diff over its
+        own directory finds the change."""
+        product = next(r for r in PRODUCTS if r["product"] == "universal-game-agent")
+        commits = subprocess.run(
+            ["git", "log", "--format=%H", "--", product["directory"]],
+            cwd=str(REPO_ROOT), capture_output=True, text=True,
+            check=True).stdout.split()
+        self.assertGreater(len(commits), 1, "expected product history to compare")
+
+        head = self._head()
+        document = self._document_at(head)
+        # Only agentops was re-measured; UGA's record is carried over from before
+        # a commit that touched universal-game-agent/.
+        for record in document["products"]:
+            if record["product"] == "universal-game-agent":
+                record["commit"] = commits[-1]
+        problems = check_staleness(document)
+        self.assertTrue(any("universal-game-agent" in p and "stale" in p
+                            for p in problems), problems)
+        self.assertFalse(any(p.startswith("agentops") for p in problems), problems)
+
+    def test_a_record_cannot_claim_a_directory_it_does_not_own(self):
+        document = good_document()
+        document["products"][0]["directory"] = "docs"
+        self.assertTrue(any("but this product's suite runs from" in p
+                            for p in check_schema(document)))
 
 
 class DocumentClaimTests(unittest.TestCase):
@@ -267,10 +357,10 @@ class EndToEndTests(unittest.TestCase):
         completed = self._run()
         self.assertEqual(completed.returncode, 0, completed.stderr)
 
-    def test_deliberately_corrupted_count_fails(self):
-        # The negative test performed by hand, kept here so it cannot rot:
-        # edit one recorded number, leave the runner summary it came from, and
-        # require the checker to name the disagreement.
+    def test_a_count_that_contradicts_the_runner_summary_fails(self):
+        # The negative test performed by hand, kept here so it cannot rot: edit
+        # one recorded number, leave the runner summary it came from, and require
+        # the checker to name the disagreement.
         document = self._recorded()
         before = document["products"][0]["total"]
         document["products"][0]["total"] = 999
@@ -280,7 +370,7 @@ class EndToEndTests(unittest.TestCase):
             f"total is recorded as 999 but the recorded runner summary says {before}",
             completed.stderr)
 
-    def test_deliberately_corrupted_count_fails(self):
+    def test_a_zero_total_fails(self):
         document = self._recorded()
         document["products"][0]["total"] = 0
         completed = self._run_corrupted(document)
@@ -296,10 +386,18 @@ class EndToEndTests(unittest.TestCase):
 
     def test_deliberately_corrupted_commit_fails(self):
         document = self._recorded()
-        document["commit"] = "0" * 40
+        for record in document["products"]:
+            record["commit"] = "0" * 40
         completed = self._run_corrupted(document)
         self.assertEqual(completed.returncode, 1)
         self.assertIn("cannot resolve", completed.stderr)
+
+    def test_a_record_claiming_the_wrong_directory_fails(self):
+        document = self._recorded()
+        document["products"][0]["directory"] = "docs"
+        completed = self._run_corrupted(document)
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn("but this product's suite runs from", completed.stderr)
 
     def test_a_contradictory_pass_is_rejected(self):
         document = self._recorded()

@@ -13,7 +13,6 @@ Two entry points use this module:
 
 from __future__ import annotations
 
-import json
 import re
 import subprocess
 from pathlib import Path
@@ -85,6 +84,7 @@ COUNT_CLAIM = re.compile(r"\b\d{1,4}\s+(?:tests?\b|run\b|skips?\b)", re.IGNORECA
 REQUIRED_RECORD_FIELDS = (
     "product",
     "directory",
+    "commit",
     "command",
     "total",
     "skipped",
@@ -166,10 +166,6 @@ def git(*args: str, cwd: Path | None = None) -> str:
     return completed.stdout.strip()
 
 
-def load(path: Path = EVIDENCE_PATH) -> dict:
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
 def check_schema(document: object) -> list[str]:
     """Shape and internal arithmetic of the evidence file itself."""
     problems: list[str] = []
@@ -201,6 +197,7 @@ def check_schema(document: object) -> list[str]:
         return problems
 
     seen: set[str] = set()
+    known = {entry["product"]: entry for entry in PRODUCTS}
     for index, record in enumerate(records):
         label = f"products[{index}]"
         if not isinstance(record, dict):
@@ -215,6 +212,17 @@ def check_schema(document: object) -> list[str]:
         if label in seen:
             problems.append(f"{label} is recorded more than once")
         seen.add(label)
+        # The directory a record claims to have measured is what staleness is
+        # judged against, so it must be the one this product actually owns.
+        # Without this, a record can name a directory that never changes and
+        # carry a count that describes code nobody looked at.
+        if label in known and record["directory"] != known[label]["directory"]:
+            problems.append(
+                f"{label}: directory is {record['directory']!r}, but this product's "
+                f"suite runs from {known[label]['directory']!r}")
+        if not re.fullmatch(r"[0-9a-f]{40}", str(record["commit"])):
+            problems.append(f"{label}: commit {record['commit']!r} is not a full "
+                            "40-character SHA")
         for field in ("total", "skipped", "failures", "errors"):
             if not isinstance(record[field], int) or isinstance(record[field], bool) or record[field] < 0:
                 problems.append(f"{label}: {field} must be a non-negative integer, "
@@ -255,7 +263,7 @@ def check_schema(document: object) -> list[str]:
                             f"the recorded runner summary says {derived[field]!r} "
                             f"({recorded!r})")
 
-    expected = {entry["product"] for entry in PRODUCTS}
+    expected = set(known)
     recorded = seen
     for missing in sorted(expected - recorded):
         problems.append(f"{missing} has no evidence record")
@@ -265,40 +273,52 @@ def check_schema(document: object) -> list[str]:
 
 
 def check_staleness(document: dict, repo_root: Path = REPO_ROOT) -> list[str]:
-    """Is this evidence still a statement about the code in front of us?
+    """Is each recorded result still a statement about the code in front of us?
 
-    Staleness is judged on what the measurement covers, not on whether HEAD
-    still equals the recorded commit: a documentation commit does not
-    invalidate a test run, a commit touching a measured product does.
+    Judged per record, against the commit that record was measured at: a
+    documentation commit does not invalidate a test run, a commit touching that
+    product's directory does. Per-record rather than per-document because a
+    partial `generate.py <product>` re-dates the whole file while the products it
+    did not re-measure keep their earlier measurements -- a document-level check
+    would call those current.
     """
     problems: list[str] = []
-    commit = document["commit"]
     try:
         head = git("rev-parse", "HEAD", cwd=repo_root)
-        git("cat-file", "-e", f"{commit}^{{commit}}", cwd=repo_root)
     except RuntimeError as error:
-        return [f"cannot resolve the recorded commit {commit}: {error}"]
+        return [f"cannot resolve HEAD: {error}"]
 
-    if head != commit:
+    for record in document["products"]:
+        label = record["product"]
+        commit = record["commit"]
+        try:
+            git("cat-file", "-e", f"{commit}^{{commit}}", cwd=repo_root)
+        except RuntimeError as error:
+            problems.append(f"{label}: cannot resolve the recorded commit "
+                            f"{commit}: {error}")
+            continue
+        if head == commit:
+            continue
         try:
             git("merge-base", "--is-ancestor", commit, head, cwd=repo_root)
         except RuntimeError:
-            return [
-                f"evidence was recorded at {commit[:12]}, which is not an ancestor "
-                f"of HEAD {head[:12]}; the history it described is gone"
-            ]
+            problems.append(
+                f"{label}: evidence was measured at {commit[:12]}, which is not an "
+                f"ancestor of HEAD {head[:12]}; the history it described is gone")
+            continue
+        directory = record["directory"]
         changed = git("diff", "--name-only", f"{commit}..{head}", cwd=repo_root)
-        touched = sorted({
+        touched = sorted(
             line for line in changed.splitlines()
-            if any(line == entry["directory"] or line.startswith(entry["directory"] + "/")
-                   for entry in PRODUCTS)
-        })
+            if line == directory or line.startswith(directory + "/")
+        )
         if touched:
             shown = ", ".join(touched[:5])
             more = f" (+{len(touched) - 5} more)" if len(touched) > 5 else ""
             problems.append(
-                f"evidence is stale: {len(touched)} file(s) under a measured product "
-                f"changed after {commit[:12]} ({shown}{more}). Regenerate."
+                f"{label}: evidence is stale: {len(touched)} file(s) under "
+                f"{directory}/ changed after {commit[:12]} ({shown}{more}). "
+                f"Regenerate with `python tools/evidence/generate.py {label}`."
             )
 
     if document["clean_checkout"] is not True:
