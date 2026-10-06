@@ -42,24 +42,44 @@ Before substantial work:
 
 There is no single repository-wide test command. Each product has its own, and each runs
 from its own directory rather than from the repository root. Read the local
-`AGENTS.md` before running anything. The baselines below are the current verified values
-as of 2026-10-04 (`agentops/` after the desktop application interactions work,
-`universal-game-agent/` after `59f5a1b`, `mini-llm/` after checkpoint consistency validation);
-they are dated observations, not contracts, and tests
-get added, so run the suite for current truth.
+`AGENTS.md` before running anything.
 
-| Product | Test command | Baseline |
-|---|---|---|
-| `agentops/` | `cd agentops` then `python -m unittest discover -s tests` | 512 tests, 4 skipped by environment, OK (2026-10-04) |
-| `universal-game-agent/` | `cd universal-game-agent` then `python -m unittest discover -s tests` | 369 tests, 1 skip, OK (2026-10-05) |
-| `small-projects/mini-llm/` | `cd small-projects/mini-llm` then `python -m unittest discover -s tests` | 142 run, 1 skip, OK (2026-10-05; supersedes 115 run from 2026-10-10, +6 checkpoint consistency/resume/shape tests, +21 checkpoint metadata tests) |
+| Product | Test command |
+|---|---|
+| `agentops/` | `cd agentops` then `python -m unittest discover -s tests` |
+| `universal-game-agent/` | `cd universal-game-agent` then `python -m unittest discover -s tests` |
+| `small-projects/mini-llm/` | `cd small-projects/mini-llm` then `python -m unittest discover -s tests` |
 
-Treat any new failure or skip as attributable to the current work until proven otherwise,
-and do not rely on remembered counts — run the suite. An empty, interrupted, all-skipped,
-or unknown run is never a pass. Do not invent lint, formatter, type-check, or coverage
-commands; no product configures one.
+Treat any new failure or skip as attributable to the current work until proven otherwise.
+An empty, interrupted, all-skipped, or unknown run is never a pass. Do not invent lint,
+formatter, type-check, or coverage commands; no product configures one.
 
 CLI entry points are also per-product and are documented in the local files.
+
+### Verification evidence: the only place a test count lives
+
+The current, measured result for each product is recorded in
+`.agents/evidence/verification.json` — product, command, test count, skipped
+count, failures and errors, pass or fail, the UTC time of the run, the commit
+that was measured, the interpreter and platform, and whether the working tree
+was clean at the time. Nothing else in this repository may quote a test count as
+current: an instruction file that carries its own number is a claim that will
+outlive the evidence behind it, and this repository already had several such
+claims disagreeing with each other and with reality.
+
+- Regenerate from an actual run: `python tools/evidence/generate.py` (add a
+  product name to measure one).
+- Verify what is recorded is still true: `python tools/evidence/check.py`. It
+  fails when the evidence is malformed, when a file under a measured product
+  changed after the recorded commit, when the run was made in a dirty tree, or
+  when an instruction file restates a count.
+- The checker is itself tested, including a corruption test that breaks a
+  recorded value and asserts the checker notices:
+  `python -m unittest discover -s tools/evidence -t tools/evidence`.
+
+A green suite is a measurement, not a fact. Before citing a number, run the
+suite or read the evidence file; never copy a number out of a memory file, a
+commit message, or another session's report.
 
 ## Non-negotiable conventions
 

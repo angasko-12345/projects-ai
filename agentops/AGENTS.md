@@ -23,17 +23,19 @@ cd agentops
 python -m unittest discover -s tests
 ```
 
-- 21 test modules, all `unittest.TestCase`. `pytest` may be used for convenience but is
-  not the source of truth and is not configured in the repository.
+- Every module under `tests/` is a `unittest.TestCase` module. `pytest` may be used for
+  convenience but is not the source of truth and is not configured in the repository.
 - GUI widget tests run on the Qt offscreen platform (`tests/qt_display.py`), so headless
   Linux CI and a developer machine behave identically; those classes are marked
   `@requires_qt` and are skipped only when the optional PySide6 dependency is
   absent. Production GUI code never pretends a display exists. Controller-level
   GUI logic lives in non-Qt test classes and runs everywhere.
-- The current baseline (verified 2026-10-04) is **512 tests, 4 skipped
-  by environment, OK**. That is a dated observation, not a contract. Treat any new failure
-  or skip as attributable to the current work until proven otherwise. Do not rely on
-  remembered counts; run the suite.
+- The current measured result for this product lives in
+  `.agents/evidence/verification.json` (`product: "agentops"`), not in this file.
+  Regenerate it with `python tools/evidence/generate.py agentops` from the
+  repository root and check it with `python tools/evidence/check.py`. Treat any new
+  failure or skip as attributable to the current work until proven otherwise. Do not
+  rely on remembered counts; run the suite.
 - **Bug state: no ACTIVE canonical roots.** The authoritative per-root status list is
   `.agents/memory/opencode/bugfinding/master-bug-synthesis.md` §0 — read a root's status
   there before acting on any bug, and take unfinished work from `.agents/pending_tasks.md`.

@@ -16,14 +16,10 @@
 | Phases 6-10 | See Track B | Restructured into Track B. B7 DONE. B6/B8/B9/B10 NOT STARTED. The old "Phases 6-10 PROPOSED" line is superseded |
 | Version | 0.1.3, exe rebuilt | `dist/AgentOps.exe` |
 
-**Test baselines (each product's own command, from its own directory), verified 2026-10-02
-after `dae1415` (agentops and UGA rows re-verified 2026-10-03, after DBG-08 and `59f5a1b` respectively):**
-
-| Product | Result |
-|---|---|
-| `agentops/` | 444 tests, 4 environment skips, OK (2026-10-03; 443 at the 2026-10-02 verification) |
-| `universal-game-agent/` | 318 tests, 1 skip, OK (2026-10-03; 317 at the 2026-10-02 verification) |
-| `small-projects/mini-llm/` | 98 run, 1 skip, OK (2026-10-04; the 96-run/3-error figure was a working-tree deletion of `data/tokenizer.json`, since restored from git) |
+**Test baselines:** the current measured result for each product is
+`.agents/evidence/verification.json`, regenerated from real runs by
+`python tools/evidence/generate.py` and verified by `python tools/evidence/check.py`. This
+file deliberately carries no counts. The per-product commands are in `.agents/AGENTS.md`.
 
 **Track A / Track B item status, 2026-10-02:**
 

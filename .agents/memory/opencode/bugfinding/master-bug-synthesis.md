@@ -9,20 +9,20 @@
 
 ## 0. Current Status
 
-**Verified 2026-10-02 against current `main` (`849e015`).**
+**Per-root statuses last verified 2026-10-02 against `main` at `849e015`.** That was the
+commit the audit reconciled against; it is not the current HEAD, so treat a root's status
+as current only if this file has since been re-reconciled. Test results are not recorded
+here at all — see `.agents/evidence/verification.json`.
 
 This section is the **live bug ledger**. Everything from §1 onward is the historical
 2026-09-29 audit and stays as evidence, not as instructions. §9 in particular is
 superseded and must not be used as the work queue — the live queue is
 `.agents/pending_tasks.md`.
 
-**Test baselines re-run 2026-10-02 (each product's own command, from its own directory):**
-
-| Product | Command | Result 2026-10-02 |
-|---|---|---|
-| `agentops/` | `python -m unittest discover -s tests` | 444 tests, 4 environment skips, OK (re-verified 2026-10-03 after ROOT-034 DBG-08's real process-tree test; 443 at the 2026-10-02 root-fix batch; earlier same-day baseline: 425) |
-| `universal-game-agent/` | `python -m unittest discover -s tests` | 369 tests, 1 skip, OK (re-verified 2026-10-05 after the cadence/reward investigation added 20 tests, the last 3 being the observation-timing fingerprint tests; 349 re-verified 2026-10-03 after the external-experiment orchestration batch closed the ROOT-014 external gap; 318 after `59f5a1b` closed ROOT-034 DBG-06/DBG-07; 317 at the 2026-10-02 root-fix batches; earlier same-day baseline: 295) |
-| `small-projects/mini-llm/` | `python -m unittest discover -s tests` | 98 run, 1 skip, OK (re-verified 2026-10-04 after restoring the tracked `data/tokenizer.json`; the 96-run/3-error figure below was a working-tree deletion, not a code defect) |
+**Test results:** the current measured result for each product is
+`.agents/evidence/verification.json`, regenerated from real runs by
+`python tools/evidence/generate.py` and verified by `python tools/evidence/check.py`. This
+file deliberately carries no counts; each product's command is in `.agents/AGENTS.md`.
 
 The 3 mini-llm errors seen 2026-10-02 through 2026-10-04 came from a working-tree
 deletion of `small-projects/mini-llm/data/tokenizer.json`. **Closed 2026-10-04:**

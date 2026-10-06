@@ -111,16 +111,33 @@ class MergeGateBoundaryTests(unittest.TestCase):
         manager.merge.return_value = None
         return manager
 
-    def _finalize(self, ready, changed=True, conflict=None):
+    def _finalize(self, ready, changed=True, conflict=None, implementation=None):
+        """Drive the REAL helper with `implementation` as the implementation task's status.
+
+        The status is seeded into the state store on purpose. Every not-READY case
+        here is "the implementation passed and verification did not resolve" --
+        that is the state the merge gate exists for. With no implementation task
+        in the store at all, `implementation_passed()` is False under every
+        version of the code, so reverting the gate to the pre-98ea451
+        `ready or implementation_passed` would still not merge and these tests
+        would stay green against the exact bug they were written for.
+        """
         from agentops.finalize import finalize_for_outcome
         manager = self._manager(changed)
         manager.merge.side_effect = conflict
         state = StateStore(":memory:")
         wf = state.create_workflow("desc")
-        state.close()
+        if implementation is not None:
+            state.add_task(Task("impl", "implementation", wf, status=implementation))
         worktree = _worktree()
-        return finalize_for_outcome(manager, StateStore(":memory:"), worktree,
-                                    "desc", wf, 2, ready=ready), manager
+        try:
+            return finalize_for_outcome(manager, state, worktree,
+                                        "desc", wf, 2, ready=ready), manager
+        finally:
+            # Closed only after the call: `implementation_passed()` reads the
+            # store, and a closed StateStore makes that read fail closed, which
+            # would silently disarm the case-B assertion.
+            state.close()
 
     def test_case_a_ready_merges(self):
         finalization, manager = self._finalize(ready=True)
@@ -128,7 +145,10 @@ class MergeGateBoundaryTests(unittest.TestCase):
         self.assertTrue(finalization.merged, "case A: READY must merge")
 
     def test_case_b_unverified_commits_but_does_not_merge(self):
-        finalization, manager = self._finalize(ready=False)
+        # implementation PASSED, verification not resolved: the exact state in
+        # which the old `ready or implementation_passed` gate merged.
+        finalization, manager = self._finalize(
+            ready=False, implementation=TaskStatus.PASSED)
         manager.commit_changes.assert_called_once()
         manager.merge.assert_not_called()
         self.assertFalse(finalization.merged,
@@ -137,17 +157,19 @@ class MergeGateBoundaryTests(unittest.TestCase):
                         "case B: it must still be committed so nothing is lost")
 
     def test_case_c_failed_verification_never_merges(self):
-        finalization, manager = self._finalize(ready=False)
+        finalization, manager = self._finalize(
+            ready=False, implementation=TaskStatus.PASSED)
         manager.merge.assert_not_called()
         self.assertFalse(finalization.merged,
                          "case C: a demonstrated verification FAILURE must "
                          "never merge")
 
-    def test_case_d_garbage_blocked_does_not_merge(self):
-        finalization, manager = self._finalize(ready=False)
+    def test_case_d_failed_implementation_does_not_merge(self):
+        finalization, manager = self._finalize(
+            ready=False, implementation=TaskStatus.FAILED)
         manager.merge.assert_not_called()
         self.assertFalse(finalization.merged,
-                         "case D: a garbage implementation must not merge while "
+                         "case D: a failed implementation must not merge while "
                          "verification is unresolved")
 
     def test_not_ready_never_removes_the_worktree(self):

@@ -441,7 +441,12 @@
 - **Verification:** `python -m pytest tests -q` -> 109 passed, 2 failed; the two failures (`test_loads_dotenv_from_project_root`, `test_generate_ideas_rejects_duplicate_padding`) reproduce identically on the untouched tree before any edit and need `GEMINI_API_KEY`/`.env`. Baseline was 97, now 111 collected, 14 added, none needing network. Suite is pytest, not unittest: `python -m unittest discover -s tests` collects 0.
 - **Agents involved:** Pi (this session).
 
-## 2026-10-10 - mini-llm checkpoints are content-addressed, not path-bound
+## 2026-10-04 - mini-llm checkpoints are content-addressed, not path-bound
+
+> The heading date was previously recorded as 2026-10-10, which is after
+> this repository's own history for this decision (`0aad33b`, reconciled
+> in `8e7ef83`, 2026-10-04). Corrected against `git log`; the content was
+> always accurate.
 
 - **Decision:** Identify every training artifact by the sha256 of its bytes rather than by the path string it was reached through. `prepare_data.py` records `train_bin` / `val_bin` / `tokenizer_path` and their three digests in `meta.json`; `Config.data_provenance()` is the single writer of that identity; every checkpoint the training loop writes carries a `data_provenance` block; `--resume` refuses a digest mismatch. `src/train.py` gains `--tokenizer`, and `src/generate.py` applies the same check to its existing one.
 - **Reason:** A checkpoint stored only the paths, and a resumed run took its config *from the checkpoint*, so `train_bin` / `val_bin` / `tokenizer_path` were whatever the run happened to have been given - or the default, since `tokenizer_path` had no flag at all. Nothing then verified that the files at those paths were the ones that produced the weights. The only thing that caught it was an incidental `vocab_size` disagreement, which fires on the vocabulary and says nothing about the corpus or the tokenizer. Digests make "is this the same data" a question with an answer, and comparing content rather than location means a moved or copied artifact tree still resumes while a swapped file at the same path does not.

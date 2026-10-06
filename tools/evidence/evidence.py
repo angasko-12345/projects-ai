@@ -1,0 +1,311 @@
+"""The verification-evidence contract.
+
+A green test run is a *measurement*, not a fact. This module defines what a
+recorded measurement must contain, how to read it back, and what makes it
+stale. Nothing else in the repository is allowed to restate a test count; the
+files that used to are listed in ``BASELINE_FILES`` so the check can prove it.
+
+Two entry points use this module:
+
+* ``generate.py`` runs each product's own suite and writes the evidence file.
+* ``check.py`` re-reads that file and reports anything contradictory.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import subprocess
+from pathlib import Path
+
+SCHEMA_VERSION = 1
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+EVIDENCE_PATH = REPO_ROOT / ".agents" / "evidence" / "verification.json"
+EVIDENCE_REFERENCE = ".agents/evidence/verification.json"
+
+#: Products that carry an instruction file and a documented test command.
+#: Each suite runs from its own directory; there is no repository-wide command.
+PRODUCTS = (
+    {
+        "product": "agentops",
+        "directory": "agentops",
+        "command": ["-m", "unittest", "discover", "-s", "tests"],
+    },
+    {
+        "product": "universal-game-agent",
+        "directory": "universal-game-agent",
+        "command": ["-m", "unittest", "discover", "-s", "tests"],
+    },
+    {
+        "product": "small-projects/mini-llm",
+        "directory": "small-projects/mini-llm",
+        "command": ["-m", "unittest", "discover", "-s", "tests"],
+    },
+)
+
+#: Deliberately not measured, and why. Recorded so the exclusion reads as a
+#: decision rather than an oversight.
+EXCLUSIONS = {
+    "tiktok-slop-factory": (
+        "No product AGENTS.md, so no agreed command; the suite is pytest, takes "
+        "~10 minutes of real FFmpeg renders, and carries two known "
+        "GEMINI_API_KEY-dependent failures. An evidence record here would be "
+        "red for reasons unrelated to the code under test."
+    ),
+    "ai-token-tracker": (
+        "Added 2026-10-06 without a product AGENTS.md or an agreed test command, "
+        "and still being edited. It becomes measurable the moment someone names "
+        "its command here and in its own AGENTS.md."
+    ),
+}
+
+#: Files that must point readers at the evidence file rather than quote a count.
+BASELINE_FILES = (
+    ".agents/AGENTS.md",
+    "agentops/AGENTS.md",
+    "universal-game-agent/AGENTS.md",
+    "small-projects/mini-llm/AGENTS.md",
+    ".agents/memory/roadmap.md",
+    ".agents/memory/opencode/bugfinding/master-bug-synthesis.md",
+)
+
+#: Of those, the instruction files may not state a count at all. A count in an
+#: instruction file is a claim that outlives its evidence; this is the shape the
+#: repository had before this mechanism existed.
+COUNT_FREE_FILES = (
+    ".agents/AGENTS.md",
+    "agentops/AGENTS.md",
+    "universal-game-agent/AGENTS.md",
+    "small-projects/mini-llm/AGENTS.md",
+)
+
+COUNT_CLAIM = re.compile(r"\b\d{1,4}\s+(?:tests?\b|run\b|skips?\b)", re.IGNORECASE)
+
+REQUIRED_RECORD_FIELDS = (
+    "product",
+    "directory",
+    "command",
+    "total",
+    "skipped",
+    "failures",
+    "errors",
+    "result",
+)
+REQUIRED_DOCUMENT_FIELDS = (
+    "schema_version",
+    "generated_at",
+    "commit",
+    "python",
+    "platform",
+    "clean_checkout",
+    "products",
+)
+
+_RAN = re.compile(r"^Ran (\d+) tests? in ([\d.]+)s\s*$", re.MULTILINE)
+_OK = re.compile(r"^OK(?: \(skipped=(\d+)\))?\s*$", re.MULTILINE)
+_FAILED = re.compile(r"^FAILED \(([^)]*)\)\s*$", re.MULTILINE)
+_DETAIL = re.compile(r"(failures|errors|skipped|expected failures|unexpected successes)=(\d+)")
+
+
+def parse_unittest_summary(output: str) -> dict:
+    """Read counts out of a unittest summary. Never guesses: no match, no record."""
+    ran = _RAN.search(output)
+    if ran is None:
+        return {}
+    record = {
+        "total": int(ran.group(1)),
+        "duration_seconds": round(float(ran.group(2)), 3),
+        "skipped": 0,
+        "failures": 0,
+        "errors": 0,
+    }
+    failed = _FAILED.search(output)
+    if failed is not None:
+        for key, value in _DETAIL.findall(failed.group(1)):
+            if key == "expected failures":
+                continue
+            record[key] = int(value)
+        record["result"] = "fail"
+        return record
+    ok = _OK.search(output)
+    if ok is None:
+        return {}
+    record["skipped"] = int(ok.group(1) or 0)
+    record["result"] = "pass"
+    return record
+
+
+def git(*args: str, cwd: Path | None = None) -> str:
+    completed = subprocess.run(
+        ["git", *args], cwd=str(cwd or REPO_ROOT), capture_output=True,
+        text=True, check=False,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"git {' '.join(args)} failed in {cwd or REPO_ROOT}: "
+            f"{completed.stderr.strip() or completed.stdout.strip()}"
+        )
+    return completed.stdout.strip()
+
+
+def load(path: Path = EVIDENCE_PATH) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def check_schema(document: object) -> list[str]:
+    """Shape and internal arithmetic of the evidence file itself."""
+    problems: list[str] = []
+    if not isinstance(document, dict):
+        return ["evidence file is not a JSON object"]
+
+    for field in REQUIRED_DOCUMENT_FIELDS:
+        if field not in document:
+            problems.append(f"evidence file is missing required field {field!r}")
+    if problems:
+        return problems
+
+    if document["schema_version"] != SCHEMA_VERSION:
+        problems.append(
+            f"schema_version is {document['schema_version']!r}, this checker "
+            f"understands {SCHEMA_VERSION}"
+        )
+    for field in ("generated_at", "commit"):
+        if not isinstance(document[field], str) or not document[field].strip():
+            problems.append(f"{field} must be a non-empty string")
+    if not re.fullmatch(r"[0-9a-f]{40}", str(document["commit"])):
+        problems.append(f"commit {document['commit']!r} is not a full 40-character SHA")
+    if not isinstance(document["clean_checkout"], bool):
+        problems.append("clean_checkout must be a boolean")
+
+    records = document["products"]
+    if not isinstance(records, list) or not records:
+        problems.append("products must be a non-empty list")
+        return problems
+
+    seen: set[str] = set()
+    for index, record in enumerate(records):
+        label = f"products[{index}]"
+        if not isinstance(record, dict):
+            problems.append(f"{label} is not an object")
+            continue
+        for field in REQUIRED_RECORD_FIELDS:
+            if field not in record:
+                problems.append(f"{label} is missing {field!r}")
+        if any(field not in record for field in REQUIRED_RECORD_FIELDS):
+            continue
+        label = f"{record['product']}"
+        if label in seen:
+            problems.append(f"{label} is recorded more than once")
+        seen.add(label)
+        for field in ("total", "skipped", "failures", "errors"):
+            if not isinstance(record[field], int) or isinstance(record[field], bool) or record[field] < 0:
+                problems.append(f"{label}: {field} must be a non-negative integer, "
+                                f"got {record[field]!r}")
+        if record["result"] not in ("pass", "fail"):
+            problems.append(f"{label}: result must be 'pass' or 'fail', "
+                            f"got {record['result']!r}")
+        if record["total"] <= 0:
+            problems.append(f"{label}: total is {record['total']}; an empty run is "
+                            "never a pass")
+        if record["skipped"] > record["total"]:
+            problems.append(f"{label}: skipped ({record['skipped']}) exceeds total "
+                            f"({record['total']})")
+        if record["result"] == "pass" and (record["failures"] or record["errors"]):
+            problems.append(f"{label}: recorded pass with failures="
+                            f"{record['failures']} errors={record['errors']}")
+        if record["result"] == "fail" and not (record["failures"] or record["errors"]):
+            problems.append(f"{label}: recorded fail with no failures or errors, so "
+                            "the run was not understood")
+        if record["result"] == "pass" and record["skipped"] == record["total"]:
+            problems.append(f"{label}: every test skipped, which is never a pass")
+
+    expected = {entry["product"] for entry in PRODUCTS}
+    recorded = seen
+    for missing in sorted(expected - recorded):
+        problems.append(f"{missing} has no evidence record")
+    for extra in sorted(recorded - expected):
+        problems.append(f"{extra} is recorded but is not a product of this repository")
+    return problems
+
+
+def check_staleness(document: dict, repo_root: Path = REPO_ROOT) -> list[str]:
+    """Is this evidence still a statement about the code in front of us?
+
+    Staleness is judged on what the measurement covers, not on whether HEAD
+    still equals the recorded commit: a documentation commit does not
+    invalidate a test run, a commit touching a measured product does.
+    """
+    problems: list[str] = []
+    commit = document["commit"]
+    try:
+        head = git("rev-parse", "HEAD", cwd=repo_root)
+        git("cat-file", "-e", f"{commit}^{{commit}}", cwd=repo_root)
+    except RuntimeError as error:
+        return [f"cannot resolve the recorded commit {commit}: {error}"]
+
+    if head != commit:
+        try:
+            git("merge-base", "--is-ancestor", commit, head, cwd=repo_root)
+        except RuntimeError:
+            return [
+                f"evidence was recorded at {commit[:12]}, which is not an ancestor "
+                f"of HEAD {head[:12]}; the history it described is gone"
+            ]
+        changed = git("diff", "--name-only", f"{commit}..{head}", cwd=repo_root)
+        touched = sorted({
+            line for line in changed.splitlines()
+            if any(line == entry["directory"] or line.startswith(entry["directory"] + "/")
+                   for entry in PRODUCTS)
+        })
+        if touched:
+            shown = ", ".join(touched[:5])
+            more = f" (+{len(touched) - 5} more)" if len(touched) > 5 else ""
+            problems.append(
+                f"evidence is stale: {len(touched)} file(s) under a measured product "
+                f"changed after {commit[:12]} ({shown}{more}). Regenerate."
+            )
+
+    if document["clean_checkout"] is not True:
+        problems.append(
+            "evidence was recorded with a dirty working tree in at least one "
+            "product directory, so it is not reproducible; regenerate from a clean "
+            "checkout"
+        )
+    return problems
+
+
+def check_documents(document: dict, repo_root: Path = REPO_ROOT) -> list[str]:
+    """Do the written files still tell a reader the same thing?"""
+    problems: list[str] = []
+    for relative in BASELINE_FILES:
+        path = repo_root / relative
+        if not path.exists():
+            problems.append(f"{relative} is missing, so it cannot point at "
+                            f"{EVIDENCE_REFERENCE}")
+            continue
+        if EVIDENCE_REFERENCE not in path.read_text(encoding="utf-8"):
+            problems.append(
+                f"{relative} does not reference {EVIDENCE_REFERENCE}; a reader "
+                "there has no route to the current verification result"
+            )
+    for relative in COUNT_FREE_FILES:
+        path = repo_root / relative
+        if not path.exists():
+            continue
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            match = COUNT_CLAIM.search(line)
+            if match:
+                problems.append(
+                    f"{relative}:{number} states a measured count "
+                    f"({match.group(0)!r}) in an instruction file; state the "
+                    f"command and point at {EVIDENCE_REFERENCE} instead"
+                )
+    return problems
+
+
+def check(document: object, repo_root: Path = REPO_ROOT) -> list[str]:
+    problems = check_schema(document)
+    if problems:
+        return problems
+    return check_staleness(document, repo_root) + check_documents(document, repo_root)

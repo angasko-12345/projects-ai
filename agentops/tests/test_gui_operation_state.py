@@ -88,10 +88,6 @@ class RootCacheSingleFlightTests(unittest.TestCase):
         self.assertEqual(manager.repository_root.call_count, 2)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class GuiMergePathTests(unittest.TestCase):
     """The GUI's merge branch had NO test before commit 98ea451.
 

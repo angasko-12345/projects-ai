@@ -15,7 +15,7 @@
 | -- | `SpawnFactory` Protocol typing (deferred from the A3 review) | still deferred |
 | -- | Repository characteristics for routing are inert | `workflow.py` still passes `{}` as repository characteristics, so router repository-derived signals do nothing |
 | -- | A8 reviewer pass | A8 implementation is DONE; the read-only opencode/copilot review pass was never run |
-| -- | AgentOps test baseline in the instruction files is stale | `.agents/AGENTS.md` and `agentops/AGENTS.md` both state 444 tests. The verified figure after the control center (`7a5b472`) is **501 tests, 4 environment skips, OK**. The docs must be corrected by whoever owns them; the tree is shared and other sessions have been editing them |
+| -- | ~~AgentOps test baseline in the instruction files is stale~~ CLOSED | No instruction file carries a test count any more. The current measured result is `.agents/evidence/verification.json`; `python tools/evidence/check.py` fails if an instruction file restates one. This row existed precisely because the number was copied by hand into several files and each copy went stale independently |
 | -- | Control center not yet verified against a real running workflow | All control-center verification used recorded fixtures and an offscreen render. No live workflow has been driven through the new surface end to end, so real timing, real durations, and a real cancellation have not been observed on screen |
 
 ## AgentOps -- held / requires decision

@@ -92,6 +92,19 @@ def _workflow_config(**overrides):
     )
 
 
+def _declared_evidence():
+    """A collector that declares implementation evidence explicitly.
+
+    These tests run a workflow against `Path.cwd()`. The real
+    `GitRunMetadataCollector` reads the working tree, so on a clean checkout it
+    reports no change, the implementation task is blocked for `no_evidence`,
+    and no retry or repair task is ever created -- three tests here passed only
+    because the developer's tree happened to be dirty. Evidence is therefore
+    declared, not borrowed from whatever the checkout looks like.
+    """
+    return MagicMock(return_value=AgentRunMetadata(files_changed=("src/app.py",)))
+
+
 def _workflow_harness(**config_overrides):
     config = _workflow_config(**config_overrides)
     state = StateStore(":memory:")
@@ -386,7 +399,8 @@ class WorkflowAgentRunTests(unittest.TestCase):
 
         runner.run_agent = _run_agent
         try:
-            engine = WorkflowEngine(config, state, registry, runner, verifier)
+            engine = WorkflowEngine(config, state, registry, runner, verifier,
+                                    metadata_collector=_declared_evidence())
             workflow_id, _ = engine.create_workflow("retry", [{
                 "id": "work", "description": "do work", "role": "implementation",
             }])
@@ -419,7 +433,8 @@ class WorkflowAgentRunTests(unittest.TestCase):
             asyncio.sleep(0, result=[passed]),
         ])
         try:
-            engine = WorkflowEngine(config, state, registry, runner, verifier)
+            engine = WorkflowEngine(config, state, registry, runner, verifier,
+                                    metadata_collector=_declared_evidence())
             result = asyncio.run(engine.run_high_level("repair flow", Path.cwd()))
             self.assertTrue(result.ready)
             repair = next(

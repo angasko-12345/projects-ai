@@ -1,0 +1,50 @@
+# Verification evidence is not current. See ../CI.md for what CI does and does
+# not validate.
+#
+# This job runs only the checker: it is fast, needs no product dependencies, and
+# is what stops stale evidence or a re-introduced count in an instruction file
+# from reaching main. It deliberately does NOT re-run the three product suites --
+# that is what the per-product workflows already do, and duplicating it here
+# would just add a fourth place for a count to live.
+name: evidence
+
+on:
+  push:
+    paths:
+      - "tools/evidence/**"
+      - ".agents/evidence/**"
+      - ".agents/AGENTS.md"
+      - ".agents/memory/roadmap.md"
+      - ".agents/memory/opencode/bugfinding/master-bug-synthesis.md"
+      - "agentops/AGENTS.md"
+      - "universal-game-agent/AGENTS.md"
+      - "small-projects/mini-llm/AGENTS.md"
+      - ".github/workflows/evidence.yml"
+  pull_request:
+    paths:
+      - "tools/evidence/**"
+      - ".agents/evidence/**"
+      - ".agents/AGENTS.md"
+      - ".agents/memory/roadmap.md"
+      - ".agents/memory/opencode/bugfinding/master-bug-synthesis.md"
+      - "agentops/AGENTS.md"
+      - "universal-game-agent/AGENTS.md"
+      - "small-projects/mini-llm/AGENTS.md"
+      - ".github/workflows/evidence.yml"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The checker resolves the recorded commit and diffs it against HEAD to
+          # decide staleness, so it needs history rather than a shallow clone.
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Check the recorded verification evidence
+        run: python tools/evidence/check.py
+      - name: Test the checker, including its corruption test
+        run: python -m unittest discover -s tools/evidence -t tools/evidence -p "test_*.py"

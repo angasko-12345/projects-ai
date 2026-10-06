@@ -7,6 +7,7 @@ import warnings
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from agentops.agent_run import AgentRunMetadata
 from agentops.config import AppConfig, AgentConfig, load_config
 from agentops.logging import LogManager, _redact
 from agentops.registry import AgentRegistry
@@ -115,12 +116,27 @@ class DependencyRegressions(unittest.TestCase):
 
 
 class RepairCycleRegressions(unittest.TestCase):
+    """Repair cycles are counted from a PASSED implementation task.
+
+    These tests run a workflow against `Path.cwd()`. The real
+    `GitRunMetadataCollector` reads the working tree, so on a clean checkout no
+    implementation evidence exists, the implementation task is blocked for
+    `no_evidence`, and the repair loop never runs -- this class passed only
+    while uncommitted files happened to be lying in the tree. Evidence is
+    declared explicitly instead.
+    """
+
+    @staticmethod
+    def _declared_evidence():
+        return MagicMock(return_value=AgentRunMetadata(files_changed=("src/app.py",)))
+
     def test_zero_repair_cycles_adds_no_tasks(self):
         config, state, registry, runner, verifier = _engine(max_repair_cycles=0)
         try:
             failed = MagicMock(succeeded=False, output="boom")
             verifier.run = MagicMock(return_value=asyncio.sleep(0, result=[failed]))
-            engine = WorkflowEngine(config, state, registry, runner, verifier)
+            engine = WorkflowEngine(config, state, registry, runner, verifier,
+                                    metadata_collector=self._declared_evidence())
             result = asyncio.run(engine.run_high_level("Fix", Path.cwd()))
             self.assertFalse(result.ready)
             self.assertEqual(len(state.list_tasks(result.workflow_id)), 4)
@@ -136,7 +152,8 @@ class RepairCycleRegressions(unittest.TestCase):
                 asyncio.sleep(0, result=[failed]),
                 asyncio.sleep(0, result=[failed]),
             ])
-            engine = WorkflowEngine(config, state, registry, runner, verifier)
+            engine = WorkflowEngine(config, state, registry, runner, verifier,
+                                    metadata_collector=self._declared_evidence())
             result = asyncio.run(engine.run_high_level("Fix", Path.cwd()))
             self.assertFalse(result.ready)
             self.assertEqual(len(state.list_tasks(result.workflow_id)), 4 + 2 * 3)

@@ -81,13 +81,17 @@ This repository is a container for three independent Python products (plus share
 
 ## 4. Verified Test Baselines
 
-All baselines independently executed and confirmed as of 2026-10-05:
+Test results are not recorded here. The current measured result for each product is
+`.agents/evidence/verification.json`, regenerated from real runs by
+`python tools/evidence/generate.py` and verified by `python tools/evidence/check.py`.
+This table previously carried hand-copied counts per product, each of which went stale
+independently.
 
-| Product | Test Command | Verified Baseline (2026-10-05) | Notes |
-|---|---|---|---|
-| `small-projects/mini-llm/` | `cd small-projects/mini-llm && python -m unittest discover -s tests` | **142 tests, 1 skip, OK** | +27 tests over original 115 baseline (+21 in commit `b189c34`, +6 in Antigravity session). |
-| `universal-game-agent/` | `cd universal-game-agent && python -m unittest discover -s tests` | **366 tests, 1 skip, OK** | Re-verified 2026-10-05 following cadence experiment work. |
-| `agentops/` | `cd agentops && python -m unittest discover -s tests` | **501 tests, 4 skips, OK** | Re-verified 2026-10-04 following control center implementation. |
+| Product | Test Command |
+|---|---|
+| `small-projects/mini-llm/` | `cd small-projects/mini-llm && python -m unittest discover -s tests` |
+| `universal-game-agent/` | `cd universal-game-agent && python -m unittest discover -s tests` |
+| `agentops/` | `cd agentops && python -m unittest discover -s tests` |
 
 ---
 

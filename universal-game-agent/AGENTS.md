@@ -31,11 +31,12 @@ cd universal-game-agent
 python -m unittest discover -s tests
 ```
 
-- The current baseline (verified 2026-10-05) is **369 tests, 1 skip,
-  OK** (349 at the 2026-10-03 orchestration batch; +20 from the 2026-10-05
-  cadence/reward investigation — cadence matrix, timing/reward diagnostics, and
-  the observation-timing fingerprint tests). That is a dated observation, not a contract; the count is volatile because tests
-  get added. Run the suite for current truth. All tests are `unittest.TestCase`, and
+- The current measured result for this product lives in
+  `.agents/evidence/verification.json` (`product: "universal-game-agent"`), not in
+  this file. Regenerate it with `python tools/evidence/generate.py
+  universal-game-agent` from the repository root and check it with `python
+  tools/evidence/check.py`. Run the suite for current truth. All tests are
+  `unittest.TestCase`, and
   `tests/__init__.py` exists so discovery works as a package. Every test module imports
   `tests/_bootstrap.py` first, which puts `universal-game-agent/` on `sys.path`, so the
   command above and direct execution (`python tests/<file>.py`, from any working
@@ -68,14 +69,16 @@ python -m unittest discover -s tests
   absent. An all-skipped suite is not a pass.
 - There is no configured lint, formatter, type-check, or coverage command. Do not invent
   one.
-- `__file__`-based resolution appears in only 4 of the 20 test modules:
-  `tests/test_cli.py:10`, `tests/test_eval.py:50`, `tests/test_extern_pong.py:9`, and
-  `tests/test_scaffold.py:7`. The other 16 do no filesystem access at all. The
-  CWD-relative comparisons in `tests/test_external_experiment.py:28,31,33` compare relative
-  string literals against values built purely by string construction
-  (`training/external_experiment.py:112,118`); nothing is read from disk, so they are
-  CWD-independent, not CWD-fragile. The hazard is prospective: a new test that hardcodes a
-  relative path or reads from the CWD passes under any CWD by accident. Do not add more.
+- Almost every test module resolves paths from `__file__` via `tests/_bootstrap.py`, so
+  the suite is CWD-independent by construction; `tests/test_cwd_isolation.py` is the
+  standing guard. The CWD-relative comparisons in `TestRunIsolation`
+  (`tests/test_external_experiment.py:33,38,43`) look fragile but are not: they compare
+  relative string literals against values built purely by string construction
+  (`training/external_experiment.py:242,294,300`) and nothing is read from disk. The
+  hazard is prospective — a new test that hardcodes a relative path or reads from the CWD
+  passes under any CWD by accident. Do not add more, and re-derive this paragraph from
+  `Select-String -Path tests/test_*.py -Pattern '__file__|os\.getcwd|mkdtemp\(cwd'` before
+  repeating it.
 
 ## CLI
 

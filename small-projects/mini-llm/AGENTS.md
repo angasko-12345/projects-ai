@@ -31,12 +31,11 @@ python -m unittest discover -s tests
   (`prepare_data.py` framing/splits/`meta.json`), streaming-prepare parity,
   window stride, device selection, CPU throughput, and the training loop end to
   end including resume.
-- Current baseline (re-run 2026-10-05, after the checkpoint metadata repair):
-  **146 run, 1 skip, OK**. Supersedes 115 from 2026-10-10 (+21
-  `TestCheckpointMetadata` for schema versioning and self-describing metadata,
-  +6 checkpoint consistency validation, programmatic resume fix, and model-state
-  shape checks, +4 for the `wpe`/`context_length` shape test, the `d_model`
-  shape test, and the two validation-bypass tests).
+- The current measured result for this product lives in
+  `.agents/evidence/verification.json` (`product: "small-projects/mini-llm"`), not in
+  this file. Regenerate it with `python tools/evidence/generate.py
+  small-projects/mini-llm` from the repository root and check it with `python
+  tools/evidence/check.py`. Run the suite for current truth.
 - `prepare_data.py` **streams**: it reads text in 1 MiB chunks and spills encoded
   IDs to a temp file, so a corpus much larger than RAM never sits in memory
   whole. `tests/test_prepare_streaming.py` pins byte-identical output against the

@@ -658,14 +658,20 @@
 - **Fix:** size the test window inside the offscreen screen (1024x730, above the 680 minimum) so any mismatch means the restore itself failed.
 - **Remember:** when asserting saved/restored window geometry, keep the saved size within the test screen's bounds (query `QApplication.primaryScreen().size()` if unsure) - otherwise the assertion measures the platform clamp, not your code.
 
-## 2026-10-10 - Documentation drifts silently; a shipped artifact's presence is a filesystem fact, not a memory
+## 2026-10-04 - Documentation drifts silently; a shipped artifact's presence is a filesystem fact, not a memory
+
+> Heading date corrected from 2026-10-10, which is after this repository's own
+> history for this entry (`8e7ef83`, 2026-10-04).
 
 - **Symptom:** `docs/EXPERIMENT-tinystories.md` asserted `data/tokenizer.json` was "deleted from the tree (staged deletion, pre-existing)", so generation "omitting the flag fails". `Test-Path` said the file was present, 18,261 bytes, tracked and restored from git two weeks earlier. A reader would have gone looking for a bug that does not exist.
 - **Root cause:** the claim was written from a transient working-tree state and never re-derived. Nothing in the test suite asserts *document* claims, and the artifact was later restored, so the sentence outlived its evidence. The same class of drift had the mini-llm baseline frozen at "98 run" long after tests were added, and a README listing two test files when five existed.
 - **Fix:** state each claim with the date it was verified, and mark superseded ones as superseded rather than deleting them, so the history of the correction is visible. Check every factual claim against source or filesystem before writing it down - `Test-Path`, a parameter count, a `--help` dump - instead of carrying the previous document forward.
 - **Remember:** "the file is missing" and "the test count is N" are *measurements*, not facts, and they rot silently because nothing fails when a document drifts. Before trusting a doc claim about a shipped artifact, re-derive it: if `git status` is clean for the path and the guard test exists, the document is the thing that is wrong. And when a doc records an experimental result, label it with its run date so it reads as history rather than as current state.
 
-## 2026-10-10 - `git commit -- <paths>` ignores the index and commits the working tree
+## 2026-10-04 - `git commit -- <paths>` ignores the index and commits the working tree
+
+> Heading date corrected from 2026-10-10, which is after this repository's own
+> history for this entry (`4fb6be0`, 2026-10-04).
 
 - **Symptom:** staging exactly the content I wanted (index blobs built with `hash-object -w` + `update-index`) and then running `git commit -m "..." -- <files>` produced a commit containing a *different, larger* diff: 21/10/29/18 changed lines instead of the verified 11/9/7/8. Another session's unrelated edits were committed under my message.
 - **Root cause:** `git commit` with a pathspec does not commit the index. It stages the given paths from the **working tree** and commits that — equivalent to `git add <paths>` immediately followed by the commit. Every careful index manipulation upstream of it is discarded, silently, with no error. The mistake is easy to make because the flag list reads like a scope restriction ("commit only these files") when it actually means "re-stage these files from disk, then commit everything staged".
@@ -749,37 +755,3 @@
 - **Fix:** include the character inside the class: `(\.{2,}|…|[,;:!?.]+)$`.
 - **Remember:** when a regex mixes a multi-char alternative with a character class, check the class covers every single-character case, and write the test keyed on the exact literal token so a missing match raises `KeyError` instead of passing quietly.
 
-## 2026-10-10 - Documentation drifts silently; a shipped artifact's presence is a filesystem fact, not a memory
-
-- **Symptom:** `docs/EXPERIMENT-tinystories.md` asserted `data/tokenizer.json` was "deleted from the tree (staged deletion, pre-existing)", so generation "omitting the flag fails". `Test-Path` said the file was present, 18,261 bytes, tracked and restored from git two weeks earlier. A reader would have gone looking for a bug that does not exist.
-- **Root cause:** the claim was written from a transient working-tree state and never re-derived. Nothing in the test suite asserts *document* claims, and the artifact was later restored, so the sentence outlived its evidence. The same class of drift had the mini-llm baseline frozen at "98 run" long after tests were added, and a README listing two test files when five existed.
-- **Fix:** state each claim with the date it was verified, and mark superseded ones as superseded rather than deleting them, so the history of the correction is visible. Check every factual claim against source or filesystem before writing it down - `Test-Path`, a parameter count, a `--help` dump - instead of carrying the previous document forward.
-- **Remember:** "the file is missing" and "the test count is N" are *measurements*, not facts, and they rot silently because nothing fails when a document drifts. Before trusting a doc claim about a shipped artifact, re-derive it: if `git status` is clean for the path and the guard test exists, the document is the thing that is wrong. And when a doc records an experimental result, label it with its run date so it reads as history rather than as current state.
-
-## 2026-10-10 - `git commit -- <paths>` ignores the index and commits the working tree
-
-- **Symptom:** staging exactly the content I wanted (index blobs built with `hash-object -w` + `update-index`) and then running `git commit -m "..." -- <files>` produced a commit containing a *different, larger* diff: 21/10/29/18 changed lines instead of the verified 11/9/7/8. Another session's unrelated edits were committed under my message.
-- **Root cause:** `git commit` with a pathspec does not commit the index. It stages the given paths from the **working tree** and commits that — equivalent to `git add <paths>` immediately followed by the commit. Every careful index manipulation upstream of it is discarded, silently, with no error. The mistake is easy to make because the flag list reads like a scope restriction ("commit only these files") when it actually means "re-stage these files from disk, then commit everything staged".
-- **Fix:** build the index, verify it with `git diff --cached`, then commit with **no pathspec** so the index is what lands. `git reset --soft HEAD~1` safely undid the bad commit, the rebuild was idempotent, and the re-commit was clean.
-- **Remember:** pathspec on `git commit` and pathspec on `git add` have different meanings, and only the latter stages from the working tree. To commit part of a file that another session has dirty, `git add -p` is not always enough (your hunk can contain their lines) — write the intended content with `git hash-object -w --stdin`, point the file at that blob with `git update-index --cacheinfo 100644,<blob>,<path>`, which leaves the working tree untouched and theirs still unstaged. Always grep the finished commit for a distinctive token of the other party's work (`git show <sha> | grep`) before pushing; the commit message describes your intent, not what you actually staged. Related: never delete `.git/index.lock` on sight — check for a live `git` process first, since another session may be committing in the same tree (one appeared mid-rebuild here and cleared on its own).
-
-## 2026-10-04 - Two projections of one list must not each pick their own "interesting" row
-
-- **Symptom:** the workflow control-center LiveCard showed "Current: VERIFY" and "Next: VERIFY" at the same time, whenever an earlier stage had failed (PLAN failed with IMPLEMENT pending, or IMPLEMENT failed with VERIFY running).
-- **Root cause:** `current_stage()` and `next_stage()` were two independent scans. `current_stage()` prefers a running stage, then the first stage still to come; `next_stage()` returned the row after the *first non-passed* stage, which is a different row whenever an earlier stage failed. Nothing in the pair forced them to agree.
-- **Fix:** `next_stage()` now finds `current_stage()`'s row by identity and returns the row after it, so "Next" cannot be the stage being worked.
-- **Remember:** when a view renders two related fields derived from one list ("current" and "next", "stage" and "dependency"), derive the second from the first's *result*, never from a second scan with its own predicate. The two predicates looked equivalent and agreed on every path the existing tests covered - all-passed, or a single in-progress stage - so only a failure upstream exposed it. Test the combination that is actually reachable in production: a failed stage next to a running one.
-
-## 2026-10-04 - A `try: import torch` guard only catches ImportError, not a use of the name
-
-- **Symptom:** `python -m unittest discover -s tests` in `universal-game-agent/` reported 2 `_FailedTest` *errors* on a box without torch instead of skipping the 43 tests those modules contain.
-- **Root cause:** both modules set `_HAS_TORCH = False` correctly in `except ImportError`, then referenced the guarded names at module scope anyway - `class FixedPolicy(nn.Module)` and `_REAL_STOP = getattr(_xp, "stop", None)`. Those raise `NameError`, which is not caught by the guard that was there, so the module fails to import and unittest reports every test in it as an error.
-- **Fix:** the class statement moved inside `if _HAS_TORCH:` (its base class *is* the guarded name) and the module-level `getattr` now reads `... if _HAS_DEPS else None`, matching the conditional the same file already used two lines lower. `tests/test_scaffold.py::TestOptionalDependencyGates` asserts both modules import without torch.
-- **Remember:** an optional-dependency guard has to cover every use of the name it imports, including module-level ones - a base class, a decorator, a default argument, a module constant. The same gap exists wherever a test helper is the only thing standing between a missing dependency and a build: `agentops/tests/test_gui_visual_states.py` imported `agentops.gui.shell` in `setUp` before `qt_app()` could raise `SkipTest`, so its 7 tests errored instead of skipping and the `agentops` CI workflow had been red since `2159af6` (`@requires_qt` fixes it, matching `test_gui_qt.py`). An error and a skip look identical in the summary line ("Ran N ... errors=1") only if you read the module name, and 43 tests that never ran are indistinguishable from 43 that failed. When a suite "passes" locally with the dependency installed, check the import guard by reading it, or run the suite once without the dependency.
-
-## 2026-10-04 - Syntax newer than the supported floor is invisible to every test that imports the module
-
-- **Symptom:** `small-projects/mini-llm/src/train.py` could not be imported on Python <= 3.11 (`SyntaxError: f-string expression part cannot include a backslash`, from `{'\n  '.join(mismatches)}` inside an f-string expression), while `.github/workflows/mini-llm.yml` pins `python-version: "3.11"`, so the CI job for that product could not pass.
-- **Root cause:** PEP 701 relaxed f-string expressions in 3.12. The construct was written and reviewed on a newer interpreter, and every test that would have noticed imports torch first, so on a machine without torch the module failed on the missing dependency and the syntax error was never reached.
-- **Fix:** the join is hoisted into a local before the f-string. `tests/test_source_compat.py` compiles every source file, needs no third-party dependency, and fails on any construct the running interpreter cannot parse.
-- **Remember:** when a project pins a minimum interpreter in CI, "compiles on the floor" is a testable invariant on its own - `compile()` needs nothing installed and catches the whole class. Without it, the only signal is a CI job that was already red for a reason nobody had looked at.
