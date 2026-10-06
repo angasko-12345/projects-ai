@@ -295,6 +295,12 @@ class BuildServicesTests(unittest.TestCase):
             config=AppConfig({}, {}, (), max_attempts=1, concurrency=1),
             state_store=state_store,
             worktree_manager=lambda: FakeWorktreeManager(),
+            # The CLI calls log_manager(state_root / "logs") for every command,
+            # which creates real directories on disk. On CI the resolved root is
+            # `/agentops-cli-test` and `/` is not writable, so the real
+            # LogManager raises PermissionError. Inject a no-op so the test
+            # stays filesystem-independent (it asserts on state_store only).
+            log_manager=lambda root: MagicMock(name="logs"),
         )
         code, stdout, _ = _run(["status"], services)
         self.assertEqual(code, 0)
@@ -310,6 +316,9 @@ class BuildServicesTests(unittest.TestCase):
             config=AppConfig({}, {}, (), max_attempts=1, concurrency=1),
             state_store=lambda path: state,
             worktree_manager=lambda: FakeWorktreeManager(),
+            # See test_main_uses_the_injected_bundle: the real LogManager
+            # mkdir's the resolved state root, which is unwritable on CI.
+            log_manager=lambda root: MagicMock(name="logs"),
         )
         with patch("agentops.cli._build_services", return_value=built) as build:
             code, stdout, _ = _run(["status"], None)
