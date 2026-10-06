@@ -164,8 +164,8 @@ class RecentRunsPaginationTests(unittest.TestCase):
             page = controller.list_recent_agent_runs(root, limit=3, offset=3)
             self.assertEqual(len(page), 2)
             # The two oldest runs, newest-first.
-            self.assertEqual(page[0]["id"], runs[3].id)
-            self.assertEqual(page[1]["id"], runs[2].id)
+            self.assertEqual(page[0]["id"], runs[1].id)
+            self.assertEqual(page[1]["id"], runs[0].id)
 
     def test_list_recent_agent_runs_returns_empty_when_offset_exceeds_total(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -220,8 +220,8 @@ class RecentRunsPaginationTests(unittest.TestCase):
 
             page = controller.list_recent_verification_runs(root, limit=3, offset=3)
             self.assertEqual(len(page), 2)
-            self.assertEqual(page[0]["id"], runs[3].id)
-            self.assertEqual(page[1]["id"], runs[2].id)
+            self.assertEqual(page[0]["id"], runs[1].id)
+            self.assertEqual(page[1]["id"], runs[0].id)
 
     def test_list_recent_verification_runs_returns_empty_when_offset_exceeds_total(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -275,8 +275,8 @@ class RecentRunsPaginationTests(unittest.TestCase):
 
             page = controller.list_recent_failures(root, limit=3, offset=3)
             self.assertEqual(len(page), 2)
-            self.assertEqual(page[0]["id"], "failure-3")
-            self.assertEqual(page[1]["id"], "failure-2")
+            self.assertEqual(page[0]["id"], "failure-1")
+            self.assertEqual(page[1]["id"], "failure-0")
 
     def test_list_recent_failures_returns_empty_when_offset_exceeds_total(self):
         with tempfile.TemporaryDirectory() as directory:
