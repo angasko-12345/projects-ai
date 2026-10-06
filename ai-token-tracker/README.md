@@ -9,18 +9,29 @@ Local desktop GUI that shows how many AI tokens you are using across your tools,
 
 ## Run
 
+Double-click `AI-Token-Tracker.bat`, or from a terminal:
+
 ```bat
 cd ai-token-tracker
 python -m token_tracker
 ```
 
-On launch the app imports OpenCode's usage history (read-only), then shows:
+On launch the app imports OpenCode's usage history (read-only) and shows two tabs:
 
+**Dashboard**
 - tokens today / last 7 days / all time (with exact vs estimated split)
 - daily usage chart (last 30 days, UTC days)
-- provider and model breakdown
-- `Import OpenCode` to re-sync (safe to repeat; rows OpenCode updated since the last import are refreshed)
-- `Export CSV` to dump every normalized event
+- two breakdown tables with a group-by selector (provider, model, project, agent), sortable by any column
+
+**Recent events**
+- every stored event, newest first, sortable by any column
+- filter by free text (provider, model, agent, project), by provider, and by exact vs estimated
+- estimated rows are marked `estimated` in amber; exact rows say `exact`
+
+Header actions:
+- `Import OpenCode` re-syncs (safe to repeat; rows OpenCode updated since the last import are refreshed; last sync result stays visible in the header)
+- `Import CSV/JSON` imports a previously exported file (validated before writing, idempotent; a bad row aborts the whole import)
+- `Export CSV` / `Export JSON` dump every normalized event (refuses to overwrite the tracker database itself)
 
 ## Database
 

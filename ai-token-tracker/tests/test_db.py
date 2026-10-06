@@ -1,4 +1,5 @@
 import csv
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -171,6 +172,97 @@ class DatabaseTest(unittest.TestCase):
         self.assertEqual(sorted(row[exact_column] for row in rows[1:]), ["0", "1"])
         total_column = rows[0].index("total_tokens")
         self.assertEqual(sum(int(row[total_column]) for row in rows[1:]), 30)
+
+    def test_export_json_round_trips(self):
+        db.insert_events(
+            self.conn,
+            [
+                make_event("2026-10-06T10:00:00.000Z", request_id="a", input_tokens=10, exact=True),
+                make_event("2026-10-06T11:00:00.000Z", request_id="b", output_tokens=20, exact=False),
+            ],
+        )
+        out = Path(self.tmp.name) / "export.json"
+        self.assertEqual(db.export_json(self.conn, out), 2)
+        data = json.loads(out.read_text(encoding="utf-8"))
+        self.assertEqual(len(data), 2)
+        self.assertEqual({row["exact"] for row in data}, {1, 0})
+        self.assertEqual(sum(row["total_tokens"] for row in data), 30)
+
+    def test_exports_refuse_to_overwrite_database(self):
+        db.insert_events(self.conn, [make_event("2026-10-06T10:00:00.000Z", request_id="a", input_tokens=5)])
+        db_path = Path(self.conn.execute("PRAGMA database_list").fetchone()[2])
+        with self.assertRaises(ValueError):
+            db.export_csv(self.conn, db_path)
+        with self.assertRaises(ValueError):
+            db.export_json(self.conn, str(db_path))
+        # the database must survive the refused writes
+        self.assertEqual(db.totals(self.conn)["total_tokens"], 5)
+
+    def test_import_csv_round_trip_is_idempotent(self):
+        db.insert_events(
+            self.conn,
+            [
+                make_event("2026-10-06T10:00:00.000Z", request_id="a", input_tokens=1000, output_tokens=50, exact=True),
+                make_event("2026-10-05T09:30:00.000Z", request_id="b", output_tokens=25, exact=False),
+            ],
+        )
+        out = Path(self.tmp.name) / "roundtrip.csv"
+        db.export_csv(self.conn, out)
+
+        other = db.connect(Path(self.tmp.name) / "other.db")
+        self.addCleanup(other.close)
+        self.assertEqual(db.import_csv(other, out), (2, 0, 0))
+        src, dst = db.totals(self.conn), db.totals(other)
+        for key in ("events", "total_tokens", "exact_tokens", "estimated_tokens"):
+            self.assertEqual(dst[key], src[key], key)
+        # the exact/estimated split must survive: a "0" in the CSV is an estimate
+        self.assertEqual(dst["estimated_tokens"], 25)
+        self.assertEqual({e.id for e in db.all_events(other)}, {e.id for e in db.all_events(self.conn)})
+        self.assertEqual(db.import_csv(other, out), (0, 0, 2))
+        self.assertEqual(db.totals(other)["total_tokens"], src["total_tokens"])
+
+    def test_import_csv_rejects_bad_header_without_writing(self):
+        bad = Path(self.tmp.name) / "bad.csv"
+        bad.write_text("id,timestamp\nx,2026-01-01\n", encoding="utf-8")
+        with self.assertRaises(ValueError):
+            db.import_csv(self.conn, bad)
+        self.assertEqual(db.totals(self.conn)["events"], 0)
+
+    def test_import_csv_aborts_on_invalid_row(self):
+        db.insert_events(self.conn, [make_event("2026-10-06T10:00:00.000Z", request_id="ok", input_tokens=5)])
+        good = Path(self.tmp.name) / "good.csv"
+        db.export_csv(self.conn, good)
+        with good.open(newline="", encoding="utf-8") as handle:
+            rows = list(csv.reader(handle))
+        bad_row = list(rows[1])
+        bad_row[EVENT_COLUMNS.index("input_tokens")] = "-5"
+        bad_row[EVENT_COLUMNS.index("request_id")] = "bad"
+        rows.append(bad_row)
+        bad = Path(self.tmp.name) / "invalid.csv"
+        with bad.open("w", newline="", encoding="utf-8") as handle:
+            csv.writer(handle).writerows(rows)
+
+        other = db.connect(Path(self.tmp.name) / "fresh.db")
+        self.addCleanup(other.close)
+        with self.assertRaisesRegex(ValueError, "row 2"):
+            db.import_csv(other, bad)
+        self.assertEqual(db.totals(other)["events"], 0)  # nothing written
+
+    def test_import_json_round_trips_and_validates_shape(self):
+        db.insert_events(self.conn, [make_event("2026-10-06T10:00:00.000Z", request_id="j", output_tokens=7, exact=False)])
+        out = Path(self.tmp.name) / "roundtrip.json"
+        db.export_json(self.conn, out)
+
+        other = db.connect(Path(self.tmp.name) / "other.db")
+        self.addCleanup(other.close)
+        self.assertEqual(db.import_json(other, out), (1, 0, 0))
+        self.assertEqual(db.totals(other)["estimated_tokens"], 7)
+        self.assertEqual(db.import_json(other, out), (0, 0, 1))
+
+        shape = Path(self.tmp.name) / "shape.json"
+        shape.write_text('{"not": "a list"}', encoding="utf-8")
+        with self.assertRaises(ValueError):
+            db.import_json(other, shape)
 
 
 if __name__ == "__main__":
