@@ -262,7 +262,7 @@ def main(argv: list[str] | None = None, services: CliServices | None = None) -> 
             agent = registry.get(args.agent)
             observer = state.agent_run_observer()
             runner = services.agent_runner(logs, config.pass_env_names, config.pass_env_prefixes,
-                                           run_observer=observer)
+                                           run_observer=observer, systemd_run_enabled=config.systemd_run_enabled)
             result = asyncio.run(runner.run_agent(agent, args.prompt, Path.cwd()))
         except (KeyError, RuntimeError, OSError) as error:
             print(f"ERROR: {error}")
@@ -468,9 +468,11 @@ def main(argv: list[str] | None = None, services: CliServices | None = None) -> 
     registry = services.agent_registry(config)
     run_observer = state.agent_run_observer()
     runner = services.agent_runner(logs, config.pass_env_names, config.pass_env_prefixes,
-                                  run_observer=run_observer, metadata_collector=GitRunMetadataCollector())
+                                  run_observer=run_observer, metadata_collector=GitRunMetadataCollector(),
+                                  systemd_run_enabled=config.systemd_run_enabled)
     verifier = services.verifier(config.verification_commands, pass_env_names=config.pass_env_names,
-                                 pass_env_prefixes=config.pass_env_prefixes)
+                                 pass_env_prefixes=config.pass_env_prefixes,
+                                 systemd_run_enabled=config.systemd_run_enabled)
     verification_kernel = services.verification_kernel(
         profiles=config.verification_profiles,
         default_profile=config.default_verification_profile,
@@ -479,6 +481,7 @@ def main(argv: list[str] | None = None, services: CliServices | None = None) -> 
         pass_env_prefixes=config.pass_env_prefixes,
         logs=logs,
         state=state,
+        systemd_run_enabled=config.systemd_run_enabled,
     )
     engine = services.workflow_engine(config, state, registry, runner, verifier,
                                       run_observer=run_observer, metadata_collector=GitRunMetadataCollector(),

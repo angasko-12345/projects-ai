@@ -93,13 +93,14 @@ class AgentRunner:
         metadata_collector: Callable[[str | Path], AgentRunMetadata] | None = None,
         runtime: ProcessRuntime | None = None,
         degradation: DegradationRecorder | None = None,
+        systemd_run_enabled: bool = True,
     ):
         self.logs = logs
         self.pass_env_names = pass_env_names
         self.pass_env_prefixes = pass_env_prefixes
         self.run_observer = run_observer
         self.metadata_collector = metadata_collector
-        self._runtime = runtime or ProcessRuntime(pass_env_names, pass_env_prefixes)
+        self._runtime = runtime or ProcessRuntime(pass_env_names, pass_env_prefixes, systemd_run_enabled=systemd_run_enabled)
         # A8: an AgentRun notification that cannot be stored is a lost record,
         # not a reason to abandon a run the user asked for.  `recover_agent_runs`
         # reaps stranded runs, so these degrade — but they are no longer silent.

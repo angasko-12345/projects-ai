@@ -48,7 +48,7 @@ class AppConfig:
     role_preferences: dict[str, tuple[str, ...]]
     verification_commands: tuple[tuple[str, ...], ...] = ()
     max_attempts: int = 2
-    concurrency: int = 2
+    concurrency: int = 1
     max_repair_cycles: int = 1
     pass_env_names: tuple[str, ...] = ()
     pass_env_prefixes: tuple[str, ...] = ()
@@ -58,6 +58,7 @@ class AppConfig:
     backoff_max_seconds: float = 30.0
     backoff_factor: float = 2.0
     routing_enabled: bool = True
+    systemd_run_enabled: bool = True
 
 
 # Bundled as package data by AgentOps.spec, so it resolves identically from a
@@ -280,6 +281,9 @@ def load_config(path: str | Path | None = None) -> AppConfig:
         "routing_enabled",
         routing_setting.get("enabled", True) if isinstance(routing_setting, dict) else True,
     )
+    systemd_run_enabled = runtime.get("systemd_run_enabled", True)
+    if not isinstance(systemd_run_enabled, bool):
+        raise ValueError("runtime.systemd_run_enabled must be a boolean.")
     if not isinstance(routing_enabled, bool):
         raise ValueError("runtime.routing_enabled must be a boolean.")
     pass_env = runtime.get("pass_env", {})
@@ -306,4 +310,4 @@ def load_config(path: str | Path | None = None) -> AppConfig:
                      max_repair_cycles, tuple(names), tuple(prefixes),
                      verification_profiles, default_profile,
                      float(backoff_base), float(backoff_max), float(backoff_factor),
-                     routing_enabled)
+                     routing_enabled, systemd_run_enabled)

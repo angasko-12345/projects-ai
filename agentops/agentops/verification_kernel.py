@@ -137,6 +137,7 @@ class VerificationKernel:
         state: Any | None = None,
         process_factory: ProcessFactory | None = None,
         degradation: DegradationRecorder | None = None,
+        systemd_run_enabled: bool = True,
     ):
         self._profiles = dict(profiles or {})
         self._default_profile = default_profile
@@ -153,7 +154,7 @@ class VerificationKernel:
             degradation = DegradationRecorder(
                 emit=event_emitter(state.record_typed_event))
         self._degradation = degradation if degradation is not None else DegradationRecorder()
-        self._runtime = ProcessRuntime(pass_env_names, pass_env_prefixes, spawn=process_factory)
+        self._runtime = ProcessRuntime(pass_env_names, pass_env_prefixes, spawn=process_factory, systemd_run_enabled=systemd_run_enabled)
         if default_profile is not None and default_profile not in self._profiles:
 
             raise ValueError(f"Unknown verification profile: {default_profile}.")

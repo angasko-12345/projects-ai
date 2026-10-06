@@ -92,6 +92,7 @@ def _harness(directory, profile, **kernel_overrides):
         default_profile=profile.name,
         logs=logs,
         state=state,
+        systemd_run_enabled=False,
         **kernel_overrides,
     )
     return state, kernel

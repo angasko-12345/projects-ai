@@ -389,7 +389,7 @@ class ProcessRuntimeTests(unittest.TestCase):
             root = Path(directory)
             config = AgentConfig("python", sys.executable, ("-c", "print('runtime-ok')"))
             agent = DetectedAgent(config, True, sys.executable)
-            runner = AgentRunner(MagicMock())
+            runner = AgentRunner(MagicMock(), systemd_run_enabled=False)
             agent_result = asyncio.run(runner.run_agent(agent, "unused", root, timeout_seconds=30))
             self.assertTrue(agent_result.succeeded)
             self.assertIn("runtime-ok", agent_result.stdout)
@@ -397,6 +397,7 @@ class ProcessRuntimeTests(unittest.TestCase):
             verifier = Verifier(
                 ((sys.executable, "-c", "print('verify-ok')"),),
                 timeout_seconds=30,
+                systemd_run_enabled=False,
             )
             checks = asyncio.run(verifier.run(root))
             self.assertEqual(len(checks), 1)

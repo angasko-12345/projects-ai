@@ -195,8 +195,9 @@
     },
     "runtime": {
         "max_attempts": 2,
-        "concurrency": 2,
+        "concurrency": 1,
         "max_repair_cycles": 1,
+        "systemd_run_enabled": true,
         "pass_env": {
             "names": [],
             "prefixes": []

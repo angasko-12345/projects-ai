@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -56,6 +57,8 @@ class ProcessRuntime:
     pass_env_prefixes: tuple[str, ...] = ()
     spawn: SpawnFactory | None = None
     cleanup_timeout_seconds: float = 10.0
+    systemd_run_enabled: bool = True
+    _systemd_run_available: bool | None = None
 
     @staticmethod
     def build_environment(
@@ -66,6 +69,7 @@ class ProcessRuntime:
         allowed = {
             "PATH", "PATHEXT", "SystemRoot", "WINDIR", "COMSPEC", "TEMP", "TMP",
             "USERPROFILE", "APPDATA", "LOCALAPPDATA", "HOME", "LANG", "LC_ALL",
+            "DBUS_SESSION_BUS_ADDRESS",
         }
         # Windows environment variables are case-insensitive, but iterating
         # os.environ yields the parent's raw casing (e.g. SYSTEMROOT, PATH).
@@ -114,6 +118,40 @@ class ProcessRuntime:
         # killpg() against exactly this child tree, never the parent group.
         return {"start_new_session": True}
 
+    def _probe_systemd_run(self) -> bool:
+        """Probe whether systemd-run --user --scope works on this machine.
+
+        Runs a real no-op command through systemd-run to verify the user
+        systemd manager/D-Bus is functional. Caches the result.
+        """
+        if self._systemd_run_available is not None:
+            return self._systemd_run_available
+        if not shutil.which("systemd-run"):
+            object.__setattr__(self, "_systemd_run_available", False)
+            return False
+        try:
+            completed = subprocess.run(
+                ("systemd-run", "--user", "--scope", "--quiet", "--", "/bin/true"),
+                capture_output=True,
+                timeout=10,
+                check=False,
+            )
+            available = completed.returncode == 0
+        except (OSError, subprocess.SubprocessError, subprocess.TimeoutExpired):
+            available = False
+        object.__setattr__(self, "_systemd_run_available", available)
+        return available
+
+    def _build_systemd_run_prefix(self) -> tuple[str, ...]:
+        """Return the systemd-run argv prefix for cgroup isolation."""
+        return (
+            "systemd-run", "--user", "--scope",
+            "--expand-environment=no",
+            "-p", "MemoryMax=1500M",
+            "-p", "CPUQuota=150%",
+            "--",
+        )
+
     async def spawn_process(
         self,
         *command: str,
@@ -131,10 +169,20 @@ class ProcessRuntime:
         guaranteed console hiding on Windows) and are cleaned up with a
         direct kill rather than process-group signals.
         """
+        argv = tuple(command)
+        if self.systemd_run_enabled and sys.platform == "linux":
+            if self._probe_systemd_run():
+                argv = self._build_systemd_run_prefix() + argv
+            else:
+                raise RuntimeError(
+                    "systemd_run_enabled is true but systemd --user scope is unavailable. "
+                    "Either set runtime.systemd_run_enabled=false in agents.yaml or ensure "
+                    "systemd --user is running and systemd-run accepts --scope."
+                )
         factory = self.spawn or asyncio.create_subprocess_exec
         options = self.spawn_options() if self.spawn is None else {}
         return await factory(
-            *command,
+            *argv,
             cwd=str(cwd) if cwd is not None else None,
             env=self.environment() if env is None else env,
             stdout=stdout,
