@@ -96,6 +96,7 @@ def _message_to_event(
             timestamp=times.get("created") or time_created,
             provider=provider,
             agent=payload.get("agent") or session_agent,
+            tool="OpenCode",
             model=payload.get("modelID"),
             project=directory,
             input_tokens=tokens.get("input", 0),

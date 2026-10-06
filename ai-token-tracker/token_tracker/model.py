@@ -44,6 +44,7 @@ class UsageEvent:
     timestamp: str
     provider: str
     agent: str | None
+    tool: str | None
     model: str | None
     project: str | None
     input_tokens: int
@@ -56,6 +57,7 @@ class UsageEvent:
     exact: bool
     source: str
     request_id: str | None
+    dedup_key: str
     raw_metadata: dict
 
     def metadata_json(self) -> str:
@@ -181,6 +183,27 @@ def make_event_id(
     return digest
 
 
+def make_dedup_key(*, provider: str, model: str | None, timestamp: str, tokens: tuple[int, ...]) -> str:
+    """Canonical identity of an underlying request, independent of its source.
+
+    Two collectors can observe the same API call (a tool and its backend
+    provider, or an agent and a provider dashboard). Those must collapse to
+    one canonical usage event. The key is content-addressed over provider,
+    model, and the token counts, with the timestamp bucketed to 5 seconds so
+    millisecond jitter between sources still matches while distinct requests
+    fall into different buckets or differ in token counts.
+
+    Request ids are deliberately not used: every source issues ids from its
+    own namespace, so ids never align across sources.
+    """
+    try:
+        iso = timestamp[:-1] + "+00:00" if timestamp.endswith("Z") else timestamp
+        bucket = str(int(datetime.fromisoformat(iso).timestamp()) // 5 * 5)
+    except ValueError:
+        bucket = ""
+    return "\x1f".join(("ct", provider, model or "", *(str(t) for t in tokens), bucket))
+
+
 def normalize_event(
     *,
     timestamp: object,
@@ -194,6 +217,7 @@ def normalize_event(
     cost: object = None,
     exact: object = False,
     agent: object = None,
+    tool: object = None,
     model: object = None,
     project: object = None,
     request_id: object = None,
@@ -219,6 +243,7 @@ def normalize_event(
     exact_b = _coerce_exact(exact)
 
     agent_t = _coerce_text(agent, "agent")
+    tool_t = _coerce_text(tool, "tool")
     model_t = _coerce_text(model, "model")
     project_t = _coerce_text(project, "project")
     request_t = _coerce_text(request_id, "request_id")
@@ -241,11 +266,20 @@ def normalize_event(
         tokens=tokens,
         cost=cost_n,
     )
+    # Zero-usage records (errors, streaming placeholders) must not merge with
+    # each other: they carry no tokens to double-count, and collapsing them
+    # would undercount requests. Keep them keyed to their source event.
+    dedup_key = (
+        f"zero|{event_id}"
+        if total == 0
+        else make_dedup_key(provider=prov, model=model_t, timestamp=ts, tokens=tokens)
+    )
     return UsageEvent(
         id=event_id,
         timestamp=ts,
         provider=prov,
         agent=agent_t,
+        tool=tool_t,
         model=model_t,
         project=project_t,
         input_tokens=tokens[0],
@@ -258,6 +292,7 @@ def normalize_event(
         exact=exact_b,
         source=src,
         request_id=request_t,
+        dedup_key=dedup_key,
         raw_metadata=metadata,
     )
 
@@ -281,6 +316,7 @@ EVENT_COLUMNS = (
     "timestamp",
     "provider",
     "agent",
+    "tool",
     "model",
     "project",
     "input_tokens",
@@ -293,6 +329,7 @@ EVENT_COLUMNS = (
     "exact",
     "source",
     "request_id",
+    "dedup_key",
     "raw_metadata",
 )
 
@@ -304,6 +341,7 @@ def event_to_row(event: UsageEvent) -> dict:
         "timestamp": event.timestamp,
         "provider": event.provider,
         "agent": event.agent,
+        "tool": event.tool,
         "model": event.model,
         "project": event.project,
         "input_tokens": event.input_tokens,
@@ -316,6 +354,7 @@ def event_to_row(event: UsageEvent) -> dict:
         "exact": 1 if event.exact else 0,
         "source": event.source,
         "request_id": event.request_id,
+        "dedup_key": event.dedup_key,
         "raw_metadata": event.metadata_json(),
     }
 
@@ -329,22 +368,46 @@ def event_from_row(row: dict) -> UsageEvent:
             parsed = {"_unparsed": metadata}
     else:
         parsed = metadata
+    tokens = (
+        int(row.get("input_tokens") or 0),
+        int(row.get("output_tokens") or 0),
+        int(row.get("cache_read_tokens") or 0),
+        int(row.get("cache_write_tokens") or 0),
+        int(row.get("reasoning_tokens") or 0),
+    )
+    # dedup_key is derived from the row's own values when absent (pre-migration
+    # rows, old exports), so identity never depends on a stored value being
+    # in sync with its columns.
+    dedup_key = row.get("dedup_key") or ""
+    if not dedup_key:
+        dedup_key = (
+            f"zero|{row['id']}"
+            if sum(tokens) == 0
+            else make_dedup_key(
+                provider=row["provider"],
+                model=row.get("model"),
+                timestamp=row["timestamp"],
+                tokens=tokens,
+            )
+        )
     return UsageEvent(
         id=row["id"],
         timestamp=row["timestamp"],
         provider=row["provider"],
         agent=row.get("agent"),
+        tool=row.get("tool"),
         model=row.get("model"),
         project=row.get("project"),
-        input_tokens=int(row.get("input_tokens") or 0),
-        output_tokens=int(row.get("output_tokens") or 0),
-        cache_read_tokens=int(row.get("cache_read_tokens") or 0),
-        cache_write_tokens=int(row.get("cache_write_tokens") or 0),
-        reasoning_tokens=int(row.get("reasoning_tokens") or 0),
+        input_tokens=tokens[0],
+        output_tokens=tokens[1],
+        cache_read_tokens=tokens[2],
+        cache_write_tokens=tokens[3],
+        reasoning_tokens=tokens[4],
         total_tokens=int(row.get("total_tokens") or 0),
         cost=row.get("cost"),
         exact=bool(row.get("exact")),
         source=row["source"],
         request_id=row.get("request_id"),
+        dedup_key=dedup_key,
         raw_metadata=parsed,
     )
