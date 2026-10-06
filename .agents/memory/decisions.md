@@ -473,3 +473,41 @@
 - **Deliberate non-change:** `MIN_CUE_SEC = 0.40` and `MAX_CUE_SEC = 7.00` untouched. No Gemini prompt, TTS, visuals, renderer, manifest/resume, retry, CLI, or batch change. A narration that passes this gate but still exceeds the caption bounds is explicitly deferred to a separate caption-policy task.
 - **Verification:** `cd tiktok-slop-factory && python -m pytest tests -q` -> **125 passed, 2 failed** (628s). The two failures (`test_config.py::test_loads_dotenv_from_project_root`, `test_gemini_parsing.py::test_generate_ideas_rejects_duplicate_padding`) are the same environmental `GEMINI_API_KEY` failures carried from the caption pass, reproduced on a clean tree before any edit and out of scope. 16 new tests in `tests/test_narration_coherence.py`; all 32 caption tests still green.
 - **Agents involved:** Pi (this session). Commit `f31221f`, pushed to `origin/main`.
+## 2026-10-06 - Verification results live in one generated file, and instruction files carry no counts
+
+- **Decision:** the current measured result for each product is
+  `.agents/evidence/verification.json`. `tools/evidence/generate.py` produces it
+  by running each product's own suite - by default inside a throwaway clone of
+  the current commit, so the record describes committed code rather than the
+  working tree. `tools/evidence/check.py` verifies the record and fails when it
+  is malformed, when a file under a measured product changed after the recorded
+  commit, when the run was dirty, or when an instruction file restates a count.
+  `.github/workflows/evidence.yml` runs the checker and its tests, not a fourth
+  copy of the three suites.
+- **Reason:** five files each held their own hand-copied test count and all five
+  disagreed with each other and with reality. Two date claims were impossible
+  against the repository's own history. A green suite here had already been
+  proved untrustworthy in both directions: tests that passed only because the
+  working tree was dirty, and a merge-gate test that could not fail against the
+  bug it was written for. The generalisable fix is not better prose, it is
+  removing the manual copies and leaving one generated artifact with a checker
+  attached.
+- **Alternatives considered:** (a) a wiki page or a single markdown table - no,
+  the table was the problem; (b) a coverage or lint gate - no product configures
+  one, so CI would be inventing a standard; (c) checking the recorded count
+  against a live run on every CI push - rejected as a fourth place for a count
+  to live, and it duplicates what the three product workflows already do;
+  (d) per-product evidence files - rejected, one file keeps the cross-product
+  comparison in one place and the checker small.
+- **Deliberate non-change:** dated historical baselines stay in the memory files,
+  relabelled as history rather than deleted, because they record what was
+  measured when and are still evidence of that. Memory files were not turned
+  into a second database: they point at the evidence file, they do not copy it.
+  `tiktok-slop-factory` and `ai-token-tracker` are recorded as deliberate
+  exclusions with reasons rather than silently omitted.
+- **Known limit, stated rather than implied:** editing a count *and* the runner
+  summary it came from is indistinguishable from a measurement without re-running
+  the suite. Staleness closes the useful part of that window, since a forged
+  number cannot outlive the code it describes. The record keeps the verbatim
+  summary lines precisely so the ordinary case - editing one number - fails.
+- **Agents involved:** OpenCode.

@@ -755,3 +755,54 @@
 - **Fix:** include the character inside the class: `(\.{2,}|…|[,;:!?.]+)$`.
 - **Remember:** when a regex mixes a multi-char alternative with a character class, check the class covers every single-character case, and write the test keyed on the exact literal token so a missing match raises `KeyError` instead of passing quietly.
 
+## 2026-10-06 - A number that five files copy by hand is five numbers that rot
+
+- **Symptom:** `.agents/AGENTS.md`, three product `AGENTS.md` files, the
+  antigravity memory, and the cline/hermes environments each carried their own
+  copy of the current test count. On this day they read 512/369/142, 512/369/146,
+  501/366/142, and 512/349/115. The real measured numbers were none of those.
+  Four headings in the canonical memory were dated 2026-10-10 in a repository
+  whose newest commit was 2026-10-05, and `lessons.md` carried a byte-identical
+  duplicate of five entries.
+- **Root cause:** each copy was a *measurement*, not a fact, and nothing failed
+  when it drifted. The counts were hand-edited into files that no test reads and
+  no CI job checks, so each went stale on its own schedule and the disagreement
+  was invisible until someone went looking.
+- **Fix:** one machine-readable record (`.agents/evidence/verification.json`)
+  with the product, command, total, skipped, failures, errors, result, UTC
+  timestamp, commit, interpreter, platform, and whether the tree was clean;
+  regenerated from real runs by `tools/evidence/generate.py`, verified by
+  `tools/evidence/check.py`. Instruction files state the command and point at
+  that file. The checker fails if a count reappears in an instruction file, so
+  the drift cannot silently return.
+- **Remember:** before adding a number to a document, ask what makes it true and
+  what would make it false. A count with neither a generator nor a checker is a
+  claim, and this repository is now littered with the ones it stopped writing.
+  Prefer a recorded measurement plus a staleness rule over a documented
+  convention - the convention was already here, in five files, and every copy
+  disagreed.
+
+## 2026-10-06 - Asserting a gate needs the state that makes the gate interesting
+
+- **Symptom:** `MergeGateBoundaryTests` exists to pin the merge rule that
+  `98ea451` fixed - "READY merges, not-READY commits and preserves" - and it
+  could not have caught that bug. Every not-READY case seeded a state store
+  containing no implementation task, so `implementation_passed()` returned
+  False under every version of the code. Reverting the gate to the pre-`98ea451`
+  `ready or implementation_passed` left all 15 tests green.
+- **Root cause:** the harness supplied a state in which the two implementations
+  agreed. Case B exists to distinguish "implementation passed, verification did
+  not resolve" from the old rule - but the seeded store had no implementation
+  task, so it was actually testing "nothing happened, so nothing merged". The
+  test asserted the right sentence about the wrong state.
+  A second, subtler version of the same bug: the harness closed the store before
+  calling the helper, and `implementation_passed()` reads it - a closed store
+  fails closed, silently disarming case B again.
+- **Fix:** the store is seeded with the implementation status each case names,
+  and closed only after the call. Verified by mutation in a scratch copy: the
+  reverted gate now turns cases B and C red.
+- **Remember:** for every test written to pin a rule, ask which state the two
+  implementations actually disagree about, then construct *that* state. If you
+  cannot state it, the test cannot fail for the reason it claims. And never let
+  a fixture leave a dependency the code under test reads in a failing-safe
+  default: check the teardown order against what the helper actually consumes.
