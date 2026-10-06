@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-10-06T04:02:51+00:00",
+  "commit": "42ed95cc9bdb8bed31c02ee04ac8be2fc24c1695",
+  "python": "3.14.7",
+  "platform": "Windows 11 (AMD64)",
+  "measured_in": "a clean clone of 42ed95cc9bdb",
+  "clean_checkout": true,
+  "command_note": "Every command runs from its own product directory with the interpreter that ran this script. There is no repository-wide test command and these products share no dependencies.",
+  "excluded": {
+    "tiktok-slop-factory": "No product AGENTS.md, so no agreed command; the suite is pytest, takes ~10 minutes of real FFmpeg renders, and carries two known GEMINI_API_KEY-dependent failures. An evidence record here would be red for reasons unrelated to the code under test.",
+    "ai-token-tracker": "Added 2026-10-06 without a product AGENTS.md or an agreed test command, and still being edited. It becomes measurable the moment someone names its command here and in its own AGENTS.md."
+  },
+  "products": [
+    {
+      "product": "agentops",
+      "directory": "agentops",
+      "command": [
+        "C:\\Python314\\python.exe",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests"
+      ],
+      "dirty_paths": [],
+      "total": 624,
+      "duration_seconds": 95.371,
+      "skipped": 4,
+      "failures": 0,
+      "errors": 0,
+      "summary": [
+        "Ran 624 tests in 95.371s",
+        "OK (skipped=4)"
+      ],
+      "result": "pass"
+    },
+    {
+      "product": "universal-game-agent",
+      "directory": "universal-game-agent",
+      "command": [
+        "C:\\Python314\\python.exe",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests"
+      ],
+      "dirty_paths": [],
+      "total": 495,
+      "duration_seconds": 31.921,
+      "skipped": 1,
+      "failures": 0,
+      "errors": 0,
+      "summary": [
+        "Ran 495 tests in 31.921s",
+        "OK (skipped=1)"
+      ],
+      "result": "pass"
+    },
+    {
+      "product": "small-projects/mini-llm",
+      "directory": "small-projects/mini-llm",
+      "command": [
+        "C:\\Python314\\python.exe",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests"
+      ],
+      "dirty_paths": [],
+      "total": 146,
+      "duration_seconds": 25.546,
+      "skipped": 1,
+      "failures": 0,
+      "errors": 0,
+      "summary": [
+        "Ran 146 tests in 25.546s",
+        "OK (skipped=1)"
+      ],
+      "result": "pass"
+    }
+  ]
+}

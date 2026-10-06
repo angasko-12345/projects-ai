@@ -91,6 +91,7 @@ REQUIRED_RECORD_FIELDS = (
     "failures",
     "errors",
     "result",
+    "summary",
 )
 REQUIRED_DOCUMENT_FIELDS = (
     "schema_version",
@@ -109,7 +110,20 @@ _DETAIL = re.compile(r"(failures|errors|skipped|expected failures|unexpected suc
 
 
 def parse_unittest_summary(output: str) -> dict:
-    """Read counts out of a unittest summary. Never guesses: no match, no record."""
+    """Read counts out of a unittest summary. Never guesses: no match, no record.
+
+    The verbatim summary lines are kept in the record so a later edit to a
+    number can be caught: `check_schema` re-parses them and requires agreement,
+    which is what makes a hand-written "612 tests" fail instead of reading as
+    a fresh measurement.
+
+    What this cannot catch: someone who edits the count *and* the summary to
+    match. A self-consistent forgery is indistinguishable from a measurement
+    without re-running the suite, which is what `generate.py` is for. Staleness
+    closes the useful part of that window -- a forged number cannot outlive the
+    code it describes, because the next product commit invalidates the record.
+    `test_a_self_consistent_forgery_is_the_documented_limit` pins this.
+    """
     ran = _RAN.search(output)
     if ran is None:
         return {}
@@ -119,6 +133,7 @@ def parse_unittest_summary(output: str) -> dict:
         "skipped": 0,
         "failures": 0,
         "errors": 0,
+        "summary": [ran.group(0).strip()],
     }
     failed = _FAILED.search(output)
     if failed is not None:
@@ -127,12 +142,14 @@ def parse_unittest_summary(output: str) -> dict:
                 continue
             record[key] = int(value)
         record["result"] = "fail"
+        record["summary"].append(failed.group(0).strip())
         return record
     ok = _OK.search(output)
     if ok is None:
         return {}
     record["skipped"] = int(ok.group(1) or 0)
     record["result"] = "pass"
+    record["summary"].append(ok.group(0).strip())
     return record
 
 
@@ -219,6 +236,24 @@ def check_schema(document: object) -> list[str]:
                             "the run was not understood")
         if record["result"] == "pass" and record["skipped"] == record["total"]:
             problems.append(f"{label}: every test skipped, which is never a pass")
+
+        # Re-derive the counts from the recorded runner output. This is what
+        # catches a hand-edited number: the fields and the summary lines the
+        # runner actually printed have to agree.
+        recorded = record.get("summary")
+        if isinstance(recorded, list) and all(isinstance(l, str) for l in recorded):
+            derived = parse_unittest_summary("\n".join(recorded))
+            if not derived:
+                problems.append(
+                    f"{label}: summary {recorded!r} cannot be parsed, so the "
+                    "recorded counts have no runner output behind them")
+            else:
+                for field in ("total", "skipped", "failures", "errors", "result"):
+                    if derived[field] != record[field]:
+                        problems.append(
+                            f"{label}: {field} is recorded as {record[field]!r} but "
+                            f"the recorded runner summary says {derived[field]!r} "
+                            f"({recorded!r})")
 
     expected = {entry["product"] for entry in PRODUCTS}
     recorded = seen

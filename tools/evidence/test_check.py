@@ -46,6 +46,7 @@ TEMPLATE = {
             "failures": 0,
             "errors": 0,
             "result": "pass",
+            "summary": ["Ran 100 tests in 1.0s", "OK (skipped=1)"],
         }
         for entry in PRODUCTS
     ],
@@ -88,14 +89,24 @@ class SchemaTests(unittest.TestCase):
     def test_the_template_is_accepted(self):
         self.assertEqual(check_schema(good_document()), [])
 
-    def test_a_coherent_but_wrong_count_is_not_detectable_by_shape(self):
-        # Stated plainly because it is the limit of this mechanism: nothing in
-        # the file says 999 is wrong. What catches it is (a) internal
-        # contradiction, tested next, and (b) staleness -- the evidence is
-        # invalidated as soon as a measured product changes, so a number that was
-        # quietly edited cannot outlive the code it described.
+    def test_a_hand_edited_count_is_caught_by_the_recorded_summary(self):
         document = good_document()
         document["products"][0]["total"] = 999
+        self.assertTrue(
+            any("the recorded runner summary says" in p
+                for p in check_schema(document)), check_schema(document))
+
+    def test_a_self_consistent_forgery_is_the_documented_limit(self):
+        # Editing the count AND the summary to match defeats the summary check:
+        # nothing in the file distinguishes that from a measurement. This test
+        # exists so the limit stays deliberate. What still holds is staleness --
+        # a forged number cannot outlive the code it describes, because the next
+        # commit under a measured product invalidates the whole record -- and
+        # `generate.py` is the only way to produce a real one.
+        document = good_document()
+        document["products"][0]["total"] = 999
+        document["products"][0]["summary"] = [
+            f"Ran 999 tests in 1.0s", "OK (skipped=1)"]
         self.assertEqual(check_schema(document), [])
 
     def test_a_skipped_count_beyond_the_total_is_rejected(self):
@@ -255,6 +266,19 @@ class EndToEndTests(unittest.TestCase):
     def test_the_committed_evidence_file_passes(self):
         completed = self._run()
         self.assertEqual(completed.returncode, 0, completed.stderr)
+
+    def test_deliberately_corrupted_count_fails(self):
+        # The negative test performed by hand, kept here so it cannot rot:
+        # edit one recorded number, leave the runner summary it came from, and
+        # require the checker to name the disagreement.
+        document = self._recorded()
+        before = document["products"][0]["total"]
+        document["products"][0]["total"] = 999
+        completed = self._run_corrupted(document)
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn(
+            f"total is recorded as 999 but the recorded runner summary says {before}",
+            completed.stderr)
 
     def test_deliberately_corrupted_count_fails(self):
         document = self._recorded()
