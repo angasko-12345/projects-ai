@@ -159,3 +159,22 @@ tooling rather than about product code.
   staging discipline is what actually enforces it. When you find unexplained
   modifications in `git status`, leave them and say so — that is a signal worth
   surfacing, not noise to clean up.
+
+### 2026-10-06 - Read-only reboot audits: PowerShell quoting forces probe scripts to files
+
+- **Symptom:** Inline `python -c` with nested quotes failed three times in a row
+  (`Unexpected token ')'`, missing string terminator) when querying OMP
+  `history.db`, Hermes `state.db`, and Brave `History` — the audit stalled on
+  quoting, not on data.
+- **Root cause:** PowerShell parses the command line before Python sees it, so
+  `chr(39)` tricks and nested double quotes do not survive intact. SQLite
+  `mode=ro` URIs and `datetime(..., 'unixepoch')` need single quotes that the
+  shell eats.
+- **Solution:** Write each probe to `%TEMP%` via the editor tool
+  (`omp_hist.py`, `hermes_sess.py`, `brave_gpt2.py`), run `python <file>`, and
+  for locked DBs (Brave `History`) copy to Temp first, query, delete. All
+  probes open read-only (`mode=ro`); Temp scripts are scratch, never repo
+  state. No repo file was touched by the probes.
+- **Remember:** More than one statement or any single quote inside means a
+  script file, not `-c`. And a locked SQLite file is read via copy-then-query,
+  never by killing the owner.

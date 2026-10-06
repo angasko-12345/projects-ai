@@ -34,33 +34,6 @@ marked as such rather than asserted.
 - **No configured lint, formatter, type-check, or coverage tooling** in any product. Do
   not invent such commands.
 - `.git/info/exclude` holds machine-local paths (`.pi/`, `small-projects/`, and others).
-## Verification work (2026-10-06)
-
-Verified in this environment, not inferred:
-
-- **Measure from a throwaway clone, not the shared tree.** `git clone --quiet --no-hardlinks
-  <repo> <temp>` then `git checkout --detach <sha>` inside it. This makes it cheap to commit
-  synthetic history and prove how a check behaves, without touching the working tree or the
-  index. `--no-hardlinks` matters: with hardlinks, editing a file in the clone can write through
-  to the original object store.
-- `git worktree add --detach <path> <sha>` also works, but the worktree registration lives in
-  the shared `.git/worktrees/`, so it is visible to other sessions and can be pruned out from
-  under you. A plain clone has no such coupling.
-- **Measured suite runtimes** (Windows, Python 3.14.7, this machine): `agentops/` ~100 s,
-  `universal-game-agent/` ~50 s, `small-projects/mini-llm/` ~55 s. A full
-  `python tools/evidence/generate.py` is ~4 minutes because it runs each suite in a fresh
-  clone. All of these exceed a 30 s tool-call timeout, so background long runs and poll.
-- **Do not `git stash` in a shared tree**, even when the stash is popped immediately and
-  `git status` matches before and after. Another session can commit between the two, and the
-  index is shared. A plain clone has nothing to lose.
-- PowerShell 5.1: `> /dev/null` does not redirect to a null device -- it resolves to a
-  relative path and fails. Use `| Out-Null`, or write to a file under the scratch directory.
-- `python -c "..."` works for short probes; write a scratch file under
-  `C:\Users\admin\AppData\Local\Temp\opencode\` for anything longer. Same quoting hazard
-  already recorded for `node -e`.
-- Current test results for all three products are in `.agents/evidence/verification.json`, not
-  in memory. Run `python tools/evidence/check.py` to verify the record is still true; do not
-  quote a count from any memory file.
 - Regenerable artifacts that are gitignored and safe to delete: `build/`, `.pytest_cache/`,
   `*.egg-info/`, `__pycache__/`. Preserved on purpose: `agentops/dist/AgentOps.exe` (a
   release deliverable) and `agentops/.agentops/state.sqlite` (live state).

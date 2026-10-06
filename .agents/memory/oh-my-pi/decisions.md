@@ -106,3 +106,17 @@
   their `ppo_final.pt` asserts — location changed, claim strengthened. Production
   default `checkpoints` untouched. Guard: `tests/test_cwd_isolation.py`
   (scratch-CWD run + empty-dir assert).
+
+## 2026-10-06: SHOT 3 stopped at the coverage goal; no follow-on refactor
+- The shot's scope limit ("do not continue into another giant refactor after the
+  coverage goal is reached") was enforced literally: once 7 collectors synced
+  exact against real data, the Sources view rendered, dark mode + dropdown fix
+  were verified, and 41/41 tests passed, work ended. Deferred by design: any
+  second-order polish (chart styling, more providers, agent-role attribution
+  tuning), and expansion of `sync_all` beyond per-source try/except.
+- Rejected mid-session temptation: chasing the desktop focus fight (foreground
+  lock vs Roblox + a second agent session) to get one popup screenshot — solved
+  with an offscreen `view().grab()` probe instead, then moved on.
+- Accounting-side decision (exact-only collectors, cross-source-only dedup,
+  gray-with-reason unavailability) recorded canonically in
+  `.agents/memory/decisions.md` (2026-10-06).

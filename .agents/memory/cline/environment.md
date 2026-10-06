@@ -115,3 +115,25 @@ session was writing or a process rewrote them. Consequence: **always check
 `git add -A` here would have swept another session's in-progress work into a
 commit. This is also the single-writer rule in `.agents/team.md` being
 violated in practice, not just in theory.
+
+## Reboot-audit facts observed 2026-10-06 (read-only)
+
+- EventLog 6008 unexpected shutdown ~1:07:23pm local; WMI last boot 1:19:25pm.
+  HEAD `9365920` timestamped 1:07:15pm. Post-boot `cline` PIDs 14760/11548 are
+  the recovery-audit sessions, not pre-reboot workers.
+- `D:\admin\backup\` absent (`Test-Path` false) — flagged `backup.ps1` is
+  unrecoverable, no hash possible. Quarantine corroboration only:
+  3 `.bdq` 1:18:01pm + 1 1:18:57pm under
+  `C:\ProgramData\Bitdefender\Desktop\Quarantine\`.
+- Read-only SQLite sources that identified the agents: opencode
+  `%USERPROFILE%\.local\share\opencode\opencode.db` (tables incl. `session`,
+  `session_message`; busy-loop log tail 1:19:06pm), OMP
+  `D:/admin/code/cli_files/oh-my-pi/home/agent/history.db` (table `history`
+  columns `prompt, created_at, cwd, session_id`), Hermes
+  `D:/admin/code/cli_files/hermes/state.db` (tables `sessions`, `messages`,
+  timestamp column is `timestamp` on messages / `last_activity_at` on
+  sessions — not `created_at`). Manicode task text lives in
+  `%USERPROFILE%\.config\manicode\message-history.json`.
+- `hermes/pending_messages` listing is access-denied — reported, not forced.
+  `Select-String -Path <dir>\*` fails on directories (use explicit file
+  paths); `Get-ChildItem -MaxDepth` does not exist on PowerShell 5.1.

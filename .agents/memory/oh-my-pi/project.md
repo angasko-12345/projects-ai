@@ -167,3 +167,11 @@
   three sessions.
 - Canonical details: `.agents/memory/project.md` (2026-10-04 entry), `.agents/memory/lessons.md`
   (2026-10-04), `.agents/pending_tasks.md` (mini-llm row removed).
+
+## 2026-10-06: AI Token Tracker SHOT 3 — multi-agent coverage (this session, completed)
+
+- **Delivered the full shot in `ai-token-tracker/`:** 7 exact collectors (OpenCode, Kilo, Hermes, Codex, Pi, Oh My Pi, GitHub Copilot), 3 unavailable-with-reason sources (OpenRouter 403 / Gemini aggregate / OpenAI no key), cross-source dedup (`request_id` else `ct|provider|model|tokens|epoch//5*5`, zero rows distinct, dedup only across sources), Sources tab with coverage + agent/provider/model rollups + status dots, Dark/Light theme with QSettings persistence, dropdown white-text fix. 41/41 tests (+19). Shot priority respected: no refactor, no polish spiral, stopped at the coverage goal.
+- **Commits:** `eb153e2` (core), `8825542` (collectors), `4912a1d` (gui + tests), `70602bb` (README). Files: `model.py`, `db.py`, `opencode.py`, `collectors.py`, `gui.py`, `tests/test_collectors.py`, `README.md` = 7.
+- **Live verification evidence:** real-DB sync 7/7 ok, 14,155 events / 2.45B tokens all exact / 0 estimated, idempotent re-sync; screenshots observed for light dashboard, dark dashboard, Sources tab, and both dropdown popups (grabbed via `combo.view().grab()` probe); theme survived a full relaunch; app closed after verification; `gui.log` removed.
+- **Hazards handled:** stale shot-2 GUI instance killed alongside mine; another session drove Sync on the shared desktop mid-verification (12:43:47, 12:51:11) — app stayed consistent, proving idempotency; git race `9c309dc` split back to pathspec-only `70602bb` with the other session's 5 staged agentops files restored to `A`; foreground-lock/window-capture limits routed through AX element clicks.
+- **Open:** none for this shot. Todo 8/8 done. Canonical cross-refs: `.agents/memory/project.md` + `decisions.md` + `lessons.md` (all 2026-10-06).

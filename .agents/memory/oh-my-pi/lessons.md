@@ -118,3 +118,34 @@
 - Baseline: 317 → 318, 1 skip, OK (commit `59f5a1b`). Pre-existing, NOT fixed:
   gitignored working-tree `checkpoints/ppo_final.pt` (1.49 MB) already clobbered
   by pre-fix runs — reported, not regenerated; `ppo_untrained.pt` intact.
+
+## 2026-10-06: AI Token Tracker shot-3 — driving Qt GUIs through the computer prelude
+
+- **The `computer` window API is async and frame-bound:** every `_Window` method
+  (`screenshot`, `click`, `press`, `raise_`, `find`) must be awaited; `win.click(x, y)`
+  accepts only pixels of the *most recent screenshot of that window* (out-of-frame
+  coords raise `InvalidCoordinateFrame` naming the frame size), and `win.screenshot()`
+  captures the window only — combo popups are separate HWNDs and never appear in it.
+- **Coordinate clicks silently fail when the window lacks foreground:** with fullscreen
+  Roblox and a second agent session contesting the desktop, in-frame clicks hit
+  nothing while `raise_` failed with `InputFailed ... foreground lock`. AX element
+  clicks work without focus: find an element carrying the right `title` and
+  `await el.click()` (this toggled themes and switched tabs reliably).
+- **`win.find` returns at most 100 elements** and the tab bar sits past the cap;
+  walk instead: `kids = await el.children()` (it is an async *method* — `el.children()`,
+  not the `el.children` property I first awaited), recursing to ~depth 8 found
+  `tabgroup`/`tab`/`combobox` every time. `ax()` returns the full tree as a string
+  with refs — good for locating, useless for acting.
+- **Prove QSS widget rendering without winning the desktop fight:** a throwaway probe
+  (`QApplication` + `build_stylesheet(dark/light)` + `combo.showPopup()` +
+  `combo.view().grab() → PNG`, read both images) showed dark popup = light text on
+  #161B22 with green selection, light popup = dark text on white — the exact
+  regression the user reported, verified in both themes in seconds, no focus needed.
+- **GUI verification hygiene:** enumerate `Get-CimInstance Win32_Process` for
+  `*token_tracker*` before trusting what you see — a stale shot-2 instance was live
+  next to mine (two same-titled windows); close with AX `Close` or
+  `os.kill(pid, SIGTERM)` (`WinError 5` often means it is already exiting); verify
+  theme persistence only by *relaunching* (QSettings is read in `main()`, so a live
+  toggle proves nothing about restart); hunt "clipped ghost" header artifacts by
+  cropping + 3× upscale before assuming a QSS bug — it was the intended
+  `setSortIndicator` on the sorted Tokens column.
