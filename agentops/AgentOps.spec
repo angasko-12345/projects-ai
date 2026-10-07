@@ -54,7 +54,7 @@ exe = EXE(
     # UPX corrupts Qt DLLs; compression stays off.
     upx=False,
     upx_exclude=[],
-    runtime_tmpdir=None,
+    runtime_tmpdir="",
     # Windowed: double-clicking opens the GUI without a console window.
     console=False,
     # Last-resort traceback dialog if startup fails outside our own handler.
@@ -63,4 +63,4 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-)
+)
