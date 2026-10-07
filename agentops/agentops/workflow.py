@@ -152,6 +152,12 @@ def _is_git_working_tree(path: str | Path) -> bool:
 
 STANDARD_TASK_ROLES = ("architecture", "implementation", "verification", "review")
 
+#: Per-dependency and total character budget for the handoff block in a
+#: dependent agent's prompt. Dependency results are transcripts that grow with
+#: the work, so without a ceiling each extra generation inflates the next prompt.
+HANDOFF_RESULT_CHARS = 2000
+HANDOFF_TOTAL_CHARS = 8000
+
 
 class WorkflowEngine:
     def __init__(self, config: AppConfig, state: StateStore, registry: AgentRegistry,
@@ -337,8 +343,12 @@ class WorkflowEngine:
                                                   dependencies=(plan.id,), max_attempts=self.config.max_attempts))
         verification = self.state.add_task(Task("Run configured project verification commands.", STANDARD_TASK_ROLES[2], workflow_id,
                                                 dependencies=(implementation.id,), max_attempts=1))
+        # The reviewer judges the implementation, so it needs the implementation
+        # result, not only the verification transcript. Both are PASSED before
+        # review can be scheduled, so this adds context, not a gate.
         review = self.state.add_task(Task(f"Review the completed change for: {description}", STANDARD_TASK_ROLES[3], workflow_id,
-                                          dependencies=(verification.id,), max_attempts=self.config.max_attempts))
+                                          dependencies=(verification.id, implementation.id),
+                                          max_attempts=self.config.max_attempts))
         return workflow_id, [plan, implementation, verification, review]
 
     def create_workflow(self, description: str, specifications: list[dict[str, object]]) -> tuple[str, list[Task]]:
@@ -1259,18 +1269,52 @@ class WorkflowEngine:
                     persist_error, run_id=run_id, context=context)
         return result
 
+    def _dependency_handoff(self, task: Task) -> str:
+        """Bounded prompt context from this task's completed dependencies.
+
+        A dependent agent is only useful if it can see what the task it depends
+        on produced: without this, `implementation` never reads the architecture
+        plan and `review` never inspects the change. Deterministic by
+        construction -- dependency order, fixed truncation, no LLM. Reads the
+        already-redacted `task.result`; prompts are never persisted.
+        """
+        if not task.dependencies:
+            return ""
+        try:
+            tasks = {item.id: item for item in self.state.list_tasks(task.workflow_id)}
+        except Exception:
+            return ""
+        blocks: list[str] = []
+        budget = HANDOFF_TOTAL_CHARS
+        for dependency_id in task.dependencies:
+            dependency = tasks.get(dependency_id)
+            if dependency is None or dependency.id == task.id:
+                continue
+            # Only a PASSED dependency has a result worth passing on. The
+            # workflow schedules a task once its dependencies pass, so this
+            # covers a dependency reached through a retry.
+            if dependency.status is not TaskStatus.PASSED:
+                continue
+            result = (dependency.result or "").strip()
+            if not result:
+                continue
+            if len(result) > HANDOFF_RESULT_CHARS:
+                result = result[:HANDOFF_RESULT_CHARS].rstrip() + "\n[truncated]"
+            block = (
+                f"Previous task:\nRole: {dependency.role}\n\n"
+                f"Description:\n{dependency.description}\n\n"
+                f"Result:\n{result}\n"
+            )
+            if len(block) > budget:
+                break
+            blocks.append(block)
+            budget -= len(block)
+        if not blocks:
+            return ""
+        return "Completed dependency work you can rely on:\n" + "\n".join(blocks)
+
     def _prompt_with_history(self, task: Task, working_directory: str | Path) -> str:
-        base = (
-            f"You are the {task.role} agent for AgentOps task {task.id}.\n"
-            f"Workspace: {Path(working_directory).resolve()}\n"
-            f"Request: {task.description}\n"
-            "Work only in this workspace. Do not read secrets or alter AgentOps configuration. "
-            "Summarize changes and tests in your final response. "
-            "Optionally end with a JSON AgentResult object "
-            '{"schema_version": 1, "status": "success|failure|partial|unknown", '
-            '"summary": "...", "files_changed": [], "tests_run": 0, '
-            '"tests_passed": 0, "tests_failed": 0}; plain-text summaries remain valid.'
-        )
+        base = self._prompt(task, working_directory)
         if task.attempts <= 1:
             return base
         try:
@@ -1284,9 +1328,10 @@ class WorkflowEngine:
         except Exception:
             return base
 
-    @staticmethod
-    def _prompt(task: Task, working_directory: str | Path) -> str:
-        return (
+    def _prompt(self, task: Task, working_directory: str | Path) -> str:
+        # The fallback path in `_run_task_agent` carries the same dependency
+        # context, so a prompt does not depend on whether history read worked.
+        base = (
             f"You are the {task.role} agent for AgentOps task {task.id}.\n"
             f"Workspace: {Path(working_directory).resolve()}\n"
             f"Request: {task.description}\n"
@@ -1297,6 +1342,104 @@ class WorkflowEngine:
             '"summary": "...", "files_changed": [], "tests_run": 0, '
             '"tests_passed": 0, "tests_failed": 0}; plain-text summaries remain valid.'
         )
+        handoff = self._dependency_handoff(task)
+        return f"{base}\n\n{handoff}" if handoff else base
+
+    def _review_failure_context(self, review: Task) -> str:
+        """Actionable text describing why the review rejected the change.
+
+        `task.result` alone is not enough: a review that exhausts its attempts
+        ends holding the LAST attempt's message. Observed live -- the review
+        rejected the change, the retry found no alternative agent, and `result`
+        became "No installed agent supports role 'review'". The finding survived
+        only on the review task's failure rows, and repairing from `result` sent
+        the debugging agent after a nonexistent routing bug.
+        """
+        parts: list[str] = []
+        seen: set[str] = set()
+
+        def add(text: str | None) -> None:
+            value = (text or "").strip()
+            if value and value not in seen:
+                seen.add(value)
+                parts.append(value)
+
+        try:
+            failures = self.state.list_failures(review.workflow_id, review.id, limit=20)
+        except Exception:
+            failures = []
+        for failure in failures:
+            add(failure.primary_error or failure.evidence)
+        add(review.result)
+        context = "\n\n".join(parts)
+        if len(context) > HANDOFF_RESULT_CHARS:
+            context = context[:HANDOFF_RESULT_CHARS].rstrip() + "\n[truncated]"
+        return context
+
+    async def _repair_failed_review(
+        self,
+        workflow_id: str,
+        description: str,
+        working_directory: str | Path,
+        cancel_event: threading.Event | None,
+        implementation_id: str,
+        review: Task,
+    ) -> WorkflowResult:
+        """Repair a demonstrated review rejection, then re-verify and re-review.
+
+        Each cycle persists three real tasks -- debugging, verification, review
+        -- so the repair is part of the run's history, not an invisible retry.
+        Bounded by `max_repair_cycles`, and READY is still decided only by
+        `assert_tasks_ready`, so an exhausted budget returns not READY.
+        """
+        if review.status is not TaskStatus.FAILED:
+            # Only a FAILED review demonstrated a problem. BLOCKED means the
+            # review never ran, so repairing would invent a defect -- the
+            # review-side twin of the UNVERIFIED rule in `run_high_level`.
+            return WorkflowResult(
+                workflow_id, False,
+                f"Review was {review.status.value}; no review failure was "
+                f"demonstrated, so no repair was attempted.",
+            )
+        review_context = self._review_failure_context(review)
+        for _ in range(self.config.max_repair_cycles):
+            repair = self.state.add_task(Task(
+                "Repair the review findings.\n" + review_context,
+                "debugging", workflow_id, dependencies=(implementation_id,),
+                max_attempts=self.config.max_attempts))
+            reverify = self.state.add_task(Task(
+                "Re-run configured project verification commands after a review repair.",
+                "verification", workflow_id, dependencies=(repair.id,), max_attempts=1))
+            re_review = self.state.add_task(Task(
+                f"Re-review the repaired change for: {description}",
+                "review", workflow_id, dependencies=(reverify.id, implementation_id),
+                max_attempts=self.config.max_attempts))
+            await self.execute(workflow_id, working_directory, cancel_event)
+            verification = self.state.get_task(reverify.id)
+            review = self.state.get_task(re_review.id)
+            review_context = self._review_failure_context(review)
+            if verification.status is not TaskStatus.PASSED or not verification.verified:
+                # The repair broke verification. That is a different defect than
+                # the rejection this cycle was opened for, and re-sending the
+                # same findings would not address it.
+                return WorkflowResult(
+                    workflow_id, False,
+                    f"Verification was {verification.status.value} after the "
+                    f"review repair; the repaired change does not verify.",
+                )
+            if review.status is TaskStatus.PASSED:
+                ready = assert_tasks_ready(
+                    self.state.list_tasks(workflow_id), workflow_id,
+                    verification_task_id=verification.id, review_task_id=review.id,
+                )
+                return WorkflowResult(workflow_id, True, ready.summary())
+            if review.status is not TaskStatus.FAILED:
+                return WorkflowResult(
+                    workflow_id, False,
+                    f"Review was {review.status.value} after repair; no further "
+                    f"review failure was demonstrated.",
+                )
+        return WorkflowResult(workflow_id, False, "Review did not pass after the repair budget was exhausted.")
 
     async def run_high_level(
         self,
@@ -1316,7 +1459,13 @@ class WorkflowEngine:
                     verification_task_id=verification.id, review_task_id=review.id,
                 )
                 return WorkflowResult(workflow_id, True, ready.summary())
-            return WorkflowResult(workflow_id, False, "Review did not pass.")
+            # Verification passed and the review rejected the change: a
+            # demonstrated defect, so the same bounded repair policy that
+            # covers a failed verification applies here.
+            return await self._repair_failed_review(
+                workflow_id, description, working_directory, cancel_event,
+                tasks[1].id, review,
+            )
         implementation = self.state.get_task(tasks[1].id)
         if implementation.status is not TaskStatus.PASSED:
             return WorkflowResult(workflow_id, False, "Implementation did not pass; verification was not run.")
