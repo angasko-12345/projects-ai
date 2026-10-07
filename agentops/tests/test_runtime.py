@@ -497,6 +497,61 @@ class ProcessRuntimeTests(unittest.TestCase):
 
             asyncio.run(scenario())
 
+    def test_systemd_isolation_is_opt_in(self):
+        self.assertFalse(ProcessRuntime().systemd_run_enabled)
+
+    def test_injected_factory_never_gets_systemd_prefix_or_probe(self):
+        calls = []
+
+        async def factory(*command, **kwargs):
+            calls.append(command)
+            return FakeProcess()
+
+        runtime = ProcessRuntime(spawn=factory, systemd_run_enabled=True)
+        with patch.object(ProcessRuntime, "_probe_systemd_run",
+                          side_effect=AssertionError("probe must not run")), \
+                patch("agentops.runtime.sys", platform="linux"):
+            asyncio.run(runtime.spawn_process("prog", cwd=".", env={}))
+        self.assertEqual(calls, [("prog",)])
+
+    def test_enabled_isolation_wraps_owned_spawns_on_linux(self):
+        captured = []
+
+        async def fake_exec(*command, **kwargs):
+            captured.append(command)
+            return FakeProcess()
+
+        runtime = ProcessRuntime(systemd_run_enabled=True)
+        with patch.object(ProcessRuntime, "_probe_systemd_run", return_value=True), \
+                patch("agentops.runtime.sys", platform="linux"), \
+                patch("agentops.runtime.asyncio.create_subprocess_exec", fake_exec):
+            asyncio.run(runtime.spawn_process("prog", cwd=".", env={}))
+        self.assertEqual(captured[0][:3], ("systemd-run", "--user", "--scope"))
+        self.assertEqual(captured[0][-1], "prog")
+
+    def test_enabled_isolation_is_ignored_off_linux(self):
+        captured = []
+
+        async def fake_exec(*command, **kwargs):
+            captured.append(command)
+            return FakeProcess()
+
+        runtime = ProcessRuntime(systemd_run_enabled=True)
+        for platform in ("win32", "darwin"):
+            with patch.object(ProcessRuntime, "_probe_systemd_run",
+                              side_effect=AssertionError("probe must not run")), \
+                    patch("agentops.runtime.sys", platform=platform), \
+                    patch("agentops.runtime.asyncio.create_subprocess_exec", fake_exec):
+                asyncio.run(runtime.spawn_process("prog", cwd=".", env={}))
+        self.assertEqual(captured, [("prog",), ("prog",)])
+
+    def test_enabled_isolation_fails_fast_when_unavailable(self):
+        runtime = ProcessRuntime(systemd_run_enabled=True)
+        with patch.object(ProcessRuntime, "_probe_systemd_run", return_value=False), \
+                patch("agentops.runtime.sys", platform="linux"):
+            with self.assertRaises(RuntimeError):
+                asyncio.run(runtime.spawn_process("prog", cwd=".", env={}))
+
 
 if __name__ == "__main__":
     unittest.main()

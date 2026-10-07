@@ -57,7 +57,10 @@ class ProcessRuntime:
     pass_env_prefixes: tuple[str, ...] = ()
     spawn: SpawnFactory | None = None
     cleanup_timeout_seconds: float = 10.0
-    systemd_run_enabled: bool = True
+    # Opt-in: cgroup isolation is a deployment choice made in agents.yaml.
+    # Defaulting it on made every library caller (and every test or CI host
+    # without a systemd --user manager) fail at spawn time.
+    systemd_run_enabled: bool = False
     _systemd_run_available: bool | None = None
 
     @staticmethod
@@ -170,8 +173,13 @@ class ProcessRuntime:
         direct kill rather than process-group signals.
         """
         argv = tuple(command)
-        if self.systemd_run_enabled and sys.platform == "linux":
-            if self._probe_systemd_run():
+        # Only wrap children this runtime spawns itself.  An injected factory
+        # receives exactly the caller's argv (see docstring), so it must never
+        # see a systemd-run prefix or trigger the host probe.
+        if self.spawn is None and self.systemd_run_enabled and sys.platform == "linux":
+            # The probe shells out with a blocking subprocess.run; keep it off
+            # the event loop so it cannot stall concurrent runs for up to 10s.
+            if await asyncio.to_thread(self._probe_systemd_run):
                 argv = self._build_systemd_run_prefix() + argv
             else:
                 raise RuntimeError(

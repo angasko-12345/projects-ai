@@ -27,7 +27,7 @@ class CheckResult:
 class Verifier:
     def __init__(self, commands: tuple[tuple[str, ...], ...], timeout_seconds: int = 300,
                  pass_env_names: tuple[str, ...] = (), pass_env_prefixes: tuple[str, ...] = (),
-                 runtime: ProcessRuntime | None = None, systemd_run_enabled: bool = True):
+                 runtime: ProcessRuntime | None = None, systemd_run_enabled: bool = False):
         self.commands = commands
         self.timeout_seconds = timeout_seconds
         self.pass_env_names = pass_env_names

@@ -137,7 +137,7 @@ class VerificationKernel:
         state: Any | None = None,
         process_factory: ProcessFactory | None = None,
         degradation: DegradationRecorder | None = None,
-        systemd_run_enabled: bool = True,
+        systemd_run_enabled: bool = False,
     ):
         self._profiles = dict(profiles or {})
         self._default_profile = default_profile
