@@ -223,28 +223,47 @@ class StalenessTests(unittest.TestCase):
         return subprocess.run(command, cwd=str(REPO_ROOT), capture_output=True,
                               text=True, check=True).stdout.split()
 
-    @classmethod
-    def _older_commit_touching(cls, paths: list[str]) -> str | None:
-        """The most recent commit touching `paths` that is not HEAD.
-
-        The staleness rule compares that commit to HEAD, so the candidate has to
-        be one where HEAD differs only in ways the test cares about; each test
-        picks its own path set for that reason.
-        """
-        head = cls._head()
-        for commit in cls._commits_touching(paths):
-            if commit != head:
-                return commit
-        return None
-
     def test_documentation_only_change_does_not_invalidate(self):
-        """The point of per-product judgement: docs commits must stay cheap."""
-        older = self._older_commit_touching([".agents/"])
-        if older is None:
-            self.skipTest("no .agents/ commit other than HEAD to compare")
-        problems = check_staleness(self._document_at(older))
-        self.assertEqual([p for p in problems if p.startswith("agentops:")], [],
-                         problems)
+        """The point of per-product judgement: docs commits must stay cheap.
+
+        Built in a scratch repository rather than read off this repository's
+        history: "the newest .agents/ commit" is only a docs-only change when
+        no product commit has landed since, so the old real-history version
+        failed after every agentops commit for reasons unrelated to the rule.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            def run(*args: str) -> str:
+                return subprocess.run(
+                    ["git", "-c", "user.name=t", "-c", "user.email=t@example.com",
+                     "-c", "commit.gpgsign=false", *args],
+                    cwd=str(root), capture_output=True, text=True,
+                    check=True).stdout.strip()
+
+            run("init", "-q")
+            (root / "agentops").mkdir()
+            (root / "agentops" / "module.py").write_text("x = 1\n", encoding="utf-8")
+            run("add", "-A")
+            run("commit", "-q", "-m", "product")
+            measured = run("rev-parse", "HEAD")
+
+            (root / ".agents").mkdir()
+            (root / ".agents" / "notes.md").write_text("docs\n", encoding="utf-8")
+            run("add", "-A")
+            run("commit", "-q", "-m", "docs only")
+            problems = check_staleness(self._document_at(measured), repo_root=root)
+            self.assertEqual([p for p in problems if p.startswith("agentops:")], [],
+                             problems)
+
+            # Control: the same setup does go stale once the product changes,
+            # so the empty result above is the rule working, not a vacuous pass.
+            (root / "agentops" / "module.py").write_text("x = 2\n", encoding="utf-8")
+            run("add", "-A")
+            run("commit", "-q", "-m", "product change")
+            problems = check_staleness(self._document_at(measured), repo_root=root)
+            self.assertTrue(any(p.startswith("agentops:") and "stale" in p
+                                for p in problems), problems)
 
     def test_an_excluded_product_is_never_named_as_stale(self):
         """tiktok-slop-factory is excluded from measurement, so its changes can

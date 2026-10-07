@@ -93,7 +93,7 @@ class AgentRunner:
         metadata_collector: Callable[[str | Path], AgentRunMetadata] | None = None,
         runtime: ProcessRuntime | None = None,
         degradation: DegradationRecorder | None = None,
-        systemd_run_enabled: bool = True,
+        systemd_run_enabled: bool = False,
     ):
         self.logs = logs
         self.pass_env_names = pass_env_names

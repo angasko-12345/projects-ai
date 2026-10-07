@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-10-06T05:02:01+00:00",
-  "commit": "4912a1deb5013e48c11f7542b482a6fbffd224ea",
-  "python": "3.14.7",
-  "platform": "Windows 11 (AMD64)",
-  "measured_in": "a clean clone of 4912a1deb501",
+  "generated_at": "2026-10-07T01:03:50+00:00",
+  "commit": "9173bc28a447a7ea6aec5acbc869cf90072d5032",
+  "python": "3.12.15",
+  "platform": "Linux 6.12.110+ (aarch64)",
+  "measured_in": "a clean clone of 9173bc28a447",
   "clean_checkout": true,
   "command_note": "Every command runs from its own product directory with the interpreter that ran this script. There is no repository-wide test command and these products share no dependencies.",
   "excluded": {
@@ -15,9 +15,9 @@
     {
       "product": "agentops",
       "directory": "agentops",
-      "commit": "4912a1deb5013e48c11f7542b482a6fbffd224ea",
+      "commit": "9173bc28a447a7ea6aec5acbc869cf90072d5032",
       "command": [
-        "C:\\Python314\\python.exe",
+        "/workspace/work/venv/bin/python",
         "-m",
         "unittest",
         "discover",
@@ -25,23 +25,23 @@
         "tests"
       ],
       "dirty_paths": [],
-      "total": 624,
-      "duration_seconds": 107.417,
-      "skipped": 4,
+      "total": 673,
+      "duration_seconds": 8.538,
+      "skipped": 49,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 624 tests in 107.417s",
-        "OK (skipped=4)"
+        "Ran 673 tests in 8.538s",
+        "OK (skipped=49)"
       ],
       "result": "pass"
     },
     {
       "product": "universal-game-agent",
       "directory": "universal-game-agent",
-      "commit": "4912a1deb5013e48c11f7542b482a6fbffd224ea",
+      "commit": "9173bc28a447a7ea6aec5acbc869cf90072d5032",
       "command": [
-        "C:\\Python314\\python.exe",
+        "/workspace/work/venv/bin/python",
         "-m",
         "unittest",
         "discover",
@@ -50,22 +50,22 @@
       ],
       "dirty_paths": [],
       "total": 495,
-      "duration_seconds": 47.43,
-      "skipped": 1,
+      "duration_seconds": 64.126,
+      "skipped": 3,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 495 tests in 47.430s",
-        "OK (skipped=1)"
+        "Ran 495 tests in 64.126s",
+        "OK (skipped=3)"
       ],
       "result": "pass"
     },
     {
       "product": "small-projects/mini-llm",
       "directory": "small-projects/mini-llm",
-      "commit": "4912a1deb5013e48c11f7542b482a6fbffd224ea",
+      "commit": "9173bc28a447a7ea6aec5acbc869cf90072d5032",
       "command": [
-        "C:\\Python314\\python.exe",
+        "/workspace/work/venv/bin/python",
         "-m",
         "unittest",
         "discover",
@@ -74,12 +74,12 @@
       ],
       "dirty_paths": [],
       "total": 146,
-      "duration_seconds": 34.118,
+      "duration_seconds": 6.044,
       "skipped": 1,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 146 tests in 34.118s",
+        "Ran 146 tests in 6.044s",
         "OK (skipped=1)"
       ],
       "result": "pass"

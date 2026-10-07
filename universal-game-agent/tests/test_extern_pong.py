@@ -110,8 +110,13 @@ class TestGameLaunch(unittest.TestCase):
             proc.kill()
             proc.communicate()
             self.fail("game process did not exit via --auto-quit")
+        # extern_pong exits 2 for both missing-GUI cases; either is an
+        # environment limit (headless host, Python built without Tk), not a
+        # defect in the game, so skip rather than fail.
         if proc.returncode == 2 and b"no display" in err:
             self.skipTest("no display available")
+        if proc.returncode == 2 and b"tkinter unavailable" in err:
+            self.skipTest("tkinter unavailable in this Python build")
         self.assertEqual(proc.returncode, 0, err.decode(errors="replace"))
 
 

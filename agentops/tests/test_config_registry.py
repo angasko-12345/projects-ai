@@ -52,6 +52,18 @@ class ConfigAndRegistryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             load_config()
 
+    def test_bundled_config_opts_into_systemd_isolation(self):
+        self.assertTrue(load_config().systemd_run_enabled)
+
+    @patch("agentops.config._load_data")
+    def test_systemd_isolation_defaults_off_when_key_missing(self, load_data):
+        load_data.return_value = {"agents": {"on": {"command": "on"}}}
+        self.assertFalse(load_config().systemd_run_enabled)
+        load_data.return_value = {"agents": {"on": {"command": "on"}},
+                                  "runtime": {"systemd_run_enabled": "yes"}}
+        with self.assertRaises(ValueError):
+            load_config()
+
     @patch("agentops.config._load_data")
     def test_agent_capabilities_parsed_and_default_empty(self, load_data):
         load_data.return_value = {"agents": {
