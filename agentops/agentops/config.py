@@ -58,7 +58,7 @@ class AppConfig:
     backoff_max_seconds: float = 30.0
     backoff_factor: float = 2.0
     routing_enabled: bool = True
-    systemd_run_enabled: bool = True
+    systemd_run_enabled: bool = False
 
 
 # Bundled as package data by AgentOps.spec, so it resolves identically from a
@@ -281,7 +281,10 @@ def load_config(path: str | Path | None = None) -> AppConfig:
         "routing_enabled",
         routing_setting.get("enabled", True) if isinstance(routing_setting, dict) else True,
     )
-    systemd_run_enabled = runtime.get("systemd_run_enabled", True)
+    # Missing key means off: a config written before this option existed must
+    # not start failing every spawn on Linux hosts without systemd --user
+    # (containers, WSL, CI).  The bundled agents.yaml opts in explicitly.
+    systemd_run_enabled = runtime.get("systemd_run_enabled", False)
     if not isinstance(systemd_run_enabled, bool):
         raise ValueError("runtime.systemd_run_enabled must be a boolean.")
     if not isinstance(routing_enabled, bool):

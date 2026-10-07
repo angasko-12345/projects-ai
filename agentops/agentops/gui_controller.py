@@ -395,7 +395,8 @@ class AgentOpsController:
                 observer = None
             try:
                 runner = AgentRunner(logs, config.pass_env_names, config.pass_env_prefixes,
-                                     run_observer=observer)
+                                     run_observer=observer,
+                                     systemd_run_enabled=config.systemd_run_enabled)
                 result = asyncio.run(runner.run_agent(agent, prompt, directory, cancel_event=cancel_event))
             finally:
                 if state is not None:
@@ -480,9 +481,11 @@ class AgentOpsController:
             registry = AgentRegistry(config)
             run_observer = state.agent_run_observer()
             runner = AgentRunner(logs, config.pass_env_names, config.pass_env_prefixes,
-                                 run_observer=run_observer, metadata_collector=GitRunMetadataCollector())
+                                 run_observer=run_observer, metadata_collector=GitRunMetadataCollector(),
+                                 systemd_run_enabled=config.systemd_run_enabled)
             verifier = Verifier(config.verification_commands, pass_env_names=config.pass_env_names,
-                                pass_env_prefixes=config.pass_env_prefixes)
+                                pass_env_prefixes=config.pass_env_prefixes,
+                                systemd_run_enabled=config.systemd_run_enabled)
             verification_kernel = VerificationKernel(
                 profiles=config.verification_profiles,
                 default_profile=(
@@ -495,6 +498,7 @@ class AgentOpsController:
                 pass_env_prefixes=config.pass_env_prefixes,
                 logs=logs,
                 state=state,
+                systemd_run_enabled=config.systemd_run_enabled,
             )
             engine = WorkflowEngine(config, state, registry, runner, verifier,
                                     run_observer=run_observer,
