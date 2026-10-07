@@ -41,6 +41,11 @@ PRODUCTS = (
         "directory": "small-projects/mini-llm",
         "command": ["-m", "unittest", "discover", "-s", "tests"],
     },
+    {
+        "product": "ai-token-tracker",
+        "directory": "ai-token-tracker",
+        "command": ["-m", "unittest", "discover", "-s", "tests"],
+    },
 )
 
 #: Deliberately not measured, and why. Recorded so the exclusion reads as a
@@ -52,11 +57,6 @@ EXCLUSIONS = {
         "GEMINI_API_KEY-dependent failures. An evidence record here would be "
         "red for reasons unrelated to the code under test."
     ),
-    "ai-token-tracker": (
-        "Added 2026-10-06 without a product AGENTS.md or an agreed test command, "
-        "and still being edited. It becomes measurable the moment someone names "
-        "its command here and in its own AGENTS.md."
-    ),
 }
 
 #: Files that must point readers at the evidence file rather than quote a count.
@@ -65,6 +65,7 @@ BASELINE_FILES = (
     "agentops/AGENTS.md",
     "universal-game-agent/AGENTS.md",
     "small-projects/mini-llm/AGENTS.md",
+    "ai-token-tracker/AGENTS.md",
     ".agents/memory/roadmap.md",
     ".agents/memory/opencode/bugfinding/master-bug-synthesis.md",
 )
@@ -77,6 +78,7 @@ COUNT_FREE_FILES = (
     "agentops/AGENTS.md",
     "universal-game-agent/AGENTS.md",
     "small-projects/mini-llm/AGENTS.md",
+    "ai-token-tracker/AGENTS.md",
 )
 
 COUNT_CLAIM = re.compile(r"\b\d{1,4}\s+(?:tests?\b|run\b|skips?\b)", re.IGNORECASE)

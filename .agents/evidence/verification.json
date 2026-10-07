@@ -1,15 +1,14 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-10-07T01:03:50+00:00",
-  "commit": "9173bc28a447a7ea6aec5acbc869cf90072d5032",
-  "python": "3.12.15",
-  "platform": "Linux 6.12.110+ (aarch64)",
-  "measured_in": "a clean clone of 9173bc28a447",
-  "clean_checkout": true,
+  "generated_at": "2026-10-07T12:39:52+00:00",
+  "commit": "d0c5512f52dada9fe6ce8173c00db14721c09efb",
+  "python": "3.14.7",
+  "platform": "Windows 11 (AMD64)",
+  "measured_in": "this working tree",
+  "clean_checkout": false,
   "command_note": "Every command runs from its own product directory with the interpreter that ran this script. There is no repository-wide test command and these products share no dependencies.",
   "excluded": {
-    "tiktok-slop-factory": "No product AGENTS.md, so no agreed command; the suite is pytest, takes ~10 minutes of real FFmpeg renders, and carries two known GEMINI_API_KEY-dependent failures. An evidence record here would be red for reasons unrelated to the code under test.",
-    "ai-token-tracker": "Added 2026-10-06 without a product AGENTS.md or an agreed test command, and still being edited. It becomes measurable the moment someone names its command here and in its own AGENTS.md."
+    "tiktok-slop-factory": "No product AGENTS.md, so no agreed command; the suite is pytest, takes ~10 minutes of real FFmpeg renders, and carries two known GEMINI_API_KEY-dependent failures. An evidence record here would be red for reasons unrelated to the code under test."
   },
   "products": [
     {
@@ -81,6 +80,34 @@
       "summary": [
         "Ran 146 tests in 6.044s",
         "OK (skipped=1)"
+      ],
+      "result": "pass"
+    },
+    {
+      "product": "ai-token-tracker",
+      "directory": "ai-token-tracker",
+      "commit": "d0c5512f52dada9fe6ce8173c00db14721c09efb",
+      "command": [
+        "C:\\Python314\\python.exe",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests"
+      ],
+      "dirty_paths": [
+        "?? ai-token-tracker/AGENTS.md",
+        "?? ai-token-tracker/validate_sources.py",
+        "?? ai-token-tracker/verify_behavior.py"
+      ],
+      "total": 44,
+      "duration_seconds": 2.76,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "summary": [
+        "Ran 44 tests in 2.760s",
+        "OK"
       ],
       "result": "pass"
     }
