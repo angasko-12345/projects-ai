@@ -537,3 +537,11 @@
 - **Alternatives considered:** Editing the failing tests inside each PR (rejected — those failures are main's fix, not PR defects, and changing them would hide the real state and risk re-introducing the bug when main advances).
 - **Agents involved:** Cline (this session).
 
+## 2026-10-07 - PR #5 merged into main: standard workflow made autonomous
+
+- **Decision:** PR #5 (`feat(agentops): make standard workflow autonomous`, PR head `0ed030f` / merged `f742773` / merge commit `d0c5512`) merged into `main` via `git merge --no-ff`, verified, and pushed to `origin/main`.
+- **Reason:** The standard workflow produced a chain of independent agents rather than one workflow: dependent agents only received their own request text (implementation never read the architecture plan; review never saw the change it was judging), and a failed review ended the run at "Review did not pass" instead of being repaired. PR #5 closes this loop: `_dependency_handoff()` prepends each PASSED dependency's role/description/result to the dependent agent's prompt, bounded by `HANDOFF_RESULT_CHARS=2000` and `HANDOFF_TOTAL_CHARS=8000`; review now depends on `implementation.id` in addition to `verification.id`; `_repair_failed_review()` turns a demonstrated review rejection into a bounded `debugging → verification → review` cycle governed by `max_repair_cycles`; repair context is recovered from the review task's failure rows; an exhausted budget returns NOT READY; a BLOCKED review creates no repair (mirroring the UNVERIFIED rule). Adds 15 tests in `tests/test_workflow_autonomy.py`.
+- **Method:** Rebased PR branch onto current `origin/main` (17 commits on main since the PR merge-base), ran the AgentOps suite, no conflicts, all tests green, then `git merge --no-ff merge-pr5-work`. Merge commit `d0c5512` has exactly 2 changed files: `agentops/agentops/workflow.py` (+181/-16) and `agentops/tests/test_workflow_autonomy.py` (+332 new).
+- **Evidence:** PR #5 `merged: true` on GitHub (authoritative); `main` SHA `d0c5512`; PR files present on `main` confirmed via `git show`; `test_workflow_autonomy.py` present on `main`; all 15 autonomy tests OK (15/15, ~15.5s); full suite OK (72/72, 1 skipped).
+- **Agents involved:** Cline (this session).
+
