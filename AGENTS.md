@@ -8,9 +8,9 @@ Minimum rules while loading the canonical file:
 
 - Work only within the assigned task and repository scope.
 - Either Pi or Oh-My-Pi is the sole writer in a dirty tree; reviewers are read-only.
-- This repository has **three** products. Read `agentops/AGENTS.md`,
-  `universal-game-agent/AGENTS.md`, or `small-projects/mini-llm/AGENTS.md` for the one
-  you are changing; each has its own test command and they are not interchangeable.
+- This repository has **four** products. Read `agentops/AGENTS.md`,
+  `universal-game-agent/AGENTS.md`, `small-projects/mini-llm/AGENTS.md`, or `ai-token-tracker/AGENTS.md`
+  for the one you are changing; each has its own test command and they are not interchangeable.
 - Keep SQLite migrations additive and use explicit column names.
 - Do not persist prompts, secrets, credentials, tokens, or private keys.
 - Read `.agents/team.md`, `tasks/task.md`, `tasks/after-task.md`, and the relevant `.agents/memory/` files before substantial work.

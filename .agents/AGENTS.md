@@ -4,10 +4,11 @@ This is the canonical repository instruction file. The root `AGENTS.md` is only 
 
 ## Project identity and scope
 
-- This repository is a container for three independent Python products plus the process material agents use to work on them. The products do not depend on each other, and a change in one is not a change in the other.
+- This repository is a container for four independent Python products plus the process material agents use to work on them. The products do not depend on each other, and a change in one is not a change in the other.
   - `agentops/` — a local-first orchestrator for installed coding-agent CLIs. It plans, implements, verifies, reviews, persists, and merges work in isolated Git worktrees. See `agentops/AGENTS.md`.
   - `universal-game-agent/` — a reinforcement-learning agent that plays Pong, including a Windows-only path that plays a real external game window through screen capture and real keyboard input. See `universal-game-agent/AGENTS.md`.
   - `small-projects/mini-llm/` — a small GPT-style causal language model built from scratch with PyTorch. See `small-projects/mini-llm/AGENTS.md`.
+  - `ai-token-tracker/` — a local desktop GUI that tracks AI token usage across providers and coding agents from local agent stores. See `ai-token-tracker/AGENTS.md`.
 
 ## Canonical locations
 
@@ -49,6 +50,7 @@ from its own directory rather than from the repository root. Read the local
 | `agentops/` | `cd agentops` then `python -m unittest discover -s tests` |
 | `universal-game-agent/` | `cd universal-game-agent` then `python -m unittest discover -s tests` |
 | `small-projects/mini-llm/` | `cd small-projects/mini-llm` then `python -m unittest discover -s tests` |
+| `ai-token-tracker/` | `cd ai-token-tracker` then `python -m unittest discover -s tests` |
 
 Treat any new failure or skip as attributable to the current work until proven otherwise.
 An empty, interrupted, all-skipped, or unknown run is never a pass. Do not invent lint,
@@ -110,6 +112,7 @@ in each product's local `AGENTS.md`:
 - `universal-game-agent/AGENTS.md` — the deliberate layer dependency direction, the
   Gymnasium toy path versus the Windows-only external path, configuration and checkpoint
   handling, and the CLI entry points.
+- `ai-token-tracker/AGENTS.md` — the collector registry, the no-estimation policy, SQLite storage with idempotent sync, and the PySide6 GUI entry point.
 
 Read the relevant local file before changing code in a product. Do not add product
 architecture back into this file.

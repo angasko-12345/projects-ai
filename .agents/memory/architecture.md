@@ -182,7 +182,7 @@ the other subfolders, the universal files here remain authoritative.
 
 ## Three-product repo + per-product CI 2026-10-01
 
-- The repository is a container for three independent products (`agentops/`, `universal-game-agent/`, `small-projects/mini-llm/`); no product imports another. Each has its own `AGENTS.md` and its own `python -m unittest discover -s tests` from its own directory.
+- The repository is a container for four independent products (`agentops/`, `universal-game-agent/`, `small-projects/mini-llm/`, `ai-token-tracker/`); no product imports another. Each has its own `AGENTS.md` and its own `python -m unittest discover -s tests` from its own directory.
 - CI (`.github/workflows/{agentops,universal-game-agent,mini-llm}.yml`, scope in `.github/CI.md`): path-filtered jobs, py3.11 CPU. UGA/mini-llm jobs install `requirements.txt` first. No lint/format/coverage, no GPU, no live-game, no exe packaging in CI.
 
 ## UGA checkpoint/lifecycle contracts 2026-10-01 (commit 2cb2413)

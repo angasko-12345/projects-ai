@@ -10,9 +10,9 @@ facts, this file is correct.
 - A small GPT-style causal language model built from scratch with PyTorch: BPE
   tokenizer (`tokenizers` package used only for BPE training), hand-written
   Transformer (`nn.Module`s, no Hugging Face), AdamW + warmup/cosine training loop.
-- The repository root is a container. This package is one of three products here; see
-  `agentops/AGENTS.md` and `universal-game-agent/AGENTS.md` for the others. No product
-  is a subproject of another, and a change in one is not a change in another.
+- The repository root is a container. This package is one of four products here; see
+  `agentops/AGENTS.md`, `universal-game-agent/AGENTS.md`, and `ai-token-tracker/AGENTS.md`
+  for the others. No product is a subproject of another, and a change in one is not a change in another.
 - Runtime dependencies: `torch`, `tokenizers`, `numpy` (see `requirements.txt`,
   unpinned). Training is CPU-capable; the expensive real-corpus runs target a cloud
   GPU via the existing device-agnostic loop (`--device cuda`, fail-fast without CUDA).

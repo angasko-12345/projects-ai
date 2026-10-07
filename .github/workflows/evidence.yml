@@ -3,9 +3,9 @@
 #
 # This job runs only the checker: it is fast, needs no product dependencies, and
 # is what stops stale evidence or a re-introduced count in an instruction file
-# from reaching main. It deliberately does NOT re-run the three product suites --
+# from reaching main. It deliberately does NOT re-run the four product suites --
 # that is what the per-product workflows already do, and duplicating it here
-# would just add a fourth place for a count to live.
+# would just add a fifth place for a count to live.
 name: evidence
 
 on:
