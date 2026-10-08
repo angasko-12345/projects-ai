@@ -23,7 +23,7 @@ from .agent_run import (
     AgentRunStatus,
     GitRunMetadataCollector,
 )
-from .agent_result import parse_agent_result
+from .agent_result import AgentResultStatus, ParseMode, coerce_agent_result, parse_agent_result
 from .evidence import TaskEvidence, expected_evidence
 from .execution_model import (
     StateTransitionError,
@@ -94,6 +94,33 @@ def _safe_workflow_structured(stdout: object) -> object | None:
         return replace(result, warnings=extra_warnings, metadata=metadata).to_dict()
     except Exception:
         return None
+
+
+def _structured_agent_status(result: object) -> AgentResultStatus | None:
+    """Authoritative agent-level outcome for a runner result, if any.
+
+    Prefers the runner-attached ``structured_result`` envelope (what the
+    runner parsed from stdout); falls back to parsing ``stdout`` directly
+    so runner doubles that skip the envelope are still honoured. Returns
+    ``None`` when no structured payload is available -- the legacy /
+    plaintext path -- so callers keep the historical exit-code behaviour.
+    Never raises.
+    """
+    try:
+        coerced = coerce_agent_result(getattr(result, "structured_result", None))
+        if coerced is not None:
+            return coerced.status
+    except Exception:
+        pass
+    try:
+        stdout = getattr(result, "stdout", None)
+        if isinstance(stdout, str) and stdout.strip():
+            parsed = parse_agent_result(stdout)
+            if parsed.parse_mode in (ParseMode.STRUCTURED, ParseMode.PARTIAL):
+                return parsed.result.status
+    except Exception:
+        pass
+    return None
 
 
 class _RecordingObserver:
@@ -628,11 +655,22 @@ class WorkflowEngine:
                     # done. Check the role's evidence contract before crediting
                     # success: an agent that exited cleanly having changed nothing
                     # must not PASS a role whose job is to change code.
+                    # Likewise an exit-0 run whose structured result explicitly
+                    # says failure/partial did not do the work: exit_code == 0
+                    # must never override the agent's own failure signal.
                     satisfied, reason = self._evidence_satisfied(task, result, working_directory)
-                    task.status = TaskStatus.PASSED if (result.succeeded and satisfied) \
+                    agent_status = _structured_agent_status(result)
+                    structured_ok = agent_status not in (AgentResultStatus.FAILURE, AgentResultStatus.PARTIAL)
+                    task.status = TaskStatus.PASSED if (result.succeeded and satisfied and structured_ok) \
                         else TaskStatus.FAILED
                     if not satisfied and result.succeeded:
                         task.result = f"{task.result}\n\n{reason}".strip()
+                    if not structured_ok and result.succeeded and satisfied:
+                        task.result = (
+                            f"{task.result}\n\nagent_status={agent_status.value}: the agent exited "
+                            "cleanly but its structured result reports "
+                            f"{agent_status.value}, so the task did not pass"
+                        ).strip()
                     if task.status is TaskStatus.FAILED:
                         self._record_agent_failure(task, result)
         except StateTransitionError:
