@@ -36,7 +36,7 @@ def resource_path(*parts: str) -> Path:
     
     # First try filesystem path (source checkout or editable install)
     fs_path = bundle_root().joinpath(*parts)
-    if fs_path.is_file():
+    if fs_path.exists():
         return fs_path
     
     # Fall back to importlib.resources for installed wheel
