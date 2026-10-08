@@ -12,6 +12,7 @@ Standard-library only, no I/O beyond ``sys``: this is a leaf helper.
 from __future__ import annotations
 
 import sys
+from importlib import resources
 from pathlib import Path
 
 
@@ -29,4 +30,36 @@ def bundle_root() -> Path:
 
 def resource_path(*parts: str) -> Path:
     """Absolute path to a bundled resource, e.g. ``("agents", "agents.yaml")``."""
-    return bundle_root().joinpath(*parts)
+    frozen_root = getattr(sys, "_MEIPASS", None)
+    if frozen_root:
+        return Path(frozen_root).joinpath(*parts)
+    
+    # First try filesystem path (source checkout or editable install)
+    fs_path = bundle_root().joinpath(*parts)
+    if fs_path.is_file():
+        return fs_path
+    
+    # Fall back to importlib.resources for installed wheel
+    if parts[0] == "agents":
+        # agents.yaml is in agentops.agents package
+        try:
+            ref = resources.files("agentops.agents")
+            if len(parts) > 1:
+                ref = ref.joinpath(*parts[1:])
+            # Use as_file to get a real filesystem path (works for both wheel and source)
+            with resources.as_file(ref) as file_path:
+                return Path(file_path)
+        except (ModuleNotFoundError, AttributeError, FileNotFoundError):
+            pass
+    elif parts[0] == "agentops" and parts[1] == "gui" and parts[2] == "assets":
+        # GUI assets are in agentops.gui.assets package
+        try:
+            ref = resources.files("agentops.gui.assets")
+            if len(parts) > 3:
+                ref = ref.joinpath(*parts[3:])
+            with resources.as_file(ref) as file_path:
+                return Path(file_path)
+        except (ModuleNotFoundError, AttributeError, FileNotFoundError):
+            pass
+    # Final fallback to filesystem path (may not exist)
+    return fs_path

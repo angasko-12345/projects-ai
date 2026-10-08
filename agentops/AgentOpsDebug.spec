@@ -16,7 +16,7 @@ ENTRY = os.path.join(ROOT, "agentops_gui.py")
 # reads sys._MEIPASS when frozen. The destination column below must match the
 # component list passed there.
 DATA_FILES = [
-    (os.path.join(ROOT, "agents", "agents.yaml"), "agents"),
+    (os.path.join(ROOT, "agentops", "agents", "agents.yaml"), "agents"),
     (os.path.join(ROOT, "agentops", "gui", "assets", "chevron-down.svg"), "agentops/gui/assets"),
 ]
 

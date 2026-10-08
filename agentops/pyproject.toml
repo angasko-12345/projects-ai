@@ -20,3 +20,6 @@ agentops-gui = "agentops.gui:main"
 
 [tool.setuptools.packages.find]
 include = ["agentops*"]
+
+[tool.setuptools.package-data]
+agentops = ["agents/*.yaml", "gui/assets/*.svg"]

@@ -66,8 +66,23 @@ class AppConfig:
 DEFAULT_CONFIG_PATH = resource_path("agents", "agents.yaml")
 
 
-def _load_data(path: Path) -> dict[str, Any]:
-    text = path.read_text(encoding="utf-8")
+def _default_config_text() -> str:
+    """Read the default config text, works for wheel, source, and frozen."""
+    import sys
+    frozen_root = getattr(sys, "_MEIPASS", None)
+    if frozen_root:
+        return Path(frozen_root).joinpath("agents", "agents.yaml").read_text(encoding="utf-8")
+    # Use importlib.resources for installed wheel / source checkout
+    try:
+        from importlib import resources
+        return resources.files("agentops.agents").joinpath("agents.yaml").read_text(encoding="utf-8")
+    except (ModuleNotFoundError, AttributeError, FileNotFoundError):
+        # Fallback to filesystem path
+        return DEFAULT_CONFIG_PATH.read_text(encoding="utf-8")
+
+
+def _load_data(path: Path | None = None) -> dict[str, Any]:
+    text = _default_config_text() if path is None else path.read_text(encoding="utf-8")
     try:
         result = json.loads(text)
     except json.JSONDecodeError:
@@ -156,8 +171,7 @@ def _verification_profile(name: Any, value: Any) -> VerificationProfile:
 
 
 def load_config(path: str | Path | None = None) -> AppConfig:
-    config_path = Path(path) if path else DEFAULT_CONFIG_PATH
-    data = _load_data(config_path)
+    data = _load_data(Path(path) if path else None)
     raw_agents = data.get("agents", {})
     if not isinstance(raw_agents, dict):
         raise ValueError("agents must be a mapping.")

@@ -168,10 +168,6 @@ a task verified. Empty, interrupted, unknown, or all-skipped work is never succe
 
 Recorded so they are not rediscovered as if new. Fix them deliberately, not incidentally.
 
-- `agentops/config.py:62` resolves the default `agents/agents.yaml` by escaping the
-  package (`Path(__file__).parent.parent`). `pyproject.toml` packages only `agentops*`, so
-  a non-editable wheel install ships with no default config. The frozen executable is
-  unaffected because `AgentOps.spec` bundles the file as data.
 - `agentops.egg-info/` is regenerable build residue that goes stale; it is not in the
   working tree. It is correctly gitignored via `agentops/.gitignore:7` (`*.egg-info/`) and
   reappears on build. Do not read version or entry-point data from it.
