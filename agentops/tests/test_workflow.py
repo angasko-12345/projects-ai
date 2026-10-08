@@ -1,4 +1,5 @@
 import asyncio
+import json
 import shutil
 import subprocess
 import tempfile
@@ -9,6 +10,7 @@ from unittest.mock import MagicMock
 
 from agentops.agent_run import AgentRunMetadata
 from agentops.config import AppConfig, AgentConfig
+from agentops.agent_result import AgentResult, AgentResultStatus
 from agentops.registry import DetectedAgent
 from agentops.runner import RunResult
 from agentops.state import StateStore
@@ -318,6 +320,119 @@ class CancelledAndTerminatedAreNotSuccessTests(WorkflowTests):
         engine = self._engine_returning(exit_code=0, timed_out=False)
         result = asyncio.run(engine.run_high_level("Do it", self._git_repo()))
         self.assertTrue(result.ready, result.summary)
+
+
+class StructuredAgentResultTaskStatusTests(WorkflowTests):
+    """exit_code 0 is process success, not agent success.
+
+    The task decision read only ``RunResult.succeeded`` (timeout/cancel/
+    terminate/exit-code), so an agent that exited 0 while its structured
+    result explicitly reported failure/partial still carried the task to
+    PASSED -- and the workflow to READY.
+    """
+
+    def _engine_returning(self, exit_code=0, status=None, stdout=None,
+                          structured_envelope=True):
+        if status is not None:
+            payload = AgentResult(
+                status=status, summary=f"agent reports {status.value}").to_dict()
+            structured = payload if structured_envelope else None
+            text = stdout if stdout is not None else json.dumps(payload)
+        else:
+            structured = None
+            text = stdout if stdout is not None else "done"
+
+        async def _run(agent, prompt, directory, task_id, cancel_event=None):
+            return RunResult(agent.config.name, ("fake",), exit_code,
+                             text, "", 0.01, False, Path(f"{task_id}.log"),
+                             structured_result=structured)
+        self.runner.run_agent = _run
+        collector = MagicMock(return_value=AgentRunMetadata(files_changed=("a.txt",)))
+        passed = MagicMock(succeeded=True, output="tests passed")
+        self.verifier.run = MagicMock(return_value=asyncio.sleep(0, result=[passed]))
+        return WorkflowEngine(self.config, self.state, self.registry,
+                              self.runner, self.verifier, metadata_collector=collector)
+
+    def _git_repo(self):
+        import subprocess as sp
+        import tempfile as tf
+        directory = tf.mkdtemp()
+        self.addCleanup(shutil.rmtree, directory, ignore_errors=True)
+        for cmd in (["git", "init", "-q"],
+                    ["git", "config", "user.email", "t@t.local"],
+                    ["git", "config", "user.name", "T"]):
+            sp.run(cmd, cwd=directory, check=True)
+        Path(directory, "base.txt").write_text("base", encoding="utf-8")
+        sp.run(["git", "add", "-A"], cwd=directory, check=True)
+        sp.run(["git", "commit", "-qm", "base"], cwd=directory, check=True)
+        return Path(directory)
+
+    def _statuses(self, workflow_id):
+        return {t.role: t.status for t in self.state.list_tasks(workflow_id)}
+
+    def test_exit_zero_structured_success_passes(self):
+        engine = self._engine_returning(
+            exit_code=0, status=AgentResultStatus.SUCCESS)
+        result = asyncio.run(engine.run_high_level("Do it", self._git_repo()))
+        self.assertTrue(result.ready, result.summary)
+        self.assertIs(
+            self._statuses(result.workflow_id)["implementation"], TaskStatus.PASSED)
+
+    def test_exit_zero_structured_failure_never_passes(self):
+        engine = self._engine_returning(
+            exit_code=0, status=AgentResultStatus.FAILURE)
+        result = asyncio.run(engine.run_high_level("Do it", self._git_repo()))
+        self.assertFalse(result.ready,
+                         "structured FAILURE at exit 0 must never reach READY")
+        statuses = self._statuses(result.workflow_id)
+        # Architecture runs first with the same failing stub, so it FAILED
+        # and implementation is BLOCKED behind it: neither may ever PASS.
+        self.assertIs(statuses["architecture"], TaskStatus.FAILED)
+        for role, status in statuses.items():
+            self.assertIsNot(status, TaskStatus.PASSED,
+                             f"{role} PASSED on structured FAILURE")
+
+    def test_exit_zero_structured_partial_never_passes(self):
+        engine = self._engine_returning(
+            exit_code=0, status=AgentResultStatus.PARTIAL)
+        result = asyncio.run(engine.run_high_level("Do it", self._git_repo()))
+        self.assertFalse(result.ready,
+                         "structured PARTIAL at exit 0 must never reach READY")
+        statuses = self._statuses(result.workflow_id)
+        self.assertIs(statuses["architecture"], TaskStatus.FAILED)
+        for role, status in statuses.items():
+            self.assertIsNot(status, TaskStatus.PASSED,
+                             f"{role} PASSED on structured PARTIAL")
+
+    def test_nonzero_exit_structured_success_still_fails(self):
+        # Structured SUCCESS must not override a failed process.
+        engine = self._engine_returning(
+            exit_code=1, status=AgentResultStatus.SUCCESS)
+        result = asyncio.run(engine.run_high_level("Do it", self._git_repo()))
+        self.assertFalse(result.ready)
+        self.assertIs(
+            self._statuses(result.workflow_id)["architecture"], TaskStatus.FAILED)
+
+    def test_legacy_plaintext_exit_zero_still_passes(self):
+        # No structured payload: historical exit-code behaviour is preserved.
+        engine = self._engine_returning(exit_code=0, stdout="done")
+        result = asyncio.run(engine.run_high_level("Do it", self._git_repo()))
+        self.assertTrue(result.ready, result.summary)
+        self.assertIs(
+            self._statuses(result.workflow_id)["implementation"], TaskStatus.PASSED)
+
+    def test_stdout_json_failure_without_envelope_still_fails(self):
+        # Runner doubles that skip the structured envelope are still honoured
+        # via the stdout fallback.
+        payload = AgentResult(
+            status=AgentResultStatus.FAILURE, summary="broke it").to_dict()
+        engine = self._engine_returning(
+            exit_code=0, status=AgentResultStatus.FAILURE,
+            stdout=json.dumps(payload), structured_envelope=False)
+        result = asyncio.run(engine.run_high_level("Do it", self._git_repo()))
+        self.assertFalse(result.ready)
+        self.assertIs(
+            self._statuses(result.workflow_id)["architecture"], TaskStatus.FAILED)
 
 
 if __name__ == "__main__":
