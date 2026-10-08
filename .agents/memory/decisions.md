@@ -552,3 +552,10 @@
 - **Alternatives considered:** Reusing `evaluate_execution` for the task gate (rejected — it conflates merge-eligibility with task completion and treats UNKNOWN as failure, which would break legacy/plaintext agents); trusting stdout-parse alone without the envelope (rejected — the runner already normalized it; envelope-first avoids double-parse divergence).
 - **Agents involved:** omp assistant (this session).
 
+## 2026-10-08 - QR Generator: honest unconnected billing, local-only, keys out of git (qr-generator 00ad590)
+
+- **Decision:** New self-contained product `qr-generator/` (Expo SDK 57 / RN 0.86 / TypeScript). Billing lives behind `src/billing/` with status `unavailable` and UI copy "Plans appear here once Google Play Billing is connected to this build." — never a fake price or purchase button. Premium is entitlement-driven (free tier: 3 saves + square style; colors/rounded/dots/logo/unlimited/history via entitlement). Release signing uses a local keystore created by `scripts/setup_signing.sh` (`android/app/release-qr.jks`, gitignored); only EAS cloud credentials live outside the repo. Android manifest verified INTERNET-only (blocked: storage/audio/overlay/vibrate).
+- **Reason:** A "succeeds locally" purchase would be deceptive and rework-prone; the honest seam lets Play Billing wire in later without touching entitlement or sheet code.
+- **Alternatives considered:** Committing the keystore for CI convenience (rejected — secrets stay out of git); faking purchases to demo premium (rejected — product brief forbids it).
+- **Agents involved:** omp assistant (this session).
+

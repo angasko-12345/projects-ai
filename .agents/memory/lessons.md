@@ -878,3 +878,10 @@
 - **Root cause:** None in the fix. Bundle/GUI-asset failures reproduce identically on a pristine `main` worktree; wheel errors pass in isolation (`test_wheel_install.py` 4/4 OK) and only fail in the full run.
 - **Solution:** `git worktree add <path> main`, run the suspect files there, remove the worktree. Record the outcome in the PR body so the next reader does not re-triage.
 - **Remember:** A new failure is guilty until proven otherwise — but the proof is a main-worktree run, not a re-read of the diff. And full-run-only errors get an isolation run before any code change.
+
+### 2026-10-08 — Expo/RN native release build died twice on a busy 29GB host (PCH signal, then JVM malloc OOM)
+
+- **Symptom:** `bundleRelease` failed twice: clang++ "frontend command failed due to signal" building the expo-modules-core PCH, then the Gradle daemon died with `hs_err`: "insufficient memory for the Java Runtime Environment… Native memory allocation (malloc) failed" (arena.cpp).
+- **Root cause:** system RAM exhaustion, not code: 12-core box gave clang/Gradle default parallelism while the Android emulator, Metro, and a headless Chrome were also resident; `reactNativeArchitectures` defaults to 4 ABIs.
+- **Solution:** kill dev servers first; build with `CMAKE_BUILD_PARALLEL_LEVEL=2` plus `gradlew --max-workers=3 -Dorg.gradle.parallel=false`; do an x86_64-only test APK (`-PreactNativeArchitectures=x86_64`) before the full `bundleRelease`. Both then succeeded.
+- **Remember:** a clang signal crash and a JVM malloc OOM in the same build phase are one bug (host memory); fix parallelism once instead of retrying. In this sandbox `./gradlew` exec is blocked — run `cmd /c "gradlew.bat …"` (env vars do reach cmd children).
