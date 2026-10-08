@@ -62,8 +62,10 @@ class BundledResourceTests(unittest.TestCase):
 
     def test_both_resources_live_under_the_bundle_root(self):
         root = bundle_root()
+        # ASSET_DIR is at agentops/gui/assets under the package root
         self.assertEqual(ASSET_DIR.parent.parent.parent, root)
-        self.assertEqual(DEFAULT_CONFIG_PATH.parent.parent, root)
+        # DEFAULT_CONFIG_PATH is at agents/agents.yaml under the package root
+        self.assertEqual(DEFAULT_CONFIG_PATH.parent.parent, root / "agentops")
 
 
 if __name__ == "__main__":
