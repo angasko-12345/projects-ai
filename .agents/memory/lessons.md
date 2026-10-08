@@ -857,3 +857,24 @@
 - **Path bisection:** Works at `D:\admin` and `D:\admin\code`; fails at `D:\admin\code\projects` onward. `icacls` on the failing dir vs a working dir is the smoking gun.
 - **Fix:** Set `runtime_tmpdir=""` in the PyInstaller `EXE()` spec. An empty string tells the bootloader to use `GetTempPathW()` (system temp via `%TEMP%`) from the start, bypassing the CWD entirely. This is a one-line change in `AgentOps.spec` (verified: smoke test passes from `dist/`). The smoke test workaround (copying EXE to temp workspace) was a stopgap for verification; the real fix is in the spec.
 - **Remember:** PyInstaller onefile is **not** CWD-independent by default. A frozen EXE failing with "Could not create temporary directory!" means the launch directory has restrictive ACLs, not that the bundle is broken. Always check `icacls` on the launch dir before blaming the build.
+
+### 2026-10-08 — A botched multi-op edit deleted a live import; tests caught it, diff-review would have caught it sooner
+
+- **Symptom:** After adding a structured-status gate to `workflow.py`, the previously-green clean-run test failed with `Task execution error: name 'expected_evidence' is not defined` — the first import edit had replaced the `.evidence` import line with a stray `-`-prefixed line, and the follow-up CUT removed the evidence import instead of the stray text.
+- **Root cause:** Two `PUT` ops addressed to adjacent lines in one call, one carrying a `-` body row the patch language does not define; then a CUT aimed at the symptom removed the wrong line because the region was never re-read between the two calls.
+- **Solution:** Restored `from .evidence import TaskEvidence, expected_evidence`; suite green. No test or design change needed.
+- **Remember:** After every structural edit, `git diff` the touched hunk before running tests — a 10-second diff review catches clobbered imports that a 2-minute suite reports only as a confusing downstream NameError.
+
+### 2026-10-08 — Workflow failure tests must assert the cascade, not the leaf
+
+- **Symptom:** New structured-FAILURE/PARTIAL regression tests asserted `implementation is FAILED`; the workflow actually reports architecture FAILED and implementation BLOCKED (first failing agent task poisons its dependents).
+- **Root cause:** The stub runner fails every agent role identically, and architecture runs before implementation — the asserted task never executes.
+- **Solution:** Assert `architecture is FAILED` + no task PASSED + `ready is False`. The invariant under test is "never PASSED, never READY", and the cascade shape is the honest evidence of it.
+- **Remember:** In `run_high_level` failure tests, the first agent role owns the FAILED verdict; everything downstream is BLOCKED. Assert the cascade, not a single leaf.
+
+### 2026-10-08 — Full-suite triage: pristine-main worktree proves pre-existing, isolation proves flake
+
+- **Symptom:** Full AgentOps suite (701 tests) showed 3 failures + 2 errors on the fix branch: bundle-path/GUI-asset failures plus wheel-install errors.
+- **Root cause:** None in the fix. Bundle/GUI-asset failures reproduce identically on a pristine `main` worktree; wheel errors pass in isolation (`test_wheel_install.py` 4/4 OK) and only fail in the full run.
+- **Solution:** `git worktree add <path> main`, run the suspect files there, remove the worktree. Record the outcome in the PR body so the next reader does not re-triage.
+- **Remember:** A new failure is guilty until proven otherwise — but the proof is a main-worktree run, not a re-read of the diff. And full-run-only errors get an isolation run before any code change.

@@ -545,3 +545,10 @@
 - **Evidence:** PR #5 `merged: true` on GitHub (authoritative); `main` SHA `d0c5512`; PR files present on `main` confirmed via `git show`; `test_workflow_autonomy.py` present on `main`; all 15 autonomy tests OK (15/15, ~15.5s); full suite OK (72/72, 1 skipped).
 - **Agents involved:** Cline (this session).
 
+## 2026-10-08 - Structured FAILURE/PARTIAL can never PASS an AgentOps task (PR #10, unmerged)
+
+- **Decision:** `WorkflowEngine._execute_task` grants `TaskStatus.PASSED` only when `result.succeeded` (timeout/cancel/terminate/exit-code) AND the role evidence contract AND the structured agent status is not `FAILURE`/`PARTIAL`. New `_structured_agent_status()` helper prefers the runner-attached `structured_result` envelope (`coerce_agent_result`), falls back to parsing `stdout` (STRUCTURED/PARTIAL modes only, so runner doubles that skip the envelope are still honoured), returns `None` for legacy/plaintext. `SUCCESS`/`UNKNOWN`/absent keep historical exit-code behaviour; nonzero-exit + `SUCCESS` still fails.
+- **Reason:** The task decision read only `RunResult.succeeded`, so an agent that exited 0 while explicitly reporting failure/partial carried the task to PASSED and the workflow to READY — the same evidence-in-translation-object class as the files_changed and cancelled/terminated defects. Six regression tests (`StructuredAgentResultTaskStatusTests`); verification evidence regenerated (`tools/evidence/generate.py agentops`: 701 tests, same 3 pre-existing failures + 2 flaky wheel errors as the prior record).
+- **Alternatives considered:** Reusing `evaluate_execution` for the task gate (rejected — it conflates merge-eligibility with task completion and treats UNKNOWN as failure, which would break legacy/plaintext agents); trusting stdout-parse alone without the envelope (rejected — the runner already normalized it; envelope-first avoids double-parse divergence).
+- **Agents involved:** omp assistant (this session).
+

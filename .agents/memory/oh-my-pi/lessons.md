@@ -149,3 +149,15 @@
   toggle proves nothing about restart); hunt "clipped ghost" header artifacts by
   cropping + 3× upscale before assuming a QSS bug — it was the intended
   `setSortIndicator` on the sorted Tokens column.
+
+## 2026-10-08: AgentOps structured-status fix (note — product detail lives in canonical memory)
+
+- This session's product work was AgentOps, not UGA: structured `FAILURE`/`PARTIAL`
+  can never `PASS` a task (PR #10, unmerged; see `.agents/memory/decisions.md`
+  2026-10-08). No UGA or token-tracker files touched.
+- Portable lessons worth reusing here: (1) `git diff` the hunk right after every
+  structural edit — a botched multi-op edit deleted a live import and the suite
+  reported it only as a downstream NameError; (2) workflow failure tests must
+  assert the cascade (first role FAILED, dependents BLOCKED, never PASSED/READY),
+  not a single leaf; (3) triage full-suite failures with a pristine-`main`
+  worktree run (proves pre-existing) plus an isolation run (proves flake).
