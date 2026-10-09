@@ -4,10 +4,12 @@ A production-ready Android QR code generator built with Expo (React Native + Typ
 
 Generates QR codes from plain text, URLs, email addresses, phone numbers, and Wi-Fi
 credentials. Live preview, PNG export, share, copy, dark mode, saved codes, history,
-and a premium tier designed so Google Play Billing can be connected later without
-rewriting the app.
+and a premium tier sold through Google Play: Monthly Pro and Yearly Pro
+subscriptions plus a Lifetime Pro one-time purchase, unified behind a single
+RevenueCat `premium` entitlement.
 
-Everything runs on-device. No accounts, no backend, no analytics, no ads.
+Everything runs on-device. No accounts, no backend, no analytics, no ads. The
+free tier never requires a purchase.
 
 ## Features
 
@@ -20,8 +22,12 @@ Everything runs on-device. No accounts, no backend, no analytics, no ads.
 - Free tier: basic generation, PNG export, sharing, 3 saved codes, square style
 - Premium tier (entitlement-gated): custom QR/background colors, rounded and dot
   styles, logo overlay, unlimited saves, history
-- Billing isolated behind `src/billing/` with an honest "unavailable" state until
-  Google Play Billing is connected; purchases are never faked
+- Premium purchases through Google Play Billing + RevenueCat: Monthly Pro,
+  Yearly Pro (highlighted "Best value"), Lifetime Pro (one-time), real localized
+  store prices, restore purchases, pending/failure/expiry handling; all three
+  plans unlock the same `premium` entitlement
+- Honest "purchases are not connected in this build" state until the store
+  setup in `BILLING_SETUP.md` is completed; purchases are never faked
 - Saved codes, history, and settings stored locally (AsyncStorage), capped and
   deduplicated
 - Accessible labels/roles on all controls, Android back closes sheets, works offline
@@ -32,13 +38,16 @@ Everything runs on-device. No accounts, no backend, no analytics, no ads.
 qr-generator/
   App.tsx                 # main screen, sheets, export actions, toasts
   app.json                # Expo config (package id, version, permissions, assets)
+  BILLING_SETUP.md        # manual Google Play + RevenueCat setup (read before first release)
   eas.json                # production build profile (.aab)
   assets/                 # icon, adaptive icon, splash, favicon
+  plugins/
+    withBillingLaunchMode.js  # config plugin: MainActivity launchMode=singleTop
   scripts/
     generate_assets.py    # regenerates assets/ (Pillow, deterministic)
     setup_signing.sh      # local release keystore + gradle signing hook
   src/
-    billing/              # billing abstraction (Play Billing connect point)
+    billing/              # RevenueCat-backed billing service (real purchases)
     components/           # type selector, form, preview card, action row, locked sections
     data/                 # AsyncStorage persistence (saved, history, settings)
     premium/              # entitlements + premium context/sheet
@@ -164,18 +173,25 @@ No secret keys are stored in this repository.
    the Play Console (App content -> Privacy policy).
 8. Target API level declaration: the app targets API 36, which satisfies the
    current Play requirement.
-9. If you enable premium subscriptions later: create the subscription products in
-   Play Console, connect `src/billing/` to `react-native-iap` (or Google Play
-   Billing directly), and keep `BILLING_NOT_CONNECTED_MESSAGE` behavior for builds
-   where billing is not configured.
+9. Premium billing: follow `BILLING_SETUP.md`. The app code (RevenueCat SDK,
+   `premium` entitlement, three purchase options, restore) is wired; you must
+   still create the Play products/base plans, the RevenueCat project/entitlement/
+   offering, and add the `goog_` public SDK key to `app.json`, then rebuild.
+   Unconfigured builds show an honest "not connected" notice instead of prices.
 
 Set a real contact email in `PRIVACY_POLICY.md` before publishing.
 
 ## Development notes
 
+- `plugins/withBillingLaunchMode.js` sets `android:launchMode="singleTop"` on
+  MainActivity; `expo prebuild` applies it. RevenueCat's docs: the default
+  `singleTask` launch mode can cancel a purchase when Android recreates the app
+  behind the Google Play payment sheet. The app has no deep-link listeners, so
+  `singleTop` is safe and required for reliable purchases.
 - `app.json` blocks unnecessary permissions; the manifest ships with `INTERNET`
   only (plus explicit removals for storage/audio/overlay permissions some Expo
-  templates add).
+  templates add). Billing uses the `com.android.vending.BILLING` permission
+  added by `react-native-purchases`.
 - Debug tooling (dev menu, Metro, LogBox overlays) does not appear in release
   bundles; release builds do not depend on Expo Go.
 - To regenerate app assets: `python scripts/generate_assets.py` (Pillow).

@@ -2,12 +2,12 @@ import type {
   BillingConnectionState,
   BillingProvider,
   Entitlement,
+  PurchaseOption,
   PurchaseOutcome,
-  SubscriptionOffer,
 } from './types';
 
 export const BILLING_NOT_CONNECTED_MESSAGE =
-  'Subscriptions are not connected in this build. Connect Google Play Billing to this app to enable purchases.';
+  'Purchases are not connected in this build. Connect Google Play Billing to this app to enable purchases.';
 
 /**
  * Honest stand-in while Play Billing is not wired up: it never reports a
@@ -28,11 +28,11 @@ export class UnconnectedBillingProvider implements BillingProvider {
     return this.connectionState;
   }
 
-  async getOfferings(): Promise<SubscriptionOffer[]> {
+  async getOptions(): Promise<PurchaseOption[]> {
     return [];
   }
 
-  async purchase(_sku: string): Promise<PurchaseOutcome> {
+  async purchase(_packageId: string): Promise<PurchaseOutcome> {
     return { status: 'unavailable', message: BILLING_NOT_CONNECTED_MESSAGE };
   }
 
@@ -43,9 +43,8 @@ export class UnconnectedBillingProvider implements BillingProvider {
   async getEntitlement(): Promise<Entitlement> {
     return { isPremium: false, source: 'none' };
   }
-}
 
-// Single creation point: return a Play Billing adapter here to enable purchases.
-export function createBillingProvider(): BillingProvider {
-  return new UnconnectedBillingProvider();
+  addEntitlementListener(_listener: (entitlement: Entitlement) => void): () => void {
+    return () => undefined;
+  }
 }

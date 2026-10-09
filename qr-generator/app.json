@@ -14,7 +14,7 @@
     },
     "android": {
       "package": "com.qrgenerator.app",
-      "versionCode": 1,
+      "versionCode": 4,
       "allowBackup": false,
       "softwareKeyboardLayoutMode": "resize",
       "predictiveBackGestureEnabled": false,
@@ -30,7 +30,10 @@
         "foregroundImage": "./assets/adaptive-icon/foreground.png",
         "monochromeImage": "./assets/adaptive-icon/monochrome.png",
         "backgroundColor": "#FFFFFF"
-      }
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -62,7 +65,17 @@
         {
           "photosPermission": "QR Generator uses your photos only when you choose an image to place inside a QR code."
         }
-      ]
-    ]
+      ],
+      "./plugins/withBillingLaunchMode.js",
+      "expo-font"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "760a01a7-5951-45a7-8e01-24b49a1f4c94"
+      },
+      "revenueCat": {
+        "androidPublicKey": ""
+      }
+    }
   }
 }

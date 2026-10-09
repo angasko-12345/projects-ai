@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import type { PurchaseOutcome } from '../billing/types';
+import type { PurchaseKind, PurchaseOption, PurchaseOutcome } from '../billing/types';
 import { PREMIUM_FEATURES } from '../premium/entitlements';
 import { usePremium } from '../premium/PremiumContext';
 import { useTheme } from '../theme/ThemeContext';
@@ -16,10 +16,42 @@ interface PremiumSheetProps {
   notify: (text: string, tone?: ToastData['tone']) => void;
 }
 
+const PLAN_LABELS: Record<PurchaseKind, string> = {
+  monthly: 'Monthly Pro',
+  yearly: 'Yearly Pro',
+  lifetime: 'Lifetime Pro',
+  other: '',
+};
+
 export function PremiumSheet({ visible, onClose, notify }: PremiumSheetProps) {
   const { colors } = useTheme();
-  const { isPremium, offers, busy, purchase, restore } = usePremium();
+  const {
+    isPremium,
+    connectionState,
+    options,
+    loading,
+    loadError,
+    busy,
+    purchase,
+    restore,
+    refresh,
+  } = usePremium();
   const [notice, setNotice] = useState<{ text: string; tone: 'neutral' | 'error' } | null>(null);
+  const [pendingPackage, setPendingPackage] = useState<string | null>(null);
+  const [wasVisible, setWasVisible] = useState(visible);
+
+  // Clear stale outcome feedback when the sheet is (re)opened, adjusting state
+  // during render instead of in an effect.
+  if (visible !== wasVisible) {
+    setWasVisible(visible);
+    setNotice(null);
+  }
+
+  useEffect(() => {
+    if (visible) {
+      refresh();
+    }
+  }, [visible, refresh]);
 
   const applyOutcome = (outcome: PurchaseOutcome) => {
     if (outcome.status === 'success') {
@@ -32,29 +64,168 @@ export function PremiumSheet({ visible, onClose, notify }: PremiumSheetProps) {
       return;
     }
     if (outcome.status === 'pending') {
-      setNotice({ text: 'Waiting for Google Play to confirm the purchase.', tone: 'neutral' });
+      setNotice({
+        text: 'Waiting for Google Play to confirm the purchase. Premium unlocks once the payment is confirmed.',
+        tone: 'neutral',
+      });
       return;
     }
-    setNotice({
-      text: outcome.message,
-      tone: outcome.status === 'error' ? 'error' : 'neutral',
-    });
+    if (outcome.status === 'no_purchases' || outcome.status === 'unavailable') {
+      setNotice({ text: outcome.message, tone: 'neutral' });
+      return;
+    }
+    setNotice({ text: outcome.message, tone: 'error' });
   };
 
-  const handlePurchase = async (sku: string) => {
-    applyOutcome(await purchase(sku));
+  const handlePurchase = async (packageId: string) => {
+    setPendingPackage(packageId);
+    try {
+      applyOutcome(await purchase(packageId));
+    } finally {
+      setPendingPackage(null);
+    }
   };
 
   const handleRestore = async () => {
     applyOutcome(await restore());
   };
 
+  const renderOption = (option: PurchaseOption) => {
+    const highlighted = option.kind === 'yearly';
+    const displayName = option.kind === 'other' ? option.title : PLAN_LABELS[option.kind];
+    const renewal =
+      option.billing === 'one_time'
+        ? 'No recurring charges.'
+        : option.kind === 'monthly'
+          ? 'Renews every month until canceled. Cancel anytime in Google Play.'
+          : option.kind === 'yearly'
+            ? 'Renews every year until canceled. Cancel anytime in Google Play.'
+            : 'Auto-renews until canceled. Cancel anytime in Google Play.';
+    const action =
+      option.kind === 'monthly'
+        ? 'Subscribe monthly'
+        : option.kind === 'yearly'
+          ? 'Subscribe yearly'
+          : option.billing === 'one_time'
+            ? 'Buy lifetime'
+            : 'Subscribe';
+    const isPending = pendingPackage === option.packageId;
+
+    return (
+      <View
+        key={option.packageId}
+        style={[
+          styles.optionCard,
+          {
+            backgroundColor: colors.surface,
+            borderColor: highlighted ? colors.accent : colors.border,
+            borderWidth: highlighted ? 2 : 1,
+          },
+        ]}
+      >
+        <View style={styles.optionHeader}>
+          <Text style={[styles.optionTitle, { color: colors.text }]}>{displayName}</Text>
+          {highlighted ? (
+            <View style={[styles.bestValue, { backgroundColor: colors.accent }]}>
+              <Text style={[styles.bestValueText, { color: colors.onAccent }]}>Best value</Text>
+            </View>
+          ) : null}
+        </View>
+        <View style={styles.priceRow}>
+          <Text style={[styles.price, { color: colors.text }]}>{option.priceLabel}</Text>
+          <Text style={[styles.period, { color: colors.textMuted }]}>{option.periodLabel}</Text>
+        </View>
+        <Text style={[styles.renewal, { color: colors.textMuted }]}>{renewal}</Text>
+        <Pressable
+          onPress={() => handlePurchase(option.packageId)}
+          disabled={busy}
+          accessibilityRole="button"
+          accessibilityLabel={`${action} ${displayName} for ${option.priceLabel} (${option.periodLabel})`}
+          accessibilityHint={renewal}
+          style={({ pressed }) => [
+            styles.optionButton,
+            highlighted
+              ? { backgroundColor: colors.accent, borderColor: colors.accent }
+              : { backgroundColor: pressed ? colors.surfaceMuted : colors.surface, borderColor: colors.border },
+            { opacity: busy ? 0.5 : pressed ? 0.85 : 1 },
+          ]}
+        >
+          {isPending ? (
+            <ActivityIndicator size="small" color={highlighted ? colors.onAccent : colors.text} />
+          ) : (
+            <Text
+              style={[
+                styles.optionButtonText,
+                { color: highlighted ? colors.onAccent : colors.text },
+              ]}
+            >
+              {action}
+            </Text>
+          )}
+        </Pressable>
+      </View>
+    );
+  };
+
+  const renderUnavailable = () => {
+    if (loading && options.length === 0) {
+      return (
+        <View style={[styles.infoBox, { backgroundColor: colors.surfaceMuted }]}>
+          <ActivityIndicator size="small" color={colors.textMuted} />
+          <Text style={[styles.infoText, { color: colors.textMuted }]}>
+            Loading plans from Google Play...
+          </Text>
+        </View>
+      );
+    }
+    if (connectionState === 'not_configured') {
+      return (
+        <View style={[styles.infoBox, { backgroundColor: colors.surfaceMuted }]}>
+          <Ionicons name="information-circle-outline" size={18} color={colors.textMuted} />
+          <Text style={[styles.infoText, { color: colors.textMuted }]}>
+            Purchases are not connected in this build. Every free feature keeps working.
+          </Text>
+        </View>
+      );
+    }
+    if (connectionState === 'error') {
+      return (
+        <View style={[styles.infoBox, { backgroundColor: colors.dangerSoft }]}>
+          <Ionicons name="alert-circle-outline" size={18} color={colors.danger} />
+          <Text style={[styles.infoText, { color: colors.danger }]}>
+            Billing could not be started. Please try again later.
+          </Text>
+        </View>
+      );
+    }
+    if (loadError) {
+      return (
+        <View style={[styles.infoBox, { backgroundColor: colors.dangerSoft }]}>
+          <Ionicons name="alert-circle-outline" size={18} color={colors.danger} />
+          <Text style={[styles.infoText, { color: colors.danger }]}>{loadError}</Text>
+        </View>
+      );
+    }
+    if (connectionState === 'ready') {
+      return (
+        <View style={[styles.infoBox, { backgroundColor: colors.surfaceMuted }]}>
+          <Ionicons name="information-circle-outline" size={18} color={colors.textMuted} />
+          <Text style={[styles.infoText, { color: colors.textMuted }]}>
+            Plans are not available right now. They will appear here once the products for this
+            app are configured in Google Play.
+          </Text>
+        </View>
+      );
+    }
+    return null;
+  };
+
   return (
     <Sheet visible={visible} title="QR Generator Premium" onClose={onClose}>
       <View style={styles.stack}>
         <Text style={[styles.intro, { color: colors.textMuted }]}>
-          Unlock custom colors, QR styles, logos, unlimited saves and history. Subscriptions are
-          handled by Google Play. The app has no accounts and collects no personal data.
+          Unlock custom colors, QR styles, logos, unlimited saves and history. Purchases are
+          handled by Google Play. The app has no accounts and never sees your QR content.
         </Text>
 
         <View style={styles.featureList}>
@@ -78,37 +249,10 @@ export function PremiumSheet({ visible, onClose, notify }: PremiumSheetProps) {
               Premium is active on this device.
             </Text>
           </View>
-        ) : offers.length > 0 ? (
-          <View style={styles.offerList}>
-            {offers.map((offer) => (
-              <Pressable
-                key={offer.sku}
-                onPress={() => handlePurchase(offer.sku)}
-                disabled={busy}
-                accessibilityRole="button"
-                accessibilityLabel={`Subscribe to ${offer.title} for ${offer.priceLabel}`}
-                style={({ pressed }) => [
-                  styles.offerButton,
-                  {
-                    backgroundColor: colors.accent,
-                    opacity: busy ? 0.5 : pressed ? 0.85 : 1,
-                  },
-                ]}
-              >
-                <Text style={[styles.offerTitle, { color: colors.onAccent }]}>{offer.title}</Text>
-                <Text style={[styles.offerPrice, { color: colors.onAccent }]}>
-                  {offer.priceLabel} · {offer.periodLabel}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+        ) : options.length > 0 ? (
+          <View style={styles.optionList}>{options.map(renderOption)}</View>
         ) : (
-          <View style={[styles.infoBox, { backgroundColor: colors.surfaceMuted }]}>
-            <Ionicons name="information-circle-outline" size={18} color={colors.textMuted} />
-            <Text style={[styles.infoText, { color: colors.textMuted }]}>
-              Plans appear here once Google Play Billing is connected to this build.
-            </Text>
-          </View>
+          renderUnavailable()
         )}
 
         {notice ? (
@@ -143,10 +287,14 @@ export function PremiumSheet({ visible, onClose, notify }: PremiumSheetProps) {
           accessibilityLabel="Restore purchases"
           style={({ pressed }) => [
             styles.restoreButton,
-            { borderColor: colors.border, backgroundColor: pressed ? colors.surfaceMuted : colors.surface, opacity: busy ? 0.5 : 1 },
+            {
+              borderColor: colors.border,
+              backgroundColor: pressed ? colors.surfaceMuted : colors.surface,
+              opacity: busy ? 0.5 : 1,
+            },
           ]}
         >
-          {busy ? (
+          {busy && !pendingPackage ? (
             <ActivityIndicator size="small" color={colors.text} />
           ) : (
             <Text style={[styles.restoreText, { color: colors.text }]}>Restore purchases</Text>
@@ -154,7 +302,8 @@ export function PremiumSheet({ visible, onClose, notify }: PremiumSheetProps) {
         </Pressable>
 
         <Text style={[styles.footnote, { color: colors.textMuted }]}>
-          Cancel anytime in Google Play. Purchases never share your QR content.
+          Subscriptions renew until canceled. Manage or cancel anytime in Google Play. Purchases
+          never share your QR content.
         </Text>
       </View>
     </Sheet>
@@ -199,23 +348,61 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: TYPE.caption,
   },
-  offerList: {
+  optionList: {
     gap: SPACING.sm,
   },
-  offerButton: {
-    minHeight: MIN_TAP_SIZE,
-    borderRadius: RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 2,
-    paddingVertical: SPACING.sm,
+  optionCard: {
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    gap: SPACING.sm,
   },
-  offerTitle: {
-    fontSize: TYPE.body,
+  optionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  optionTitle: {
+    fontSize: TYPE.heading,
+    fontWeight: '700',
+    flexShrink: 1,
+  },
+  bestValue: {
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 2,
+  },
+  bestValueText: {
+    fontSize: TYPE.caption,
     fontWeight: '700',
   },
-  offerPrice: {
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: SPACING.sm,
+  },
+  price: {
+    fontSize: TYPE.heading,
+    fontWeight: '700',
+  },
+  period: {
     fontSize: TYPE.caption,
+  },
+  renewal: {
+    fontSize: TYPE.caption,
+    lineHeight: 18,
+  },
+  optionButton: {
+    minHeight: MIN_TAP_SIZE,
+    marginTop: SPACING.xs,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.md,
+  },
+  optionButtonText: {
+    fontSize: TYPE.label,
+    fontWeight: '700',
   },
   restoreButton: {
     minHeight: MIN_TAP_SIZE,
