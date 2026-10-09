@@ -31,14 +31,17 @@ free tier never requires a purchase.
 - Saved codes, history, and settings stored locally (AsyncStorage), capped and
   deduplicated
 - Accessible labels/roles on all controls, Android back closes sheets, works offline
+- Free beta mode (`expo.extra.beta.enabled`): premium unlocked for testers,
+  purchases switched off, built locally as an APK: see `BETA.md`
 
 ## Repository layout
 
 ```
 qr-generator/
   App.tsx                 # main screen, sheets, export actions, toasts
-  app.json                # Expo config (package id, version, permissions, assets)
+  app.json                # Expo config (package id, version, permissions, assets, beta flag)
   BILLING_SETUP.md        # manual Google Play + RevenueCat setup (read before first release)
+  BETA.md                 # free beta mode: flag, local APK build, install, GitHub Releases
   eas.json                # production build profile (.aab)
   assets/                 # icon, adaptive icon, splash, favicon
   plugins/
@@ -143,6 +146,25 @@ Notes:
 - On Windows, if the Hermes compiler fails with "permission denied" under the
   system temp directory, point TEMP/TMP at a writable folder first:
   `set TEMP=%CD%\..\.tmp` (from `android/`), same for `TMP`.
+
+### Build the free beta APK (local, no AAB, no cloud)
+
+```bash
+# android/ must exist (see the local .aab section above for prebuild/signing)
+cd android
+export ANDROID_HOME=/path/to/android-sdk
+CMAKE_BUILD_PARALLEL_LEVEL=2 sh gradlew --max-workers=3 -Dorg.gradle.parallel=false :app:assembleRelease
+```
+
+Output (an installable APK, not an AAB):
+
+```
+android/app/build/outputs/apk/release/app-release.apk
+```
+
+Set `expo.extra.beta.enabled` in `app.json` first: it unlocks premium for
+testers and disables every purchase flow. Full details, install steps and
+GitHub Releases distribution are in `BETA.md`.
 
 ### Environment variables
 

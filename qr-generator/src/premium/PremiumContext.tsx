@@ -7,9 +7,12 @@ import type {
   PurchaseOption,
   PurchaseOutcome,
 } from '../billing/types';
+import { betaPurchaseDisabledOutcome, isBetaBuildEnabled } from './beta';
 
 interface PremiumContextValue {
   isPremium: boolean;
+  /** True for a beta build: premium granted by config, purchases never offered. */
+  beta: boolean;
   connectionState: BillingConnectionState;
   options: PurchaseOption[];
   loading: boolean;
@@ -26,15 +29,24 @@ const LOAD_ERROR_MESSAGE = 'Plans could not be loaded. Check your connection and
 
 export function PremiumProvider({ children }: { children: React.ReactNode }) {
   const [provider] = useState(createBillingProvider);
-  const [isPremium, setIsPremium] = useState(false);
+  const [beta] = useState(isBetaBuildEnabled);
+  const [isPremium, setIsPremium] = useState(beta);
   const [connectionState, setConnectionState] = useState<BillingConnectionState>('not_configured');
   const [options, setOptions] = useState<PurchaseOption[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!beta);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
   const refresh = useCallback(async () => {
+    if (beta) {
+      // Beta build: premium comes from the build configuration, never from a
+      // store read, and no purchase option is ever offered.
+      setIsPremium(true);
+      setOptions([]);
+      setLoadError(null);
+      return;
+    }
     setLoading(true);
     try {
       const [entitlement, storeOptions] = await Promise.allSettled([
@@ -56,9 +68,14 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [provider]);
+  }, [provider, beta]);
 
   useEffect(() => {
+    if (beta) {
+      // Premium is already granted from the build config and billing is never
+      // initialized, so there is no store to subscribe to and nothing to load.
+      return;
+    }
     let cancelled = false;
     const applyEntitlement = (entitlement: Entitlement) => {
       if (!cancelled) {
@@ -79,7 +96,7 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
       unsubscribeRef.current?.();
       unsubscribeRef.current = null;
     };
-  }, [provider, refresh]);
+  }, [provider, refresh, beta]);
 
   const applyOutcome = useCallback((outcome: PurchaseOutcome) => {
     if (outcome.status === 'success') {
@@ -90,6 +107,9 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
 
   const purchase = useCallback(
     async (packageId: string) => {
+      if (beta) {
+        return betaPurchaseDisabledOutcome();
+      }
       setBusy(true);
       try {
         return applyOutcome(await provider.purchase(packageId));
@@ -97,21 +117,24 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
         setBusy(false);
       }
     },
-    [provider, applyOutcome],
+    [provider, applyOutcome, beta],
   );
 
   const restore = useCallback(async () => {
+    if (beta) {
+      return betaPurchaseDisabledOutcome();
+    }
     setBusy(true);
     try {
       return applyOutcome(await provider.restore());
     } finally {
       setBusy(false);
     }
-  }, [provider, applyOutcome]);
+  }, [provider, applyOutcome, beta]);
 
   const value = useMemo<PremiumContextValue>(
-    () => ({ isPremium, connectionState, options, loading, loadError, busy, purchase, restore, refresh }),
-    [isPremium, connectionState, options, loading, loadError, busy, purchase, restore, refresh],
+    () => ({ isPremium, beta, connectionState, options, loading, loadError, busy, purchase, restore, refresh }),
+    [isPremium, beta, connectionState, options, loading, loadError, busy, purchase, restore, refresh],
   );
 
   return <PremiumContext.Provider value={value}>{children}</PremiumContext.Provider>;

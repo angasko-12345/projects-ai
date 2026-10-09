@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { PurchaseKind, PurchaseOption, PurchaseOutcome } from '../billing/types';
+import { BETA_ACTIVE_MESSAGE, BETA_FOOTNOTE, BETA_INTRO } from '../premium/beta';
 import { PREMIUM_FEATURES } from '../premium/entitlements';
 import { usePremium } from '../premium/PremiumContext';
 import { useTheme } from '../theme/ThemeContext';
@@ -27,6 +28,7 @@ export function PremiumSheet({ visible, onClose, notify }: PremiumSheetProps) {
   const { colors } = useTheme();
   const {
     isPremium,
+    beta,
     connectionState,
     options,
     loading,
@@ -224,8 +226,9 @@ export function PremiumSheet({ visible, onClose, notify }: PremiumSheetProps) {
     <Sheet visible={visible} title="QR Generator Premium" onClose={onClose}>
       <View style={styles.stack}>
         <Text style={[styles.intro, { color: colors.textMuted }]}>
-          Unlock custom colors, QR styles, logos, unlimited saves and history. Purchases are
-          handled by Google Play. The app has no accounts and never sees your QR content.
+          {beta
+            ? BETA_INTRO
+            : 'Unlock custom colors, QR styles, logos, unlimited saves and history. Purchases are handled by Google Play. The app has no accounts and never sees your QR content.'}
         </Text>
 
         <View style={styles.featureList}>
@@ -242,7 +245,12 @@ export function PremiumSheet({ visible, onClose, notify }: PremiumSheetProps) {
           ))}
         </View>
 
-        {isPremium ? (
+        {beta ? (
+          <View style={[styles.infoBox, { backgroundColor: colors.accentSoft }]}>
+            <Ionicons name="star" size={18} color={colors.accent} />
+            <Text style={[styles.infoText, { color: colors.text }]}>{BETA_ACTIVE_MESSAGE}</Text>
+          </View>
+        ) : isPremium ? (
           <View style={[styles.infoBox, { backgroundColor: colors.accentSoft }]}>
             <Ionicons name="star" size={18} color={colors.accent} />
             <Text style={[styles.infoText, { color: colors.text }]}>
@@ -280,30 +288,33 @@ export function PremiumSheet({ visible, onClose, notify }: PremiumSheetProps) {
           </View>
         ) : null}
 
-        <Pressable
-          onPress={handleRestore}
-          disabled={busy}
-          accessibilityRole="button"
-          accessibilityLabel="Restore purchases"
-          style={({ pressed }) => [
-            styles.restoreButton,
-            {
-              borderColor: colors.border,
-              backgroundColor: pressed ? colors.surfaceMuted : colors.surface,
-              opacity: busy ? 0.5 : 1,
-            },
-          ]}
-        >
-          {busy && !pendingPackage ? (
-            <ActivityIndicator size="small" color={colors.text} />
-          ) : (
-            <Text style={[styles.restoreText, { color: colors.text }]}>Restore purchases</Text>
-          )}
-        </Pressable>
+        {beta ? null : (
+          <Pressable
+            onPress={handleRestore}
+            disabled={busy}
+            accessibilityRole="button"
+            accessibilityLabel="Restore purchases"
+            style={({ pressed }) => [
+              styles.restoreButton,
+              {
+                borderColor: colors.border,
+                backgroundColor: pressed ? colors.surfaceMuted : colors.surface,
+                opacity: busy ? 0.5 : 1,
+              },
+            ]}
+          >
+            {busy && !pendingPackage ? (
+              <ActivityIndicator size="small" color={colors.text} />
+            ) : (
+              <Text style={[styles.restoreText, { color: colors.text }]}>Restore purchases</Text>
+            )}
+          </Pressable>
+        )}
 
         <Text style={[styles.footnote, { color: colors.textMuted }]}>
-          Subscriptions renew until canceled. Manage or cancel anytime in Google Play. Purchases
-          never share your QR content.
+          {beta
+            ? BETA_FOOTNOTE
+            : 'Subscriptions renew until canceled. Manage or cancel anytime in Google Play. Purchases never share your QR content.'}
         </Text>
       </View>
     </Sheet>

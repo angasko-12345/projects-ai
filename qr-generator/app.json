@@ -75,6 +75,9 @@
       },
       "revenueCat": {
         "androidPublicKey": ""
+      },
+      "beta": {
+        "enabled": true
       }
     }
   }
