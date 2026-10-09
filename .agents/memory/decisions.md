@@ -559,3 +559,11 @@
 - **Alternatives considered:** Committing the keystore for CI convenience (rejected — secrets stay out of git); faking purchases to demo premium (rejected — product brief forbids it).
 - **Agents involved:** omp assistant (this session).
 
+## 2026-10-09 - QR Generator: real purchases via RevenueCat, public key only, one premium entitlement
+
+- **Date:** 2026-10-09
+- **Decision:** Real Google Play billing through `react-native-purchases@10.12.2` (RevenueCat) behind the existing `src/billing/` seam. Only the public `goog_` SDK key is read (`expo.extra.revenueCat.androidPublicKey`, empty key or non-`goog_` value ⇒ honest "purchases are not connected in this build" state); never a secret REST key or service-account JSON in the repo or bundle. All three products grant one `premium` entitlement: `qr_pro_monthly` (Play subscription, base plan `monthly-autorenewing`), `qr_pro_yearly` (`annual-autorenewing`), `qr_pro_lifetime` (Play one-time product that must be flagged **non-consumable in the RevenueCat dashboard** or RC consumes it). Plan kind (monthly/yearly/lifetime) is derived from the package's billing period, not the base-plan id, so base-plan renames need no app change. `plugins/withBillingLaunchMode.js` sets MainActivity `launchMode=singleTop` (RevenueCat docs: `singleTask` can cancel a purchase when Android recreates the app behind the Play payment sheet).
+- **Reason:** Task requirements: RevenueCat's supported purchase/restore APIs instead of hand-rolled receipt handling, real store-localized prices, no fake purchases, secrets out of the bundle, and one feature set for all plans. Monthly/yearly map to subscription base plans while lifetime is a different Play product type entirely — a consistent id scheme (`qr_pro_<plan>`) plus period-derived kind keeps that mapping explicit.
+- **Alternatives considered:** `react-native-iap` direct (rejected — the task names RevenueCat; entitlement sync/restore come free); `react-native-purchases-ui` native paywall (rejected — own sheet preserves design/dark-mode/accessibility control and avoids a dev-client requirement); committing an `enc_` key so CI could build (rejected — server secret, forbidden); hardcoding prices (rejected — must be store-localized).
+- **Agents involved:** omp assistant (this session).
+
