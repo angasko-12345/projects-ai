@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "local-privacy-audit"
+version = "1.0.0"
+description = "Read-only local privacy footprint audit tool"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+privacy-audit = "privacy_audit.main:main"
