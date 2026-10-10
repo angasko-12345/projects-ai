@@ -149,3 +149,6 @@
   toggle proves nothing about restart); hunt "clipped ghost" header artifacts by
   cropping + 3× upscale before assuming a QSS bug — it was the intended
   `setSortIndicator` on the sorted Tokens column.
+
+## 2026-10-07: subprocess GUI tests must skip on missing Tk, not just missing display
+- "No display available" and "tkinter unavailable in this Python build" are two different environment limits producing the same exit-2 shape in `extern_pong --auto-quit`; the test now skips on either string. When adding a GUI-launch test, enumerate the missing-GUI exits (no X/Wayland, no Tk build, no OpenGL) up front instead of discovering them one CI host at a time.

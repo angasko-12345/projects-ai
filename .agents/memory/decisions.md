@@ -537,3 +537,10 @@
 - **Alternatives considered:** Editing the failing tests inside each PR (rejected — those failures are main's fix, not PR defects, and changing them would hide the real state and risk re-introducing the bug when main advances).
 - **Agents involved:** Cline (this session).
 
+
+## 2026-10-07 - PR #8 merged: systemd-run isolation opt-in, merge commit preserves evidence SHA
+
+- **Decision:** merged `hark/systemd-run-fix` into `main` as merge commit `18231b7` (`--no-ff`, pushed; PR #8 shows MERGED). `systemd_run_enabled` now defaults `False` in `ProcessRuntime`, `AgentRunner`, `Verifier`, `VerificationKernel`, and `load_config` on a missing key; the bundled `agentops/agents/agents.yaml` keeps `true`, so deployed configs keep cgroup isolation. `gui_controller` passes the configured value to all three process owners on both the agent-run and task-run paths (the CLI already did and is now pinned by test). Injected spawn factories are never wrapped or probed (`spawn is None` guard); the probe runs via `asyncio.to_thread`. Evidence commit `9173bc2` stays an ancestor, so `.agents/evidence/verification.json` remains valid — no squash, no rebase.
+- **Verification:** AgentOps suite `Ran 673 tests, OK (skipped=4)` on PR head `78fbb0f` and again on merged `main` (Python 3.14.7, Windows). No tests added, weakened, or deleted to pass; all six PR claims checked against `main` (`True` defaults, unwired GUI) before merging.
+- **Known gap:** a real `systemd-run --user --scope` run on the 4 GB Linux host was not done — Tailscale `agentbox` (`100.118.85.20`) is reachable but pubkey auth failed for every tried user and no credentials exist in repo or memory. Pending user-provided login.
+- **Agents involved:** omp.
