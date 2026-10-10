@@ -8,8 +8,6 @@ Then final LN + output projection tied to the token embedding.
 
 from __future__ import annotations
 
-import math
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -23,7 +21,14 @@ def _init_weights(module: nn.Module) -> None:
 
 
 class CausalSelfAttention(nn.Module):
-    """Single-head causal self-attention: Q = xWq, K = xWk, V = xWv."""
+    """Single-head causal self-attention: Q = xWq, K = xWk, V = xWv.
+
+    The score, scale, causal mask and softmax are computed by
+    scaled_dot_product_attention with is_causal=True, which applies the same
+    lower-triangular mask and 1/sqrt(d_head) scale as the explicit
+    q @ k^T / sqrt(d) + masked softmax it replaces. wq/wk/wv keep their names
+    and shapes, so checkpoints saved by the earlier implementation load as-is.
+    """
 
     def __init__(self, d_model: int, d_head: int, dropout: float = 0.0):
         super().__init__()
@@ -32,15 +37,17 @@ class CausalSelfAttention(nn.Module):
         self.wv = nn.Linear(d_model, d_head, bias=False)
         self.drop = nn.Dropout(dropout)
 
-    def forward(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         q = self.wq(x)
         k = self.wk(x)
         v = self.wv(x)
-        scores = q @ k.transpose(-2, -1) / math.sqrt(q.size(-1))
-        # mask is the lower triangle built once per block by MultiHeadAttention.
-        scores = scores.masked_fill(~mask, float("-inf"))
-        weights = F.softmax(scores, dim=-1)
-        return self.drop(weights) @ v
+        # Dropout is applied to the attention weights, matching self.drop(weights)
+        # in the manual path; eval mode passes 0.0, so inference stays exact.
+        return F.scaled_dot_product_attention(
+            q, k, v,
+            dropout_p=self.drop.p if self.training else 0.0,
+            is_causal=True,
+        )
 
 
 class MultiHeadAttention(nn.Module):
@@ -56,10 +63,9 @@ class MultiHeadAttention(nn.Module):
         self.drop = nn.Dropout(dropout)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        t = x.size(1)
-        # Causal mask: token i attends only to positions <= i. One mask for all heads.
-        mask = torch.tril(torch.ones(t, t, device=x.device, dtype=torch.bool))
-        out = torch.cat([h(x, mask) for h in self.heads], dim=-1)
+        # The causal mask is now built inside SDPA per head, so it is no longer
+        # rebuilt here once per block.
+        out = torch.cat([h(x) for h in self.heads], dim=-1)
         return self.drop(self.proj(out))
 
 
