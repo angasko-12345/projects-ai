@@ -593,8 +593,14 @@ def load_model(checkpoint: str | dict):
     return model, cfg
 
 
+def _chunked_loss(module, x, y, chunk_size):
+    """Chunked loss on the underlying model, unwrapping torch.compile if present."""
+    return getattr(module, "_orig_mod", module).chunked_loss(x, y, chunk_size)
+
+
 @torch.no_grad()
-def evaluate(model, loader, batches: int, device: torch.device) -> float:
+def evaluate(model, loader, batches: int, device: torch.device,
+             chunk_size: int = 0) -> float:
     model.eval()
     n_batches = len(loader)
     if n_batches == 0:
@@ -608,7 +614,10 @@ def evaluate(model, loader, batches: int, device: torch.device) -> float:
         if i >= limit:
             break
         x, y = x.to(device), y.to(device)
-        _, loss = model(x, y)
+        if chunk_size > 0:
+            loss = _chunked_loss(model, x, y, chunk_size)
+        else:
+            _, loss = model(x, y)
         n_tokens = y.numel()
         total_loss += loss.item() * n_tokens
         total_tokens += n_tokens
@@ -770,7 +779,10 @@ def train(cfg: Config, resume_from: str | None = None, start_step: int | None = 
                 x, y = next(train_iter)
             x, y = x.to(device), y.to(device)
             total_tokens += x.numel()  # actual batch tokens, not batch_size * context
-            _, loss = train_model(x, y)
+            if cfg.loss_chunk_size > 0:
+                loss = _chunked_loss(train_model, x, y, cfg.loss_chunk_size)
+            else:
+                _, loss = train_model(x, y)
             (loss / accum).backward()
             group_loss += loss.item() / accum
 
@@ -785,7 +797,8 @@ def train(cfg: Config, resume_from: str | None = None, start_step: int | None = 
             )
 
         if step % cfg.eval_interval == 0 or step == cfg.max_steps:
-            val_loss = evaluate(train_model, val_loader, cfg.eval_batches, device)
+            val_loss = evaluate(train_model, val_loader, cfg.eval_batches, device,
+                                cfg.loss_chunk_size)
             last_train_loss, last_val_loss = group_loss, val_loss
             print(
                 f"step {step} train_loss {group_loss:.4f} "
@@ -839,6 +852,7 @@ CLI_CONFIG_FIELDS = (
     ("beta2", "beta2"),
     ("grad_clip", "grad_clip"),
     ("grad_accum_steps", "grad_accum_steps"),
+    ("loss_chunk_size", "loss_chunk_size"),
     ("warmup_steps", "warmup_steps"),
     ("eval_interval", "eval_interval"),
     ("eval_batches", "eval_batches"),
@@ -912,6 +926,11 @@ def make_parser() -> argparse.ArgumentParser:
                         help="microbatches accumulated per optimizer update; the "
                              "effective batch is --batch-size * N. 1 (default) updates "
                              "on every batch. Must be >= 1")
+    parser.add_argument("--loss-chunk-size", dest="loss_chunk_size", type=int,
+                        default=None, metavar="N",
+                        help="sequence positions per chunk of the LM loss, recomputed "
+                             "in backward so full B x T x vocab logits are never live. "
+                             "0 (default) disables chunking. Must be >= 0")
     parser.add_argument("--warmup-steps", dest="warmup_steps", type=int, default=None,
                         help="linear warmup length in steps")
     parser.add_argument("--eval-interval", dest="eval_interval", type=int, default=None,

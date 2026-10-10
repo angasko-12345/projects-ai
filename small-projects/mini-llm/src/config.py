@@ -118,6 +118,9 @@ class Config:
     # Microbatches accumulated per optimizer update. The effective batch is
     # batch_size * grad_accum_steps; 1 means one update per batch.
     grad_accum_steps: int = 1
+    # Sequence positions per LM-loss chunk; 0 (default) uses the whole sequence.
+    # >= 1 recomputes each chunk in backward so full B x T x vocab logits never exist.
+    loss_chunk_size: int = 0
     seed: int = 42
 
     # LR schedule
@@ -152,6 +155,8 @@ class Config:
         assert self.batch_size > 0 and self.max_steps > 0
         assert isinstance(self.grad_accum_steps, int) and self.grad_accum_steps >= 1, \
             f"grad_accum_steps must be a positive int (>= 1), got {self.grad_accum_steps!r}"
+        assert isinstance(self.loss_chunk_size, int) and self.loss_chunk_size >= 0, \
+            f"loss_chunk_size must be an int >= 0 (0 disables), got {self.loss_chunk_size!r}"
         assert 0.0 < self.min_lr_ratio <= 1.0, "min_lr_ratio must be in (0, 1]"
         assert self.warmup_steps <= self.max_steps, "warmup_steps must fit in max_steps"
         for name in ("torch_threads", "torch_interop_threads"):

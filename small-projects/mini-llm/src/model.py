@@ -11,6 +11,11 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint
+
+# cross_entropy's default target value that is excluded from the loss. Named so
+# the chunked loss divides its sum by the same token count the plain loss uses.
+_IGNORE_INDEX = -100
 
 
 def _init_weights(module: nn.Module) -> None:
@@ -119,21 +124,59 @@ class MiniGPT(nn.Module):
         # Tie after init so the shared tensor is drawn from the RNG once.
         self.lm_head.weight = self.wte.weight
 
-    def forward(
-        self, idx: torch.Tensor, targets: torch.Tensor | None = None
-    ) -> tuple[torch.Tensor, torch.Tensor | None]:
-        b, t = idx.shape
+    def hidden_states(self, idx: torch.Tensor) -> torch.Tensor:
+        """Final layer-norm output before the output projection: (B, T, d_model)."""
+        t = idx.size(1)
         assert t <= self.context_length, f"sequence {t} > context {self.context_length}"
         pos = torch.arange(t, device=idx.device)
         x = self.wte(idx) + self.wpe(pos)
         for block in self.blocks:
             x = block(x)
-        x = self.ln_f(x)
-        logits = self.lm_head(x)
+        return self.ln_f(x)
+
+    def forward(
+        self, idx: torch.Tensor, targets: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+        logits = self.lm_head(self.hidden_states(idx))
         loss = None
         if targets is not None:
             loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), targets.reshape(-1))
         return logits, loss
+
+    def chunked_loss(
+        self, idx: torch.Tensor, targets: torch.Tensor, chunk_size: int
+    ) -> torch.Tensor:
+        """Mean cross-entropy over all target tokens, computed chunk by chunk.
+
+        Only one (B, chunk_size, vocab) logits tensor is live at a time: each
+        chunk's forward is recomputed during backward, so the full (B, T, vocab)
+        logits and their gradient are never materialized. The sum is divided by
+        the same token count the plain loss uses, so targets the default
+        ignore_index (-100) excludes cancel out and the result matches
+        F.cross_entropy over the whole batch.
+        """
+        if chunk_size < 1:
+            raise ValueError(f"chunk_size must be >= 1, got {chunk_size!r}")
+        hidden = self.hidden_states(idx)
+        vocab = self.lm_head.out_features
+        counted = int((targets != _IGNORE_INDEX).sum())
+
+        def chunk_cross_entropy(h_chunk, t_chunk):
+            logits = self.lm_head(h_chunk)
+            return F.cross_entropy(
+                logits.reshape(-1, vocab), t_chunk.reshape(-1),
+                ignore_index=_IGNORE_INDEX, reduction="sum",
+            )
+
+        loss_sum = 0.0
+        t = hidden.size(1)
+        for start in range(0, t, chunk_size):
+            end = min(start + chunk_size, t)
+            loss_sum = loss_sum + checkpoint(
+                chunk_cross_entropy, hidden[:, start:end, :], targets[:, start:end],
+                use_reentrant=False,
+            )
+        return loss_sum / max(counted, 1)
 
     def count_parameters(self) -> int:
         # Tied lm_head shares storage with wte; count unique params only.
