@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-10-10T07:54:03+00:00",
-  "commit": "70bad5936bf3059f146794a6782efa3e26e80d6b",
+  "generated_at": "2026-10-10T15:38:21+00:00",
+  "commit": "5e8e8698f9458ee6a13a1a3a93a6cb184804980e",
   "python": "3.14.7",
   "platform": "Windows 11 (AMD64)",
-  "measured_in": "a clean clone of 70bad5936bf3",
+  "measured_in": "a clean clone of 5e8e8698f945",
   "clean_checkout": true,
   "command_note": "Every command runs from its own product directory with the interpreter that ran this script. There is no repository-wide test command and these products share no dependencies.",
   "excluded": {
@@ -62,7 +62,7 @@
     {
       "product": "small-projects/mini-llm",
       "directory": "small-projects/mini-llm",
-      "commit": "817ca9cac97ad39de749312880a540f19b1e77f5",
+      "commit": "5e8e8698f9458ee6a13a1a3a93a6cb184804980e",
       "command": [
         "C:\\Python314\\python.exe",
         "-m",
@@ -72,13 +72,13 @@
         "tests"
       ],
       "dirty_paths": [],
-      "total": 146,
-      "duration_seconds": 22.653,
+      "total": 224,
+      "duration_seconds": 26.468,
       "skipped": 1,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 146 tests in 22.653s",
+        "Ran 224 tests in 26.468s",
         "OK (skipped=1)"
       ],
       "result": "pass"
