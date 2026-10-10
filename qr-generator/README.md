@@ -28,8 +28,9 @@ free tier never requires a purchase.
   plans unlock the same `premium` entitlement
 - Honest "purchases are not connected in this build" state until the store
   setup in `BILLING_SETUP.md` is completed; purchases are never faked
-- Saved codes, history, and settings stored locally (AsyncStorage), capped and
-  deduplicated
+- Saved codes, history, and settings stored locally (AsyncStorage): history is
+  deduplicated by payload and capped at 100 entries; saved codes are neither
+  deduplicated nor capped
 - Accessible labels/roles on all controls, Android back closes sheets, works offline
 - Free beta mode (opt-in with `BETA_BUILD=1`): premium unlocked for testers,
   purchases switched off, built locally as an APK: see `BETA.md`
@@ -197,8 +198,14 @@ No secret keys are stored in this repository.
 4. Upload the `.aab` to a track (start with Internal testing, then Production).
 5. Store listing: title, description, category (Tools/Utilities), screenshots
    (phone), feature graphic, app icon.
-6. Content rating questionnaire and Data safety form: this app collects nothing
-   and stores all content on-device; answer accordingly.
+6. Content rating questionnaire and Data safety form. What to declare depends
+   on the build:
+   - beta build (`BETA_BUILD=1`) or billing unconfigured: the app collects no
+     data; all content stays on-device.
+   - billing enabled: the RevenueCat SDK runs in the app and may collect data
+     for its own purposes, so Play Console's Data safety form must declare
+     that. Check RevenueCat's current documentation for the exact list before
+     answering; do not guess.
 7. Privacy policy: host `PRIVACY_POLICY.md` at a public URL and paste the link in
    the Play Console (App content -> Privacy policy).
 8. Target API level declaration: the app targets API 36, which satisfies the
@@ -214,12 +221,15 @@ No secret keys are stored in this repository.
 - `plugins/withBillingLaunchMode.js` sets `android:launchMode="singleTop"` on
   MainActivity; `expo prebuild` applies it. RevenueCat's docs: the default
   `singleTask` launch mode can cancel a purchase when Android recreates the app
-  behind the Google Play payment sheet. The app has no deep-link listeners, so
-  `singleTop` is safe and required for reliable purchases.
-- `app.json` blocks unnecessary permissions; the manifest ships with `INTERNET`
-  only (plus explicit removals for storage/audio/overlay permissions some Expo
-  templates add). Billing uses the `com.android.vending.BILLING` permission
-  added by `react-native-purchases`.
+  behind the Google Play payment sheet. The manifest also registers the custom
+  URL scheme `qrgenerator://` (from `app.json` `scheme`), but the app has no
+  deep-link listeners, so opening such a link does nothing. With that proven
+  inert, `singleTop` is safe and required for reliable purchases.
+- `app.json` blocks unnecessary permissions; the merged manifest declares
+  `INTERNET`, `ACCESS_NETWORK_STATE`, and `com.android.vending.BILLING` (the
+  latter two come from the native libraries, not from `app.json`), plus
+  explicit removals for storage/audio/overlay permissions some Expo templates
+  add.
 - Debug tooling (dev menu, Metro, LogBox overlays) does not appear in release
   bundles; release builds do not depend on Expo Go.
 - To regenerate app assets: `python scripts/generate_assets.py` (Pillow).
