@@ -120,14 +120,15 @@ The Windows no-console spawn policy has a single owner: `agentops/runtime.py` (`
   §0. The **live task queue** is `.agents/pending_tasks.md`.
 - Historical audit reports are evidence, not current instructions, and are never revised
   in place. master-bug-synthesis.md §9 is explicitly SUPERSEDED.
-- Agent-scoped memory (`cline/`, `oh-my-pi/`, `opencode/`) never overrides canonical
-  memory in `.agents/memory/*.md`.
+- Agent-scoped memory (`cline/`, `hermes/`, `oh-my-pi/`, `opencode/`) never overrides
+  canonical memory in `.agents/memory/*.md`.
 
 ## Memory folder layout (split planned, not implemented)
 
 `.agents/memory/` currently mixes universal project knowledge with agent-specific
-runbooks. `.agents/memory/oh-my-pi/`, `.agents/memory/opencode/`, and
-`.agents/memory/cline/` are the agent-specific subfolders. The intended end state
+runbooks. `.agents/memory/oh-my-pi/`, `.agents/memory/opencode/`,
+`.agents/memory/cline/`, and `.agents/memory/hermes/` are the agent-specific
+subfolders. The intended end state
 is a universal set plus one folder per agent, but that split is **not
 implemented** — the two dedicated OpenCode runbooks
 (`omp-opencode-free-tier-403.md`, `pi-opencode-free-tier-fix.md`) are still at the
@@ -207,6 +208,7 @@ the other subfolders, the universal files here remain authoritative.
 - `Config.train_bin` / `val_bin` / `checkpoint_dir` *are* settable via `src.train` flags, but a resumed run takes its config from the checkpoint, so those stored strings are authoritative unless re-passed. A checkpoint trained against non-default paths therefore resumes against the default paths.
 - That combination is load-bearing for validation: `Config.validate_against_data()` reads `meta.json` next to `train_bin` and raises when `vocab_size` disagrees, so a resume against a differently-prepped default path fails before any training happens. Reproduced on the TinyStories artifact (vocab 8192 vs the vocab-308 `data/processed/` prep).
 - Resolved in `docs/EXPERIMENT-tinystories.md`; the CLI gap itself was a known source-level wart, unfixed at the time of this entry.
+
 ## mini-llm checkpoints are content-addressed 2026-10-10
 
 - **Artifacts are identified by sha256, not by path.** `prepare_data.py` writes `train_bin` / `val_bin` / `tokenizer_path` plus `train_sha256` / `val_sha256` / `tokenizer_sha256` into `meta.json`. Paths are recorded for humans and error messages; the digests are the contract. A relocated or copied artifact tree still verifies; a *different* file at the same path does not.
@@ -215,7 +217,6 @@ the other subfolders, the universal files here remain authoritative.
 - `config_for_data()` adopts `tokenizer_path` and `val_bin` from `meta.json`, so `--train-bin` alone describes a prepared data set. `src/generate.py` applies the same digest check to `--tokenizer`.
 - Consequence worth remembering: the 168 MB `checkpoints/tinystories/final.pt` (2026-09-30) predates provenance and is now **refused** on `--resume` rather than guessed at. It is still usable for generation with an explicit `--tokenizer`. Re-running that experiment is what makes it resumable.
 - Suite: `small-projects/mini-llm/` **115 run, 1 skip, OK**.
-
 ## Desktop interactions: recovery probe and notification flow (2026-10-04)
 
 - **Detection lives beside recovery.** `StateStore.count_interrupted_work()` sits immediately before `recover_all()` in `state.py` and counts exactly the rows the three `recover_*` passes would reap (read-only SELECTs, same status predicates). `tests/test_state.py::test_count_interrupted_work_mirrors_recover_all` asserts `count_interrupted_work() == recover_all()` so the two can never drift; if a predicate changes, the parity test fails first. No second state owner, no schema change, no migration.
