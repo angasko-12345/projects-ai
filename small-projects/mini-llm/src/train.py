@@ -6,7 +6,9 @@ import argparse
 import math
 import os
 import random
+import re
 import sys
+import tempfile
 import time
 
 import numpy as np
@@ -402,6 +404,86 @@ def restore_rng_state(state: dict | None) -> None:
             torch.cuda.set_rng_state(s.to(torch.uint8), i)
 
 
+def _atomic_torch_save(obj, path: str) -> None:
+    """Write a torch object so a reader sees either the old file or the new one.
+
+    The bytes go to a temp file in the same directory first; only a save that
+    ran to completion is moved onto the destination, and os.replace is atomic
+    within one filesystem. If the save fails, the temp file is removed and
+    whatever was already at path is left untouched, so a half-written file can
+    never replace a good checkpoint.
+    """
+    directory = os.path.dirname(os.path.abspath(path))
+    os.makedirs(directory, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=directory,
+                               prefix=os.path.basename(path) + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            torch.save(obj, handle)
+            # Push the bytes to disk before the rename so a crash just after it
+            # cannot leave a renamed but incomplete file.
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
+# Numbered training checkpoints. Rotation matches only this shape, so final.pt,
+# hand-made files and atomic-save temp files are never candidates for deletion.
+STEP_CHECKPOINT_RE = re.compile(r"^step_(\d+)\.pt$")
+
+
+def list_step_checkpoints(checkpoint_dir: str) -> list[tuple[int, str]]:
+    """Numbered training checkpoints as (step, path), oldest step first."""
+    try:
+        names = os.listdir(checkpoint_dir)
+    except FileNotFoundError:
+        return []
+    found = []
+    for name in names:
+        match = STEP_CHECKPOINT_RE.match(name)
+        if match:
+            found.append((int(match.group(1)), os.path.join(checkpoint_dir, name)))
+    found.sort(key=lambda pair: pair[0])
+    return found
+
+
+def rotate_checkpoints(checkpoint_dir: str, keep_last: int,
+                       keep: str | None = None) -> list[str]:
+    """Delete the oldest numbered checkpoints so at most keep_last remain.
+
+    Call this only after a new checkpoint is already on disk: the newest is then
+    always retained, and `keep` (the file just written) is protected even if its
+    step number says otherwise. final.pt and any name that is not step_<n>.pt are
+    never touched. Returns the removed paths, oldest first. A file that cannot be
+    removed is reported and skipped rather than aborting training.
+    """
+    if keep_last < 1:
+        raise ValueError(f"keep_last must be >= 1, got {keep_last!r}")
+    existing = list_step_checkpoints(checkpoint_dir)
+    protected = os.path.abspath(keep) if keep else None
+    doomed = existing[:-keep_last] if len(existing) > keep_last else []
+    removed = []
+    for _, path in doomed:
+        if protected is not None and os.path.abspath(path) == protected:
+            continue
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            print(f"warning: could not remove old checkpoint {path}: {exc}",
+                  file=sys.stderr)
+            continue
+        removed.append(path)
+    return removed
+
+
 def save_checkpoint(path: str, model, optimizer, step: int, cfg: Config, lr: float | None = None,
                     extra: dict | None = None, progress: dict | None = None) -> None:
     # LR is set manually (warmup + cosine), so scheduler state is the schedule
@@ -447,7 +529,7 @@ def save_checkpoint(path: str, model, optimizer, step: int, cfg: Config, lr: flo
     )
     if extra:
         ckpt.update(extra)
-    torch.save(ckpt, path)
+    _atomic_torch_save(ckpt, path)
 
 
 def read_checkpoint(path: str) -> dict:
@@ -704,11 +786,17 @@ def train(cfg: Config, resume_from: str | None = None, start_step: int | None = 
                 f"val_loss {val_loss:.4f} lr {lr:.6f}",
                 flush=True,
             )
+            checkpoint_path = os.path.join(cfg.checkpoint_dir, f"step_{step}.pt")
             save_checkpoint(
-                os.path.join(cfg.checkpoint_dir, f"step_{step}.pt"),
+                checkpoint_path,
                 model, optimizer, step, cfg, lr=lr, progress=progress_snapshot(),
                 extra={"train_loss": loss.item(), "val_loss": val_loss},
             )
+            # Rotate only after the new checkpoint is safely on disk, so the file
+            # just written can never be deleted and the newest always survives.
+            for old_path in rotate_checkpoints(cfg.checkpoint_dir, cfg.keep_last,
+                                               keep=checkpoint_path):
+                print(f"removed old checkpoint {old_path}")
 
     save_checkpoint(
         os.path.join(cfg.checkpoint_dir, "final.pt"), model, optimizer,
@@ -749,6 +837,7 @@ CLI_CONFIG_FIELDS = (
     ("eval_batches", "eval_batches"),
     ("seed", "seed"),
     ("checkpoint_dir", "checkpoint_dir"),
+    ("keep_last", "keep_last"),
     ("train_bin", "train_bin"),
     ("val_bin", "val_bin"),
     ("tokenizer", "tokenizer_path"),
@@ -777,6 +866,10 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--batch-size", type=int, default=None)
     parser.add_argument("--context-length", type=int, default=None)
     parser.add_argument("--checkpoint-dir", default=None)
+    parser.add_argument("--keep-last", dest="keep_last", type=int, default=None,
+                        help="numbered step_*.pt checkpoints to retain (default 3); "
+                             "older ones are deleted after each new one is saved. "
+                             "final.pt is always kept. Must be >= 1")
     parser.add_argument("--train-bin", default=None)
     parser.add_argument("--val-bin", default=None)
     parser.add_argument("--tokenizer", "--tokenizer-path", dest="tokenizer", default=None,

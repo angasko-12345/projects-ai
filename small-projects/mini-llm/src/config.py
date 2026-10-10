@@ -134,6 +134,10 @@ class Config:
     val_bin: str = "data/processed/val.bin"
     tokenizer_path: str = "data/tokenizer.json"
     checkpoint_dir: str = "checkpoints"
+    # Numbered training checkpoints to retain. Rotation never touches final.pt or
+    # files that are not step_<n>.pt. 3 keeps the newest and the two before it,
+    # enough margin to resume after a bad latest step without unbounded disk use.
+    keep_last: int = 3
 
     def __post_init__(self) -> None:
         for name in ("n_layers", "n_heads", "d_model", "d_ff"):
@@ -149,6 +153,8 @@ class Config:
             value = getattr(self, name)
             assert value is None or (isinstance(value, int) and value >= 1), \
                 f"{name} must be a positive int or None, got {value!r}"
+        assert isinstance(self.keep_last, int) and self.keep_last >= 1, \
+            f"keep_last must be a positive int (>= 1), got {self.keep_last!r}"
 
     def validate_against_data(self) -> dict | None:
         """Fail unless the model, data and tokenizer are one consistent set.
