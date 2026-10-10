@@ -72,4 +72,4 @@ on Google Play.
 
 ## Contact
 
-Questions about this policy: [SET YOUR CONTACT EMAIL BEFORE PUBLISHING]
+Questions about this policy: qrgenerator.support@proton.me

@@ -209,8 +209,6 @@ No secret keys are stored in this repository.
    offering, and add the `goog_` public SDK key to `app.json`, then rebuild.
    Unconfigured builds show an honest "not connected" notice instead of prices.
 
-Set a real contact email in `PRIVACY_POLICY.md` before publishing.
-
 ## Development notes
 
 - `plugins/withBillingLaunchMode.js` sets `android:launchMode="singleTop"` on
