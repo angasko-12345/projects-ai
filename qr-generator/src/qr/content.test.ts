@@ -56,6 +56,50 @@ describe('validateDraft: url', () => {
       status: 'ok',
       payload: 'http://x.io',
     });
+    expect(validateDraft(draft({ type: 'url', url: 'https://example.com/a' }))).toEqual({
+      status: 'ok',
+      payload: 'https://example.com/a',
+    });
+  });
+
+  it('treats host:port input as schemeless', () => {
+    expect(validateDraft(draft({ type: 'url', url: 'example.com:8080/path' }))).toEqual({
+      status: 'ok',
+      payload: 'https://example.com:8080/path',
+    });
+    expect(validateDraft(draft({ type: 'url', url: 'localhost:3000' }))).toEqual({
+      status: 'ok',
+      payload: 'https://localhost:3000',
+    });
+  });
+
+  it.each([
+    'javascript:alert(1)',
+    'javascript://alert(1)',
+    'file:///sdcard/secret.txt',
+    'file:/sdcard/secret.txt',
+    'content://media/external/images',
+    'ftp://files.example.com/pub',
+    'data:text/plain;base64,aGVsbG8=',
+    'intent://scan/#Intent;end',
+    'mailto:someone@example.com',
+    'tel:+15551234567',
+  ])('rejects the %s scheme', (url) => {
+    expect(validateDraft(draft({ type: 'url', url }))).toEqual({
+      status: 'error',
+      message: 'Enter a valid web address.',
+    });
+  });
+
+  it('rejects whitespace anywhere in the URL', () => {
+    expect(validateDraft(draft({ type: 'url', url: 'https://exam ple.com' }))).toEqual({
+      status: 'error',
+      message: 'Enter a valid web address.',
+    });
+    expect(validateDraft(draft({ type: 'url', url: 'example.com/a b' }))).toEqual({
+      status: 'error',
+      message: 'Enter a valid web address.',
+    });
   });
 
   it('rejects a host containing spaces', () => {

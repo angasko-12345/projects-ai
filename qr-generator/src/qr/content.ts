@@ -12,10 +12,28 @@ export type ContentState =
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/;
 const URL_SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:\/\//i;
+const SCHEME_PREFIX_PATTERN = /^([a-z][a-z0-9+.-]*):/i;
 const PHONE_ALLOWED_PATTERN = /^\+?[\d\s\-().]+$/;
 const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
 
 const TOO_LONG_MESSAGE = `Too much content. Keep it under ${MAX_CONTENT_LENGTH} characters.`;
+
+const INVALID_URL_MESSAGE = 'Enter a valid web address.';
+
+// Only web schemes are allowed in the URL field. These stay rejected even
+// when the tail after the colon looks like a port number (e.g. "tel:123"),
+// which is how host:port input is otherwise allowed to pass as schemeless.
+const DISALLOWED_URL_SCHEMES: Record<string, true> = {
+  javascript: true,
+  file: true,
+  content: true,
+  ftp: true,
+  data: true,
+  intent: true,
+  mailto: true,
+  tel: true,
+  sms: true,
+};
 
 export function normalizeUrl(raw: string): string {
   const trimmed = raw.trim();
@@ -71,10 +89,23 @@ function validateUrl(value: string): ContentState {
   if (!trimmed) {
     return { status: 'empty' };
   }
+  if (/\s/.test(trimmed)) {
+    return { status: 'error', message: INVALID_URL_MESSAGE };
+  }
+  const schemeMatch = SCHEME_PREFIX_PATTERN.exec(trimmed);
+  if (schemeMatch) {
+    const scheme = schemeMatch[1].toLowerCase();
+    const rest = trimmed.slice(schemeMatch[0].length);
+    const isWebScheme = scheme === 'http' || scheme === 'https';
+    const looksLikePort = /^\d/.test(rest);
+    if (scheme in DISALLOWED_URL_SCHEMES || (!isWebScheme && !looksLikePort)) {
+      return { status: 'error', message: INVALID_URL_MESSAGE };
+    }
+  }
   const normalized = normalizeUrl(trimmed);
   const host = urlHost(normalized);
-  if (!host || /\s/.test(host)) {
-    return { status: 'error', message: 'Enter a valid web address.' };
+  if (!host) {
+    return { status: 'error', message: INVALID_URL_MESSAGE };
   }
   return ok(normalized);
 }
