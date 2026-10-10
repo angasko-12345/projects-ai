@@ -8,6 +8,7 @@ import type {
   PurchaseOutcome,
 } from '../billing/types';
 import { betaPurchaseDisabledOutcome, isBetaBuildEnabled } from './beta';
+import { resolvePremiumState } from './entitlements';
 
 interface PremiumContextValue {
   isPremium: boolean;
@@ -55,9 +56,7 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
       ]);
       // A failed entitlement read never grants premium: it just leaves the
       // current state untouched.
-      if (entitlement.status === 'fulfilled') {
-        setIsPremium(entitlement.value.isPremium);
-      }
+      setIsPremium((current) => resolvePremiumState(current, entitlement));
       if (storeOptions.status === 'fulfilled') {
         setOptions(storeOptions.value);
         setLoadError(null);

@@ -199,11 +199,13 @@ describe('RevenueCatBillingProvider', () => {
       const keyless = new RevenueCatBillingProvider('');
       await keyless.initialize();
       await expect(keyless.getEntitlement()).resolves.toEqual({ isPremium: false, source: 'none' });
-      // SDK failure while configured also resolves to no premium, never true.
-      const failing = new RevenueCatBillingProvider(KEY);
-      await failing.initialize();
+      expect(mockedPurchases.getCustomerInfo).not.toHaveBeenCalled();
+    });
+
+    it('rejects when the entitlement read fails instead of answering no premium', async () => {
+      await provider.initialize();
       mockedPurchases.getCustomerInfo.mockRejectedValue(new Error('backend down'));
-      await expect(failing.getEntitlement()).resolves.toEqual({ isPremium: false, source: 'none' });
+      await expect(provider.getEntitlement()).rejects.toThrow('backend down');
     });
   });
 

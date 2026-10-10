@@ -214,11 +214,9 @@ export class RevenueCatBillingProvider implements BillingProvider {
     if (this.connectionState !== 'ready') {
       return { isPremium: false, source: 'none' };
     }
-    try {
-      return entitlementOf(await Purchases.getCustomerInfo());
-    } catch {
-      return { isPremium: false, source: 'none' };
-    }
+    // Read failures propagate as rejections: a failed read must never be
+    // turned into an answer, so no caller can mistake failure for "no premium".
+    return entitlementOf(await Purchases.getCustomerInfo());
   }
 
   addEntitlementListener(listener: (entitlement: Entitlement) => void): () => void {
