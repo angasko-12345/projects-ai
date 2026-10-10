@@ -27,7 +27,7 @@ import {
 import { contentLabel, validateDraft } from './src/qr/content';
 import { sanitizeAppearance } from './src/qr/contrast';
 import { QrEncodingError, buildQrMatrix } from './src/qr/matrix';
-import { canSaveCode } from './src/premium/entitlements';
+import { canSaveCode, effectiveAppearance } from './src/premium/entitlements';
 import { PremiumProvider, usePremium } from './src/premium/PremiumContext';
 import { CustomizeSheet } from './src/sheets/CustomizeSheet';
 import { LibrarySheet } from './src/sheets/LibrarySheet';
@@ -86,6 +86,9 @@ function MainScreen() {
     background: '#FFFFFF',
     logoUri: null,
   });
+  // Free users see and export the default appearance; the stored one is kept
+  // as-is and activates with premium.
+  const renderedAppearance = effectiveAppearance(isPremium, appearance);
   const [sheet, setSheet] = useState<SheetName>(null);
   const [toast, setToast] = useState<ToastData | null>(null);
   const [saved, setSaved] = useState<SavedCode[]>([]);
@@ -151,7 +154,7 @@ function MainScreen() {
     try {
       return {
         kind: 'ready',
-        matrix: buildQrMatrix(validation.payload, appearance.logoUri ? 'H' : 'M'),
+        matrix: buildQrMatrix(validation.payload, renderedAppearance.logoUri ? 'H' : 'M'),
       };
     } catch (error) {
       return {
@@ -162,7 +165,7 @@ function MainScreen() {
             : 'This content cannot be turned into a QR code.',
       };
     }
-  }, [validation, appearance.logoUri]);
+  }, [validation, renderedAppearance.logoUri]);
 
   const payload = validation.status === 'ok' ? validation.payload : null;
 
@@ -333,7 +336,11 @@ function MainScreen() {
             />
           </View>
 
-          <QrPreviewCard preview={preview} appearance={appearance} captureViewRef={captureViewRef} />
+          <QrPreviewCard
+            preview={preview}
+            appearance={renderedAppearance}
+            captureViewRef={captureViewRef}
+          />
 
           <ActionRow
             canExport={preview.kind === 'ready'}

@@ -1,4 +1,5 @@
 import type { Entitlement } from '../billing/types';
+import { DEFAULT_APPEARANCE, type QrAppearance } from '../types';
 
 export const FREE_SAVED_CODE_LIMIT = 3;
 
@@ -21,6 +22,12 @@ export const PREMIUM_FEATURES: PremiumFeature[] = [
 
 export function canSaveCode(isPremium: boolean, currentCount: number): boolean {
   return isPremium || currentCount < FREE_SAVED_CODE_LIMIT;
+}
+
+// Free users render with the default appearance; their stored preferences
+// stay untouched and take effect once premium is active.
+export function effectiveAppearance(isPremium: boolean, appearance: QrAppearance): QrAppearance {
+  return isPremium ? appearance : DEFAULT_APPEARANCE;
 }
 
 // A rejected entitlement read leaves premium state untouched; only a
