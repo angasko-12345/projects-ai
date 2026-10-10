@@ -423,7 +423,6 @@
 - **Agents involved:** opencode (this session). Artifacts and tests restored and verified
   locally; commit left to the user.
 
-
 ## 2026-10-04 - Interrupted work is counted read-only beside recover_all, surfaced by the shell
 
 - **Decision:** Add the desktop-interaction layer (command palette commands, recovery banner, outcome-specific notifications, F5, tray status/hide, quit-cancel) with exactly two additive reads: `StateStore.count_interrupted_work()` placed directly beside `recover_all()` as a read-only mirror of its predicates, and `AgentOpsController.interrupted_work()` exposing counts plus total to the shell. Banner probing is idle-only (first show, repository switch, refresh), notifies once per distinct interruption, and Review reuses the existing `recover_interrupted()` behind a confirmation. Unready workflow results read `workflow_readiness()` to choose `Verification failed` vs `Workflow blocked`.
