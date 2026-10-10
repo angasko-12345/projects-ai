@@ -751,38 +751,44 @@ def train(cfg: Config, resume_from: str | None = None, start_step: int | None = 
     last_train_loss = last_val_loss = float("nan")
     total_tokens = 0
     t_start = time.perf_counter()
+    # Each loss is scaled by 1/accum before backward, so the accumulated gradient
+    # is the mean over batch_size * accum examples; steps count optimizer updates.
+    accum = cfg.grad_accum_steps
     for step in range(start_step, cfg.max_steps + 1):
-        try:
-            x, y = next(train_iter)
-        except StopIteration:
-            # Recover cleanly at end of epoch: reshuffle and continue.
-            train_iter = iter(train_loader)
-            x, y = next(train_iter)
-        x, y = x.to(device), y.to(device)
-        total_tokens += x.numel()  # actual batch tokens, not batch_size * context
-
         lr = lr_at_step(step, cfg)
         for group in optimizer.param_groups:
             group["lr"] = lr
 
         optimizer.zero_grad()
-        _, loss = train_model(x, y)
-        loss.backward()
+        group_loss = 0.0
+        for _ in range(accum):
+            try:
+                x, y = next(train_iter)
+            except StopIteration:
+                # Recover cleanly at end of epoch: reshuffle and continue.
+                train_iter = iter(train_loader)
+                x, y = next(train_iter)
+            x, y = x.to(device), y.to(device)
+            total_tokens += x.numel()  # actual batch tokens, not batch_size * context
+            _, loss = train_model(x, y)
+            (loss / accum).backward()
+            group_loss += loss.item() / accum
+
         torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
         optimizer.step()
 
         if step % 10 == 0 or step == 1:
             print(
                 f"step {step}/{cfg.max_steps} "
-                f"train_loss {loss.item():.4f} lr {lr:.6f}",
+                f"train_loss {group_loss:.4f} lr {lr:.6f}",
                 flush=True,
             )
 
         if step % cfg.eval_interval == 0 or step == cfg.max_steps:
             val_loss = evaluate(train_model, val_loader, cfg.eval_batches, device)
-            last_train_loss, last_val_loss = loss.item(), val_loss
+            last_train_loss, last_val_loss = group_loss, val_loss
             print(
-                f"step {step} train_loss {loss.item():.4f} "
+                f"step {step} train_loss {group_loss:.4f} "
                 f"val_loss {val_loss:.4f} lr {lr:.6f}",
                 flush=True,
             )
@@ -790,7 +796,7 @@ def train(cfg: Config, resume_from: str | None = None, start_step: int | None = 
             save_checkpoint(
                 checkpoint_path,
                 model, optimizer, step, cfg, lr=lr, progress=progress_snapshot(),
-                extra={"train_loss": loss.item(), "val_loss": val_loss},
+                extra={"train_loss": group_loss, "val_loss": val_loss},
             )
             # Rotate only after the new checkpoint is safely on disk, so the file
             # just written can never be deleted and the newest always survives.
@@ -832,6 +838,7 @@ CLI_CONFIG_FIELDS = (
     ("beta1", "beta1"),
     ("beta2", "beta2"),
     ("grad_clip", "grad_clip"),
+    ("grad_accum_steps", "grad_accum_steps"),
     ("warmup_steps", "warmup_steps"),
     ("eval_interval", "eval_interval"),
     ("eval_batches", "eval_batches"),
@@ -900,6 +907,11 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--beta2", type=float, default=None, help="AdamW beta2")
     parser.add_argument("--grad-clip", dest="grad_clip", type=float, default=None,
                         help="max global gradient norm")
+    parser.add_argument("--grad-accum-steps", dest="grad_accum_steps", type=int,
+                        default=None, metavar="N",
+                        help="microbatches accumulated per optimizer update; the "
+                             "effective batch is --batch-size * N. 1 (default) updates "
+                             "on every batch. Must be >= 1")
     parser.add_argument("--warmup-steps", dest="warmup_steps", type=int, default=None,
                         help="linear warmup length in steps")
     parser.add_argument("--eval-interval", dest="eval_interval", type=int, default=None,
