@@ -643,7 +643,6 @@
   accepted. And when auditing shipped data artifacts, check whether the tests reference the
   committed file or only regenerate a copy — the latter is silent coverage.
 
-
 ## 2026-10-04 - Widget attributes and helper methods share one namespace in the shell
 
 - **Symptom:** the first offscreen run of the recovery banner failed with `TypeError: 'PySide6.QtWidgets.QLabel' object is not callable` inside `_apply_interrupted_counts`.
@@ -658,6 +657,27 @@
 - **Fix:** size the test window inside the offscreen screen (1024x730, above the 680 minimum) so any mismatch means the restore itself failed.
 - **Remember:** when asserting saved/restored window geometry, keep the saved size within the test screen's bounds (query `QApplication.primaryScreen().size()` if unsure) - otherwise the assertion measures the platform clamp, not your code.
 
+## 2026-10-04 - A readability bound belongs on the unit the user sees
+
+- **Symptom:** a new `MIN_CUE_SEC = 0.40` floor per *word* made the tiktok-slop-factory end-to-end test fail: a 32-word narration over a 6s tone burst demanded 12.8s and raised `CaptionTimingError`.
+- **Root cause:** the bound was not wrong, the unit was. A viewer never sees one word; the pipeline always groups three words into one caption. A per-intermediate-unit floor silently multiplies down the pipeline.
+- **Fix:** allocate the weight budget per caption (`speech_aware_timestamps(..., max_words=3)`) and route timing and grouping through one shared `_group_words`, so the two cannot disagree about where a caption ends.
+- **Remember:** when adding a bound, ask which artifact the constraint describes - the intermediate or the rendered one - and test the bound at that level.
+
+## 2026-10-04 - Iterative clamp-and-rescale allocation diverges; bisect instead
+
+- **Symptom:** normalizing weights under a floor and a cap produced five failing tests, including negative cue durations.
+- **Root cause:** the loop clamped out-of-bounds cues to the bound, subtracted from the budget, and re-scaled the survivors. Clamping a cue *up* to the floor makes every survivor's share larger, so more get clamped and the budget walks off a cliff.
+- **Fix:** `sum(clamp(k * w_i, MIN, MAX))` is monotone in the scale factor `k`, so bisect for `k` and place the residual in the cue with the most headroom.
+- **Remember:** constrained proportional allocation is a monotone root-find, not a loop. Reach for bisection whenever the constraint is "clamp to a range."
+
+## 2026-10-04 - Regex alternation order silently drops the single-character case
+
+- **Symptom:** sentence-final punctuation earned zero pause weight while a comma earned 0.5 - backwards from the intent.
+- **Root cause:** the pattern `(\.{2,}|…|[,;:!?]+)$` had no `.` in any branch, so `waves.` never matched. The multi-char alternative masked the gap.
+- **Fix:** include the character inside the class: `(\.{2,}|…|[,;:!?.]+)$`.
+- **Remember:** when a regex mixes a multi-char alternative with a character class, check the class covers every single-character case, and write the test keyed on the exact literal token so a missing match raises `KeyError` instead of passing quietly.
+
 ## 2026-10-10 - Documentation drifts silently; a shipped artifact's presence is a filesystem fact, not a memory
 
 - **Symptom:** `docs/EXPERIMENT-tinystories.md` asserted `data/tokenizer.json` was "deleted from the tree (staged deletion, pre-existing)", so generation "omitting the flag fails". `Test-Path` said the file was present, 18,261 bytes, tracked and restored from git two weeks earlier. A reader would have gone looking for a bug that does not exist.
@@ -671,3 +691,31 @@
 - **Root cause:** `git commit` with a pathspec does not commit the index. It stages the given paths from the **working tree** and commits that — equivalent to `git add <paths>` immediately followed by the commit. Every careful index manipulation upstream of it is discarded, silently, with no error. The mistake is easy to make because the flag list reads like a scope restriction ("commit only these files") when it actually means "re-stage these files from disk, then commit everything staged".
 - **Fix:** build the index, verify it with `git diff --cached`, then commit with **no pathspec** so the index is what lands. `git reset --soft HEAD~1` safely undid the bad commit, the rebuild was idempotent, and the re-commit was clean.
 - **Remember:** pathspec on `git commit` and pathspec on `git add` have different meanings, and only the latter stages from the working tree. To commit part of a file that another session has dirty, `git add -p` is not always enough (your hunk can contain their lines) — write the intended content with `git hash-object -w --stdin`, point the file at that blob with `git update-index --cacheinfo 100644,<blob>,<path>`, which leaves the working tree untouched and theirs still unstaged. Always grep the finished commit for a distinctive token of the other party's work (`git show <sha> | grep`) before pushing; the commit message describes your intent, not what you actually staged. Related: never delete `.git/index.lock` on sight — check for a live `git` process first, since another session may be committing in the same tree (one appeared mid-rebuild here and cleared on its own).
+
+### 2026-10-05 - An experiment artifact is only as valid as the code that produced it
+
+- **Symptom:** `exp_external_pong_compare01_results.json` read as a damning current result — untrained outscored trained, both policies pinned at the 200-step cap, with its own note "the task rewards survival, not skill".
+- **Root cause:** the run's `timestamp_utc` is 2026-09-25T12:27Z; the reward/termination fix `b77bf4d` landed 2026-09-26. Pre-fix, the MISS banner downscaled to 61 px — inside the hit band — so misses paid +1, `miss_min` never fired, nothing terminated, and both policies accumulated event counts (10.83 vs 11.83), not skill signal. The artifact faithfully recorded a buggy world.
+- **Fix:** before citing a results JSON, compare its timestamp against `git log` of the code it exercised. Post-fix, exp01/exp02 episodes end on the first miss exactly as the protocol says.
+- **Remember:** a tracked artifact is immutable evidence of a moment, not of current code. `timestamp_utc` + `git log -- <module>` settles it in one command.
+
+### 2026-10-05 - Reward protocol: +1 pays once per miss-cycle, not per episode
+
+- **Symptom:** a perfect synthetic policy (never misses, survives every 200-step episode) scored a 10-episode mean of +0.1 instead of +1, looking like a broken reward.
+- **Root cause:** `ExternPongReward` pays +1 only on the first hit after a serve; the hit latch clears only on a re-serve, and only a miss triggers a re-serve. A sustained rally therefore pays 0 forever after the first served hit.
+- **Fix:** read means under the asymmetry — floor −1.0 (die immediately), sustained play ≈ 0, first-cycle +1 diluted by episode count (~+0.1 over 10 episodes). Discrimination still exists (~1.1 spread between oracle and random); verify with probes, not with the absolute mean.
+- **Remember:** when an eval mean looks too low for a good policy, count how many reward events the protocol can actually emit before assuming a learning failure.
+
+### 2026-10-05 - Split timing into frequency × displacement, and probe each before blaming the loop rate
+
+- **Symptom:** the working theory was that the slow 147.6 ms decision cadence made the external game unlearnable.
+- **Root cause:** the controlled 4-cell matrix showed the lookahead oracle surviving all 200 steps at 147.6, 33.3, and 16.7 ms periods — provided the key hold delivered enough displacement. At the same 147.6 ms period with a 16.667 ms hold (~5 px per press), control authority drops to ~34 px/s and even the oracle dies at 7.9 steps. Displacement per decision (15-20 px at the real 60 ms hold), not decisions per second, gates control.
+- **Fix:** when timing feels wrong, decompose it into decision frequency × per-actor displacement and run an oracle probe (upper bound) plus random/no-op (floor) per cell — seconds of compute, and "timing feels slow" becomes a measured binding constraint.
+- **Remember:** the first hypothesis (cadence) was rejected by its own experiment; the probe design, not the budget, is what made that possible.
+
+### 2026-10-05 - Constant greedy behaviour is not evidence of policy collapse
+
+- **Symptom:** exp02's trained policy emitted 381/381 `PRESS_LEFT` at greedy eval — read as PPO collapse, which fed the DISPROVEN ROOT-015..018/028 claims.
+- **Root cause:** entropy moved 1.082 → 1.020 against ln 3 = 1.0986 — near-uniform throughout. Greedy argmax over a near-uniform logit vector returns whichever action happens to lead; the policy never sharpened.
+- **Fix:** check entropy and per-update action shares (`upd_action_share`, added this session) before diagnosing collapse. The matrix produced a genuine collapse as reference: entropy 0.06 with ≥98 % one action from update 1.
+- **Remember:** eval reports argmax of logits, not confidence. Constant action + ~ln 3 entropy = indecision, not collapse. ROOT-015..018/028 stay DISPROVEN — do not revive them on behaviour alone.

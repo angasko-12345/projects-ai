@@ -70,6 +70,18 @@ _RUN_TITLE = _xp._unique_title("OrchExp") if _HAS_DEPS else ""
 _RUN_CKPT = str(Path("checkpoints/orch") / f"run-{os.getpid()}" / "ppo_final.pt")
 
 
+#: The same run config with an observation/timing fingerprint to surface.
+_FINGERPRINT_CONFIG = _CONFIG_YAML.replace(
+    '  lifecycle:\n    mode: window\n    title: "OrchExp"',
+    '  num_stack: 3\n'
+    '  timing:\n    post_action_delay_ms: 80\n'
+    '  actions:\n    table:\n'
+    '      - {name: PRESS_LEFT, hold_ms: 60}\n'
+    '      - {name: NOOP, hold_ms: 0}\n'
+    '  lifecycle:\n    mode: window\n    title: "OrchExp"',
+)
+
+
 def _history(timesteps=16, mean=1.0):
     """A PPO history shaped like the real one (every key the report reads)."""
     return {
@@ -545,6 +557,54 @@ class TestFinalization(_OrchestrationCase):
             self.assertEqual(proc.terminated, 1, f"{proc.phase} process leaked")
             self.assertEqual(proc._log_closed, 1,  # noqa: SLF001 -- fake handle
                              f"{proc.phase} launch log leaked")
+
+
+class TestObservationFingerprint(_OrchestrationCase):
+    """The artifact states the observation/timing cadence instead of hiding it."""
+
+    def setUp(self):
+        super().setUp()
+        self.config_path.write_text(_FINGERPRINT_CONFIG, encoding="utf-8")
+        self._stub_phases()
+        self.train_script.append({"timesteps": 16, "history": _history(16)})
+        self.eval_reports.extend([_eval_report(1.0), _eval_report(2.0)])
+        self._run()
+
+    def test_report_carries_the_observation_timing_fingerprint(self):
+        fp = self._results()["observation_timing"]
+        self.assertEqual(fp["num_stack"], 3)
+        self.assertEqual(fp["obs_size"], 84)
+        self.assertIn("none", fp["frame_skip"])
+        self.assertEqual(fp["hold_ms_by_action"], {"PRESS_LEFT": 60.0, "NOOP": 0.0})
+        self.assertEqual(fp["post_action_delay_ms"], 80.0)
+        self.assertGreater(fp["decision_period_ms_measured"], 0.0)
+        self.assertAlmostEqual(fp["history_span_ms"],
+                               3 * fp["decision_period_ms_measured"])
+
+    def test_metric_definitions_name_every_new_diagnostic(self):
+        defs = self._results()["metric_definitions"]
+        for key in ("upd_action_share", "decision_period_ms_measured",
+                    "history_span_ms"):
+            self.assertIn(key, defs, f"metric_definitions must define {key}")
+
+
+class TestObservationFingerprintDefaults(_OrchestrationCase):
+    """A config that says nothing about timing still gets a full fingerprint."""
+
+    def setUp(self):
+        super().setUp()
+        self._stub_phases()
+        self.train_script.append({"timesteps": 16, "history": _history(16)})
+        self.eval_reports.extend([_eval_report(1.0), _eval_report(2.0)])
+        self._run()
+
+    def test_report_falls_back_to_the_known_defaults(self):
+        fp = self._results()["observation_timing"]
+        self.assertEqual(fp["num_stack"], 4)
+        self.assertEqual(fp["obs_size"], 84)
+        self.assertEqual(fp["hold_ms_by_action"], {})
+        self.assertEqual(fp["post_action_delay_ms"], 0.0)
+        self.assertGreater(fp["decision_period_ms_measured"], 0.0)
 
 
 class TestPhaseFailurePropagation(_OrchestrationCase):
