@@ -120,5 +120,5 @@ task.
   unwraps `_orig_mod` as the mitigation.
 - Only the output projection plus loss are recomputed. The trunk activations are still saved;
   gradient checkpointing of the blocks is a later stage (Stage 5).
-- `.agents/evidence/verification.json` for this product still names an older commit and needs
-  regeneration by the session that commits the chunked-loss work.
+- `.agents/evidence/verification.json` for this product was regenerated after the chunked-loss
+  commit.
