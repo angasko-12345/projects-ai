@@ -651,7 +651,6 @@
   accepted. And when auditing shipped data artifacts, check whether the tests reference the
   committed file or only regenerate a copy — the latter is silent coverage.
 
-
 ## 2026-10-04 - Widget attributes and helper methods share one namespace in the shell
 
 - **Symptom:** the first offscreen run of the recovery banner failed with `TypeError: 'PySide6.QtWidgets.QLabel' object is not callable` inside `_apply_interrupted_counts`.
@@ -921,3 +920,14 @@
 - **Proof:** from a `C:` cwd, `subprocess.run([python, "-c", "print(1)"], cwd="/tmp")` raises `[WinError 267]`; from `D:` it returns 0. `Test-Path D:\tmp` is True, `C:\tmp` is False.
 - **Solution:** added `off_tree_directory(tmpdir)`, which derives the launch directory from the caller's own `tempfile.TemporaryDirectory()`, and used it at both call sites. It always exists and is never the source checkout, so the test keeps its original meaning. Result: 701 → 703 tests, 0 failures, 0 errors, **pass**.
 - **Remember:** a hardcoded POSIX absolute path is not portable, and *in-place* versus *clean-clone* runs are different environments. This is the exact trap `generate.py`'s docstring warns about ("green suites that were green only because uncommitted files were supplying the evidence"), except the cause here was an ambient directory rather than an uncommitted file. **This supersedes the 2026-10-08 entry above**, which recorded the wheel errors as "Root cause: None in the fix" and "only fail in the full run": that triage ran the module in isolation *in the working tree*, on the drive where `/tmp` happened to exist, so it could not see the defect. Isolation and pristine-main comparison prove a failure is not *yours*; neither proves no defect exists. When a run is environment-sensitive, compare the environments too.
+## 2026-10-07 — Evidence pinned to a SHA dictates merge strategy; skip counts differ by platform
+
+- **Symptom:** PR #8's evidence record is tied to commit `9173bc2`, and its head `78fbb0f` already contains `main` as first parent — a plain `git merge` would fast-forward with no merge commit, against the explicit no-squash/merge-commit requirement.
+- **Fix:** `git merge --no-ff origin/hark/systemd-run-fix -m "Merge pull request #8 ..."` forces the merge commit (`18231b7`) while keeping `9173bc2` an ancestor (verified with `git merge-base --is-ancestor`); push `main` so GitHub closes the PR. Confirm MERGED via `pr://8`, not just local log.
+- **Remember:** when comparing suite results across machines, compare total + failures/errors, never skips — the same 673 AgentOps tests skip 4 on Windows but 49 on headless Linux (GUI/display skips). A skip-count mismatch across platforms is expected, not a regression.
+
+## 2026-10-07 — Tailscale SSH failure modes distinguish "wrong user/key" from "not enabled"
+
+- **Symptom:** reaching the Linux box `agentbox` (`100.118.85.20`, active/direct in `tailscale status`) failed two different ways: `tailscale ssh` → "No ED25519 host key is known ... Host key verification failed"; plain `ssh` → "Permission denied (publickey)" for six users with the only local key (`hp_agent`).
+- **Root cause:** the two errors mean different things. The `tailscale ssh` error means the server side has not enabled Tailscale SSH (no host key advertised to the coordination server) — no flag will fix it. The plain-ssh error means TCP + sshd work and only pubkey auth failed — the host is reachable, the username/key is wrong.
+- **Remember:** `tailscale status` Edelweiss name + `~/.ssh/known_hosts` IPs identify candidate hosts; `ssh -o BatchMode=yes` probes users without password prompts. After exhausting repo, memory (`xd://recall`), ssh config, and likely usernames, stop and ask the user for credentials instead of guessing further (lockout risk).

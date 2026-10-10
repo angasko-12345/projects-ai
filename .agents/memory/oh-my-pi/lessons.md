@@ -161,3 +161,5 @@
   assert the cascade (first role FAILED, dependents BLOCKED, never PASSED/READY),
   not a single leaf; (3) triage full-suite failures with a pristine-`main`
   worktree run (proves pre-existing) plus an isolation run (proves flake).
+## 2026-10-07: subprocess GUI tests must skip on missing Tk, not just missing display
+- "No display available" and "tkinter unavailable in this Python build" are two different environment limits producing the same exit-2 shape in `extern_pong --auto-quit`; the test now skips on either string. When adding a GUI-launch test, enumerate the missing-GUI exits (no X/Wayland, no Tk build, no OpenGL) up front instead of discovering them one CI host at a time.

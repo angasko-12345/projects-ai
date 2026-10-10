@@ -423,7 +423,6 @@
 - **Agents involved:** opencode (this session). Artifacts and tests restored and verified
   locally; commit left to the user.
 
-
 ## 2026-10-04 - Interrupted work is counted read-only beside recover_all, surfaced by the shell
 
 - **Decision:** Add the desktop-interaction layer (command palette commands, recovery banner, outcome-specific notifications, F5, tray status/hide, quit-cancel) with exactly two additive reads: `StateStore.count_interrupted_work()` placed directly beside `recover_all()` as a read-only mirror of its predicates, and `AgentOpsController.interrupted_work()` exposing counts plus total to the shell. Banner probing is idle-only (first show, repository switch, refresh), notifies once per distinct interruption, and Review reuses the existing `recover_interrupted()` behind a confirmation. Unready workflow results read `workflow_readiness()` to choose `Verification failed` vs `Workflow blocked`.
@@ -584,3 +583,10 @@
 - **Evidence:** `generate.py agentops` → `pass: 703 tests, 4 skipped, 0 failures, 0 errors` in `a clean clone of 70bad5936bf3`; `check.py` → `OK`, exit 0, all four products pass, both before and after committing; checker's own suite `python -m unittest discover -s tools/evidence -t tools/evidence -p "test_*.py"` → 38 tests OK including the corruption and end-to-end tests; `git ls-remote origin refs/heads/main` = `1683750f3c6943c62d0ccfedb8739ed2e32d01e0` = `git rev-parse HEAD`. Diff scope `e3dc0c5..HEAD` was exactly two files; the pre-existing unrelated dirty entries were left unstaged.
 - **Agents involved:** cline (this session).
 
+
+## 2026-10-07 - PR #8 merged: systemd-run isolation opt-in, merge commit preserves evidence SHA
+
+- **Decision:** merged `hark/systemd-run-fix` into `main` as merge commit `18231b7` (`--no-ff`, pushed; PR #8 shows MERGED). `systemd_run_enabled` now defaults `False` in `ProcessRuntime`, `AgentRunner`, `Verifier`, `VerificationKernel`, and `load_config` on a missing key; the bundled `agentops/agents/agents.yaml` keeps `true`, so deployed configs keep cgroup isolation. `gui_controller` passes the configured value to all three process owners on both the agent-run and task-run paths (the CLI already did and is now pinned by test). Injected spawn factories are never wrapped or probed (`spawn is None` guard); the probe runs via `asyncio.to_thread`. Evidence commit `9173bc2` stays an ancestor, so `.agents/evidence/verification.json` remains valid — no squash, no rebase.
+- **Verification:** AgentOps suite `Ran 673 tests, OK (skipped=4)` on PR head `78fbb0f` and again on merged `main` (Python 3.14.7, Windows). No tests added, weakened, or deleted to pass; all six PR claims checked against `main` (`True` defaults, unwired GUI) before merging.
+- **Known gap:** a real `systemd-run --user --scope` run on the 4 GB Linux host was not done — Tailscale `agentbox` (`100.118.85.20`) is reachable but pubkey auth failed for every tried user and no credentials exist in repo or memory. Pending user-provided login.
+- **Agents involved:** omp.
