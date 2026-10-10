@@ -8,6 +8,51 @@ import unittest
 from pathlib import Path
 
 
+def off_tree_directory(tmpdir: str | Path) -> Path:
+    """The directory to launch the installed wheel from.
+
+    Running from outside the checkout is the whole point of these tests: it
+    proves the *packaged* ``agents.yaml`` is loaded rather than the one sitting
+    next to these tests. ``/tmp`` is not a portable way to say that. On Windows
+    an absolute POSIX path is resolved against the current drive, so ``/tmp``
+    only existed while the suite ran from a drive that happened to hold a
+    ``tmp`` directory. Measuring committed code from a clean clone on another
+    drive raised ``NotADirectoryError`` (WinError 267) inside ``subprocess``,
+    which is how two tests here errored while the identical suite reported OK
+    in place. Derive the directory from the caller's own temp directory
+    instead, so it always exists and is never the source checkout.
+    """
+    directory = Path(tmpdir) / "off-tree"
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
+class OffTreeWorkingDirectoryRegressionTests(unittest.TestCase):
+    """A child process must be startable in the directory these tests use.
+
+    Symptom: ``python tools/evidence/generate.py agentops`` recorded two errors
+    while the same suite run in place reported OK. Root cause: both wheel-install
+    tests spawned a child with ``cwd="/tmp"``, which Windows resolves against the
+    current drive and which therefore did not exist under a clean clone.
+    """
+
+    def test_a_child_process_starts_in_the_off_tree_directory(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workdir = off_tree_directory(tmpdir)
+            self.assertTrue(workdir.is_dir(), f"{workdir} must exist to be a cwd")
+            completed = subprocess.run(
+                [sys.executable, "-c", "print('started')"],
+                cwd=str(workdir), capture_output=True, text=True)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("started", completed.stdout)
+
+    def test_the_off_tree_directory_is_not_the_source_checkout(self):
+        checkout = Path(__file__).resolve().parent.parent
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self.assertNotEqual(off_tree_directory(tmpdir).resolve(),
+                                checkout.resolve())
+
+
 class WheelInstallTests(unittest.TestCase):
     """Test that the default agents.yaml is accessible after wheel installation."""
 
@@ -94,7 +139,7 @@ assert config.systemd_run_enabled is True
 """
             result = subprocess.run(
                 [str(python_exe), "-c", test_script],
-                cwd="/tmp",  # Run from a different directory
+                cwd=str(off_tree_directory(tmpdir)),  # Run outside the source tree
                 capture_output=True,
                 text=True,
             )
@@ -131,7 +176,7 @@ assert config.systemd_run_enabled is True
             # Run 'agentops agents' from outside source tree
             result = subprocess.run(
                 [str(agentops_exe), "agents"],
-                cwd="/tmp",
+                cwd=str(off_tree_directory(tmpdir)),
                 capture_output=True,
                 text=True,
             )
