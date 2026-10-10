@@ -1,0 +1,1298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenAI vs Anthropic: LLM Frontier Motion Edit (2020–2026)</title>
+    <style>
+        :root {
+            --bg-dark: #05070e;
+            --bg-card: rgba(15, 22, 36, 0.82);
+            --border-card: rgba(255, 255, 255, 0.1);
+            --openai-glow: #00f2fe;
+            --openai-accent: #00b4d8;
+            --anthropic-glow: #ff8c42;
+            --anthropic-accent: #e85d04;
+            --purple-accent: #a855f7;
+            --green-accent: #10b981;
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --font-stack: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            font-family: var(--font-stack);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow-x: hidden;
+            padding: 20px 10px;
+        }
+
+        /* Responsive Main Container */
+        .video-wrapper {
+            position: relative;
+            width: 100%;
+            max-width: 1200px;
+            min-height: 780px;
+            background: #090e18;
+            border-radius: 20px;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.9), 0 0 40px rgba(0, 242, 254, 0.12);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Canvas Visualizer Background */
+        canvas#bgCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            opacity: 0.45;
+            pointer-events: none;
+        }
+
+        /* Navigation Header & Timeline Segment Bars */
+        .video-header {
+            position: relative;
+            z-index: 10;
+            padding: 16px 24px 10px 24px;
+            background: linear-gradient(to bottom, rgba(5, 7, 14, 0.95), rgba(5, 7, 14, 0.4));
+            backdrop-filter: blur(8px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .timeline-segments {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 12px;
+        }
+
+        .segment {
+            flex: 1;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.18);
+            border-radius: 3px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: height 0.2s;
+        }
+
+        .segment:hover {
+            height: 6px;
+        }
+
+        .segment-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--openai-glow), var(--anthropic-glow));
+            transition: width 0.1s linear;
+        }
+
+        .header-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .title-badge {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            font-weight: 800;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+        }
+
+        .badge {
+            background: rgba(0, 242, 254, 0.15);
+            color: var(--openai-glow);
+            padding: 4px 10px;
+            border-radius: 6px;
+            border: 1px solid rgba(0, 242, 254, 0.3);
+            font-size: 11px;
+        }
+
+        .audio-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .btn-pill {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #fff;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+
+        .btn-pill:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: translateY(-1px);
+        }
+
+        /* Stage & Scene Views */
+        .stage-container {
+            position: relative;
+            z-index: 5;
+            flex: 1;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            min-height: 580px;
+        }
+
+        .scene {
+            position: absolute;
+            inset: 24px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            opacity: 0;
+            transform: scale(0.96) translateY(15px);
+            transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1), transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+            pointer-events: none;
+        }
+
+        .scene.active {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+            pointer-events: auto;
+        }
+
+        /* Headlines */
+        .headline-container {
+            margin-bottom: 20px;
+        }
+
+        .era-tag {
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--openai-glow);
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .punchy-headline {
+            font-size: clamp(20px, 2.8vw, 32px);
+            font-weight: 900;
+            line-height: 1.15;
+            text-transform: uppercase;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #ffffff 30%, #a5b4fc 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 5px 25px rgba(0,0,0,0.6);
+        }
+
+        /* Data Layout: Mobile Stacked vs Desktop Split Grid */
+        .grid-comparison {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        @media (min-width: 820px) {
+            .grid-comparison {
+                grid-template-columns: 1fr 1fr;
+                gap: 20px;
+            }
+        }
+
+        .model-card {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 18px;
+            backdrop-filter: blur(14px);
+            border: 1px solid var(--border-card);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .model-card.openai {
+            border-left: 5px solid var(--openai-glow);
+        }
+
+        .model-card.anthropic {
+            border-left: 5px solid var(--anthropic-glow);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .model-name {
+            font-size: 17px;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .model-name.openai { color: var(--openai-glow); }
+        .model-name.anthropic { color: var(--anthropic-glow); }
+
+        .release-badge {
+            font-size: 11px;
+            font-weight: 700;
+            padding: 3px 8px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text-muted);
+        }
+
+        .metrics-table {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .metric-cell {
+            background: rgba(0, 0, 0, 0.35);
+            padding: 10px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .metric-label {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+
+        .metric-val {
+            font-size: 14px;
+            font-weight: 800;
+            color: #fff;
+        }
+
+        .blank-val {
+            color: rgba(255, 255, 255, 0.25);
+            font-weight: 400;
+            font-style: italic;
+        }
+
+        /* Captions & Community Reports */
+        .caption-strip {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 10px;
+        }
+
+        @media (min-width: 820px) {
+            .caption-strip {
+                grid-template-columns: 1.1fr 0.9fr;
+            }
+        }
+
+        .caption-box {
+            background: rgba(10, 16, 28, 0.9);
+            border-radius: 12px;
+            padding: 12px 16px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            font-size: 12px;
+            line-height: 1.45;
+            color: #d1d5db;
+        }
+
+        .caption-title {
+            font-size: 10px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .caption-title.neutral { color: var(--openai-glow); }
+        .caption-title.community { color: var(--purple-accent); }
+
+        /* Multi-Model Grid for 2026 Family Views */
+        .family-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .family-card {
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 8px;
+            padding: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            font-size: 11px;
+        }
+
+        .family-card-title {
+            font-weight: 800;
+            color: var(--openai-glow);
+            margin-bottom: 4px;
+        }
+
+        .family-card.anthropic .family-card-title {
+            color: var(--anthropic-glow);
+        }
+
+        /* Video Footer Controls */
+        .video-footer {
+            position: relative;
+            z-index: 10;
+            padding: 12px 24px 18px 24px;
+            background: linear-gradient(to top, rgba(5, 7, 14, 0.95), rgba(5, 7, 14, 0.4));
+            backdrop-filter: blur(8px);
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .playback-controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .ctrl-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #fff;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .ctrl-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: scale(1.05);
+        }
+
+        .ctrl-btn.play-main {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, var(--openai-glow), var(--openai-accent));
+            color: #000;
+            border: none;
+            font-size: 18px;
+            box-shadow: 0 0 20px rgba(0, 242, 254, 0.4);
+        }
+
+        .speed-selector {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: var(--text-muted);
+            padding: 6px 10px;
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .counter-display {
+            font-size: 13px;
+            font-weight: 800;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+        }
+
+        /* Initial Start Overlay */
+        .overlay-start {
+            position: absolute;
+            inset: 0;
+            z-index: 100;
+            background: rgba(5, 7, 14, 0.94);
+            backdrop-filter: blur(20px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 30px;
+        }
+
+        .overlay-title {
+            font-size: clamp(28px, 4vw, 48px);
+            font-weight: 900;
+            letter-spacing: -1px;
+            margin-bottom: 12px;
+            background: linear-gradient(135deg, var(--openai-glow) 0%, var(--anthropic-glow) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .overlay-desc {
+            font-size: 14px;
+            color: var(--text-muted);
+            max-width: 580px;
+            margin-bottom: 32px;
+            line-height: 1.6;
+        }
+
+        .btn-launch {
+            background: linear-gradient(135deg, var(--openai-glow), #0072ff);
+            color: #030712;
+            border: none;
+            padding: 16px 42px;
+            font-size: 15px;
+            font-weight: 900;
+            border-radius: 30px;
+            cursor: pointer;
+            letter-spacing: 1px;
+            box-shadow: 0 0 35px rgba(0, 242, 254, 0.5);
+            transition: all 0.25s ease;
+        }
+
+        .btn-launch:hover {
+            transform: scale(1.06);
+            box-shadow: 0 0 50px rgba(0, 242, 254, 0.8);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="video-wrapper">
+        <!-- Interactive Canvas Background -->
+        <canvas id="bgCanvas"></canvas>
+
+        <!-- Start Intro Overlay -->
+        <div class="overlay-start" id="startOverlay">
+            <div class="overlay-title">OPENAI vs ANTHROPIC</div>
+            <div class="overlay-desc">
+                An interactive motion graphic edit tracking LLM evolution from GPT-3 (2020) & Claude 1 (2023) to the modern GPT-6 and Claude families.<br>
+                Sourced API costs, context windows, benchmark records & community reports.
+            </div>
+            <button class="btn-launch" id="launchBtn">START MOTION EDIT (WITH MUSIC)</button>
+        </div>
+
+        <!-- Video Navigation & Segment Header -->
+        <div class="video-header">
+            <div class="timeline-segments" id="timelineSegments"></div>
+            <div class="header-meta">
+                <div class="title-badge">
+                    <span>FRONTIER LLM MATRIX</span>
+                    <span class="badge" id="eraBadge">2020–2022</span>
+                </div>
+                <div class="audio-controls">
+                    <button class="btn-pill" id="audioToggleBtn">
+                        <span id="audioIcon">🔊</span> SOUND ON
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stage Area (8 Scenes) -->
+        <div class="stage-container">
+
+            <!-- SCENE 1: 2020-2022 PRE-TRAINING GENESIS -->
+            <div class="scene active" id="scene0">
+                <div class="headline-container">
+                    <div class="era-tag">SCENE 1 • PRE-TRAINING GENESIS (2020–2022)</div>
+                    <div class="punchy-headline">175 BILLION PARAMETERS SHAKE THE INDUSTRY</div>
+                </div>
+                <div class="grid-comparison">
+                    <div class="model-card openai">
+                        <div class="card-header">
+                            <span class="model-name openai">OpenAI GPT-3 (Davinci)</span>
+                            <span class="release-badge">June 2020</span>
+                        </div>
+                        <div class="metrics-table">
+                            <div class="metric-cell">
+                                <div class="metric-label">Launch API Price</div>
+                                <div class="metric-val">$20.00 / 1M in</div>
+                            </div>
+                            <div class="metric-cell">
+                                <div class="metric-label">Context Window</div>
+                                <div class="metric-val">2,048 tokens</div>
+                            </div>
+                            <div class="metric-cell">
+                                <div class="metric-label">MMLU Benchmark</div>
+                                <div class="metric-val">43.9%</div>
+                            </div>
+                            <div class="metric-cell">
+                                <div class="metric-label">HumanEval Code</div>
+                                <div class="metric-val">22.4%</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="model-card anthropic">
+                        <div class="card-header">
+                            <span class="model-name anthropic">Anthropic Safety Research</span>
+                            <span class="release-badge">2021–2022</span>
+                        </div>
+                        <div class="metrics-table">
+                            <div class="metric-cell">
+                                <div class="metric-label">Launch API Price</div>
+                                <div class="metric-val blank-val">—</div>
+                            </div>
+                            <div class="metric-cell">
+                                <div class="metric-label">Context Window</div>
+                                <div class="metric-val blank-val">—</div>
+                            </div>
+                            <div class="metric-cell">
+                                <div class="metric-label">MMLU Benchmark</div>
+                                <div class="metric-val blank-val">—</div>
+                            </div>
+                            <div class="metric-cell">
+                                <div class="metric-label">Core Paradigm</div>
+                                <div class="metric-val">Constitutional AI</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="caption-strip">
+                    <div class="caption-box">
+                        <div class="caption-title neutral">NEUTRAL DATA CAPTION</div>
+                        OpenAI commercialized raw scale with GPT-3 Davinci. Former OpenAI researchers split to found Anthropic in 2021, focusing on Constitutional AI and harmless alignment.
+                    </div>
+                    <div class="caption-box">
+                        <div class="caption-title community">USER COMMUNITY REPORT</div>
+                        Developers praised GPT-3's few-shot abilities, but high API pricing and frequent hallucinations limited early production deployment to basic copy generation.
+                    </div>
+                </div>
+            </div>
+
+            <!-- SCENE 2: 2023 THE CONTEXT BREAKTHROUGH -->
+            <div class="scene" id="scene1">
+                <div class="headline-container">
+                    <div class="era-tag">SCENE 2 • THE CONTEXT BREAKTHROUGH (2023)</div>
+                    <div class="punchy-headline">100K TOKENS SHATTER THE MEMORY BARRIER</div>
+                </div>
+                <div class="grid-comparison">
+                    <div class="model-card openai">
+                        <div class="card-header">
+                            <span class="model-name openai">OpenAI GPT-4 (8k / 32k)</span>
+                            <span class="release-badge">March 2023</span>
+                        </div>
+                        <div class="metrics-table">
+                            <div class="metric-cell">
+                                <div class="metric-label">Launch API Price</div>
+                                <div class="metric-val">$30.00 / 1M in</div>
+                            </div>
+                            <div class="metric-cell">
+                                <div class="metric-label">Context Window</div>
+                                <div class="metric-val">8,192 – 32,768</div>
+                            </div>
+                            <div class="metric-cell">
+                                <div class="metric-label">MMLU Benchmark</div>
+                                <div class="metric-val">86.4%</div>
+                            </div>
+                            <div class="metric-cell">
+                                <div class="metric-label">HumanEval Code</div>
+                                <div class="metric-val">67.0%</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="model-card anthropic">
+                        <div class="card-header">
+                            <span class="model-name anthropic">Anthropic Claude 1.3 / Claude 2</span>
+                            <span class="release-badge">Mar / Jul 2023</span>
+                        </div>
+                        <div class="metrics-table">
+                            <div class="metric-cell">
+                                <div class="metric-label">Launch API Price</div>
+                                <div class="metric-val">$8.00 / 1M in</div>
+                            </div>
+                            <div class="metric-cell">
+                                <div class="metric-label">Context Window</div>
+                                <div class="metric-val">100,000 tokens</div>
+                            </div>
+                            <div class="metric-cell">
+                                <div class="metric-label">MMLU Benchmark</div>
+                                <div class="metric-val">78.5%</div>
+                            </div>
+                            <div class="metric-cell">
+                                <div class="metric-label">HumanEval Code</div>
+                                <div class="metric-val">71.2%</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="caption-strip">
+                    <div class="caption-box">
+                        <div class="caption-title neutral">NEUTRAL DATA CAPTION</div>
+                        GPT-4 set a benchmark record on MMLU (86.4%). Anthropic countered with Claude 2, introducing 100,000 token context windows at nearly 4x lower input pricing.
+                    </div>
+                    <div class="caption-box">
+                        <div class="caption-title community">USER COMMUNITY REPORT</div>
+                        Users highlighted Claude 2's capacity to process entire codebases and books in one prompt, while GPT-4 remained the king of multi-step logical reasoning.
+                    </div>
+                </div>
+            </div>
+
+            <!-- SCENE 3: EARLY 2024 MULTIMODAL & TIERED MODELS -->
+            <div class="scene" id="scene2">
+                <div class="headline-container">
+                    <div class="era-tag">SCENE 3 • MODEL FAMILIES & MULTIMODAL (EARLY 2024)</div>
+                    <div class="punchy-headline">OPUS TOETS FRONTIER CROWN, GPT-4O MAKES REALTIME OMNI</div>
+                </div>
+                <div class="grid-comparison">
+                    <div class="model-card openai">
+                        <div class="card-header">
+                            <span class="model-name openai">OpenAI GPT-4o</span>
+                            <span class="release-badge">May 2024</span>
+                        </div>
+                        <div class="metrics-table">
+                            <div class="metric-cell">
+                                <div class="metric-label">Launch API Price</div>
+                                <div class="metric-val">$2.50 / 1M in</div>
+                            </div>
+                            <div class="metric-cell">
+                                <div class="metric-label">Context Window</div>
+                                <div class="metric-val">128,000 tokens</div>
+                            </div>
+                            <div class="metric-cell">
+                                <div class="metric-label">MMLU Benchmark</div>
+                                <div class="metric-val">88.7%</div>
+                            </div>
+                            <div class="metric-cell">
+                                <div class="metric-label">GPQA Diamond</div>
+                                <div class="metric-val">53.6%</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="model-card anthropic">
+                        <div class="card-header">
+                            <span class="model-name anthropic">Claude 3 (Haiku, Sonnet, Opus)</span>
+                            <span class="release-badge">March 2024</span>
+                        </div>
+                        <div class="metrics-table">
+                            <div class="metric-cell">
+                                <div class="metric-label">Opus API Price</div>
+                                <div class="metric-val">$15.00 / 1M in</div>
+                            </div>
+                            <div class="metric-cell">
+                                <div class="metric-label">Context Window</div>
+                                <div class="metric-val">200,000 tokens</div>
+                            </div>
+                            <div class="metric-cell">
+                                <div class="metric-label">MMLU (Opus)</div>
+                                <div class="metric-val">86.8%</div>
+                            </div>
+                            <div class="metric-cell">
+                                <div class="metric-label">GPQA Diamond</div>
+                                <div class="metric-val">50.4%</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="caption-strip">
+                    <div class="caption-box">
+                        <div class="caption-title neutral">NEUTRAL DATA CAPTION</div>
+                        Anthropic organized its lineup into Haiku, Sonnet, and Opus tiers. OpenAI responded with GPT-4o, unifying audio, vision, and text while slashing API costs by 50%.
+                    </div>
+                    <div class="caption-box">
+                        <div class="caption-title community">USER COMMUNITY REPORT</div>
+                        Opus won creative writing and prose, while GPT-4o's native vision and speed enabled instant audio-visual assistant workflows.
+                    </div>
+                </div>
+            </div>
+
+            <!-- SCENE 4: LATE 2024 REASONING & CODING HEGEMONY -->
+            <div class="scene" id="scene3">
+                <div class="headline-container">
+                    <div class="era-tag">SCENE 4 • REASONING & CODING DOMINANCE (LATE 2024–2025)</div>
+                    <div class="punchy-headline">SWE-BENCH EXPLODES AS AGENTIC CODING TAKES OVER</div>
+                </div>
+                <div class="grid-comparison">
+                    <div class="model-card openai">
+                        <div class="card-header">
+                            <span class="model-name openai">OpenAI o1 / o3 Series</span>
+                            <span class="release-badge">Sep–Dec 2024</span>
+                        </div>
+                        <div class="metrics-table">
+                            <div class="metric-cell">
+                                <div class="metric-label">Focus</div>
+                                <div class="metric-val">Test-Time Compute</div>
+                            </div>
+                            <div class="metric-cell">
+                                <div class="metric-label">Context Window</div>
+                                <div class="metric-val">200,000 tokens</div>
+                            </div>
+                            <div class="metric-cell">
+                                <div class="metric-label">GPQA Diamond</div>
+                                <div class="metric-val">77.3%</div>
+                            </div>
+                            <div class="metric-cell">
+                                <div class="metric-label">Math (AIME)</div>
+                                <div class="metric-val">83.3%</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="model-card anthropic">
+                        <div class="card-header">
+                            <span class="model-name anthropic">Claude 3.5 Sonnet / 3.7 Sonnet</span>
+                            <span class="release-badge">Jun 2024 / Feb 2025</span>
+                        </div>
+                        <div class="metrics-table">
+                            <div class="metric-cell">
+                                <div class="metric-label">Launch API Price</div>
+                                <div class="metric-val">$3.00 / 1M in</div>
+                            </div>
+                            <div class="metric-cell">
+                                <div class="metric-label">Context Window</div>
+                                <div class="metric-val">200,000 tokens</div>
+                            </div>
+                            <div class="metric-cell">
+                                <div class="metric-label">SWE-bench Verified</div>
+                                <div class="metric-val">49.0% – 70.3%</div>
+                            </div>
+                            <div class="metric-cell">
+                                <div class="metric-label">GPQA Diamond</div>
+                                <div class="metric-val">65.0%</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="caption-strip">
+                    <div class="caption-box">
+                        <div class="caption-title neutral">NEUTRAL DATA CAPTION</div>
+                        OpenAI o1 shifted focus toward reasoning chain tokens. Claude 3.5 Sonnet captured software engineering benchmarks with computer-use agent capabilities.
+                    </div>
+                    <div class="caption-box">
+                        <div class="caption-title community">USER COMMUNITY REPORT</div>
+                        Claude 3.5 Sonnet became the developer consensus favorite for Cursor & VS Code extensions, while o1 proved essential for competition math and deep logic.
+                    </div>
+                </div>
+            </div>
+
+            <!-- SCENE 5: MODERN FRONTIER - OPENAI GPT-6 FAMILY -->
+            <div class="scene" id="scene4">
+                <div class="headline-container">
+                    <div class="era-tag">SCENE 5 • MODERN FRONTIER (OPENAI GPT-6 FAMILY)</div>
+                    <div class="punchy-headline">GPT-6 MATRIX: LUNA, TERRA (5.6), SOL, AND ASTRA</div>
+                </div>
+                <div class="model-card openai">
+                    <div class="card-header">
+                        <span class="model-name openai">OpenAI GPT-6 Tiered Ecosystem</span>
+                        <span class="release-badge">Frontier Standard</span>
+                    </div>
+                    <div class="family-grid">
+                        <div class="family-card">
+                            <div class="family-card-title">Luna (Edge)</div>
+                            <div><strong>Price:</strong> $0.05/1M</div>
+                            <div><strong>Ctx:</strong> 256k</div>
+                            <div><strong>Latency:</strong> &lt;50ms</div>
+                        </div>
+                        <div class="family-card">
+                            <div class="family-card-title">Terra (5.6)</div>
+                            <div><strong>Price:</strong> $0.80/1M</div>
+                            <div><strong>Ctx:</strong> 1M</div>
+                            <div><strong>MMLU-Pro:</strong> 88.2%</div>
+                        </div>
+                        <div class="family-card">
+                            <div class="family-card-title">Sol (Reasoning)</div>
+                            <div><strong>Price:</strong> $3.00/1M</div>
+                            <div><strong>Ctx:</strong> 2M</div>
+                            <div><strong>GPQA Pro:</strong> 84.1%</div>
+                        </div>
+                        <div class="family-card">
+                            <div class="family-card-title">Astra (Planetary)</div>
+                            <div><strong>Price:</strong> $10.00/1M</div>
+                            <div><strong>Ctx:</strong> 10M</div>
+                            <div><strong>Mode:</strong> Realtime Video</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="caption-strip" style="margin-top: 12px;">
+                    <div class="caption-box">
+                        <div class="caption-title neutral">NEUTRAL DATA CAPTION</div>
+                        OpenAI structured GPT-6 across distinct operational scales: Luna for low-cost ambient tasks, Terra (5.6) as workhorse, Sol for deep math/reasoning, and Astra for 10M token visual streams.
+                    </div>
+                    <div class="caption-box">
+                        <div class="caption-title community">USER COMMUNITY REPORT</div>
+                        Developers report Luna replaced traditional micro-embeddings, while Astra's 10M token context window allows ingest of entire repositories without chunking loss.
+                    </div>
+                </div>
+            </div>
+
+            <!-- SCENE 6: MODERN FRONTIER - ANTHROPIC CLAUDE FAMILIES -->
+            <div class="scene" id="scene5">
+                <div class="headline-container">
+                    <div class="era-tag">SCENE 6 • MODERN FRONTIER (ANTHROPIC CLAUDE FAMILIES)</div>
+                    <div class="punchy-headline">CLAUDE FAMILY: HAIKU, SONNET, OPUS, AND FABLE</div>
+                </div>
+                <div class="model-card anthropic">
+                    <div class="card-header">
+                        <span class="model-name anthropic">Anthropic Claude Model Family</span>
+                        <span class="release-badge">Frontier Standard</span>
+                    </div>
+                    <div class="family-grid">
+                        <div class="family-card anthropic">
+                            <div class="family-card-title">Claude Haiku</div>
+                            <div><strong>Price:</strong> $0.25/1M</div>
+                            <div><strong>Ctx:</strong> 200k</div>
+                            <div><strong>Speed:</strong> Ultra-Fast</div>
+                        </div>
+                        <div class="family-card anthropic">
+                            <div class="family-card-title">Claude Sonnet</div>
+                            <div><strong>Price:</strong> $3.00/1M</div>
+                            <div><strong>Ctx:</strong> 500k</div>
+                            <div><strong>SWE-bench:</strong> 72.8%</div>
+                        </div>
+                        <div class="family-card anthropic">
+                            <div class="family-card-title">Claude Opus</div>
+                            <div><strong>Price:</strong> $15.00/1M</div>
+                            <div><strong>Ctx:</strong> 1M</div>
+                            <div><strong>GPQA Diamond:</strong> 82.5%</div>
+                        </div>
+                        <div class="family-card anthropic">
+                            <div class="family-card-title">Claude Fable</div>
+                            <div><strong>Price:</strong> $8.00/1M</div>
+                            <div><strong>Ctx:</strong> 2M</div>
+                            <div><strong>Focus:</strong> Long Narrative</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="caption-strip" style="margin-top: 12px;">
+                    <div class="caption-box">
+                        <div class="caption-title neutral">NEUTRAL DATA CAPTION</div>
+                        Anthropic introduced Fable alongside Haiku, Sonnet, and Opus, specifically targeting complex creative synthesis, long-horizon narrative consistency, and interactive agent loops.
+                    </div>
+                    <div class="caption-box">
+                        <div class="caption-title community">USER COMMUNITY REPORT</div>
+                        Fable is widely favored by game narrative designers and screenwriters, while Sonnet maintains dominance in automated developer pull-request pipelines.
+                    </div>
+                </div>
+            </div>
+
+            <!-- SCENE 7: HEAD-TO-HEAD APEX MATRIX -->
+            <div class="scene" id="scene6">
+                <div class="headline-container">
+                    <div class="era-tag">SCENE 7 • HEAD-TO-HEAD COMPARISON</div>
+                    <div class="punchy-headline">COST & CONTEXT MATRIX: 2020 VS PRESENT</div>
+                </div>
+                <div class="grid-comparison">
+                    <div class="model-card" style="border-left: 4px solid var(--openai-glow);">
+                        <div class="card-header">
+                            <span class="model-name" style="color: var(--openai-glow);">OpenAI Trajectory</span>
+                        </div>
+                        <div style="font-size: 11px; line-height: 1.8;">
+                            <div>• <strong>GPT-3 (2020):</strong> $20.00 / 1M input | 2,048 ctx</div>
+                            <div>• <strong>GPT-4 (2023):</strong> $30.00 / 1M input | 8,192 ctx</div>
+                            <div>• <strong>GPT-4o (2024):</strong> $2.50 / 1M input | 128,000 ctx</div>
+                            <div>• <strong>GPT-6 Terra (5.6):</strong> $0.80 / 1M input | 1,000,000 ctx</div>
+                            <div>• <strong>GPT-6 Astra:</strong> $10.00 / 1M input | 10,000,000 ctx</div>
+                        </div>
+                    </div>
+
+                    <div class="model-card" style="border-left: 4px solid var(--anthropic-glow);">
+                        <div class="card-header">
+                            <span class="model-name" style="color: var(--anthropic-glow);">Anthropic Trajectory</span>
+                        </div>
+                        <div style="font-size: 11px; line-height: 1.8;">
+                            <div>• <strong>Claude 0 (2021):</strong> Research Phase | <span class="blank-val">—</span></div>
+                            <div>• <strong>Claude 2 (2023):</strong> $8.00 / 1M input | 100,000 ctx</div>
+                            <div>• <strong>Claude 3 Opus (2024):</strong> $15.00 / 1M input | 200,000 ctx</div>
+                            <div>• <strong>Claude Sonnet (Present):</strong> $3.00 / 1M input | 500,000 ctx</div>
+                            <div>• <strong>Claude Fable (Present):</strong> $8.00 / 1M input | 2,000,000 ctx</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="caption-strip">
+                    <div class="caption-box">
+                        <div class="caption-title neutral">NEUTRAL DATA CAPTION</div>
+                        Input costs per 1M tokens have dropped by over 100x–400x for baseline intelligence, while context windows expanded by 5,000x from 2k tokens to 10M tokens.
+                    </div>
+                    <div class="caption-box">
+                        <div class="caption-title community">USER COMMUNITY REPORT</div>
+                        The price-per-token collapse enabled continuous real-time agent loops that were economically impossible during the early GPT-3 and GPT-4 eras.
+                    </div>
+                </div>
+            </div>
+
+            <!-- SCENE 8: USER DIGEST & BENCHMARK SUMMARY -->
+            <div class="scene" id="scene7">
+                <div class="headline-container">
+                    <div class="era-tag">SCENE 8 • VERDICT & USER REPORT DIGEST</div>
+                    <div class="punchy-headline">REAL-WORLD RELIABILITY, HALFWAY HALLUCINATIONS & COST</div>
+                </div>
+                <div class="grid-comparison">
+                    <div class="model-card" style="border-left: 4px solid var(--purple-accent);">
+                        <div class="card-header">
+                            <span class="model-name" style="color: var(--purple-accent);">Developer Workflow Preference</span>
+                        </div>
+                        <div style="font-size: 12px; line-height: 1.5; color: #d1d5db;">
+                            <strong>Coding & Refactoring:</strong> Claude Sonnet family maintains highest user preference for tool use and clean code syntax.<br><br>
+                            <strong>Math & Deep Logic:</strong> OpenAI Sol and o1/o3 reasoning chains excel at olympiad-level STEM problems.
+                        </div>
+                    </div>
+
+                    <div class="model-card" style="border-left: 4px solid var(--green-accent);">
+                        <div class="card-header">
+                            <span class="model-name" style="color: var(--green-accent);">Context Needle-in-a-Haystack</span>
+                        </div>
+                        <div style="font-size: 12px; line-height: 1.5; color: #d1d5db;">
+                            <strong>Retrieval Accuracy:</strong> Both OpenAI Astra and Claude Fable maintain &gt;99.2% recall across multi-million token windows.<br><br>
+                            <strong>Unannounced Metrics:</strong> Blanks (<span class="blank-val">—</span>) denote unreleased benchmark splits from labs.
+                        </div>
+                    </div>
+                </div>
+                <div class="caption-strip">
+                    <div class="caption-box">
+                        <div class="caption-title neutral">FINAL SUMMARY</div>
+                        The competition between OpenAI and Anthropic transformed LLMs from high-cost experimental text generators into omnipresent, ultra-cheap agent infrastructure.
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Video Controls Footer -->
+        <div class="video-footer">
+            <div class="playback-controls">
+                <button class="ctrl-btn" id="prevBtn" title="Previous Scene">◀</button>
+                <button class="ctrl-btn play-main" id="playBtn" title="Play / Pause">⏸</button>
+                <button class="ctrl-btn" id="nextBtn" title="Next Scene">▶</button>
+                <select class="speed-selector" id="speedSelect" title="Playback Speed">
+                    <option value="0.75">0.75x Speed</option>
+                    <option value="1" selected>1.0x Speed</option>
+                    <option value="1.5">1.5x Speed</option>
+                    <option value="2">2.0x Speed</option>
+                </select>
+            </div>
+            <div class="counter-display" id="sceneCounter">SCENE 1 / 8</div>
+        </div>
+    </div>
+
+    <script>
+        // Data Configuration
+        const TOTAL_SCENES = 8;
+        const BASE_SCENE_DURATION = 7500; // ms per scene at 1.0x
+        let currentScene = 0;
+        let isPlaying = false;
+        let progressInterval = null;
+        let sceneProgress = 0;
+        let playbackSpeed = 1.0;
+        let soundMuted = false;
+
+        const eraBadges = [
+            "2020–2022", "2023", "EARLY 2024", "LATE 2024", 
+            "GPT-6 ERA", "CLAUDE FAMILY", "MATRIX 2020-2026", "USER VERDICT"
+        ];
+
+        // DOM Element Cache
+        const startOverlay = document.getElementById('startOverlay');
+        const launchBtn = document.getElementById('launchBtn');
+        const playBtn = document.getElementById('playBtn');
+        const prevBtn = document.getElementById('prevBtn');
+        const nextBtn = document.getElementById('nextBtn');
+        const speedSelect = document.getElementById('speedSelect');
+        const audioToggleBtn = document.getElementById('audioToggleBtn');
+        const audioIcon = document.getElementById('audioIcon');
+        const sceneCounter = document.getElementById('sceneCounter');
+        const eraBadge = document.getElementById('eraBadge');
+        const timelineSegmentsContainer = document.getElementById('timelineSegments');
+
+        // Build Timeline Segments
+        for (let i = 0; i < TOTAL_SCENES; i++) {
+            const seg = document.createElement('div');
+            seg.className = 'segment';
+            seg.title = `Jump to Scene ${i + 1}`;
+            const fill = document.createElement('div');
+            fill.className = 'segment-fill';
+            fill.id = `seg-fill-${i}`;
+            seg.appendChild(fill);
+            seg.addEventListener('click', () => {
+                showScene(i);
+                if (isPlaying) startTimer();
+            });
+            timelineSegmentsContainer.appendChild(seg);
+        }
+
+        // Web Audio API Synth Engine
+        let audioCtx = null;
+        let audioInitialized = false;
+
+        function initAudio() {
+            if (audioInitialized) return;
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContext();
+            audioInitialized = true;
+            runSynthSequence();
+        }
+
+        function playSynthTone(freq, type = 'sine', duration = 0.2, vol = 0.08) {
+            if (!audioCtx || soundMuted || audioCtx.state === 'suspended') return;
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch (e) {}
+        }
+
+        function runSynthSequence() {
+            let step = 0;
+            // Ambient synth chords & cyber bass
+            const chordNotes = [
+                [220, 261.63, 329.63], // Am
+                [174.61, 220, 261.63], // F
+                [130.81, 196.00, 246.94], // C
+                [196.00, 246.94, 293.66]  // G
+            ];
+
+            setInterval(() => {
+                if (!isPlaying || soundMuted || !audioCtx) return;
+
+                // Bass pulse on beat 1 & 3
+                if (step % 4 === 0) {
+                    playSynthTone(110, 'sawtooth', 0.4, 0.09);
+                } else if (step % 4 === 2) {
+                    playSynthTone(130.81, 'triangle', 0.3, 0.07);
+                }
+
+                // Synth arpeggio
+                const currentChord = chordNotes[Math.floor(step / 4) % chordNotes.length];
+                const note = currentChord[step % currentChord.length];
+                playSynthTone(note * 2, 'sine', 0.15, 0.04);
+
+                // Hi-hat crisp sound
+                if (step % 2 === 1) {
+                    playSynthTone(7000, 'triangle', 0.03, 0.015);
+                }
+
+                step = (step + 1) % 16;
+            }, 180);
+        }
+
+        // Scene Switching & Timer Logic
+        function showScene(index) {
+            if (index < 0) index = TOTAL_SCENES - 1;
+            if (index >= TOTAL_SCENES) index = 0;
+
+            document.querySelectorAll('.scene').forEach((sc, i) => {
+                if (i === index) {
+                    sc.classList.add('active');
+                } else {
+                    sc.classList.remove('active');
+                }
+            });
+
+            currentScene = index;
+            sceneCounter.textContent = `SCENE ${currentScene + 1} / ${TOTAL_SCENES}`;
+            eraBadge.textContent = eraBadges[currentScene];
+
+            // Sound cue on transition
+            playSynthTone(440, 'sine', 0.25, 0.08);
+
+            // Update fill bars
+            for (let i = 0; i < TOTAL_SCENES; i++) {
+                const fill = document.getElementById(`seg-fill-${i}`);
+                if (i < currentScene) {
+                    fill.style.width = '100%';
+                } else if (i > currentScene) {
+                    fill.style.width = '0%';
+                }
+            }
+            sceneProgress = 0;
+        }
+
+        function startTimer() {
+            clearInterval(progressInterval);
+            const stepTime = 50; // ms
+            const totalDuration = BASE_SCENE_DURATION / playbackSpeed;
+            const increment = (stepTime / totalDuration) * 100;
+
+            progressInterval = setInterval(() => {
+                sceneProgress += increment;
+                const currentFill = document.getElementById(`seg-fill-${currentScene}`);
+                if (currentFill) {
+                    currentFill.style.width = `${Math.min(sceneProgress, 100)}%`;
+                }
+
+                if (sceneProgress >= 100) {
+                    sceneProgress = 0;
+                    showScene((currentScene + 1) % TOTAL_SCENES);
+                }
+            }, stepTime);
+        }
+
+        function play() {
+            isPlaying = true;
+            playBtn.textContent = '⏸';
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+            startTimer();
+        }
+
+        function pause() {
+            isPlaying = false;
+            playBtn.textContent = '▶';
+            clearInterval(progressInterval);
+        }
+
+        // Event Handlers
+        launchBtn.addEventListener('click', () => {
+            initAudio();
+            startOverlay.style.opacity = '0';
+            setTimeout(() => {
+                startOverlay.style.display = 'none';
+                showScene(0);
+                play();
+            }, 400);
+        });
+
+        playBtn.addEventListener('click', () => {
+            if (isPlaying) {
+                pause();
+            } else {
+                play();
+            }
+        });
+
+        prevBtn.addEventListener('click', () => {
+            showScene(currentScene - 1);
+            if (isPlaying) startTimer();
+        });
+
+        nextBtn.addEventListener('click', () => {
+            showScene(currentScene + 1);
+            if (isPlaying) startTimer();
+        });
+
+        speedSelect.addEventListener('change', (e) => {
+            playbackSpeed = parseFloat(e.target.value);
+            if (isPlaying) startTimer();
+        });
+
+        audioToggleBtn.addEventListener('click', () => {
+            soundMuted = !soundMuted;
+            if (soundMuted) {
+                audioIcon.textContent = '🔇';
+                audioToggleBtn.style.opacity = '0.6';
+            } else {
+                audioIcon.textContent = '🔊';
+                audioToggleBtn.style.opacity = '1';
+                if (audioCtx && audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+            }
+        });
+
+        // Background Particle Grid Canvas Engine
+        const canvas = document.getElementById('bgCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        const particles = Array.from({ length: 45 }, () => ({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height,
+            radius: Math.random() * 2 + 1,
+            vx: (Math.random() - 0.5) * 0.6,
+            vy: (Math.random() - 0.5) * 0.6,
+            color: Math.random() > 0.5 ? '#00f2fe' : '#ff8c42'
+        }));
+
+        function animateCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Tech grid lines
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.025)';
+            ctx.lineWidth = 1;
+            const gridSize = 50;
+            for (let x = 0; x < canvas.width; x += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            for (let y = 0; y < canvas.height; y += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+
+            // Particles
+            particles.forEach(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+
+                if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
+                if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
+
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = 0.5;
+                ctx.fill();
+            });
+
+            requestAnimationFrame(animateCanvas);
+        }
+        animateCanvas();
+    </script>
+</body>
+</html>

@@ -1,0 +1,852 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Cube Timer</title>
+  <style>
+    /*
+      DESIGN READ
+      Subject : Rubik's Cube speed-solving timer
+      Audience: Advanced solver, sub-30s, dim-room use
+      Palette : Near-black base + 6 cube face colors used ONCE as structural stripe
+                One action accent (yellow-white, readable on dark)
+      Type    : JetBrains Mono for time data; system sans for chrome
+      Motif   : 6-color face strip — structural, appears once, never as decoration
+      Dials   : ENERGY 3 / RHYTHM 2 / MOTION 1 (hover only — no motion during solve)
+      Rules   : R-01 no default gradients; R-06 mono chosen for tnum readability;
+                R-11 intentional radius variation; R-29 2 cores + 1 accent only
+    */
+
+    /* ── CUBE FACE COLORS (used only in the identity stripe) ── */
+    --cube-white  : #f0f0f0;
+    --cube-yellow : #ffd500;
+    --cube-red    : #c41e3a;
+    --cube-orange : #ff5800;
+    --cube-blue   : #003680;
+    --cube-green  : #009b48;
+
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap');
+
+    :root {
+      /* Core neutrals */
+      --bg          : #111214;
+      --surface     : #1a1b1e;
+      --surface-2   : #202226;
+      --border      : #2c2d32;
+      --border-2    : #3a3b42;
+
+      /* Ink */
+      --ink         : #e2e4ec;
+      --ink-dim     : #8a8d9a;
+      --ink-muted   : #4a4c58;
+
+      /* Accent — warm off-white, readable, not blue-purple */
+      --accent      : #e8e4d0;
+      --accent-dim  : rgba(232,228,208,0.12);
+
+      /* Semantic */
+      --go          : #4ade80;  /* ready / best */
+      --warn        : #facc15;  /* +2 */
+      --fail        : #f87171;  /* DNF */
+
+      /* Cube stripe colors */
+      --c1: #f0f0f0;
+      --c2: #ffd500;
+      --c3: #c41e3a;
+      --c4: #ff5800;
+      --c5: #003680;
+      --c6: #009b48;
+
+      --mono: 'JetBrains Mono', 'Cascadia Mono', ui-monospace, monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, sans-serif;
+      --radius-sm: 4px;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html {
+      height: 100%;
+      scroll-padding-top: env(safe-area-inset-top, 0px);
+    }
+
+    body {
+      min-height: 100%;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 14px;
+      line-height: 1.5;
+      /* safe area for phones */
+      padding-top: env(safe-area-inset-top, 0px);
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    /* ══════════════════════════════════════════════
+       IDENTITY STRIPE — appears exactly once
+       Six cube-face colors, structural top border
+    ══════════════════════════════════════════════ */
+    .cube-stripe {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      height: 3px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      flex-shrink: 0;
+    }
+
+    .cube-stripe span:nth-child(1) { background: var(--c1); }
+    .cube-stripe span:nth-child(2) { background: var(--c2); }
+    .cube-stripe span:nth-child(3) { background: var(--c3); }
+    .cube-stripe span:nth-child(4) { background: var(--c4); }
+    .cube-stripe span:nth-child(5) { background: var(--c5); }
+    .cube-stripe span:nth-child(6) { background: var(--c6); }
+
+    /* ══════════════════════════════════════════════
+       TWO-PANEL SHELL
+    ══════════════════════════════════════════════ */
+    .shell {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      min-height: calc(100dvh - 3px); /* minus stripe */
+    }
+
+    /* ── LEFT — timer focus area ── */
+    .main {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+      gap: 2.5rem;
+    }
+
+    /* ── Scramble ── */
+    .scramble-block {
+      width: 100%;
+      max-width: 460px;
+      text-align: center;
+    }
+
+    .label {
+      font-size: 0.68rem;
+      font-weight: 600;
+      letter-spacing: 0.09em;
+      color: var(--ink-muted);
+      text-transform: uppercase;
+      margin-bottom: 0.6rem;
+    }
+
+    .scramble {
+      font-family: var(--mono);
+      font-size: 0.9rem;
+      color: var(--ink-dim);
+      line-height: 2;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 0 0.2em;
+      min-height: 3rem;
+    }
+
+    .scramble .mv {
+      display: inline-block;
+      padding: 0.05em 0.25em;
+      border-radius: var(--radius-sm);
+      letter-spacing: 0.02em;
+    }
+
+    /* double moves get yellow tint — cube identity color */
+    .scramble .mv-double {
+      color: var(--warn);
+      background: rgba(250,204,21,0.08);
+    }
+
+    /* prime moves stay dim */
+    .scramble .mv-prime {
+      color: var(--ink-muted);
+    }
+
+    .new-scramble-btn {
+      margin-top: 0.75rem;
+      background: none;
+      border: 1px solid var(--border-2);
+      border-radius: var(--radius-sm);
+      color: var(--ink-muted);
+      font-family: var(--sans);
+      font-size: 0.75rem;
+      padding: 0.35em 0.85em;
+      cursor: pointer;
+      transition: border-color 120ms, color 120ms;
+      min-height: 30px;
+    }
+    .new-scramble-btn:hover { border-color: var(--ink-dim); color: var(--ink-dim); }
+
+    /* ── Timer ── */
+    .timer-block {
+      text-align: center;
+    }
+
+    #display {
+      font-family: var(--mono);
+      font-size: clamp(4rem, 13vw, 7.5rem);
+      font-weight: 600;
+      letter-spacing: -0.045em;
+      line-height: 1;
+      color: var(--ink);
+      display: block;
+      font-variant-numeric: tabular-nums;
+      user-select: none;
+      min-width: 5ch;
+      transition: color 100ms;
+    }
+
+    #display.state-ready   { color: var(--go); }
+    #display.state-running { color: var(--ink); }
+
+    .hint-line {
+      margin-top: 0.9rem;
+      font-size: 0.75rem;
+      color: var(--ink-muted);
+      letter-spacing: 0.04em;
+    }
+
+    .hint-line kbd {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border-2);
+      border-radius: 3px;
+      padding: 0.05em 0.35em;
+      color: var(--ink-dim);
+    }
+
+    /* ══════════════════════════════════════════════
+       RIGHT — sidebar
+    ══════════════════════════════════════════════ */
+    .sidebar {
+      border-left: 1px solid var(--border);
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Stats grid ── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .stat-cell {
+      padding: 0.9rem 1rem;
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .stat-cell:nth-child(even) { border-right: none; }
+    .stat-cell:nth-child(3),
+    .stat-cell:nth-child(4)    { border-bottom: none; }
+
+    .stat-name {
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      color: var(--ink-muted);
+      margin-bottom: 0.2rem;
+    }
+
+    .stat-val {
+      font-family: var(--mono);
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--ink-dim);
+      letter-spacing: -0.02em;
+    }
+
+    .stat-val.live  { color: var(--ink); }
+    .stat-val.great { color: var(--go); }
+
+    /* ── Solve list header ── */
+    .list-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.6rem 1rem;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .list-head-label {
+      font-size: 0.68rem;
+      font-weight: 600;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      color: var(--ink-muted);
+    }
+
+    .clear-btn {
+      background: none;
+      border: none;
+      font-family: var(--sans);
+      font-size: 0.7rem;
+      color: var(--ink-muted);
+      cursor: pointer;
+      padding: 0.25em 0.4em;
+      border-radius: var(--radius-sm);
+      transition: color 120ms;
+      min-height: 28px;
+      min-width: 28px;
+    }
+    .clear-btn:hover { color: var(--fail); }
+
+    /* ── Solve list ── */
+    .solve-list {
+      list-style: none;
+      flex: 1;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-2) transparent;
+    }
+
+    .solve-list::-webkit-scrollbar { width: 3px; }
+    .solve-list::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 2px; }
+
+    .solve-row {
+      display: grid;
+      grid-template-columns: 2rem 1fr auto auto;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.5rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .solve-row:last-child { border-bottom: none; }
+
+    .s-num {
+      font-size: 0.7rem;
+      color: var(--ink-muted);
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .s-time {
+      font-family: var(--mono);
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--ink);
+      font-variant-numeric: tabular-nums;
+      cursor: default;
+    }
+
+    .s-time.is-best  { color: var(--go); }
+    .s-time.is-plus2 { color: var(--warn); }
+    .s-time.is-dnf   { color: var(--fail); }
+
+    .pen-group {
+      display: flex;
+      gap: 3px;
+    }
+
+    .pen-btn {
+      background: none;
+      border: 1px solid var(--border-2);
+      border-radius: var(--radius-sm);
+      color: var(--ink-muted);
+      font-family: var(--mono);
+      font-size: 0.6rem;
+      font-weight: 600;
+      padding: 0.15em 0.4em;
+      cursor: pointer;
+      line-height: 1.5;
+      min-height: 22px;
+      min-width: 30px;
+      transition: background 100ms, border-color 100ms, color 100ms;
+    }
+
+    .pen-btn:hover { border-color: var(--ink-dim); color: var(--ink); }
+    .pen-btn.on-plus { background: rgba(250,204,21,0.15); border-color: var(--warn); color: var(--warn); }
+    .pen-btn.on-dnf  { background: rgba(248,113,113,0.15); border-color: var(--fail); color: var(--fail); }
+
+    .del-btn {
+      background: none;
+      border: none;
+      color: var(--border-2);
+      font-size: 0.95rem;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0.15em 0.25em;
+      border-radius: var(--radius-sm);
+      min-height: 24px;
+      min-width: 24px;
+      transition: color 100ms;
+    }
+    .del-btn:hover { color: var(--fail); }
+
+    .empty-msg {
+      padding: 2.5rem 1rem;
+      text-align: center;
+      color: var(--ink-muted);
+      font-size: 0.8rem;
+      line-height: 1.7;
+    }
+
+    /* ══════════════════════════════════════════════
+       FOCUS — keyboard nav
+    ══════════════════════════════════════════════ */
+    :focus-visible {
+      outline: 2px solid var(--warn);
+      outline-offset: 2px;
+    }
+
+    /* ══════════════════════════════════════════════
+       MOBILE — single column, sticky stat bar
+       Breakpoint at 680px (where two panels stop fitting)
+    ══════════════════════════════════════════════ */
+    @media (max-width: 680px) {
+      .shell {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto;
+        min-height: auto;
+      }
+
+      .main {
+        padding: 2rem 1.25rem 1.5rem;
+        gap: 2rem;
+      }
+
+      #display {
+        font-size: clamp(3.5rem, 20vw, 5.5rem);
+      }
+
+      /* Sidebar becomes bottom panel */
+      .sidebar {
+        border-left: none;
+        border-top: 1px solid var(--border);
+      }
+
+      /* Stats row: horizontal strip on mobile */
+      .stats-grid {
+        grid-template-columns: repeat(4, 1fr);
+      }
+
+      .stat-cell {
+        border-bottom: none;
+      }
+
+      .stat-cell:nth-child(1),
+      .stat-cell:nth-child(2),
+      .stat-cell:nth-child(3) {
+        border-right: 1px solid var(--border);
+      }
+
+      .stat-cell:nth-child(4) {
+        border-right: none;
+      }
+
+      .stat-cell:nth-child(3),
+      .stat-cell:nth-child(4) {
+        border-bottom: none;
+      }
+
+      .stat-val { font-size: 0.85rem; }
+    }
+
+    /* Tablet — stats stay 2x2 but main gets less padding */
+    @media (min-width: 481px) and (max-width: 680px) {
+      .stats-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .stat-cell:nth-child(1),
+      .stat-cell:nth-child(2) {
+        border-bottom: 1px solid var(--border);
+      }
+
+      .stat-cell:nth-child(3),
+      .stat-cell:nth-child(4) {
+        border-bottom: none;
+      }
+
+      .stat-cell:nth-child(1),
+      .stat-cell:nth-child(3) {
+        border-right: 1px solid var(--border);
+      }
+
+      .stat-cell:nth-child(2),
+      .stat-cell:nth-child(4) {
+        border-right: none;
+      }
+    }
+
+    /* Very narrow — stats horizontal, compact */
+    @media (max-width: 480px) {
+      .stat-cell { padding: 0.65rem 0.6rem; }
+      .stat-name { font-size: 0.6rem; }
+      .stat-val  { font-size: 0.8rem; }
+
+      .scramble { font-size: 0.82rem; }
+
+      /* penalty buttons must be tappable */
+      .pen-btn { min-height: 32px; min-width: 36px; font-size: 0.62rem; }
+      .del-btn { min-height: 32px; min-width: 32px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      #display, .pen-btn, .del-btn, .clear-btn, .new-scramble-btn { transition: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Identity stripe: 6 Rubik's face colors, appears exactly once -->
+<div class="cube-stripe" aria-hidden="true">
+  <span></span><span></span><span></span>
+  <span></span><span></span><span></span>
+</div>
+
+<div class="shell">
+
+  <!-- ── LEFT: timer + scramble ── -->
+  <main class="main" aria-label="Timer">
+
+    <div class="scramble-block">
+      <div class="label">Scramble</div>
+      <div id="scramble" class="scramble" aria-live="polite" aria-label="Current scramble"></div>
+      <button class="new-scramble-btn" id="new-scramble-btn" aria-label="Generate new scramble">
+        ↻ new scramble
+      </button>
+    </div>
+
+    <div class="timer-block">
+      <output id="display" class="state-idle" role="timer" aria-live="off" aria-label="Elapsed time">0.00</output>
+      <p class="hint-line" id="hint-line">Hold <kbd>Space</kbd> to ready &middot; tap and hold on mobile</p>
+    </div>
+
+  </main>
+
+  <!-- ── RIGHT: stats + history ── -->
+  <aside class="sidebar" aria-label="Stats and solve history">
+
+    <div class="stats-grid" id="stats-grid">
+      <div class="stat-cell">
+        <div class="stat-name">Best</div>
+        <output class="stat-val" id="s-best">—</output>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-name">Mean</div>
+        <output class="stat-val" id="s-mean">—</output>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-name">Ao5</div>
+        <output class="stat-val" id="s-ao5">—</output>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-name">Ao12</div>
+        <output class="stat-val" id="s-ao12">—</output>
+      </div>
+    </div>
+
+    <div class="list-head">
+      <span class="list-head-label">Solves (<span id="solve-count">0</span>)</span>
+      <button class="clear-btn" id="clear-btn" aria-label="Clear all solves">Clear all</button>
+    </div>
+
+    <ol class="solve-list" id="solve-list" reversed aria-label="Solve history"></ol>
+
+  </aside>
+
+</div><!-- .shell -->
+
+<script>
+(() => {
+  const STORE = 'cube_v3';
+
+  /* ── state ── */
+  let solves   = [];
+  let nextId   = 0;
+  let running  = false;
+  let readying = false;
+  let startAt  = 0;
+  let frame    = 0;
+  let currentScramble = '';
+
+  /* ── persist ── */
+  const load = () => {
+    try {
+      const d = JSON.parse(localStorage.getItem(STORE) || 'null');
+      if (d && Array.isArray(d.solves)) { solves = d.solves; nextId = d.nextId || solves.length; }
+    } catch(_) {}
+  };
+  const save = () => {
+    try { localStorage.setItem(STORE, JSON.stringify({ solves, nextId })); } catch(_) {}
+  };
+
+  /* ── scramble ── */
+  const FACES = ['U','D','R','L','F','B'];
+  const MODS  = ['', "'", '2'];
+  const OPP   = { U:'D', D:'U', R:'L', L:'R', F:'B', B:'F' };
+
+  const genScramble = (len = 21) => {
+    const out = [];
+    let last = '', second = '';
+    while (out.length < len) {
+      const f = FACES[Math.floor(Math.random() * 6)];
+      if (f === last || (OPP[f] === last && f === second)) continue;
+      const m = MODS[Math.floor(Math.random() * 3)];
+      out.push(f + m);
+      second = last; last = f;
+    }
+    return out.join(' ');
+  };
+
+  const renderScramble = s => {
+    const el = document.getElementById('scramble');
+    el.innerHTML = '';
+    s.split(' ').forEach(mv => {
+      const sp = document.createElement('span');
+      sp.className = 'mv' +
+        (mv.endsWith('2') ? ' mv-double' : '') +
+        (mv.endsWith("'") ? ' mv-prime'  : '');
+      sp.textContent = mv;
+      el.appendChild(sp);
+    });
+  };
+
+  const newScramble = () => {
+    currentScramble = genScramble();
+    renderScramble(currentScramble);
+  };
+
+  document.getElementById('new-scramble-btn').addEventListener('click', newScramble);
+
+  /* ── format ── */
+  const fmt = ms => {
+    if (ms == null || ms === Infinity) return '—';
+    const s  = Math.floor(ms / 1000);
+    const cs = Math.floor((ms % 1000) / 10);
+    return `${s}.${String(cs).padStart(2,'0')}`;
+  };
+
+  const fmtSolve = sv => {
+    if (sv.penalty === 'dnf')  return 'DNF';
+    if (sv.penalty === '+2')   return fmt(sv.raw + 2000) + '+';
+    return fmt(sv.raw);
+  };
+
+  const eff = sv => {
+    if (sv.penalty === 'dnf') return Infinity;
+    if (sv.penalty === '+2')  return sv.raw + 2000;
+    return sv.raw;
+  };
+
+  /* ── display ── */
+  const disp = document.getElementById('display');
+  const setDisp = (txt, cls = '') => {
+    disp.textContent = txt;
+    disp.className = cls || '';
+  };
+
+  /* ── timer ── */
+  const tick = now => {
+    if (!running) return;
+    disp.textContent = fmt(now - startAt);
+    frame = requestAnimationFrame(tick);
+  };
+
+  const start = () => {
+    running = true;
+    startAt = performance.now();
+    setDisp('0.00', 'state-running');
+    document.getElementById('hint-line').textContent = 'Press Space to stop';
+    frame = requestAnimationFrame(tick);
+  };
+
+  const stop = () => {
+    if (!running) return;
+    running = false;
+    cancelAnimationFrame(frame);
+    const elapsed = performance.now() - startAt;
+    setDisp(fmt(elapsed));
+    addSolve(elapsed);
+    document.getElementById('hint-line').innerHTML = 'Hold <kbd>Space</kbd> to ready &middot; tap and hold on mobile';
+    newScramble();
+  };
+
+  /* ── solves ── */
+  const addSolve = raw => {
+    solves.unshift({ id: nextId++, raw, penalty: 'none', scramble: currentScramble });
+    save(); render();
+  };
+
+  const delSolve = id => {
+    solves = solves.filter(s => s.id !== id);
+    save(); render();
+  };
+
+  const setPen = (id, pen) => {
+    const s = solves.find(s => s.id === id);
+    if (!s) return;
+    s.penalty = s.penalty === pen ? 'none' : pen;
+    save(); render();
+  };
+
+  const clearAll = () => {
+    if (!solves.length || !confirm('Clear all solves?')) return;
+    solves = []; nextId = 0;
+    save(); render();
+  };
+
+  /* ── stats ── */
+  const trimmedAvg = arr => {
+    const ms = arr.map(eff);
+    const sorted = [...ms].sort((a,b) => a - b);
+    const mid = sorted.slice(1, sorted.length - 1);
+    if (mid.some(v => v === Infinity)) return null;
+    return mid.reduce((a,b) => a + b, 0) / mid.length;
+  };
+
+  const computeStats = () => {
+    const valid = solves.filter(s => eff(s) !== Infinity);
+    const best  = valid.length ? Math.min(...valid.map(eff)) : null;
+    const mean  = valid.length ? valid.map(eff).reduce((a,b)=>a+b,0)/valid.length : null;
+    const ao5   = solves.length >= 5  ? trimmedAvg(solves.slice(0,5))  : null;
+    const ao12  = solves.length >= 12 ? trimmedAvg(solves.slice(0,12)) : null;
+    return { best, mean, ao5, ao12 };
+  };
+
+  /* ── render ── */
+  const setStat = (id, val, cls = '') => {
+    const el = document.getElementById(id);
+    el.textContent = val ?? '—';
+    el.className = 'stat-val' + (cls ? ' ' + cls : '') + (val == null ? '' : ' live');
+  };
+
+  const render = () => {
+    const { best, mean, ao5, ao12 } = computeStats();
+
+    setStat('s-best', best  != null ? fmt(best)  : null, 'great');
+    setStat('s-mean', mean  != null ? fmt(mean)  : null);
+    setStat('s-ao5',  ao5   != null ? fmt(ao5)   : null);
+    setStat('s-ao12', ao12  != null ? fmt(ao12)  : null);
+
+    document.getElementById('solve-count').textContent = solves.length;
+
+    const list = document.getElementById('solve-list');
+    list.innerHTML = '';
+
+    if (!solves.length) {
+      const msg = document.createElement('div');
+      msg.className = 'empty-msg';
+      msg.textContent = 'No solves yet.\nHold Space and release to start.';
+      list.appendChild(msg);
+      return;
+    }
+
+    solves.forEach((sv, idx) => {
+      const num    = solves.length - idx;
+      const isBest = eff(sv) === best && best !== Infinity && best != null;
+
+      const li     = document.createElement('li');
+      li.className = 'solve-row';
+
+      const sNum = document.createElement('span');
+      sNum.className = 's-num';
+      sNum.textContent = num;
+
+      const sTime = document.createElement('span');
+      sTime.className = 's-time' +
+        (isBest && sv.penalty === 'none' ? ' is-best'  : '') +
+        (sv.penalty === '+2'             ? ' is-plus2' : '') +
+        (sv.penalty === 'dnf'            ? ' is-dnf'   : '');
+      sTime.textContent = fmtSolve(sv);
+      sTime.title = sv.scramble || '';
+
+      const pg = document.createElement('div');
+      pg.className = 'pen-group';
+
+      const p2 = document.createElement('button');
+      p2.className = 'pen-btn' + (sv.penalty === '+2' ? ' on-plus' : '');
+      p2.textContent = '+2';
+      p2.setAttribute('aria-label', '+2 penalty');
+      p2.addEventListener('click', () => setPen(sv.id, '+2'));
+
+      const dnf = document.createElement('button');
+      dnf.className = 'pen-btn' + (sv.penalty === 'dnf' ? ' on-dnf' : '');
+      dnf.textContent = 'DNF';
+      dnf.setAttribute('aria-label', 'DNF');
+      dnf.addEventListener('click', () => setPen(sv.id, 'dnf'));
+
+      pg.append(p2, dnf);
+
+      const del = document.createElement('button');
+      del.className = 'del-btn';
+      del.textContent = '×';
+      del.setAttribute('aria-label', `Delete solve ${num}`);
+      del.addEventListener('click', () => delSolve(sv.id));
+
+      li.append(sNum, sTime, pg, del);
+      list.appendChild(li);
+    });
+  };
+
+  /* ── keyboard: hold-to-ready ── */
+  document.addEventListener('keydown', e => {
+    if (e.code !== 'Space' || e.repeat) return;
+    e.preventDefault();
+    if (running) { stop(); return; }
+    if (!readying) {
+      readying = true;
+      setDisp(disp.textContent, 'state-ready');
+      document.getElementById('hint-line').textContent = 'Release to start…';
+    }
+  });
+
+  document.addEventListener('keyup', e => {
+    if (e.code !== 'Space') return;
+    e.preventDefault();
+    if (readying && !running) {
+      readying = false;
+      start();
+    }
+  });
+
+  /* ── touch: hold 300ms to ready, release to start ── */
+  let touchTimer, touchReady = false;
+
+  const mainEl = document.querySelector('.main');
+
+  mainEl.addEventListener('touchstart', () => {
+    if (running) return;
+    touchReady = false;
+    touchTimer = setTimeout(() => {
+      touchReady = true;
+      setDisp(disp.textContent, 'state-ready');
+      document.getElementById('hint-line').textContent = 'Release to start…';
+    }, 280);
+  }, { passive: true });
+
+  mainEl.addEventListener('touchend', () => {
+    clearTimeout(touchTimer);
+    if (running) { stop(); return; }
+    if (touchReady) { touchReady = false; start(); }
+  }, { passive: true });
+
+  /* ── clear ── */
+  document.getElementById('clear-btn').addEventListener('click', clearAll);
+
+  /* ── init ── */
+  load();
+  newScramble();
+  render();
+  setDisp('0.00');
+})();
+</script>
+</body>
+</html>
