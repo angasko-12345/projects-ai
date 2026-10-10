@@ -1255,8 +1255,8 @@ class TestDataProvenance(unittest.TestCase):
 
     def test_cli_records_non_default_tokenizer_and_data_paths(self):
         """--tokenizer / --train-bin / --val-bin land in the checkpoint verbatim."""
-        # Architecture flags are not on the CLI, so this builds the default model
-        # at the data set's vocab for 2 steps; what matters is what gets recorded.
+        # No architecture flags are passed, so this runs the default model at the
+        # data set's vocab for 2 steps; what matters is what gets recorded.
         self.run_main("--max-steps", "2", "--context-length", "16",
                       "--batch-size", "2",
                       "--checkpoint-dir", self.ckpt_dir,

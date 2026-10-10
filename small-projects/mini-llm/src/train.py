@@ -724,6 +724,53 @@ def train(cfg: Config, resume_from: str | None = None, start_step: int | None = 
           f"{total_tokens / elapsed:.0f} tokens/sec ({total_tokens} tokens)")
 
 
+# Flags that map straight onto a Config field: (argument dest, Config field).
+# Every one defaults to None and is written only when the flag was passed, so an
+# unset flag cannot move a Config default. The dest and the field differ for
+# --tokenizer, whose Config field is tokenizer_path. main() applies this same map
+# on a fresh run and on a resume, so the two paths cannot drift apart.
+CLI_CONFIG_FIELDS = (
+    ("max_steps", "max_steps"),
+    ("batch_size", "batch_size"),
+    ("context_length", "context_length"),
+    ("n_layers", "n_layers"),
+    ("n_heads", "n_heads"),
+    ("d_model", "d_model"),
+    ("d_ff", "d_ff"),
+    ("dropout", "dropout"),
+    ("learning_rate", "learning_rate"),
+    ("weight_decay", "weight_decay"),
+    ("min_lr_ratio", "min_lr_ratio"),
+    ("beta1", "beta1"),
+    ("beta2", "beta2"),
+    ("grad_clip", "grad_clip"),
+    ("warmup_steps", "warmup_steps"),
+    ("eval_interval", "eval_interval"),
+    ("eval_batches", "eval_batches"),
+    ("seed", "seed"),
+    ("checkpoint_dir", "checkpoint_dir"),
+    ("train_bin", "train_bin"),
+    ("val_bin", "val_bin"),
+    ("tokenizer", "tokenizer_path"),
+    ("vocab_size", "vocab_size"),
+    ("torch_threads", "torch_threads"),
+    ("torch_interop_threads", "torch_interop_threads"),
+)
+
+
+def apply_cli_config(cfg: Config, args: argparse.Namespace) -> None:
+    """Copy each passed CLI value onto cfg in place.
+
+    A flag left at its None default is skipped, which is what keeps a bare
+    invocation identical to the library defaults. Only the fields in
+    CLI_CONFIG_FIELDS move, and only when the flag carries a value.
+    """
+    for dest, field in CLI_CONFIG_FIELDS:
+        value = getattr(args, dest)
+        if value is not None:
+            setattr(cfg, field, value)
+
+
 def make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Train mini-llm GPT")
     parser.add_argument("--max-steps", type=int, default=None)
@@ -732,11 +779,41 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--checkpoint-dir", default=None)
     parser.add_argument("--train-bin", default=None)
     parser.add_argument("--val-bin", default=None)
-    parser.add_argument("--tokenizer", default=None,
+    parser.add_argument("--tokenizer", "--tokenizer-path", dest="tokenizer", default=None,
                         help="tokenizer the .bin files were encoded with; defaults to "
                              "data/tokenizer.json and is recorded in every checkpoint, "
-                             "so a resume is checked against it")
+                             "so a resume is checked against it (--tokenizer-path is the "
+                             "same flag, named after the Config field)")
     parser.add_argument("--vocab-size", type=int, default=None)
+    # Model size and training hyperparameters. Each defaults to None, so it only
+    # changes the Config value when the flag is actually passed.
+    parser.add_argument("--n-layers", dest="n_layers", type=int, default=None,
+                        help="number of transformer blocks")
+    parser.add_argument("--n-heads", dest="n_heads", type=int, default=None,
+                        help="attention heads; --d-model must divide evenly by it")
+    parser.add_argument("--d-model", dest="d_model", type=int, default=None,
+                        help="model width (embedding size)")
+    parser.add_argument("--d-ff", dest="d_ff", type=int, default=None,
+                        help="feed-forward hidden width")
+    parser.add_argument("--dropout", type=float, default=None,
+                        help="dropout probability (default 0.0)")
+    parser.add_argument("--learning-rate", dest="learning_rate", type=float, default=None,
+                        help="peak AdamW learning rate")
+    parser.add_argument("--weight-decay", dest="weight_decay", type=float, default=None,
+                        help="AdamW weight decay on matrix parameters")
+    parser.add_argument("--min-lr-ratio", dest="min_lr_ratio", type=float, default=None,
+                        help="cosine floor as a fraction of the peak learning rate")
+    parser.add_argument("--beta1", type=float, default=None, help="AdamW beta1")
+    parser.add_argument("--beta2", type=float, default=None, help="AdamW beta2")
+    parser.add_argument("--grad-clip", dest="grad_clip", type=float, default=None,
+                        help="max global gradient norm")
+    parser.add_argument("--warmup-steps", dest="warmup_steps", type=int, default=None,
+                        help="linear warmup length in steps")
+    parser.add_argument("--eval-interval", dest="eval_interval", type=int, default=None,
+                        help="steps between validation and checkpoints")
+    parser.add_argument("--eval-batches", dest="eval_batches", type=int, default=None,
+                        help="validation batches averaged per evaluation")
+    parser.add_argument("--seed", type=int, default=None, help="random seed")
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto",
                         help="training device: auto (default) picks CUDA when "
                              "available, else CPU; cuda fails instead of silently "
@@ -785,16 +862,7 @@ def main() -> None:
         start_step = 1
         resume_step = 0
 
-    for field, value in (("max_steps", args.max_steps), ("batch_size", args.batch_size),
-                         ("context_length", args.context_length),
-                         ("checkpoint_dir", args.checkpoint_dir),
-                         ("train_bin", args.train_bin), ("val_bin", args.val_bin),
-                         ("tokenizer_path", args.tokenizer),
-                         ("vocab_size", args.vocab_size),
-                         ("torch_threads", args.torch_threads),
-                         ("torch_interop_threads", args.torch_interop_threads)):
-        if value is not None:
-            setattr(cfg, field, value)
+    apply_cli_config(cfg, args)
     if args.compile is not None:
         cfg.compile = args.compile
     for name in ("torch_threads", "torch_interop_threads"):
@@ -804,7 +872,13 @@ def main() -> None:
     if cfg.warmup_steps > cfg.max_steps:
         print(f"warmup_steps {cfg.warmup_steps} > max_steps {cfg.max_steps}; shortening")
         cfg.warmup_steps = cfg.max_steps
-    cfg.__post_init__()
+    try:
+        cfg.__post_init__()
+    except AssertionError as exc:
+        # A shape the model cannot build (say d_model not divisible by n_heads)
+        # is the user's flag choice, so report it as a usage error instead of an
+        # AssertionError traceback.
+        make_parser().error(str(exc))
     if args.resume:
         # Before validate_against_data(): a resume against other artifacts should be
         # reported as a resume mismatch, not as whichever internal check tripped first.

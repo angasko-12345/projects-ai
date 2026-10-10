@@ -136,6 +136,10 @@ class Config:
     checkpoint_dir: str = "checkpoints"
 
     def __post_init__(self) -> None:
+        for name in ("n_layers", "n_heads", "d_model", "d_ff"):
+            value = getattr(self, name)
+            assert isinstance(value, int) and value > 0, \
+                f"{name} must be a positive int, got {value!r}"
         assert self.d_model % self.n_heads == 0, "d_model must be divisible by n_heads"
         assert self.vocab_size > 0 and self.context_length > 0
         assert self.batch_size > 0 and self.max_steps > 0
