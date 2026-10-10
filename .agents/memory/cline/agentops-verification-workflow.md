@@ -33,8 +33,9 @@ reading it back from PowerShell, use `$env:TEMP\out.txt`.
 ## The full suite exceeds the tool timeout
 
 The suite runs ~35–60s (407 tests observed 2026-10-01 at ~36-43s; **438 tests
-observed 2026-10-04 at ~55-59s** after the Qt migration) and the tool call caps at
-30s. Background it:
+observed 2026-10-04 at ~55-59s** after the Qt migration; **701–703 tests observed
+2026-10-08/2026-10-10 at ~135–178s** after the workflow-autonomy and
+wheel-install work) and the tool call caps at 30s. Background it:
 
 ```powershell
 Start-Process -FilePath python -ArgumentList '-m','unittest','discover','-s','tests' `
@@ -140,6 +141,56 @@ right check before spending a test run on a mangled file.
 - `git --no-pager` for anything whose output would otherwise open a pager.
 - Expect LF→CRLF warnings on `.agents/` and `agentops/` files. They are benign
   on Windows and should not be "fixed".
+
+## The evidence tool: never repair a number, always re-measure
+
+Two commands, both run from the **repository root** (unlike the suite itself):
+
+```bat
+python tools\evidence\generate.py agentops   (default = clean clone of HEAD)
+python tools\evidence\check.py
+```
+
+`generate.py` without a product argument measures all four. Default clean-clone
+mode is the one to use: it clones `HEAD` into `%TEMP%\evidence-clone-*` and runs
+there, so the record describes **committed** code. Two consequences that matter:
+
+- **A fix must be committed before regenerating.** Clean-clone mode measures
+  `HEAD`, so an uncommitted fix is invisible to it and the run reproduces the
+  failure you were trying to record as fixed.
+- **A partial run carries the other products forward unchanged.** Each record
+  keeps its own `commit`, which is how `check.py` detects that a product went
+  stale. Re-measuring one product re-dates the document, not the others.
+
+`generate.py` exits 1 when any selected product is not a pass, and that is
+correct — it writes the file either way. Exit 1 is a finding, not a failure of
+the tool.
+
+Do not hand-edit `verification.json`. The counts and the recorded runner
+summary lines are re-parsed by `check_schema` and must agree, so editing one
+without the other is caught; editing both is a forgery the staleness rule is
+there to expire. A record naming an unreachable commit cannot be repaired by
+editing it — it can only be re-measured.
+
+## In-place and clean-clone are different environments (cost 2 false greens)
+
+`cd agentops && python -m unittest discover -s tests` passed while the same
+committed code failed in a clean clone, and the difference was **the drive the
+run started from**. `agentops/tests/test_wheel_install.py` launched a child with
+`cwd="/tmp"`; on Windows that resolves against the current drive, so it was
+`D:\tmp` (exists here by accident) in the working tree and `C:\tmp` (absent) in
+`%TEMP%\evidence-clone-*`. Both tests errored with `[WinError 267]`.
+
+So when a clean-clone evidence run disagrees with an in-place run, **do not
+trust the in-place pass**. Reproduce in a clone and read the traceback:
+
+```bat
+git clone --quiet --no-hardlinks D:\admin\code\projects %TEMP%\repro
+cd /d %TEMP%\repro && git checkout --quiet --detach <commit>
+```
+
+The lesson's general form: a hardcoded POSIX absolute path is not portable, and
+isolation-in-the-working-tree cannot prove a portability defect absent.
 
 ## Editing files that other tooling rewrites
 

@@ -899,3 +899,25 @@
 - **Root cause:** observed — the uploader stages from the real worktree and rewrites files in place (the CRLF flip proves a CRLF-renormalizing pass ran there); a file mid delete+recreate then fails the concurrent `lstat`. It also walks gitignored content: `qr-generator/.gitignore` has `/android` (git agrees), yet `android/.gradle` was still copied — the ignore is honored by git, not by the uploader's file walk.
 - **Solution:** build the local AAB first, `sh gradlew --stop`, **commit the tree** (no dirty-tree staging path), and keep `android/` outside the project root entirely (`D:/admin/code/qr-generator-android-stash`, restored after). Upload then has nothing to renormalize or lock.
 - **Remember:** never run `eas build` concurrently with gradle in the same project, and prefer a committed tree — gitignored build dirs are uploadable content to eas-cli, and dirty-tree staging mutates the worktree you are building from.
+
+### 2026-10-09 — GitHub Pages serves only the publishing folder; a root-level asset 404s
+
+- **Symptom:** the new landing page rendered, but the app icon request returned 404 even though `icon.png` was committed and visible in the repository tree.
+- **Root cause:** Pages was enabled with `/docs` as the source, so only files under `docs/` are published. The page referenced the icon at the repository root, which is not served at all — being committed is not the same as being published.
+- **Fix:** copy the icon into `docs/assets/` and reference it relatively. Verify by opening the live URL and checking `document.images` for `complete && naturalWidth > 0` on every image, not by checking that the file exists in git.
+- **Remember:** the configured publishing folder IS the whole published site. Any asset a page loads must live inside it.
+
+### 2026-10-09 — Reuse a shipped binary by proving its checksum, not by rebuilding it
+
+- **Symptom:** a launch needed the existing beta APK in a new repository; the obvious path was to build it again in the new repo, which would have taken a full native Gradle build and produced a different file.
+- **Root cause:** none in the artifact — it already existed and was already published, so a rebuild could only add risk (different signing timestamp, different toolchain state) and prove nothing new.
+- **Fix:** download the published asset, compute SHA-256 over both files, compare, then attach the original. Publish the size and the digest in the release notes and README so a tester can verify what they downloaded.
+- **Remember:** "same artifact" is a checksum claim. When the original binary still exists, checksum equality is the evidence; a rebuild is a new artifact that needs its own verification and breaks download continuity for anyone who already installed it.
+
+### 2026-10-10 — `cwd="/tmp"` is a drive-relative path on Windows: it passed in place and failed in a clean clone
+
+- **Symptom:** `python tools/evidence/generate.py agentops` recorded **2 errors** for a clean clone of committed code, while the byte-identical suite run in place reported **OK**. Both errors were `NotADirectoryError: [WinError 267] The directory name is invalid` raised inside `subprocess.run`, in `agentops/tests/test_wheel_install.py` (`test_clean_install_loads_default_config` and `test_agentops_agents_command_works`).
+- **Root cause:** both tests launched a child process with `cwd="/tmp"` to prove the *packaged* `agents.yaml` loads rather than the checkout's. On Windows an absolute POSIX path is resolved **against the current drive**, so `/tmp` meant `D:\tmp` in the working tree — which exists on this machine by accident — and `C:\tmp` under a clean clone in `%TEMP%\evidence-clone-*`, which does not. Nothing about the code under test differed; only the drive the run started from.
+- **Proof:** from a `C:` cwd, `subprocess.run([python, "-c", "print(1)"], cwd="/tmp")` raises `[WinError 267]`; from `D:` it returns 0. `Test-Path D:\tmp` is True, `C:\tmp` is False.
+- **Solution:** added `off_tree_directory(tmpdir)`, which derives the launch directory from the caller's own `tempfile.TemporaryDirectory()`, and used it at both call sites. It always exists and is never the source checkout, so the test keeps its original meaning. Result: 701 → 703 tests, 0 failures, 0 errors, **pass**.
+- **Remember:** a hardcoded POSIX absolute path is not portable, and *in-place* versus *clean-clone* runs are different environments. This is the exact trap `generate.py`'s docstring warns about ("green suites that were green only because uncommitted files were supplying the evidence"), except the cause here was an ambient directory rather than an uncommitted file. **This supersedes the 2026-10-08 entry above**, which recorded the wheel errors as "Root cause: None in the fix" and "only fail in the full run": that triage ran the module in isolation *in the working tree*, on the drive where `/tmp` happened to exist, so it could not see the defect. Isolation and pristine-main comparison prove a failure is not *yours*; neither proves no defect exists. When a run is environment-sensitive, compare the environments too.

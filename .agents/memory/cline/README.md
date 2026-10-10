@@ -17,7 +17,7 @@ wrong and needs correcting.
 |---|---|
 | `README.md` | This scope note and the folder rules |
 | `environment.md` | Verified tooling facts, and corrections to stale ones |
-| `agentops-verification-workflow.md` | How to verify and test AgentOps here without wasting a cycle, including the offscreen-Qt GUI runbook |
+| `agentops-verification-workflow.md` | How to verify and test AgentOps here without wasting a cycle, including the offscreen-Qt GUI runbook, the evidence-generate/check workflow, and the in-place vs clean-clone trap |
 | `lessons.md` | Cline-relevant lessons; canonical dated lessons stay in `.agents/memory/lessons.md` |
 | `sessions/` | Per-session records of what was done and why |
 
