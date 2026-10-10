@@ -651,7 +651,6 @@
   accepted. And when auditing shipped data artifacts, check whether the tests reference the
   committed file or only regenerate a copy — the latter is silent coverage.
 
-
 ## 2026-10-04 - Widget attributes and helper methods share one namespace in the shell
 
 - **Symptom:** the first offscreen run of the recovery banner failed with `TypeError: 'PySide6.QtWidgets.QLabel' object is not callable` inside `_apply_interrupted_counts`.
