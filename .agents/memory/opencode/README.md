@@ -50,7 +50,7 @@ change that should be its own decision, not a side effect of creating this folde
 | `environment.md` | Verified tooling and environment facts for working in this repo |
 | `free-tier-gate.md` | Distilled OpenCode Zen free-tier gate rules, with pointers to the canonical runbooks |
 | `lessons.md` | OpenCode-relevant lessons; the canonical dated lessons stay in `.agents/memory/lessons.md` |
-| `sessions/` | Per-session records; `2026-09-26-repo-reorganization.md`, `2026-10-02-uga-root-014-036.md` |
+| `sessions/` | Per-session records; `2026-09-26-repo-reorganization.md`, `2026-10-02-uga-root-014-036.md`, `2026-10-10-mini-llm-scaling.md` |
 
 ## Rules for this folder
 

@@ -142,6 +142,26 @@ run that cannot be interpreted until the precondition holds — the 240-step pre
 detector question in minutes; 4096 timesteps plus two 100-episode evals would not have answered it
 any faster.
 
+## 2026-10-10 - mini-llm scaling (Stages 1-4 and chunked loss)
+
+Full record: `../mini-llm/sessions/2026-10-10-scaling-stages.md`. The canonical decisions and
+the dateable lessons are in `../decisions.md` and `../lessons.md`; this note adds only what was
+specific to driving the work from OpenCode.
+
+- Running the suite is a write. Every run created `__pycache__` across
+  `small-projects/mini-llm/`; budget the cleanup and do not run it while another writer owns
+  that tree.
+- The chunked-loss peak-memory benchmark lived in the pre-approved scratch dir
+  (`C:\Users\admin\AppData\Local\Temp\opencode\bench_chunk.py`), not in the repo, per the task's
+  no-scratch-files rule. It reads `WorkingSetSize` through `kernel32.K32GetProcessMemoryInfo`
+  (the `psapi` binding returns 0; see canonical lesson).
+- `C:` filled to 0 bytes mid-session and made the suite fail wholesale with `[Errno 28]`. The
+  run was rerouted with `TEMP`/`TMP` set to `D:\tmp\mini-llm`. This is a shared machine: do not
+  delete another agent's temp to make room.
+- `rtk git -C <repo> ...` worked for log/diff/status. `rtk` has no `cat`/`ls`/`rg` on this box
+  (it falls back to a missing binary and fails), so file reads stayed on the Read tool and
+  content searches on `Select-String`.
+
 ## Cross-references
 
 - `../lessons.md` — canonical dated lessons, including the same 2026-09-26 entries in full.
