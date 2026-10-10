@@ -3,7 +3,9 @@ import Constants from 'expo-constants';
 import type { PurchaseOutcome } from '../billing/types';
 
 /**
- * Beta build flag, read from `app.json` -> `expo.extra.beta.enabled`.
+ * Beta build flag, read from the resolved Expo config: `app.config.js`
+ * computes `expo.extra.beta.enabled` from `BETA_BUILD=1` on top of the
+ * `app.json` default.
  *
  * A beta build grants every premium feature for free and never offers a
  * purchase: no store is contacted, no price is shown and no transaction can be

@@ -6,14 +6,21 @@ existing Android toolchain. No paid service, no cloud build, no new dependency.
 
 ## What the flag does
 
-`app.json`:
+`app.json` keeps the fail-safe default:
 
 ```json
 "extra": {
   "revenueCat": { "androidPublicKey": "" },
-  "beta": { "enabled": true }
+  "beta": { "enabled": false }
 }
 ```
+
+`app.config.js` overrides that default whenever the config is evaluated:
+`extra.beta.enabled` is true only when the environment variable `BETA_BUILD`
+is exactly `1`. Unset, `0`, `true`, or any other value leaves it `false`.
+The flag is baked in by the `expo-constants` Gradle task `createExpoConfig`,
+which re-evaluates `app.config.js` on every Gradle build, so the value comes
+from the shell that runs Gradle, not from editing `app.json`.
 
 `expo.extra.beta.enabled` is read by `src/premium/beta.ts`
 (`isBetaBuildEnabled()`), which the premium layer consults:
@@ -36,14 +43,16 @@ error handling are exactly what production uses.
 
 ## Going back to production monetization
 
-1. Set `expo.extra.beta.enabled` to `false`.
+1. Stop setting `BETA_BUILD=1`. The checked-in default is `false` and neither
+   the `production` nor the `preview` eas profile sets the variable, so any
+   normal build is already a production build.
 2. Put the RevenueCat public SDK key in `expo.extra.revenueCat.androidPublicKey`
    (the `goog_...` value).
 3. Rebuild.
 
 See `BILLING_SETUP.md` for the Google Play and RevenueCat dashboard work that
-goes with it. The beta flag and the key can coexist; while beta is `true`, beta
-wins and no purchase is offered.
+goes with it. The beta flag and the key can coexist; while beta is on
+(`BETA_BUILD=1`), beta wins and no purchase is offered.
 
 ## Build the beta APK locally
 
@@ -55,8 +64,16 @@ bash scripts/setup_signing.sh               # only if android/ was regenerated
 cd android
 export ANDROID_HOME=/d/Android/Sdk          # or your SDK path
 export JAVA_HOME="/c/Program Files/Java/jdk-22"
+export BETA_BUILD=1                         # read by Gradle, not by prebuild
 CMAKE_BUILD_PARALLEL_LEVEL=2 sh gradlew --max-workers=3 -Dorg.gradle.parallel=false :app:assembleRelease
 ```
+
+`BETA_BUILD` must be set in the shell that runs Gradle: `createExpoConfig`
+evaluates `app.config.js` during the build and writes the resolved config into
+the APK. Windows PowerShell: `$env:BETA_BUILD="1"`; cmd: `set BETA_BUILD=1`.
+For a cloud build use the dedicated profile instead, which sets the variable in
+its `env`: `eas build --platform android --profile beta`. A build without
+`BETA_BUILD=1` is a production build (purchases active, no free premium).
 
 An APK, not an AAB, is produced:
 
@@ -110,7 +127,8 @@ Notes for testers:
   installs from unknown sources. That is expected outside Google Play.
 - This build is **not** on Google Play; Play purchase/restore paths are not
   part of it.
-- Rebuild with `beta.enabled = false` before any future Play release.
+- Rebuild without `BETA_BUILD=1` (any non-beta profile) before any future Play
+  release.
 
 ## Checks before you ship a beta build
 
@@ -120,9 +138,11 @@ npm run lint
 npm test
 ```
 
-Then confirm the flag is actually baked into the APK (the `expo-constants`
-gradle script regenerates `app.config` on every build):
+Then confirm the flag resolves the way you expect (`app.config.js` is evaluated
+by the `expo-constants` Gradle task `createExpoConfig` on every build):
 
 ```bash
-grep -o '"beta"' android/app/build/intermediates/assets/release/mergeReleaseAssets/app.config
+# prints false with the variable unset, true only for BETA_BUILD=1
+node -e "const c=require('./app.config')({config:require('./app.json').expo});console.log(c.extra.beta.enabled)"
+BETA_BUILD=1 node -e "const c=require('./app.config')({config:require('./app.json').expo});console.log(c.extra.beta.enabled)"
 ```

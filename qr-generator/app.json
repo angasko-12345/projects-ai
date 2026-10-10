@@ -77,7 +77,7 @@
         "androidPublicKey": ""
       },
       "beta": {
-        "enabled": true
+        "enabled": false
       }
     }
   }

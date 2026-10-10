@@ -31,7 +31,7 @@ free tier never requires a purchase.
 - Saved codes, history, and settings stored locally (AsyncStorage), capped and
   deduplicated
 - Accessible labels/roles on all controls, Android back closes sheets, works offline
-- Free beta mode (`expo.extra.beta.enabled`): premium unlocked for testers,
+- Free beta mode (opt-in with `BETA_BUILD=1`): premium unlocked for testers,
   purchases switched off, built locally as an APK: see `BETA.md`
 
 ## Repository layout
@@ -39,7 +39,8 @@ free tier never requires a purchase.
 ```
 qr-generator/
   App.tsx                 # main screen, sheets, export actions, toasts
-  app.json                # Expo config (package id, version, permissions, assets, beta flag)
+  app.config.js           # dynamic config: BETA_BUILD=1 opts into beta mode
+  app.json                # Expo config (package id, version, permissions, assets)
   BILLING_SETUP.md        # manual Google Play + RevenueCat setup (read before first release)
   BETA.md                 # free beta mode: flag, local APK build, install, GitHub Releases
   eas.json                # production build profile (.aab)
@@ -153,6 +154,7 @@ Notes:
 # android/ must exist (see the local .aab section above for prebuild/signing)
 cd android
 export ANDROID_HOME=/path/to/android-sdk
+export BETA_BUILD=1
 CMAKE_BUILD_PARALLEL_LEVEL=2 sh gradlew --max-workers=3 -Dorg.gradle.parallel=false :app:assembleRelease
 ```
 
@@ -162,9 +164,14 @@ Output (an installable APK, not an AAB):
 android/app/build/outputs/apk/release/app-release.apk
 ```
 
-Set `expo.extra.beta.enabled` in `app.json` first: it unlocks premium for
-testers and disables every purchase flow. Full details, install steps and
-GitHub Releases distribution are in `BETA.md`.
+`BETA_BUILD` is read when Gradle runs: the `expo-constants` task
+`createExpoConfig` evaluates `app.config.js` on every build and bakes
+`extra.beta.enabled` into the APK at that moment. Set it in the shell that runs
+Gradle (PowerShell: `$env:BETA_BUILD="1"`; cmd: `set BETA_BUILD=1`), or use the
+eas profile `beta`, whose `env` sets it for cloud builds. Any build without
+`BETA_BUILD=1` stays a production build. The flag unlocks premium for testers
+and disables every purchase flow. Full details, install steps and GitHub
+Releases distribution are in `BETA.md`.
 
 ### Environment variables
 
@@ -174,6 +181,7 @@ GitHub Releases distribution are in `BETA.md`.
 | `ANDROID_HOME` / `ANDROID_SDK_ROOT` | local Gradle build | Android SDK location |
 | `JAVA_HOME` | local Gradle build | JDK 17+ used by Gradle and keytool |
 | `TEMP` / `TMP` | local Windows build | writable temp dir for the Hermes compiler |
+| `BETA_BUILD` | beta APK build (local or eas `beta` profile) | `1` enables beta mode via `app.config.js`; unset/anything else is a production build |
 | `SIGNING_STORE_PASS`, `SIGNING_KEY_PASS` | non-interactive `setup_signing.sh` | keystore passwords (never commit values) |
 
 No secret keys are stored in this repository.
