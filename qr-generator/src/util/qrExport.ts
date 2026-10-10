@@ -4,7 +4,7 @@ import { StorageAccessFramework } from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import type { RefObject } from 'react';
 import type { View } from 'react-native';
-import { captureRef } from 'react-native-view-shot';
+import { captureRef, type CaptureOptions } from 'react-native-view-shot';
 
 export interface QrPngImage {
   base64: string;
@@ -20,10 +20,18 @@ export type SaveOutcome =
   | { status: 'cancelled' }
   | { status: 'error'; message: string };
 
+// width/height are final image pixels: view-shot captures at the view's
+// device-pixel size, then scales to exactly 1024x1024, so the exported PNG
+// no longer depends on the screen. The captured qrBox is square and holds the
+// quiet zone, so the forced size keeps the aspect ratio and the margins.
+export function buildCaptureOptions(): CaptureOptions {
+  return { format: 'png', quality: 1, result: 'data-uri', width: 1024, height: 1024 };
+}
+
 export async function captureQrPng(viewRef: RefObject<View | null>): Promise<QrPngImage> {
   // data-uri capture decodes in JS: no temp file and no file reads, so it
   // behaves the same on Android and on the web preview.
-  const dataUri = await captureRef(viewRef, { format: 'png', quality: 1, result: 'data-uri' });
+  const dataUri = await captureRef(viewRef, buildCaptureOptions());
   const separator = dataUri.indexOf(',');
   return { base64: separator >= 0 ? dataUri.slice(separator + 1) : dataUri };
 }
@@ -54,12 +62,24 @@ export async function copyQrPng(image: QrPngImage): Promise<void> {
   await Clipboard.setImageAsync(image.base64);
 }
 
-function timestampName(): string {
+// Saves within the same second get a counter suffix, so share/cache files
+// never collide on an identical timestamp.
+let lastNameSecond = '';
+let sameSecondCount = 0;
+
+export function timestampName(): string {
   const now = new Date();
   const pad = (value: number) => String(value).padStart(2, '0');
-  return `qr-code-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(
+  const second = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(
     now.getHours(),
   )}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  if (second === lastNameSecond) {
+    sameSecondCount += 1;
+  } else {
+    lastNameSecond = second;
+    sameSecondCount = 0;
+  }
+  return `qr-code-${second}-${sameSecondCount}`;
 }
 
 async function resolveTargetDirectory(rootUri: string): Promise<string> {
