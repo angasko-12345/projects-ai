@@ -898,3 +898,14 @@
 - **Root cause:** observed — the uploader stages from the real worktree and rewrites files in place (the CRLF flip proves a CRLF-renormalizing pass ran there); a file mid delete+recreate then fails the concurrent `lstat`. It also walks gitignored content: `qr-generator/.gitignore` has `/android` (git agrees), yet `android/.gradle` was still copied — the ignore is honored by git, not by the uploader's file walk.
 - **Solution:** build the local AAB first, `sh gradlew --stop`, **commit the tree** (no dirty-tree staging path), and keep `android/` outside the project root entirely (`D:/admin/code/qr-generator-android-stash`, restored after). Upload then has nothing to renormalize or lock.
 - **Remember:** never run `eas build` concurrently with gradle in the same project, and prefer a committed tree — gitignored build dirs are uploadable content to eas-cli, and dirty-tree staging mutates the worktree you are building from.
+## 2026-10-07 — Evidence pinned to a SHA dictates merge strategy; skip counts differ by platform
+
+- **Symptom:** PR #8's evidence record is tied to commit `9173bc2`, and its head `78fbb0f` already contains `main` as first parent — a plain `git merge` would fast-forward with no merge commit, against the explicit no-squash/merge-commit requirement.
+- **Fix:** `git merge --no-ff origin/hark/systemd-run-fix -m "Merge pull request #8 ..."` forces the merge commit (`18231b7`) while keeping `9173bc2` an ancestor (verified with `git merge-base --is-ancestor`); push `main` so GitHub closes the PR. Confirm MERGED via `pr://8`, not just local log.
+- **Remember:** when comparing suite results across machines, compare total + failures/errors, never skips — the same 673 AgentOps tests skip 4 on Windows but 49 on headless Linux (GUI/display skips). A skip-count mismatch across platforms is expected, not a regression.
+
+## 2026-10-07 — Tailscale SSH failure modes distinguish "wrong user/key" from "not enabled"
+
+- **Symptom:** reaching the Linux box `agentbox` (`100.118.85.20`, active/direct in `tailscale status`) failed two different ways: `tailscale ssh` → "No ED25519 host key is known ... Host key verification failed"; plain `ssh` → "Permission denied (publickey)" for six users with the only local key (`hp_agent`).
+- **Root cause:** the two errors mean different things. The `tailscale ssh` error means the server side has not enabled Tailscale SSH (no host key advertised to the coordination server) — no flag will fix it. The plain-ssh error means TCP + sshd work and only pubkey auth failed — the host is reachable, the username/key is wrong.
+- **Remember:** `tailscale status` Edelweiss name + `~/.ssh/known_hosts` IPs identify candidate hosts; `ssh -o BatchMode=yes` probes users without password prompts. After exhausting repo, memory (`xd://recall`), ssh config, and likely usernames, stop and ask the user for credentials instead of guessing further (lockout risk).

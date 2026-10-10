@@ -120,3 +120,7 @@
 - Accounting-side decision (exact-only collectors, cross-source-only dedup,
   gray-with-reason unavailability) recorded canonically in
   `.agents/memory/decisions.md` (2026-10-06).
+
+## 2026-10-07: PR #8 UGA hunk — extern_pong launch test skips when Tk is missing (omp)
+- `universal-game-agent/tests/test_extern_pong.py` now skips (not fails) when the child exits 2 with "tkinter unavailable", matching the existing "no display" skip. A headless Python or one built without Tk is an environment limit, not a game defect.
+- Full PR #8 record (systemd-run opt-in, merge commit `18231b7`, 673-test verification, pending real-Linux check) lives canonically in `.agents/memory/decisions.md` (2026-10-07); this entry covers only the UGA-scoped hunk.
