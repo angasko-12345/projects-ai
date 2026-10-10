@@ -33,3 +33,21 @@ dist/
 Thumbs.db
 .vscode/
 .idea/
+
+# Build / signing artifacts. Binaries ship as GitHub Release assets, never as
+# commits (see tasks/after-task.md section 3). qr-generator/.gitignore carries
+# the in-product copy of these patterns; these cover the container root.
+*.apk
+*.aab
+
+# Third-party agent tool config, self-managed via its own internal .gitignore.
+.kilo/
+
+# Local scratch probes at the repo root. Real tests live inside each product's
+# tests/ directory and run with `python -m unittest discover -s tests`.
+/debug_test.py
+/task.py
+/test_cli.py
+/test_task.py
+/test_output.txt
+/test_output_full.txt
