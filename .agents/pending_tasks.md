@@ -63,6 +63,19 @@ backlog item and must not be picked up as ordinary work.
 | B10 | REST API + evals |
 | -- | Track C UX (C1/C2/C3) |
 
+## QR Generator -- open (user action required)
+
+The app work is done and the public launch is live. These rows are the unfinished pieces;
+the product code needs nothing further. See `.agents/memory/project.md` (2026-10-09,
+"QR Generator public repository + zero-budget launch").
+
+| ID | Item | Evidence |
+|---|---|---|
+| -- | `qr-generator/PRIVACY_POLICY.md:75` still contains `[SET YOUR CONTACT EMAIL BEFORE PUBLISHING]` | README and the landing page both call the policy a draft. Edit it before hosting it at a public URL or linking it from a store listing |
+| -- | `qr-generator/LICENSE` carries the Expo/650 Industries boilerplate copyright line | decide the correct copyright line before publishing widely; it is the only license file in the public repository |
+| -- | Three marketing drafts still carry `[LINK_TO_RELEASE]` / `[LINK_TO_REPO]` / `[LINK_TO_ISSUES]` placeholders | fill before posting. Nothing has been posted, sent, or auto-published; each community's rules must be read first |
+| -- | First 10 genuine testers not yet recruited | plan is `marketing/marketing-checklist.md` in the public repo `D:/admin/code/qr-generator-public` (the parent's `qr-generator/` has no `marketing/`); count a tester only when they report an actual scan result |
+
 ## Superseded / historical pointer
 
 - `.agents/memory/opencode/bugfinding/master-bug-synthesis.md` section 9 "Authoritative
