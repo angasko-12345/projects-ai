@@ -25,6 +25,7 @@ import {
   writeSavedCodes,
 } from './src/data/storage';
 import { contentLabel, validateDraft } from './src/qr/content';
+import { sanitizeAppearance } from './src/qr/contrast';
 import { QrEncodingError, buildQrMatrix } from './src/qr/matrix';
 import { canSaveCode } from './src/premium/entitlements';
 import { PremiumProvider, usePremium } from './src/premium/PremiumContext';
@@ -259,7 +260,7 @@ function MainScreen() {
 
   const handleLoadSaved = (code: SavedCode) => {
     setDraft({ ...code.draft, wifi: { ...code.draft.wifi } });
-    setAppearance({ ...code.appearance });
+    setAppearance(sanitizeAppearance({ ...code.appearance }));
     setSheet(null);
     showToast('Saved code loaded.', 'success');
   };

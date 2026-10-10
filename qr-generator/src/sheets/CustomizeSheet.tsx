@@ -4,6 +4,7 @@ import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-nativ
 
 import { LockedSection } from '../components/LockedSection';
 import { isHexColor } from '../qr/content';
+import { checkColors, type ColorCheck } from '../qr/contrast';
 import { useTheme } from '../theme/ThemeContext';
 import { MIN_TAP_SIZE, RADIUS, SPACING, TYPE } from '../theme/tokens';
 import type { QrAppearance, QrStyle } from '../types';
@@ -30,28 +31,53 @@ const STYLE_OPTIONS: { value: QrStyle; label: string }[] = [
   { value: 'dots', label: 'Dots' },
 ];
 
+const CHECK_MESSAGES: Record<Exclude<ColorCheck, 'ok'>, string> = {
+  'low-contrast': 'Contrast is too low for a scannable code.',
+  inverted: 'The code must be darker than the background.',
+};
+
 interface HexColorFieldProps {
   label: string;
   value: string;
   presets: string[];
+  colorRole: 'foreground' | 'background';
+  pairColor: string;
   onCommit: (color: string) => void;
   notify: (text: string, tone?: ToastData['tone']) => void;
 }
 
 // Callers remount this field with key={value}, so a freshly committed color
 // resets the typed text without syncing through an effect.
-function HexColorField({ label, value, presets, onCommit, notify }: HexColorFieldProps) {
+function HexColorField({
+  label,
+  value,
+  presets,
+  colorRole,
+  pairColor,
+  onCommit,
+  notify,
+}: HexColorFieldProps) {
   const { colors } = useTheme();
   const [text, setText] = useState(value);
+  const [pairError, setPairError] = useState<string | null>(null);
 
   const commit = (raw: string) => {
     const candidate = raw.trim();
-    if (isHexColor(candidate)) {
-      onCommit(candidate.toUpperCase());
-    } else {
+    if (!isHexColor(candidate)) {
       notify('Use a color in #RRGGBB form, like #1A2B3C.', 'error');
       setText(value);
+      return;
     }
+    const next = candidate.toUpperCase();
+    const check =
+      colorRole === 'foreground' ? checkColors(next, pairColor) : checkColors(pairColor, next);
+    if (check !== 'ok') {
+      setPairError(CHECK_MESSAGES[check]);
+      setText(value);
+      return;
+    }
+    setPairError(null);
+    onCommit(next);
   };
 
   return (
@@ -63,7 +89,7 @@ function HexColorField({ label, value, presets, onCommit, notify }: HexColorFiel
           return (
             <Pressable
               key={preset}
-              onPress={() => onCommit(preset)}
+              onPress={() => commit(preset)}
               accessibilityRole="button"
               accessibilityLabel={`Color ${preset}`}
               accessibilityState={{ selected }}
@@ -97,6 +123,11 @@ function HexColorField({ label, value, presets, onCommit, notify }: HexColorFiel
           ]}
         />
       </View>
+      {pairError ? (
+        <Text accessibilityRole="alert" style={[styles.error, { color: colors.danger }]}>
+          {pairError}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -221,6 +252,8 @@ export function CustomizeSheet({
             label="Code color"
             value={appearance.foreground}
             presets={FOREGROUND_PRESETS}
+            colorRole="foreground"
+            pairColor={appearance.background}
             onCommit={(foreground) => onChange({ foreground })}
             notify={notify}
           />
@@ -235,6 +268,8 @@ export function CustomizeSheet({
               label="Code color"
               value={appearance.foreground}
               presets={FOREGROUND_PRESETS}
+              colorRole="foreground"
+              pairColor={appearance.background}
               onCommit={(foreground) => onChange({ foreground })}
               notify={notify}
             />
@@ -247,6 +282,8 @@ export function CustomizeSheet({
             label="Background color"
             value={appearance.background}
             presets={BACKGROUND_PRESETS}
+            colorRole="background"
+            pairColor={appearance.foreground}
             onCommit={(background) => onChange({ background })}
             notify={notify}
           />
@@ -261,6 +298,8 @@ export function CustomizeSheet({
               label="Background color"
               value={appearance.background}
               presets={BACKGROUND_PRESETS}
+              colorRole="background"
+              pairColor={appearance.foreground}
               onCommit={(background) => onChange({ background })}
               notify={notify}
             />
@@ -286,6 +325,10 @@ export function CustomizeSheet({
 const styles = StyleSheet.create({
   stack: {
     gap: SPACING.lg,
+  },
+  error: {
+    fontSize: TYPE.caption,
+    fontWeight: '600',
   },
   block: {
     gap: SPACING.sm,
