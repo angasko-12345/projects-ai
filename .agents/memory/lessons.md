@@ -959,10 +959,37 @@
 - **Fix:** declare the `PROCESS_MEMORY_COUNTERS` struct and bind `K32GetProcessMemoryInfo` from `kernel32` with explicit `argtypes`/`restype`. A sampler thread reading `WorkingSetSize` around the training steps then produced non-zero peaks (1602 MB for the plain loss path, 941 MB for chunk=64 at context 256).
 - **Remember:** a measurement returning a constant, especially 0, is a harness bug until proven otherwise. Read a known-live value to confirm the harness before trusting any number it reports.
 
+### 2026-10-11 - `load_state_dict` restores parameter-group hyperparameters, not just weights: test the groups, not the config
+
+- **Symptom:** on mini-llm resume, the optimizer was constructed from the requested config (`betas=(0.8, 0.9)`, `weight_decay=0.05`), but after `load_checkpoint` the live `param_groups` read the checkpoint's `(0.9, 0.95)` / `0.1`. Config-level assertions would have passed while training used the wrong optimizer.
+- **Root cause:** PyTorch `Optimizer.load_state_dict()` restores `param_groups` hyperparameters (betas, weight_decay, lr, eps) from the checkpoint, overwriting construction values. Config values and loader success say nothing about what the optimizer actually holds.
+- **Fix:** a regression test that asserts on `optimizer.param_groups` *after* `load_checkpoint`, and a helper that re-applies only the explicitly supplied fields. Partial override blends from cfg because resume cfg already carries checkpoint values for unpassed flags; group-level weight-decay re-application is classified by `all(p.dim() >= 2 ...)`, mirroring `build_param_groups`, never flattened.
+- **Remember:** after any `load_state_dict`, assert the quantities the optimizer will actually use (param-group hyperparameters, moment tensors), not the parsed config. On resume, an explicitly passed value and a restored value are both "in the config" — only the explicit-set distinguishes them, so thread it, don't infer it.
+
+### 2026-10-11 — A detached `cmd` wrapper that records `EXITCODE=` is how long Python runs report a real exit code here
+
+- **Symptom:** foreground commands time out at 30s, and PowerShell turns unittest's stderr progress into terminating `ErrorRecord`s, so neither a foreground run nor a piped background run yields a trustworthy exit code.
+- **Fix:** `Start-Process cmd.exe` with `/v:on /c "cd /d <dir> && python <args> > log 2>&1 & echo EXITCODE=!ERRORLEVEL! >> log"`, then poll the log for the `^EXITCODE=` line and verify the completed `Ran N tests / OK` summary. Never report success from a log fragment.
+- **Remember:** the `EXITCODE=` line only appears after the process actually exits; the summary line plus the code together are the result. The same failure occurred in reverse: tests that asserted on module attribute paths (`attn.wq` vs `attn.heads[0].wq`, module `.grad` vs parameter `.weight.grad`, tied `lm_head.weight` present in `state_dict`) — read the module structure, never assume attribute placement on nested modules.
+
 ### 2026-10-10 - A memory-saving loss is only proven by matching loss and gradients; chunked recomputation uses `use_reentrant=False`
 
 - **Context:** adding a memory-bounded chunked loss to mini-llm, the failure mode to avoid was a chunked loss that lowers memory by quietly changing the objective (wrong denominator, dropped ignored targets, or a detached graph).
 - **What pinned it:** per-chunk `cross_entropy(reduction="sum")` divided by the count of non-`-100` targets equals the plain mean, because the default `ignore_index=-100` already excludes the same tokens. Verified by loss equality at chunk sizes 1/3/7/16/100 on a real forward, gradient equality against the plain path, and both even and uneven final chunks.
 - **Tooling fact:** `torch.utils.checkpoint.checkpoint(..., use_reentrant=False)` recomputes the chunk forward in backward, so the full `(B, T, vocab)` logits and their gradient are never materialized. Verified by test, not assumed.
 - **Remember:** a memory technique that alters the loss is a bug, not an optimization. Prove the objective is unchanged on both loss and gradient before claiming the memory win, and measure the win rather than deriving it.
+
+### 2026-10-11 - A status derived only from child rows can never be terminal when no child ever started: thread the interrupting event into the derivation
+
+- **Symptom:** cancelling an agentops workflow before the first task claim left `workflows.status = pending` forever -- `OperationCancelled` skipped the success-path refresh, and `recover` had zero claimed tasks to repair, so nothing could ever re-derive the row. Mid-run cancellation was already terminal.
+- **Root cause:** the header status was computed exclusively from task rows. All-pending derives `PENDING` by design, and cancellation is an event outside the task pool -- it leaves no trace a pure derivation can see. A refresh placed only on the clean exit path compounds it: the one path that most needs to write state raises past it.
+- **Fix:** derive in a `finally` on every exit, and pass the cancellation fact into the derivation (`refresh_workflow_status(..., cancelled=True)` concludes `FAILED` only when the pool derives `PENDING`/`RUNNING`; never downgrades a terminal derivation; never rewrites child rows).
+- **Remember:** if a header/aggregate status must become terminal on an interrupt that child rows cannot express, the interrupt itself must be an input to the derivation -- and refresh on every exit path, not just success. Falsifying child rows to make the aggregate work hides the distinction between "failed" and "never started".
+
+### 2026-10-11 - In this shared worktree, commit with a pathspec -- the index is not yours alone
+
+- **Symptom:** right after `git add`-ing three agentops files, a plain `git commit` produced a commit containing 9 files: a parallel session had staged its six mini-llm files into the same index in between. `git status` minutes earlier had shown those files unstaged.
+- **Root cause:** the repository index is shared by every session working in the tree; a path-less commit commits the entire staged set, and the window between another session's `git add` and yours is unpredictable.
+- **Fix:** repair is `git reset --soft HEAD~1` then recommit with `git commit -m ... -- <your paths>`; the other session's files return to staged exactly as they left them.
+- **Remember:** in this repo every commit is `git commit -- <paths>`, no matter how recently you staged; treat `git status` as a point-in-time read, not a guarantee about the index at commit time.
 
