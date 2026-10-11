@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 )
 
 from .bridge import ControllerBridge
-from .format import format_duration
+from .format import elide, format_duration
 from .new_task import NewTaskDialog
 from .palette import Command, CommandPalette
 from .settings import AppSettings, load_settings, save_settings
@@ -269,7 +269,7 @@ class MainWindow(QMainWindow, AsyncMixin):
                 continue
             group_name = group_starters.get(view_id)
             if group_name is not None:
-                group_label = label(group_name, "group")
+                group_label = label(group_name.upper(), "group")
                 group_label.setContentsMargins(0, DARK.space_md, 0, 0)
                 self._nav_layout.addWidget(group_label)
             button = QPushButton(title)
@@ -365,7 +365,7 @@ class MainWindow(QMainWindow, AsyncMixin):
     # ------------------------------------------------------------------
     def _sync_repository_label(self) -> None:
         path = self._repository or "No repository chosen"
-        self._repo_label.setText(path)
+        self._repo_label.setText(elide(path, 56))
         self._repo_label.setToolTip(path)
 
     def set_repository(self, path: str) -> None:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QCheckBox, QHBoxLayout
+from PySide6.QtWidgets import QCheckBox, QComboBox, QHBoxLayout
 
 from ..detail import FailureDetailPanel
 from ..format import elide, format_timestamp, short_id
@@ -44,12 +44,22 @@ class FailuresView(ListDetailView):
         return FailureDetailPanel(self.ctx)
 
     def _extend_toolbar(self, toolbar: QHBoxLayout) -> None:
+        self._severity = QComboBox()
+        self._severity.addItem("All severities", None)
+        for severity in ("critical", "high", "medium", "low"):
+            self._severity.addItem(severity.title(), severity)
+        toolbar.addWidget(self._severity)
+        self._severity.currentIndexChanged.connect(self._apply_filters)
         self._actionable = QCheckBox("Actionable only")
         self._actionable.setToolTip(
             "Show only failures marked retryable or repairable."
         )
         self._actionable.toggled.connect(lambda _on: self._set_rows(self._all_rows))
         toolbar.addWidget(self._actionable)
+
+    def _apply_filters(self, *_args: object) -> None:
+        super()._apply_filters()
+        self._table.set_column_filter("severity", self._severity.currentData() or "")
 
     def _build_hook(self) -> None:
         self._all_rows: list[dict] = []

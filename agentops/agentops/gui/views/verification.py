@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+from PySide6.QtWidgets import QComboBox, QHBoxLayout
+
 from ..format import format_duration, format_timestamp, short_id
 from ..widgets import TableColumn
 from ..detail import VerificationDetailPanel
 from .listdetail import ListDetailView
+
+_STATUSES = (
+    "pending", "running", "completed",
+    "failed", "cancelled", "timed_out",
+)
 
 _COLUMNS = (
     TableColumn("id", "Run", 90, format=lambda value: short_id(value, 8)),
@@ -38,10 +45,22 @@ class VerificationView(ListDetailView):
     def _build_detail(self) -> VerificationDetailPanel:
         return VerificationDetailPanel(self.ctx)
 
+    def _extend_toolbar(self, toolbar: QHBoxLayout) -> None:
+        self._status = QComboBox()
+        self._status.addItem("All statuses", None)
+        for status in _STATUSES:
+            self._status.addItem(status.replace("_", " ").title(), status)
+        toolbar.addWidget(self._status)
+        self._status.currentIndexChanged.connect(self._apply_filters)
+
     def _load(self) -> list[dict]:
         controller = self.ctx.controller
         repository = self.repository()
         return list(controller.list_recent_verification_runs(repository, limit=100))
+
+    def _apply_filters(self, *_args: object) -> None:
+        super()._apply_filters()
+        self._table.set_column_filter("status", self._status.currentData() or "")
 
     def fill_detail(self, row: dict | None) -> None:
         self._detail.set_verification(row)

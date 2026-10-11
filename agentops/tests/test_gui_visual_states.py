@@ -203,6 +203,33 @@ class VisualStateTest(unittest.TestCase):
         view = self.window._views["dashboard"]
         self.assertTrue(view._activity_list.wordWrap())
 
+    def test_status_columns_paint_pills_while_text_columns_do_not(self):
+        # Lifecycle states render as tinted pills in every table; the
+        # delegate is wired by column key so all surfaces share the idiom.
+        from agentops.gui.widgets import StatusPillDelegate
+
+        panel = self.window._views["workflows"]._list
+        keys = [column.key for column in panel.model.columns]
+        pill_index = keys.index("status")
+        self.assertIsInstance(
+            panel.view.itemDelegateForColumn(pill_index), StatusPillDelegate)
+        text_index = keys.index("description")
+        self.assertNotIsInstance(
+            panel.view.itemDelegateForColumn(text_index), StatusPillDelegate)
+
+    def test_truncated_cells_expose_their_full_text_as_tooltips(self):
+        from PySide6.QtCore import Qt
+        from agentops.gui.widgets import TableColumn, TableModel
+
+        model = TableModel(
+            [TableColumn("id", "ID", 90)], [{"id": "failure-1234"}])
+        index = model.index(0, 0)
+        self.assertEqual(
+            model.data(index, Qt.ItemDataRole.ToolTipRole), "failure-1234")
+        self.assertEqual(
+            model.data(index, Qt.ItemDataRole.ToolTipRole),
+            model.data(index, Qt.ItemDataRole.DisplayRole))
+
     def test_combo_arrow_asset_exists_and_is_referenced(self):
         asset = ASSET_DIR / "chevron-down.svg"
         self.assertTrue(asset.is_file(), f"missing UI asset: {asset}")

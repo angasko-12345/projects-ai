@@ -71,9 +71,11 @@ RUNS = [
 ]
 
 VERIFICATIONS = [
-    {"id": "v-1", "workflow_id": "wf-1", "task_id": "t-1", "overall_status": "passed",
+    {"id": "v-1", "workflow_id": "wf-1", "task_id": "t-1", "status": "completed",
+     "overall_status": "passed",
      "profile_name": "default", "passed_checks": 2, "total_checks": 2, "failed_checks": 0},
-    {"id": "v-2", "workflow_id": "wf-1", "task_id": "t-2", "overall_status": "failed",
+    {"id": "v-2", "workflow_id": "wf-1", "task_id": "t-2", "status": "failed",
+     "overall_status": "failed",
      "profile_name": "default", "passed_checks": 1, "total_checks": 2, "failed_checks": 1},
 ]
 
@@ -365,6 +367,28 @@ class MainWindowShellTests(unittest.TestCase):
         self.assertEqual(view._table.proxy.rowCount(), 2)
         view._search.setText("")
         self.assertEqual(view._table.proxy.rowCount(), 3)
+
+    def test_verification_status_filter_narrows_the_visible_rows(self):
+        view = self.window._views["verification"]
+        self._activate("verification")
+        self.assertTrue(wait_until(lambda: view._table.proxy.rowCount() == 2))
+        failed_index = view._status.findText("Failed")
+        self.assertGreater(failed_index, 0)
+        view._status.setCurrentIndex(failed_index)
+        self.assertEqual(view._table.proxy.rowCount(), 1)
+        view._status.setCurrentIndex(0)
+        self.assertEqual(view._table.proxy.rowCount(), 2)
+
+    def test_failure_severity_filter_narrows_the_visible_rows(self):
+        view = self.window._views["failures"]
+        self._activate("failures")
+        self.assertTrue(wait_until(lambda: view._table.proxy.rowCount() == 1))
+        low_index = view._severity.findText("Low")
+        self.assertGreater(low_index, 0)
+        view._severity.setCurrentIndex(low_index)
+        self.assertEqual(view._table.proxy.rowCount(), 0)
+        view._severity.setCurrentIndex(0)
+        self.assertEqual(view._table.proxy.rowCount(), 1)
 
     def test_deep_links_select_the_recorded_row(self):
         self._activate("workflows")

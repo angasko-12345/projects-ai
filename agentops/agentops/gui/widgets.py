@@ -14,13 +14,14 @@ from PySide6.QtCore import (
     QAbstractTableModel,
     QEasingCurve,
     QModelIndex,
+    QObject,
     QPropertyAnimation,
     QSortFilterProxyModel,
     Qt,
     QVariantAnimation,
     Signal,
 )
-from PySide6.QtGui import QColor, QFont, QPainter, QPen
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
@@ -34,6 +35,8 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QStackedWidget,
+    QStyle,
+    QStyledItemDelegate,
     QTableView,
     QVBoxLayout,
     QWidget,
@@ -524,6 +527,60 @@ def _sort_value(raw: object, column: TableColumn) -> object:
     return _display(raw, column)
 
 
+# Status columns painted as pills. Keyed by column key (not title) so every
+# surface renders lifecycle states with one idiom.
+PILL_COLUMNS = frozenset({"status", "overall_status", "severity"})
+
+
+class StatusPillDelegate(QStyledItemDelegate):
+    """Paint status/severity cells as tinted pills (the Badge look for tables).
+
+    Only painting changes: display, sort, filter, and tooltip roles keep
+    flowing from the model, so sorting, filtering, and assistive text are
+    unaffected.
+    """
+
+    def __init__(self, theme: Theme = DARK, parent: QObject | None = None):
+        super().__init__(parent)
+        self._theme = theme
+
+    def paint(self, painter: QPainter, option, index) -> None:  # noqa: N802 - Qt API
+        text = str(index.data(Qt.ItemDataRole.DisplayRole) or "").strip()
+        if not text:
+            super().paint(painter, option, index)
+            return
+        font = QFont(option.font)
+        font.setPointSize(self._theme.size_small)
+        font.setWeight(QFont.Weight.DemiBold)
+        metrics = QFontMetrics(font)
+        available = option.rect.adjusted(6, 5, -6, -5)
+        label = metrics.elidedText(
+            text.upper(), Qt.TextElideMode.ElideRight, max(0, available.width()))
+        if not label:
+            super().paint(painter, option, index)
+            return
+        pill = metrics.boundingRect(label).adjusted(-8, -3, 8, 3)
+        pill.moveCenter(available.center())
+        foreground, background = status_colors(text.lower(), self._theme)
+        painter.save()
+        try:
+            painter.setFont(font)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            if option.state & QStyle.StateFlag.State_Selected:
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(QColor(with_alpha(background, 0.30)))
+                painter.drawRoundedRect(pill, 9, 9)
+                painter.setPen(QColor(option.palette.highlightedText().color()))
+            else:
+                painter.setPen(QColor(with_alpha(foreground, 0.35)))
+                painter.setBrush(QColor(with_alpha(background, 0.16)))
+                painter.drawRoundedRect(pill, 9, 9)
+                painter.setPen(QColor(foreground))
+            painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, label)
+        finally:
+            painter.restore()
+
+
 class TableModel(QAbstractTableModel):
     """Dict-row table model; rows are plain controller payloads."""
 
@@ -558,6 +615,9 @@ class TableModel(QAbstractTableModel):
         column = self.columns[index.column()]
         raw = row.get(column.key)
         if role == Qt.ItemDataRole.DisplayRole:
+            return _display(raw, column)
+        if role == Qt.ItemDataRole.ToolTipRole:
+            # Truncated cells (ids, paths, errors) reveal their full text.
             return _display(raw, column)
         if role == Qt.ItemDataRole.UserRole:
             return _sort_value(raw, column)
@@ -667,6 +727,9 @@ class TablePanel(QWidget):
             self._view.setColumnWidth(index, column.width)
             if column.stretch:
                 header.setSectionResizeMode(index, QHeaderView.ResizeMode.Stretch)
+            if column.key in PILL_COLUMNS:
+                self._view.setItemDelegateForColumn(
+                    index, StatusPillDelegate(parent=self._view))
         self._view.setWordWrap(False)
         self._view.setMinimumHeight(140)
 
