@@ -176,6 +176,33 @@
 - **Hazards handled:** stale shot-2 GUI instance killed alongside mine; another session drove Sync on the shared desktop mid-verification (12:43:47, 12:51:11) — app stayed consistent, proving idempotency; git race `9c309dc` split back to pathspec-only `70602bb` with the other session's 5 staged agentops files restored to `A`; foreground-lock/window-capture limits routed through AX element clicks.
 - **Open:** none for this shot. Todo 8/8 done. Canonical cross-refs: `.agents/memory/project.md` + `decisions.md` + `lessons.md` (all 2026-10-06).
 
+## 2026-10-11: AgentOps GUI modernization (this session)
+
+**Delivered a visual system overhaul for the AgentOps PySide6 desktop client** in `agentops/agentops/gui/`:
+
+**Visual system:**
+- Status pills (`StatusPillDelegate`) in every table for `status`, `overall_status`, `severity` columns — colored, rounded, selection-aware, tooltip-backed.
+- Nav group headers uppercase (ORCHESTRATE / INSPECT / CONFIGURE).
+- Top-bar repo path elided to 56 chars with full-path tooltip.
+- Dashboard activity feed wraps long entries instead of horizontal scroll.
+- Workflow detail tallies split: 6 task outcomes (row 1) + 3 check totals (row 2).
+- Truncated cells (IDs, paths, errors) expose full text via `ToolTipRole`.
+
+**Two high-value filters:**
+- Verification view → status dropdown (`All statuses` / `Pending` / `Running` / `Completed` / `Failed` / `Cancelled` / `Timed out`) — chains with search + column filters.
+- Failures view → severity dropdown (`All severities` / `Critical` / `High` / `Medium` / `Low`) — chains with "Actionable only" checkbox.
+
+**Tests & verification:**
+- 7 new regression tests (2 filter, 2 visual delegate/tooltip, 3 format/control-center).
+- Full suite: **720 tests OK (skipped=4)** — baseline was 716, +4 net new, zero regressions.
+- Live GUI launched, real repo (`D:/admin/code/projects/agentops`), all 7 data views captured, filters exercised (Verification "Failed" → 90 rows, Failures "High" → 7 rows).
+- Stray state dirs cleaned (`D:/repo`, `D:/nonexistent-xyz`).
+- Follow-up (Cline session, same day): the 8 uncommitted pill/filter files were staged as `67f75d8`, evidence regenerated in a clean clone (`034eb86`, 720/4, `check.py` green), and everything pushed to `origin/main` (`4494eff` records it in `decisions.md`). Memory files committed separately after dedupe.
+
+**Files changed:** `widgets.py`, `shell.py`, `views/verification.py`, `views/failures.py`, `views/dashboard.py`, `tests/test_gui_qt.py`, `tests/test_gui_visual_states.py`, `tests/test_format.py`, `tests/test_control_center.py`, `format.py`.
+
+**Canonical cross-refs:** `.agents/memory/project.md`, `decisions.md`, `lessons.md` (all 2026-10-11).
+
 ## 2026-10-09: QR Generator public repo + zero-budget launch (omp session, completed)
 
 - **Delivered:** standalone public repository `D:/admin/code/qr-generator-public` → https://github.com/angasko-12345/qr-generator (118 tracked files; commits `dd3fc83`, `256a493`, `1b332ea`, `f5e811e`); `beta-1.0.0` release with `QR-Generator-beta-1.0.0.apk` (83,400,191 B) attached; GitHub Pages landing page https://angasko-12345.github.io/qr-generator/ from `docs/`; rewritten `README.md`; `marketing/` with five unposted drafts (reddit, community, 15–18 s video script, small-business outreach, 7-day checklist).
