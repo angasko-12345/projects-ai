@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-10-10T15:38:21+00:00",
-  "commit": "5e8e8698f9458ee6a13a1a3a93a6cb184804980e",
+  "generated_at": "2026-10-11T03:24:01+00:00",
+  "commit": "8b57e75c9f4925318403c8ba5d0b5d9cb26714a9",
   "python": "3.14.7",
   "platform": "Windows 11 (AMD64)",
-  "measured_in": "a clean clone of 5e8e8698f945",
+  "measured_in": "a clean clone of 8b57e75c9f49",
   "clean_checkout": true,
   "command_note": "Every command runs from its own product directory with the interpreter that ran this script. There is no repository-wide test command and these products share no dependencies.",
   "excluded": {
@@ -14,7 +14,7 @@
     {
       "product": "agentops",
       "directory": "agentops",
-      "commit": "70bad5936bf3059f146794a6782efa3e26e80d6b",
+      "commit": "8b57e75c9f4925318403c8ba5d0b5d9cb26714a9",
       "command": [
         "C:\\Python314\\python.exe",
         "-m",
@@ -24,13 +24,13 @@
         "tests"
       ],
       "dirty_paths": [],
-      "total": 703,
-      "duration_seconds": 149.189,
+      "total": 708,
+      "duration_seconds": 186.511,
       "skipped": 4,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 703 tests in 149.189s",
+        "Ran 708 tests in 186.511s",
         "OK (skipped=4)"
       ],
       "result": "pass"
