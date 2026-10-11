@@ -445,6 +445,7 @@ class WorkflowEngine:
             async with semaphore:
                 await self._execute_task(task, working_directory, cancel_event)
 
+        cancelled = False
         try:
             while True:
                 if cancel_event is not None and cancel_event.is_set():
@@ -460,6 +461,11 @@ class WorkflowEngine:
                         task.cancel()
                     await asyncio.gather(*pending, return_exceptions=True)
                     raise
+        except OperationCancelled:
+            # Remembered for the refresh below: cancellation is a terminal
+            # workflow outcome even when no task ever started to derive it.
+            cancelled = True
+            raise
         finally:
             # Derive the workflow row on EVERY exit, including cancellation:
             # OperationCancelled used to skip this refresh, so a cancelled
@@ -467,8 +473,10 @@ class WorkflowEngine:
             # terminal, so `recover` could not repair it either) and the CLI
             # and GUI kept reporting a stopped operation as active. The
             # derivation only reads persisted task state -- a cancelled run
-            # carries a FAILED task, so the row becomes FAILED, never success.
-            self.state.refresh_workflow_status(workflow_id)
+            # carries a FAILED task, so the row becomes FAILED, never success;
+            # the cancelled flag covers cancellation before the first claim,
+            # where every task is still pending and nothing derives failure.
+            self.state.refresh_workflow_status(workflow_id, cancelled=cancelled)
 
     def _historical_performance(self, workflow_id: str) -> dict[str, float]:
         """Return deterministic recent success rates by agent identifier."""

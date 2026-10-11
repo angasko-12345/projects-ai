@@ -387,6 +387,28 @@ class CancelledWorkflowStatusTests(WorkflowTests):
         self.assertEqual(plan.status, TaskStatus.FAILED)
         self.assertIn("cancelled", (plan.result or "").lower())
 
+    def test_cancellation_before_first_claim_is_terminal(self):
+        engine = self._engine()
+        workflow_id, _ = engine.create_standard_workflow("Cancel pre-start")
+        cancel = threading.Event()
+        cancel.set()  # cancellation lands before any task can be claimed
+
+        with self.assertRaises(OperationCancelled):
+            asyncio.run(engine.execute(workflow_id, Path.cwd(), cancel))
+
+        workflow = self.state.latest_workflow()
+        self.assertIsNotNone(workflow)
+        self.assertEqual(workflow.id, workflow_id)
+        # Execution terminated through cancellation, so the workflow row must
+        # be terminal even though every task is still unstarted -- a stopped
+        # operation must not read as active forever.
+        self.assertEqual(workflow.status, TaskStatus.FAILED)
+        # The distinction survives: nothing ever ran, so no task may be
+        # falsified as failed or completed.
+        for task in self.state.list_tasks(workflow_id):
+            self.assertEqual(task.status, TaskStatus.PENDING)
+            self.assertEqual(task.attempts, 0)
+
     def test_successful_workflow_status_is_unchanged(self):
         # The refresh on cancellation must not disturb the clean-exit path.
         passed = MagicMock(succeeded=True, output="tests passed")

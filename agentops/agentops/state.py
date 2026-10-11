@@ -884,7 +884,16 @@ class StateStore:
                 ready.append(task)
         return ready
 
-    def refresh_workflow_status(self, workflow_id: str) -> TaskStatus:
+    def refresh_workflow_status(self, workflow_id: str, *, cancelled: bool = False) -> TaskStatus:
+        """Derive and persist a workflow's header status from its task rows.
+
+        ``cancelled`` records that execution ended by cancellation: when the
+        task pool derives only PENDING or RUNNING (no task ever started, or
+        one was cut off mid-run), the workflow is terminal FAILED anyway,
+        because a stopped operation must not read as active forever. Task
+        rows are never rewritten here -- unstarted tasks stay pending. A
+        derived PASSED, FAILED, or BLOCKED is never downgraded by the flag.
+        """
         tasks = self.list_tasks(workflow_id)
         statuses = {task.status for task in tasks}
         status = TaskStatus.PASSED if tasks and statuses == {TaskStatus.PASSED} else (
@@ -892,6 +901,8 @@ class StateStore:
             TaskStatus.BLOCKED if TaskStatus.BLOCKED in statuses and TaskStatus.PENDING not in statuses else
             TaskStatus.RUNNING if TaskStatus.RUNNING in statuses else TaskStatus.PENDING
         )
+        if cancelled and status in (TaskStatus.PENDING, TaskStatus.RUNNING):
+            status = TaskStatus.FAILED
         with self._lock:
             self.connection.execute("UPDATE workflows SET status=?, updated_at=? WHERE id=?", (status, utc_now(), workflow_id))
             self.connection.commit()
