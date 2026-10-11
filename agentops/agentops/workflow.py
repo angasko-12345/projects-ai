@@ -445,21 +445,30 @@ class WorkflowEngine:
             async with semaphore:
                 await self._execute_task(task, working_directory, cancel_event)
 
-        while True:
-            if cancel_event is not None and cancel_event.is_set():
-                raise OperationCancelled
-            ready = self.state.ready_tasks(workflow_id)
-            if not ready:
-                break
-            pending = [asyncio.create_task(run_limited(task)) for task in ready]
-            try:
-                await asyncio.gather(*pending)
-            except BaseException:
-                for task in pending:
-                    task.cancel()
-                await asyncio.gather(*pending, return_exceptions=True)
-                raise
-        self.state.refresh_workflow_status(workflow_id)
+        try:
+            while True:
+                if cancel_event is not None and cancel_event.is_set():
+                    raise OperationCancelled
+                ready = self.state.ready_tasks(workflow_id)
+                if not ready:
+                    break
+                pending = [asyncio.create_task(run_limited(task)) for task in ready]
+                try:
+                    await asyncio.gather(*pending)
+                except BaseException:
+                    for task in pending:
+                        task.cancel()
+                    await asyncio.gather(*pending, return_exceptions=True)
+                    raise
+        finally:
+            # Derive the workflow row on EVERY exit, including cancellation:
+            # OperationCancelled used to skip this refresh, so a cancelled
+            # workflow stayed `pending` forever (its tasks were already
+            # terminal, so `recover` could not repair it either) and the CLI
+            # and GUI kept reporting a stopped operation as active. The
+            # derivation only reads persisted task state -- a cancelled run
+            # carries a FAILED task, so the row becomes FAILED, never success.
+            self.state.refresh_workflow_status(workflow_id)
 
     def _historical_performance(self, workflow_id: str) -> dict[str, float]:
         """Return deterministic recent success rates by agent identifier."""

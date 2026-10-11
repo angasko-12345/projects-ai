@@ -3,6 +3,7 @@ import json
 import shutil
 import subprocess
 import tempfile
+import threading
 import unittest
 from dataclasses import replace
 from pathlib import Path
@@ -12,7 +13,7 @@ from agentops.agent_run import AgentRunMetadata
 from agentops.config import AppConfig, AgentConfig
 from agentops.agent_result import AgentResult, AgentResultStatus
 from agentops.registry import DetectedAgent
-from agentops.runner import RunResult
+from agentops.runner import OperationCancelled, RunResult
 from agentops.state import StateStore
 from agentops.tasks import TaskStatus
 from agentops.verification_kernel import VerificationKernel
@@ -320,6 +321,82 @@ class CancelledAndTerminatedAreNotSuccessTests(WorkflowTests):
         engine = self._engine_returning(exit_code=0, timed_out=False)
         result = asyncio.run(engine.run_high_level("Do it", self._git_repo()))
         self.assertTrue(result.ready, result.summary)
+
+
+class CancelledWorkflowStatusTests(WorkflowTests):
+    """Cancelling a workflow must leave a terminal workflow status row.
+
+    Live defect (reproduced 2026-11-10 against a real agent run): `execute()`
+    derived the workflow status only on a clean exit of its run loop.
+    Cancellation raises OperationCancelled straight out of the loop, so the
+    `workflows` row stayed `pending` forever after the user cancelled, while
+    every task row was already terminal. `agentops recover` could not repair
+    it -- it refreshes only workflows whose tasks it actually recovers, and it
+    recovered none -- so the CLI headline and the GUI dashboard kept reporting
+    an operation that was no longer running as active. Cancellation is not
+    success: the row must end FAILED and the exception must still propagate.
+    """
+
+    def _engine(self):
+        return WorkflowEngine(self.config, self.state, self.registry,
+                              self.runner, self.verifier,
+                              metadata_collector=self.metadata_collector)
+
+    def test_cancellation_persists_terminal_workflow_status(self):
+        started = threading.Event()
+
+        async def run_agent(agent, prompt, directory, task_id,
+                            cancel_event=None, **kwargs):
+            # A real agent blocks until cooperative cancellation tears the
+            # child down, then OperationCancelled propagates.
+            started.set()
+            while cancel_event is not None and not cancel_event.is_set():
+                await asyncio.sleep(0.005)
+            raise OperationCancelled
+
+        self.runner.run_agent = run_agent
+        engine = self._engine()
+        workflow_id, _ = engine.create_standard_workflow("Cancel me")
+        cancel = threading.Event()
+
+        async def scenario():
+            execution = asyncio.create_task(
+                engine.execute(workflow_id, Path.cwd(), cancel))
+            for _ in range(400):  # bounded wait: agent start within 2s
+                if started.is_set():
+                    break
+                await asyncio.sleep(0.005)
+            self.assertTrue(started.is_set(), "the plan agent never started")
+            cancel.set()
+            # Cancellation semantics are unchanged: OperationCancelled still
+            # propagates out of execute() to its caller.
+            with self.assertRaises(OperationCancelled):
+                await execution
+
+        asyncio.run(scenario())
+
+        workflow = self.state.latest_workflow()
+        self.assertIsNotNone(workflow)
+        self.assertEqual(workflow.id, workflow_id)
+        # The cancelled plan task is FAILED, so the derivation must produce a
+        # terminal FAILED row -- never a stale `pending` row for an operation
+        # that has stopped.
+        self.assertEqual(workflow.status, TaskStatus.FAILED)
+        plan = next(task for task in self.state.list_tasks(workflow_id)
+                    if task.role == "architecture")
+        self.assertEqual(plan.status, TaskStatus.FAILED)
+        self.assertIn("cancelled", (plan.result or "").lower())
+
+    def test_successful_workflow_status_is_unchanged(self):
+        # The refresh on cancellation must not disturb the clean-exit path.
+        passed = MagicMock(succeeded=True, output="tests passed")
+        self.verifier.run = MagicMock(return_value=asyncio.sleep(0, result=[passed]))
+        engine = self._engine()
+        result = asyncio.run(engine.run_high_level("Do the work", Path.cwd()))
+        self.assertTrue(result.ready, result.summary)
+        workflow = self.state.latest_workflow()
+        self.assertEqual(workflow.id, result.workflow_id)
+        self.assertEqual(workflow.status, TaskStatus.PASSED)
 
 
 class StructuredAgentResultTaskStatusTests(WorkflowTests):
