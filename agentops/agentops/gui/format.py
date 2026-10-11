@@ -64,8 +64,13 @@ def format_size(size: object) -> str:
 
 
 def short_id(value: object, length: int = 8) -> str:
-    """Shorten workflow/task ids for dense tables while staying recognizable."""
+    """Shorten workflow/task ids for dense tables while staying recognizable.
+
+    Truncation that saves only a few characters destroys more information
+    than the space it buys (``failure-0`` cut to ``failure-`` is no longer
+    distinguishable), so strings barely over the limit pass through whole.
+    """
     text = str(value or "")
-    if len(text) <= length:
+    if len(text) <= length + 4:
         return text
     return text[:length]

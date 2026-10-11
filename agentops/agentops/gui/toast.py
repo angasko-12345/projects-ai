@@ -135,6 +135,11 @@ class ToastHost(QWidget):
         self._toasts.append(toast)
         self._layout.addWidget(toast)
         toast.setFixedWidth(TOAST_WIDTH)
+        # A widget added to a layout stays hidden until the event loop runs,
+        # and box layouts exclude hidden widgets from size hints and
+        # geometry. Showing first keeps reposition() from measuring a host
+        # that pretends the new toast is not there (a 24px empty sliver).
+        toast.show()
         while len(self._toasts) > MAX_VISIBLE_TOASTS:
             oldest = self._toasts[0]
             self._layout.removeWidget(oldest)

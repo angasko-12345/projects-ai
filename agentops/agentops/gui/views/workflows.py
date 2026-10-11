@@ -173,8 +173,13 @@ class WorkflowsView(BaseView):
         self._flow.stage_selected.connect(self._select_stage)
         layout.addWidget(self._flow, stretch=1)
 
+        # Task outcomes and check totals are separate rows: nine blocks in
+        # one row overflow the detail pane at the minimum window width and
+        # clip the check counts.
         self._tally = Tally()
         layout.addWidget(self._tally)
+        self._checks_tally = Tally()
+        layout.addWidget(self._checks_tally)
 
         self._tabs = QTabWidget()
         self._tabs.addTab(self._build_tasks_tab(), "Tasks")
@@ -394,6 +399,8 @@ class WorkflowsView(BaseView):
             ("Failed", counts.get("failed", 0) + counts.get("blocked", 0), "failed"),
             ("Runs", len(runs), "active"),
             ("Failures", len(failures), "failed" if failures else "pending"),
+        ])
+        self._checks_tally.set_items([
             ("Checks passed", int(verification_totals["passed"]), "passed"),
             ("Checks failed", int(verification_totals["failed"]), "failed"),
             ("Checks skipped", int(verification_totals["skipped"]), "skipped"),

@@ -10,7 +10,7 @@ from ..widgets import TableColumn
 from .listdetail import ListDetailView
 
 _COLUMNS = (
-    TableColumn("id", "Failure", 90, format=lambda value: short_id(value, 8)),
+    TableColumn("id", "Failure", 110, format=lambda value: short_id(value, 8)),
     TableColumn("severity", "Severity", 90),
     TableColumn("category", "Category", 150),
     TableColumn("source", "Source", 110),

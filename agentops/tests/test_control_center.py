@@ -612,8 +612,8 @@ class ControlCenterViewTests(unittest.TestCase):
     def test_verification_display_counts_outcomes_and_opens_checks(self):
         self._activate()
         self.assertTrue(wait_until(lambda: self.view._verifications.proxy.rowCount() == 2))
-        self.assertEqual(self.view._tally.text_for("Checks passed"), "3")
-        self.assertEqual(self.view._tally.text_for("Checks failed"), "1")
+        self.assertEqual(self.view._checks_tally.text_for("Checks passed"), "3")
+        self.assertEqual(self.view._checks_tally.text_for("Checks failed"), "1")
         self._select(self.view._verifications, "v-1")
         self.assertTrue(wait_until(lambda: self.view._checks.proxy.rowCount() == 1))
         record = self.view._checks.row_of(self.view._checks.proxy.index(0, 0))

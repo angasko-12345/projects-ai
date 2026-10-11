@@ -152,6 +152,9 @@ class DashboardView(BaseView):
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         activity_body.addWidget(self._activity_empty)
         self._activity_list = QListWidget()
+        # Timestamped entries outgrow the narrow column; wrapped rows keep
+        # the full message readable instead of a clipped horizontal scroll.
+        self._activity_list.setWordWrap(True)
         activity_body.addWidget(self._activity_list)
         right.addWidget(activity_card, stretch=1)
         main.addLayout(right, stretch=2)

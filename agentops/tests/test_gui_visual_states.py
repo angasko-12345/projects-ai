@@ -20,10 +20,12 @@ from agentops.gui.tokens import ASSET_DIR, DARK, build_stylesheet
 
 try:  # `discover -s tests` puts tests/ on sys.path; direct runs do not.
     from tests.qt_display import destroy, qt_app, requires_qt, wait, wait_until
-    from tests.test_gui_qt import REPOSITORY, FakeController
+    from tests.test_gui_qt import (
+        FAILURES, REPOSITORY, RUNS, TASKS, VERIFICATIONS, FakeController)
 except ModuleNotFoundError:
     from qt_display import destroy, qt_app, requires_qt, wait, wait_until
-    from test_gui_qt import REPOSITORY, FakeController
+    from test_gui_qt import (
+        FAILURES, REPOSITORY, RUNS, TASKS, VERIFICATIONS, FakeController)
 
 
 # Every test in this class builds a real MainWindow, and `setUp` imports
@@ -158,10 +160,54 @@ class VisualStateTest(unittest.TestCase):
         wait(300)  # fade is 140ms; allow the animation to finish
         self.assertIsNone(self.window._stack.graphicsEffect())
 
+    def test_toast_notification_is_laid_out_visible(self):
+        # A toast added to the host layout is still hidden on the same event
+        # pass, and box layouts exclude hidden widgets from size hints and
+        # geometry. Sizing the host before the toast shows leaves a 24px
+        # sliver, so no success/error feedback ever reaches the user.
+        from agentops.gui.toast import ToastHost
+
+        self.window.toast("Repository switched", "D:/repo", "info")
+        host = self.window.findChild(ToastHost)
+        self.assertIsNotNone(host)
+        self.assertTrue(
+            wait_until(lambda: host._toasts and host._toasts[0].isVisible()),
+            "toast never became visible",
+        )
+        toast = host._toasts[0]
+        self.assertGreater(toast.height(), 0)
+        self.assertLessEqual(host.geometry().right(), self.window.width())
+        self.assertLessEqual(host.geometry().bottom(), self.window.height())
+
+    def test_workflow_tally_splits_task_and_check_counts(self):
+        # Nine tally blocks in one row overflow the detail pane at the
+        # minimum window width, clipping the check counts. Task outcomes
+        # and check totals get their own rows so every count stays visible.
+        view = self.window._views["workflows"]
+        view._apply_tally(TASKS, RUNS, VERIFICATIONS, FAILURES)
+        self.assertEqual(view._tally.text_for("Tasks"), "4")
+        self.assertEqual(view._tally.text_for("Passed"), "1")
+        self.assertEqual(view._tally.text_for("Failed"), "0")
+        self.assertEqual(view._tally.text_for("Runs"), "3")
+        self.assertEqual(view._tally.text_for("Failures"), "1")
+        self.assertEqual(len(view._tally._items), 6)
+        self.assertEqual(view._checks_tally.text_for("Checks passed"), "3")
+        self.assertEqual(view._checks_tally.text_for("Checks failed"), "1")
+        self.assertEqual(view._checks_tally.text_for("Checks skipped"), "0")
+        self.assertEqual(len(view._checks_tally._items), 3)
+
+    def test_activity_feed_wraps_long_entries(self):
+        # Single-line activity items wider than the column force a
+        # horizontal scrollbar and truncate entries mid-word; wrapped rows
+        # keep the full timestamped message readable without scrolling.
+        view = self.window._views["dashboard"]
+        self.assertTrue(view._activity_list.wordWrap())
+
     def test_combo_arrow_asset_exists_and_is_referenced(self):
         asset = ASSET_DIR / "chevron-down.svg"
         self.assertTrue(asset.is_file(), f"missing UI asset: {asset}")
         self.assertIn(asset.as_posix(), build_stylesheet())
+
 
 
 if __name__ == "__main__":
