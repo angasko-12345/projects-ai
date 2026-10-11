@@ -179,7 +179,8 @@ QStatusBar {{ background: {c['surface']}; border-top: 1px solid {c['border']}; c
 def resolve_db_path() -> Path:
     env = os.environ.get("AI_TOKEN_TRACKER_DB")
     if env:
-        return Path(env)
+        path = Path(env)
+        return path / "usage.db" if path.is_dir() else path
     if os.name == "nt" and Path("D:/").exists():
         return Path("D:/ai-token-tracker/usage.db")
     return Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "ai-token-tracker" / "usage.db"

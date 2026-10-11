@@ -77,6 +77,7 @@ Default location:
 - otherwise `%LOCALAPPDATA%/ai-token-tracker/usage.db`
 
 Override with the `AI_TOKEN_TRACKER_DB` environment variable.
+If it names a directory, the tracker stores `usage.db` inside it.
 
 ## OpenCode data source
 

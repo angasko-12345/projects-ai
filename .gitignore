@@ -25,6 +25,7 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+ai-token-tracker/usage.db*
 
 # Secrets. A root-level `.env` was committed and then deleted early in this
 # repository's history (2a72f2d -> 037d8bd), so keep it out for good. Keep the
