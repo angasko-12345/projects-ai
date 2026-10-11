@@ -157,6 +157,10 @@ class Config:
             f"grad_accum_steps must be a positive int (>= 1), got {self.grad_accum_steps!r}"
         assert isinstance(self.loss_chunk_size, int) and self.loss_chunk_size >= 0, \
             f"loss_chunk_size must be an int >= 0 (0 disables), got {self.loss_chunk_size!r}"
+        for name in ("eval_interval", "eval_batches"):
+            value = getattr(self, name)
+            assert isinstance(value, int) and value >= 1, \
+                f"{name} must be a positive int (>= 1), got {value!r}"
         assert 0.0 < self.min_lr_ratio <= 1.0, "min_lr_ratio must be in (0, 1]"
         assert self.warmup_steps <= self.max_steps, "warmup_steps must fit in max_steps"
         for name in ("torch_threads", "torch_interop_threads"):

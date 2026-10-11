@@ -8,6 +8,8 @@ Then final LN + output projection tied to the token embedding.
 
 from __future__ import annotations
 
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -121,6 +123,13 @@ class MiniGPT(nn.Module):
         self.ln_f = nn.LayerNorm(d_model)
         self.lm_head = nn.Linear(d_model, vocab_size, bias=False)
         self.apply(_init_weights)
+        # GPT-2 residual scaling: each block adds two branches to the stream, so
+        # their output projections start at 0.02 / sqrt(2 * n_layers) and the
+        # residual variance stays roughly constant as depth grows.
+        residual_std = 0.02 / math.sqrt(2 * n_layers)
+        for block in self.blocks:
+            for proj in (block.attn.proj, block.mlp.fc2):
+                nn.init.normal_(proj.weight, mean=0.0, std=residual_std)
         # Tie after init so the shared tensor is drawn from the RNG once.
         self.lm_head.weight = self.wte.weight
 

@@ -366,6 +366,28 @@ def build_param_groups(model, weight_decay: float) -> list[dict]:
     ]
 
 
+def apply_explicit_optimizer_overrides(optimizer, cfg: Config, fields) -> None:
+    """Re-apply user-supplied optimizer settings after a resume load.
+
+    optimizer.load_state_dict() restores the checkpoint's parameter-group
+    hyperparameters, so without this the requested betas/weight_decay lose to
+    whatever the checkpoint recorded. Only fields the user actually passed are
+    re-applied; the rest keep the checkpoint's values. The decay/no-decay
+    split of build_param_groups survives: a group whose parameters are all
+    >= 2-D takes cfg.weight_decay, the others stay at 0.
+    """
+    if not fields:
+        return
+    if "beta1" in fields or "beta2" in fields:
+        betas = (cfg.beta1, cfg.beta2)  # the non-overridden half is cfg's resume value
+        for group in optimizer.param_groups:
+            group["betas"] = betas
+    if "weight_decay" in fields:
+        for group in optimizer.param_groups:
+            decay = all(p.dim() >= 2 for p in group["params"])
+            group["weight_decay"] = cfg.weight_decay if decay else 0.0
+
+
 def capture_rng_state() -> dict:
     """RNG state in weights_only-safe form (plain ints/lists, no pickled objects)."""
     np_name, np_keys, np_pos, np_has_gauss, np_cached = np.random.get_state()
@@ -601,6 +623,9 @@ def _chunked_loss(module, x, y, chunk_size):
 @torch.no_grad()
 def evaluate(model, loader, batches: int, device: torch.device,
              chunk_size: int = 0) -> float:
+    # batches <= 0 would average nothing and report a fake 0.0 loss.
+    if not isinstance(batches, int) or batches < 1:
+        raise ValueError(f"batches must be a positive int (>= 1), got {batches!r}")
     model.eval()
     n_batches = len(loader)
     if n_batches == 0:
@@ -679,7 +704,8 @@ def check_resume_provenance(ckpt: dict, cfg: Config, checkpoint_path: str) -> No
 
 
 def train(cfg: Config, resume_from: str | None = None, start_step: int | None = None,
-          stride: int = 1, device_spec: str = "auto") -> None:
+          stride: int = 1, device_spec: str = "auto",
+          explicit_optimizer_fields: set[str] | None = None) -> None:
     ckpt = None
     if resume_from:
         ckpt = read_checkpoint(resume_from)
@@ -739,6 +765,9 @@ def train(cfg: Config, resume_from: str | None = None, start_step: int | None = 
     tokens_before = 0  # tokens a resumed run had already consumed
     if resume_from:
         ckpt = load_checkpoint(ckpt, model, optimizer)
+        # load_state_dict restored the checkpoint's parameter-group settings;
+        # put back the ones the user explicitly asked to change.
+        apply_explicit_optimizer_overrides(optimizer, cfg, explicit_optimizer_fields)
         # The LR schedule is a pure function of the step number, so continuing from
         # the checkpoint's step continues the original warmup/cosine curve.
         print(f"resumed {resume_from} at step {ckpt['step']} -> next {ckpt['step'] + 1}")
@@ -934,9 +963,9 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--warmup-steps", dest="warmup_steps", type=int, default=None,
                         help="linear warmup length in steps")
     parser.add_argument("--eval-interval", dest="eval_interval", type=int, default=None,
-                        help="steps between validation and checkpoints")
+                        help="steps between validation and checkpoints. Must be >= 1")
     parser.add_argument("--eval-batches", dest="eval_batches", type=int, default=None,
-                        help="validation batches averaged per evaluation")
+                        help="validation batches averaged per evaluation. Must be >= 1")
     parser.add_argument("--seed", type=int, default=None, help="random seed")
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto",
                         help="training device: auto (default) picks CUDA when "
@@ -1010,8 +1039,12 @@ def main() -> None:
     cfg.validate_against_data()
     if args.resume:
         print(f"resuming {args.resume}: step {resume_step} -> {start_step} of {cfg.max_steps}")
+    # None-defaulted flags are how this CLI distinguishes an explicit value from
+    # a default; train() needs that distinction to win over the checkpoint.
+    explicit = {name for name in ("beta1", "beta2", "weight_decay")
+                if getattr(args, name) is not None}
     train(cfg, resume_from=args.resume, start_step=start_step, stride=args.stride,
-          device_spec=args.device)
+          device_spec=args.device, explicit_optimizer_fields=explicit)
 
 
 if __name__ == "__main__":
