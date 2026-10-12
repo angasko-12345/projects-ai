@@ -75,3 +75,34 @@ class StateStoreTests(unittest.TestCase):
         self.assertEqual(latest.id, third)
         with self.assertRaises(ValueError):
             self.state.list_workflows(limit=-1)
+
+    def test_state_path_inside_a_file_refuses_with_a_clear_error(self):
+        # A repository path pointing at a file (or any non-directory)
+        # must fail fast with the path in the message, not surface as a
+        # raw "unable to open database file" from deep inside SQLite.
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as directory:
+            marker = Path(directory) / "not-a-directory"
+            marker.write_text("x", encoding="utf-8")
+            with self.assertRaises(OSError) as failure:
+                StateStore(marker / ".agentops" / "state.sqlite")
+            self.assertIn(str(marker), str(failure.exception))
+
+    def test_unwritable_state_directory_refuses_with_a_clear_error(self):
+        # Windows ACLs do not reliably deny the test process, so the
+        # unwritable directory is simulated at the probe seam: a failed
+        # probe must surface as an OSError naming the state directory,
+        # never as a raw SQLite open error.
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as directory:
+            state_dir = Path(directory) / ".agentops"
+            with patch("agentops.state.tempfile.NamedTemporaryFile",
+                       side_effect=PermissionError(13, "Permission denied")):
+                with self.assertRaises(OSError) as failure:
+                    StateStore(state_dir / "state.sqlite")
+            self.assertIn(str(state_dir), str(failure.exception))

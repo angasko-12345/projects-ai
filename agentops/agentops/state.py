@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -105,7 +106,26 @@ class StateStore:
         self.database_path = str(database_path)
         self._event_bus = event_bus
         if self.database_path != ":memory:":
-            Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
+            parent = Path(self.database_path).parent
+            try:
+                parent.mkdir(parents=True, exist_ok=True)
+            except OSError as error:
+                raise OSError(
+                    f"AgentOps cannot use state directory {parent}: "
+                    f"{error.strerror or error}") from error
+            # SQLite opens with WAL, which needs directory write access
+            # even for reads. Probe first so an unusable location fails
+            # here with the path in the message instead of surfacing as
+            # a raw "unable to open database file" on first load.
+            try:
+                with tempfile.NamedTemporaryFile(
+                        dir=str(parent), prefix=".agentops-write-probe-",
+                        delete=True):
+                    pass
+            except OSError as error:
+                raise OSError(
+                    f"AgentOps cannot write to state directory {parent}: "
+                    f"{error.strerror or error}") from error
         # RLock (not Lock): public methods nest (e.g. ready_tasks -> update_task).
         # check_same_thread=False + the lock make one store safe to share
         # across threads; across processes the conditional UPDATE in
