@@ -376,6 +376,75 @@ class TaskDetailPanel(DetailPanel):
         )
 
 
+def _looks_like_probe_error(text: object) -> bool:
+    """True when a version string is really a failed probe's error text."""
+    upper = str(text or "").upper()
+    if not upper.strip():
+        return False
+    return upper.startswith(
+        ("EPERM", "ENOENT", "EACCES", "ERROR", "TRACEBACK")
+    ) or any(marker in upper for marker in
+              ("FAILED", "NOT FOUND", "EXIT CODE", "COMMAND NOT FOUND"))
+
+
+class AgentDetailPanel(DetailPanel):
+    """One agent profile: configuration plus why it cannot run, if so."""
+
+    def _build_body(self) -> None:
+        self._grid = self.add_grid()
+
+    def set_agent(self, row: dict | None) -> None:
+        if not row:
+            self.show_placeholder("No agent selected",
+                                  "Pick an agent to inspect its configuration.")
+            return
+        name = str(row.get("display_name") or row.get("identifier") or "Agent")
+        self.set_heading(f"Agent {name}",
+                         subtitle=str(row.get("identifier") or ""))
+        self._grid.clear()
+        self._grid.add_row("Display name", row.get("display_name"))
+        self._grid.add_row("Identifier", row.get("identifier"), mono_value=True)
+        self._grid.add_row("Executable", row.get("executable_path") or "not found",
+                           mono_value=True)
+        self._grid.add_row("Detected version", row.get("detected_version") or "unknown")
+        self._grid.add_row("Availability",
+                           "available" if row.get("availability") else "unavailable")
+        self._grid.add_row("Availability note", self._availability_note(row))
+        self._grid.add_row("Priority", row.get("configured_priority"))
+        self._grid.add_row("Model", self._model_of(row))
+        self._grid.add_row("Roles", ", ".join(str(v) for v in row.get("roles") or []))
+        self._grid.add_row("Capabilities",
+                           ", ".join(str(v) for v in row.get("capabilities") or []))
+        self._grid.add_row("Structured output",
+                           "yes" if row.get("supported_structured_output") else "no")
+        self._grid.add_row("Cancellation",
+                           "yes" if row.get("cancellation_support") else "no")
+        self._grid.add_row("Timeout", "yes" if row.get("timeout_support") else "no")
+        self._grid.add_row("Interactive",
+                           "yes" if row.get("interactive_support") else "no")
+        self._grid.add_row("Non-interactive",
+                           "yes" if row.get("noninteractive_support") else "no")
+        self.show_content()
+
+    @staticmethod
+    def _model_of(row: dict) -> str:
+        metadata = row.get("metadata")
+        if isinstance(metadata, dict):
+            return str(metadata.get("model") or "unknown")
+        return "unknown"
+
+    @staticmethod
+    def _availability_note(row: dict) -> str:
+        if row.get("availability"):
+            return "Ready to run."
+        if not row.get("executable_path"):
+            return "Executable not found — install the CLI or fix its command in agents.yaml."
+        version = str(row.get("detected_version") or "")
+        if _looks_like_probe_error(version):
+            return f"Version probe failed ({elide(version, 60)}); marked unavailable."
+        return "Detected but unavailable."
+
+
 # ---------------------------------------------------------------------------
 # verification detail
 # ---------------------------------------------------------------------------

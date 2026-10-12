@@ -608,13 +608,27 @@ class StateStore:
         task.updated_at = utc_now()
         with self._lock:
             self.connection.execute(
-                """UPDATE tasks SET assigned_agent=?, status=?, attempts=?, result=?, verified=?,
+                """UPDATE tasks SET description=?, role=?, assigned_agent=?, status=?, attempts=?, result=?, verified=?,
                    verification_run_id=?, started_at=?, finished_at=?, updated_at=? WHERE id=?""",
-                (task.assigned_agent, task.status, task.attempts, task.result, int(task.verified),
+                (task.description, task.role, task.assigned_agent, task.status, task.attempts, task.result, int(task.verified),
                  task.verification_run_id, task.started_at, task.finished_at, task.updated_at, task.id),
             )
             self._event(task.workflow_id, task.id, "task-updated", task.status)
             self.connection.commit()
+
+    def delete_task(self, task_id: str) -> bool:
+        """Remove one task row; related runs keep their ``task_id`` text.
+
+        Runs, verifications, failures, and events reference tasks by plain
+        text (no foreign keys), so deleting a task never cascades: history
+        recorded against it stays readable. Callers must guard liveness
+        (never delete a running task) and keep at least one task per
+        workflow; this method only removes the row.
+        """
+        with self._lock:
+            cursor = self.connection.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+            self.connection.commit()
+            return cursor.rowcount == 1
 
     def claim_task(self, task_id: str) -> Task | None:
         """Atomically claim a PENDING task for execution."""

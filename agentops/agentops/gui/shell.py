@@ -259,6 +259,7 @@ class MainWindow(QMainWindow, AsyncMixin):
             open_run=self.open_run,
             operation_active=lambda: self._active,
             update_settings=self.update_settings,
+            new_task=self.open_new_task,
         )
         self._views_ctx = context
         self._views = create_views(context)
@@ -675,12 +676,13 @@ class MainWindow(QMainWindow, AsyncMixin):
         self._palette.set_commands(commands)
         self._palette.open_centered()
 
-    def open_new_task(self) -> None:
+    def open_new_task(self, initial_description: str = "") -> None:
         if self._active:
             self.toast("Operation in progress",
                        "Cancel the running task before starting another.", "warning")
             return
-        dialog = NewTaskDialog(self._views_ctx, self)
+        dialog = NewTaskDialog(self._views_ctx, self,
+                               initial_description=initial_description)
         if dialog.exec():
             values = dialog.values()
             self.start_task(

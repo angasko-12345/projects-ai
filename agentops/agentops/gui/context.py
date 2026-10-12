@@ -32,6 +32,7 @@ class ViewContext:
     open_run: Callable[[str], None]                  # run_id -> run detail
     operation_active: Callable[[], bool]             # shell-level background op state
     update_settings: Callable[[dict], None]          # partial settings update + persist
+    new_task: Callable[[str], None] | None = None    # prefilled description -> task dialog
 
     @property
     def controller(self) -> object:

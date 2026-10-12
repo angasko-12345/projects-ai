@@ -15,6 +15,8 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QPlainTextEdit,
+    QPushButton,
     QSizePolicy,
     QVBoxLayout,
 )
@@ -85,6 +87,37 @@ class DashboardView(BaseView):
         refresh.clicked.connect(self.refresh)
         self._page_header.add_action(refresh)
         root.addWidget(self._page_header)
+        hero = Card()
+        hero_body = hero.body()
+        hero_title = QLabel("What should the agents work on today?")
+        hero_title.setProperty("role", "title")
+        hero_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        hero_body.addWidget(hero_title)
+        self._hero_agents = QLabel("")
+        self._hero_agents.setProperty("role", "faint")
+        self._hero_agents.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        hero_body.addWidget(self._hero_agents)
+        self._hero_input = QPlainTextEdit()
+        self._hero_input.setPlaceholderText(
+            "Describe the outcome, e.g. \"Fix the failing widget tests and update "
+            "the README to match.\""
+        )
+        self._hero_input.setTabChangesFocus(True)
+        self._hero_input.setMinimumHeight(64)
+        self._hero_input.setMaximumHeight(110)
+        hero_body.addWidget(self._hero_input)
+        hero_row = QHBoxLayout()
+        hero_row.addStretch(1)
+        self._hero_hint = QLabel("Opens task setup with this description")
+        self._hero_hint.setProperty("role", "faint")
+        hero_row.addWidget(self._hero_hint)
+        self._hero_start = QPushButton("Start Task")
+        self._hero_start.setProperty("variant", "primary")
+        self._hero_start.setToolTip("Open the New Task dialog with this description")
+        self._hero_start.clicked.connect(self._start_hero_task)
+        hero_row.addWidget(self._hero_start)
+        hero_body.addLayout(hero_row)
+        root.addWidget(hero)
 
         stats = QHBoxLayout()
         stats.setSpacing(12)
@@ -193,6 +226,7 @@ class DashboardView(BaseView):
         for detail in (self._workflows_detail, self._tasks_detail,
                        self._verification_detail, self._agents_detail):
             detail.setText("")
+        self._hero_agents.setText("")
         self._attention_count.setText("")
         self._attention_empty.setText(_NO_REPOSITORY)
         self._attention_empty.show()
@@ -231,6 +265,20 @@ class DashboardView(BaseView):
             lambda: controller.list_agent_profiles(),
             self._on_agents,
         )
+
+    def _start_hero_task(self) -> None:
+        """Start from the hero prompt: hand the text to the task dialog."""
+        text = self._hero_input.toPlainText().strip()
+        if not text:
+            self.ctx.toast("Nothing to do", "Describe the task first.", "error")
+            self._hero_input.setFocus()
+            return
+        start = self.ctx.new_task
+        if start is None:
+            self.ctx.toast("Unavailable",
+                           "Task creation is not wired in this context.", "error")
+            return
+        start(text)
 
     def on_operation_event(self, event: dict) -> None:
         if str(event.get("kind") or "") in (
@@ -325,4 +373,6 @@ class DashboardView(BaseView):
         self._agents_stat.setText(f"{available} / {len(profiles)}")
         self._agents_detail.setText(
             "available now" if profiles else "none detected")
+        self._hero_agents.setText(
+            f"{available} of {len(profiles)} agents available")
         self._agents_loaded = True

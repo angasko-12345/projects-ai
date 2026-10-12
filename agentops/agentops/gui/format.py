@@ -63,14 +63,16 @@ def format_size(size: object) -> str:
     return f"{count / (1024 * 1024 * 1024):.1f} GB"
 
 
-def short_id(value: object, length: int = 8) -> str:
+def short_id(value: object, length: int = 8, tail: bool = False) -> str:
     """Shorten workflow/task ids for dense tables while staying recognizable.
 
     Truncation that saves only a few characters destroys more information
     than the space it buys (``failure-0`` cut to ``failure-`` is no longer
     distinguishable), so strings barely over the limit pass through whole.
+    ``tail`` keeps the trailing characters instead: prefixed ids such as
+    ``failure-71f34b4e`` stay distinguishable by their unique suffix.
     """
     text = str(value or "")
     if len(text) <= length + 4:
         return text
-    return text[:length]
+    return text[-length:] if tail else text[:length]

@@ -9,14 +9,21 @@ from ..format import elide, format_timestamp, short_id
 from ..widgets import TableColumn
 from .listdetail import ListDetailView
 
+
+def _words(value: object) -> str:
+    """``retry_same_agent`` -> ``retry same agent`` for dense table cells."""
+    return str(value or "").replace("_", " ")
+
+
 _COLUMNS = (
-    TableColumn("id", "Failure", 110, format=lambda value: short_id(value, 8)),
+    TableColumn("id", "Failure", 150,
+                format=lambda value: short_id(value, 8, tail=True)),
     TableColumn("severity", "Severity", 90),
-    TableColumn("category", "Category", 150),
-    TableColumn("source", "Source", 110),
-    TableColumn("recovery_state", "Recovery", 110),
+    TableColumn("category", "Category", 150, format=_words),
+    TableColumn("source", "Source", 110, format=_words),
+    TableColumn("recovery_state", "Recovery", 130, format=_words),
     TableColumn("recommended_action", "Recommended action", 220,
-                format=lambda value: elide(str(value or ""), 48)),
+                format=lambda value: elide(_words(value), 48)),
     TableColumn("primary_error", "Primary error", 240,
                 format=lambda value: elide(str(value or ""), 52)),
     TableColumn("retryable", "Retryable", 90,

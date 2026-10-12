@@ -576,6 +576,86 @@ class AgentOpsController:
         finally:
             state.close()
 
+    # -- task management -------------------------------------------------
+    #: Roles the Tasks surface allows when recategorizing. The engine builds
+    #: the standard four plus ad-hoc debugging tasks, so anything outside
+    #: this set would render as a custom DAG node the pipeline never owns.
+    TASK_ROLES = STANDARD_TASK_ROLES + ("debugging",)
+
+    @staticmethod
+    def _task_status(task: Task) -> str:
+        status = task.status
+        return str(getattr(status, "value", status))
+
+    def rename_task(self, directory: str | Path, task_id: str,
+                    description: str) -> dict[str, object]:
+        """Replace a task's description (its display name everywhere)."""
+        text = str(description or "").strip()
+        if not text:
+            raise ValueError("A task description cannot be empty.")
+        root = self._operation_root(directory)
+        state = StateStore(self._state_path(root))
+        try:
+            task = state.get_task(str(task_id))
+            if self._task_status(task) == "running":
+                raise ValueError("A running task cannot be renamed.")
+            task.description = text
+            state.update_task(task)
+            state.refresh_workflow_status(task.workflow_id)
+            return serialize_task(task)
+        finally:
+            state.close()
+
+    def recategorize_task(self, directory: str | Path, task_id: str,
+                          role: str) -> dict[str, object]:
+        """Move a task to another role (its category in the pipeline)."""
+        wanted = str(role or "").strip().lower()
+        if wanted not in self.TASK_ROLES:
+            raise ValueError(
+                f"Unknown role {role!r}; choose one of "
+                f"{', '.join(self.TASK_ROLES)}.")
+        root = self._operation_root(directory)
+        state = StateStore(self._state_path(root))
+        try:
+            task = state.get_task(str(task_id))
+            status = self._task_status(task)
+            if status not in ("pending", "blocked", "failed"):
+                raise ValueError(
+                    f"Only pending, blocked, or failed tasks can change role "
+                    f"(task is {status}).")
+            task.role = wanted
+            state.update_task(task)
+            state.refresh_workflow_status(task.workflow_id)
+            return serialize_task(task)
+        finally:
+            state.close()
+
+    def delete_task(self, directory: str | Path, task_id: str) -> dict[str, object]:
+        """Remove a task row; recorded runs keep their history text.
+
+        Refuses live work (a running task) and the workflow's last task,
+        so execution and the header status always have something to derive
+        from.
+        """
+        root = self._operation_root(directory)
+        state = StateStore(self._state_path(root))
+        try:
+            task = state.get_task(str(task_id))
+            if self._task_status(task) == "running":
+                raise ValueError("A running task cannot be deleted.")
+            siblings = state.list_tasks(task.workflow_id)
+            if len(siblings) <= 1:
+                raise ValueError("A workflow keeps at least one task.")
+            removed = state.delete_task(task.id)
+            if not removed:
+                raise KeyError(f"Unknown task: {task_id}")
+            state.refresh_workflow_status(task.workflow_id)
+            return {"id": task.id, "workflow_id": task.workflow_id,
+                    "description": task.description}
+        finally:
+            state.close()
+
+
     def list_workflows(
         self,
         directory: str | Path,

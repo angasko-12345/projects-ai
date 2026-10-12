@@ -32,7 +32,8 @@ _WARNING = "A description and repository are required to start a task."
 class NewTaskDialog(QDialog, AsyncMixin):
     """First-class task creation flow delegating to ``AgentOpsController``."""
 
-    def __init__(self, context: ViewContext, parent: QWidget | None = None):
+    def __init__(self, context: ViewContext, parent: QWidget | None = None,
+                 initial_description: str = "") -> None:
         super().__init__(parent)
         self.ctx = context
         self._init_async(context.bridge)
@@ -79,6 +80,8 @@ class NewTaskDialog(QDialog, AsyncMixin):
         )
         self._description.setTabChangesFocus(True)
         self._description.setMinimumHeight(140)
+        if str(initial_description or "").strip():
+            self._description.setPlainText(str(initial_description).strip())
         layout.addWidget(self._description)
 
         layout.addWidget(divider())

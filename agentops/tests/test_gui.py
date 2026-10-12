@@ -303,3 +303,115 @@ class RecentRunsPaginationTests(unittest.TestCase):
 
             page = controller.list_recent_failures(root, limit=3, offset=5)
             self.assertEqual(page, [])
+
+
+class TaskManagementTests(unittest.TestCase):
+    """Rename, recategorize, and delete flow through the real store."""
+
+    def _seed(self, directory):
+        root = Path(directory)
+        controller = AgentOpsController(
+            config=AppConfig({}, {}, (), max_attempts=1, concurrency=1))
+        state = StateStore(controller._state_path(root))
+        try:
+            workflow_id = state.create_workflow("managed workflow")
+            first = state.add_task(Task("first work", "implementation",
+                                        workflow_id, max_attempts=1))
+            second = state.add_task(Task("second work", "review",
+                                         workflow_id, max_attempts=1))
+        finally:
+            state.close()
+        return controller, root, workflow_id, first, second
+
+    def test_rename_task_updates_the_description(self):
+        with tempfile.TemporaryDirectory() as directory:
+            controller, root, _workflow_id, first, _second = self._seed(directory)
+            updated = controller.rename_task(root, first.id, "renamed work")
+            self.assertEqual(updated["description"], "renamed work")
+            state = StateStore(controller._state_path(root))
+            try:
+                self.assertEqual(state.get_task(first.id).description, "renamed work")
+            finally:
+                state.close()
+
+    def test_rename_task_rejects_empty_unknown_and_running(self):
+        with tempfile.TemporaryDirectory() as directory:
+            controller, root, _workflow_id, first, _second = self._seed(directory)
+            with self.assertRaises(ValueError):
+                controller.rename_task(root, first.id, "   ")
+            with self.assertRaises(KeyError):
+                controller.rename_task(root, "no-such-task", "name")
+            state = StateStore(controller._state_path(root))
+            try:
+                state.claim_task(first.id)
+            finally:
+                state.close()
+            with self.assertRaises(ValueError):
+                controller.rename_task(root, first.id, "new name")
+
+    def test_recategorize_task_moves_pending_work(self):
+        with tempfile.TemporaryDirectory() as directory:
+            controller, root, _workflow_id, first, _second = self._seed(directory)
+            updated = controller.recategorize_task(root, first.id, "debugging")
+            self.assertEqual(updated["role"], "debugging")
+            state = StateStore(controller._state_path(root))
+            try:
+                self.assertEqual(state.get_task(first.id).role, "debugging")
+            finally:
+                state.close()
+
+    def test_recategorize_task_rejects_bad_role_and_live_history(self):
+        with tempfile.TemporaryDirectory() as directory:
+            controller, root, _workflow_id, first, second = self._seed(directory)
+            with self.assertRaises(ValueError):
+                controller.recategorize_task(root, first.id, "janitor")
+            with self.assertRaises(KeyError):
+                controller.recategorize_task(root, "no-such-task", "review")
+            state = StateStore(controller._state_path(root))
+            try:
+                state.claim_task(first.id)
+                second.status = TaskStatus.PASSED
+                state.update_task(second)
+            finally:
+                state.close()
+            with self.assertRaises(ValueError):
+                controller.recategorize_task(root, first.id, "review")
+            with self.assertRaises(ValueError):
+                controller.recategorize_task(root, second.id, "review")
+
+    def test_delete_task_removes_the_row_and_refreshes_the_workflow(self):
+        with tempfile.TemporaryDirectory() as directory:
+            controller, root, workflow_id, first, second = self._seed(directory)
+            removed = controller.delete_task(root, first.id)
+            self.assertEqual(removed["id"], first.id)
+            self.assertEqual(removed["workflow_id"], workflow_id)
+            state = StateStore(controller._state_path(root))
+            try:
+                remaining = state.list_tasks(workflow_id)
+                self.assertEqual([task.id for task in remaining], [second.id])
+                with self.assertRaises(KeyError):
+                    state.get_task(first.id)
+            finally:
+                state.close()
+
+    def test_delete_task_refuses_running_and_last_tasks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            controller, root, _workflow_id, first, _second = self._seed(directory)
+            state = StateStore(controller._state_path(root))
+            try:
+                state.claim_task(first.id)
+            finally:
+                state.close()
+            with self.assertRaises(ValueError):
+                controller.delete_task(root, first.id)
+            with self.assertRaises(KeyError):
+                controller.delete_task(root, "no-such-task")
+            lonely_state = StateStore(controller._state_path(root))
+            try:
+                lonely_workflow = lonely_state.create_workflow("lonely workflow")
+                lonely = lonely_state.add_task(Task("only work", "implementation",
+                                                    lonely_workflow, max_attempts=1))
+            finally:
+                lonely_state.close()
+            with self.assertRaises(ValueError):
+                controller.delete_task(root, lonely.id)
