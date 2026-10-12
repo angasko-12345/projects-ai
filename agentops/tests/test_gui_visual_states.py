@@ -235,6 +235,71 @@ class VisualStateTest(unittest.TestCase):
         self.assertTrue(asset.is_file(), f"missing UI asset: {asset}")
         self.assertIn(asset.as_posix(), build_stylesheet())
 
+    def test_stat_cards_navigate_to_their_views(self):
+        # Dashboard headline numbers are shortcuts: activating a card must
+        # land on the view behind the number, not just restyle the card.
+        from PySide6.QtCore import Qt
+        from PySide6.QtTest import QTest
+
+        self._activate("dashboard")
+        view = self.window._views["dashboard"]
+        self.assertTrue(wait_until(lambda: view._summary_loaded))
+        for card, target in (
+            (view._workflows_card, "workflows"),
+            (view._tasks_card, "tasks"),
+            (view._verification_card, "verification"),
+        ):
+            card.clicked.emit()
+            self.assertIs(
+                self.window._stack.currentWidget(),
+                self.window._views[target])
+        # The real path matters too: a mouse press must navigate, and every
+        # card must stay keyboard-focusable for Enter/Space activation.
+        self._activate("dashboard")
+        QTest.mouseClick(view._agents_card,
+                         Qt.MouseButton.LeftButton)
+        self.assertIs(
+            self.window._stack.currentWidget(),
+            self.window._views["agents"])
+        for card in (view._workflows_card, view._tasks_card,
+                     view._verification_card, view._agents_card):
+            self.assertTrue(card.focusPolicy() != Qt.FocusPolicy.NoFocus)
+
+    def test_verification_health_stat_turns_red_on_failure(self):
+        # The canned summary carries one failed verification, so the health
+        # number must render in the danger color; a clean summary flips it
+        # back to success instead of leaving the stale red behind.
+        self._activate("dashboard")
+        view = self.window._views["dashboard"]
+        self.assertTrue(wait_until(lambda: view._summary_loaded))
+        self.assertEqual(view._verification_stat.text(), "1")
+        self.assertIn(DARK.danger, view._verification_stat.styleSheet())
+        view._on_summary({
+            "repository": REPOSITORY,
+            "total_workflows": 1,
+            "active_workflows": {"running": 0, "pending": 0},
+            "task_counts": {},
+            "verification_status": {"passed": 2},
+            "needs_attention": [],
+            "recent_workflows": [],
+            "recent_events": [],
+        })
+        self.assertEqual(view._verification_stat.text(), "2")
+        self.assertIn(DARK.success, view._verification_stat.styleSheet())
+
+    def test_control_center_tabs_show_live_record_counts(self):
+        # Tab labels carry the current record counts so the operator sees
+        # which pane holds data without counting table rows.
+        view = self.window._views["workflows"]
+        self._activate("workflows")
+        self.assertTrue(wait_until(lambda: view._list.proxy.rowCount() == 1))
+        view._list.select_row_index(0)
+        self.assertTrue(wait_until(lambda: view._tasks.proxy.rowCount() == 4))
+        self.assertEqual(view._tabs.tabText(0), "Tasks (4)")
+        self.assertEqual(view._tabs.tabText(1), "Runs (3)")
+        self.assertEqual(view._tabs.tabText(2), "Verification (2)")
+        self.assertEqual(view._tabs.tabText(3), "Failures (1)")
+
 
 
 if __name__ == "__main__":

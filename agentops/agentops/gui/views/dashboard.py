@@ -24,6 +24,7 @@ from ..tokens import DARK
 from ..widgets import (
     Card,
     PageHeader,
+    StatCard,
     TablePanel,
     TableColumn,
     ghost_button,
@@ -87,18 +88,18 @@ class DashboardView(BaseView):
 
         stats = QHBoxLayout()
         stats.setSpacing(12)
-        self._workflows_card = self._stat_card("Active workflows")
-        self._workflows_stat = self._card_stat(self._workflows_card)
-        self._workflows_detail = self._card_detail(self._workflows_card)
-        self._tasks_card = self._stat_card("Current tasks")
-        self._tasks_stat = self._card_stat(self._tasks_card)
-        self._tasks_detail = self._card_detail(self._tasks_card)
-        self._verification_card = self._stat_card("Verification health")
-        self._verification_stat = self._card_stat(self._verification_card)
-        self._verification_detail = self._card_detail(self._verification_card)
-        self._agents_card = self._stat_card("Detected agents")
-        self._agents_stat = self._card_stat(self._agents_card)
-        self._agents_detail = self._card_detail(self._agents_card)
+        (self._workflows_card, self._workflows_stat,
+         self._workflows_detail) = self._stat_card(
+            "Active workflows", "workflows", "Open the workflow control center")
+        (self._tasks_card, self._tasks_stat,
+         self._tasks_detail) = self._stat_card(
+            "Current tasks", "tasks", "Open the task list")
+        (self._verification_card, self._verification_stat,
+         self._verification_detail) = self._stat_card(
+            "Verification health", "verification", "Open verification runs")
+        (self._agents_card, self._agents_stat,
+         self._agents_detail) = self._stat_card(
+            "Detected agents", "agents", "Open the agent roster")
         for card in (self._workflows_card, self._tasks_card,
                      self._verification_card, self._agents_card):
             stats.addWidget(card, stretch=1)
@@ -166,21 +167,19 @@ class DashboardView(BaseView):
         self._show_no_repo()
 
     # ------------------------------------------------------------------
-    def _stat_card(self, title: str) -> Card:
-        return Card(title)
-
-    def _card_stat(self, card: Card) -> QLabel:
+    def _stat_card(self, title: str, target: str, tooltip: str) -> tuple[StatCard, QLabel, QLabel]:
+        """One clickable headline number navigating to its full view."""
+        card = StatCard(title)
+        card.setToolTip(tooltip)
+        card.clicked.connect(lambda: self.ctx.navigate(target))
         stat = QLabel("-")
         stat.setProperty("role", "stat")
         card.body().addWidget(stat)
-        return stat
-
-    def _card_detail(self, card: Card) -> QLabel:
         detail = QLabel("")
         detail.setProperty("role", "muted")
         detail.setWordWrap(True)
         card.body().addWidget(detail)
-        return detail
+        return card, stat, detail
 
     def _show_no_repo(self) -> None:
         """Empty state: no repository chosen, nothing loaded yet."""
@@ -190,6 +189,7 @@ class DashboardView(BaseView):
         for stat in (self._workflows_stat, self._tasks_stat,
                      self._verification_stat, self._agents_stat):
             stat.setText("-")
+            stat.setStyleSheet("")
         for detail in (self._workflows_detail, self._tasks_detail,
                        self._verification_detail, self._agents_detail):
             detail.setText("")
@@ -267,7 +267,10 @@ class DashboardView(BaseView):
         self._tasks_detail.setText(_counts_line(task_counts, exclude="running"))
 
         verification = dict(summary.get("verification_status") or {})
+        failed = int(verification.get("failed") or 0)
         self._verification_stat.setText(str(int(verification.get("passed") or 0)))
+        self._verification_stat.setStyleSheet(
+            f"color: {DARK.danger if failed else DARK.success};")
         self._verification_detail.setText(_counts_line(verification, exclude="passed"))
 
         needs = list(summary.get("needs_attention") or [])

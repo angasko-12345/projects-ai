@@ -135,6 +135,36 @@ class Card(QFrame):
     def add(self, widget: QWidget) -> None:
         self.layout().addWidget(widget)
 
+class StatCard(Card):
+    """Clickable dashboard statistic: keyboard-focusable, emits ``clicked``.
+
+    The whole surface is the affordance (pointing-hand cursor plus an accent
+    border on hover/focus from the stylesheet), so there is no nested button
+    to tab through. Keyboard users activate it with Enter or Space.
+    """
+
+    clicked = Signal()
+
+    def __init__(self, title: str = "", parent: QWidget | None = None):
+        super().__init__(title, parent)
+        self.setProperty("clickable", True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt API
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802 - Qt API
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
+            self.clicked.emit()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
 
 class SectionHeader(QWidget):
     """Title row with optional subtitle and trailing actions."""

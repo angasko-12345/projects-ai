@@ -473,6 +473,13 @@ QFrame[card="true"][active="true"] {{
 QFrame[card="true"]:hover {{
     border-color: {t.border_strong};
 }}
+QFrame[card="true"][clickable="true"]:hover {{
+    border-color: {t.accent};
+}}
+QFrame[card="true"][clickable="true"]:focus {{
+    border-color: {t.accent};
+    outline: none;
+}}
 QFrame[role="divider"] {{
     background: {t.border};
     border: none;

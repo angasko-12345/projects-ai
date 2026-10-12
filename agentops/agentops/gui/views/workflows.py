@@ -150,7 +150,7 @@ class WorkflowsView(BaseView):
         body.setSpacing(DARK.space_md)
         self._build_body(body)
         splitter.addWidget(self._body)
-        splitter.setStretchFactor(0, 2)
+        splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 5)
         root.addWidget(splitter, stretch=1)
 
@@ -181,6 +181,7 @@ class WorkflowsView(BaseView):
         self._checks_tally = Tally()
         layout.addWidget(self._checks_tally)
 
+        self._tab_names = ("Tasks", "Runs", "Verification", "Failures")
         self._tabs = QTabWidget()
         self._tabs.addTab(self._build_tasks_tab(), "Tasks")
         self._tabs.addTab(self._build_runs_tab(), "Runs")
@@ -188,6 +189,13 @@ class WorkflowsView(BaseView):
         self._tabs.addTab(self._build_failures_tab(), "Failures")
         self._tabs.addTab(self._build_worktree_tab(), "Worktree")
         layout.addWidget(self._tabs)
+
+    def _retitle_tabs(self, tasks: list, runs: list,
+                      verifications: list, failures: list) -> None:
+        """Show live record counts on the tab labels (e.g. ``Tasks (3)``)."""
+        for index, (name, rows) in enumerate(zip(
+                self._tab_names, (tasks, runs, verifications, failures))):
+            self._tabs.setTabText(index, f"{name} ({len(rows)})")
 
     def _build_tasks_tab(self) -> QWidget:
         page = QWidget()
@@ -382,6 +390,7 @@ class WorkflowsView(BaseView):
         self._verifications.set_rows(verifications)
         self._failures.set_rows(failures)
         self._artifacts.set_rows(artifacts)
+        self._retitle_tabs(tasks, runs, verifications, failures)
         self._apply_worktree(data.get("readiness"))
         self._select_by_id(self._tasks, self._selected_task_id or "")
 
