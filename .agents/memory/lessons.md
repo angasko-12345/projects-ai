@@ -993,3 +993,17 @@
 - **Fix:** repair is `git reset --soft HEAD~1` then recommit with `git commit -m ... -- <your paths>`; the other session's files return to staged exactly as they left them.
 - **Remember:** in this repo every commit is `git commit -- <paths>`, no matter how recently you staged; treat `git status` as a point-in-time read, not a guarantee about the index at commit time.
 
+
+### 2026-10-12 - Hashline range edits that restate neighbors eat lines -- diff every batch
+
+- **Symptom:** in one GUI session, range replacements silently deleted a `return` guard (`open_new_task` fell through to the dialog while an operation ran), two import lines, three view methods (`_load`/`fill_detail`/`_apply_filters`), a class header, and a test definition. Each compiled or failed far from the cause; the missing `return` passed compile and only showed in `git diff`.
+- **Root cause:** a `PUT N.=M` body that re-states surrounding lines for context replaces them, and any line miscounted or already-shifted by a prior edit in the batch deletes real code. Stale tags and folded displays make the miscounts easy.
+- **Fix:** prefer gap inserts (`PUT >N`) that touch nothing existing; keep ranges to exactly the lines that change; after every batch run `git diff` (it caught every one of these), `py_compile`, and an import pass over all touched modules -- module-level Qt code executes on import, so `import` catches NameErrors compile misses.
+- **Remember:** a green compile is not a green edit. Diff-read every hunk before moving on; the one you skip holds the deleted `return`.
+
+### 2026-10-12 - Qt offscreen determinism notes: restore clamp, proxy order, signal bools, grab artifacts
+
+- **Symptom:** four independent GUI-test mysteries in one session: (1) geometry round-trip restored 960 wide instead of 1024 after lowering the window minimum; (2) table row 1 was `t-3`, not `t-2`; (3) wiring `clicked` straight to a slot with a defaulted first arg would have received the checked-bool; (4) offscreen screenshots showed white detail panes that are dark on real displays.
+- **Root cause:** (1) `restoreGeometry` shrinks to fit minus offscreen window frames, then the minimum re-expands -- the old 1024 test only passed via the old minimum clamp. (2) The proxy sorts newest-first; positional ids are meaningless. (3) Qt passes signal args positionally into defaulted slot params. (4) Unpainted scroll viewports grab as white; same code, same class, renders dark on hardware.
+- **Fix:** size round-trip tests inside the true frame budget (960x730 still asserts exact fidelity); assert selected-row ids, never positions; wrap signal connections in `lambda _checked=False:`; verify visuals against real-display screenshots, treat offscreen slabs as artifacts.
+- **Remember:** when the environment disagrees with the code, suspect the environment first -- but prove it with a minimal snippet before dismissing what you see.
