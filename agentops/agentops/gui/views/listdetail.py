@@ -8,9 +8,10 @@ across refreshes, and the count label.
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QHBoxLayout, QSplitter, QVBoxLayout
+from PySide6.QtWidgets import QHBoxLayout, QMessageBox, QSplitter, QVBoxLayout
 
 from ..detail import DetailPanel
+from ..format import elide
 from ..widgets import PageHeader, SearchBox, TablePanel, TableColumn, faint
 from .base import BaseView
 
@@ -183,3 +184,39 @@ class ListDetailView(BaseView):
             self._count.setText(f"{total} rows")
         else:
             self._count.setText(f"{visible} of {total} rows")
+
+    # -- delete --------------------------------------------------------
+    def delete_selected(self, entity: str, delete, detail: str = "",
+                        extra: str = "") -> None:
+        """Confirm and delete the selected row through ``delete``.
+
+        ``delete(repository, id)`` runs off-thread (a controller delete);
+        success clears the selection, toasts, and refreshes. Views add
+        their own Delete button calling this with their entity wording.
+        """
+        row = self._table.selected_row()
+        if not row:
+            return
+        item_id = str(row.get("id") or "")
+        message = f"Delete this {entity}?"
+        if detail:
+            message += f"\n\n{elide(detail, 80)}"
+        if extra:
+            message += f"\n\n{extra}"
+        answer = QMessageBox.question(self, f"Delete {entity}", message)
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        repository = self.repository()
+
+        def done(_result: object) -> None:
+            self._selected_id = None
+            self.ctx.toast(f"{entity.title()} deleted", "", "success")
+            self.refresh()
+
+        self.submit(
+            f"delete-{entity}",
+            lambda: delete(repository, item_id),
+            done,
+            lambda message: self.ctx.toast(
+                f"Delete failed", message, "error"),
+        )

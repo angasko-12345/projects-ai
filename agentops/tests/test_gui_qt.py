@@ -615,9 +615,10 @@ class MainWindowShellTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "settings.json"
             self.window._settings_file = path
-            # Sized inside the offscreen screen (1024x768): restore clamps
-            # to the screen, which would mask a broken round trip.
-            self.window.resize(1024, 730)
+            # Sized inside the offscreen screen (1024x768) minus window
+            # frames: restore shrinks a 1024-wide window to fit, which
+            # would mask a broken round trip behind the clamp.
+            self.window.resize(960, 730)
             self.window._persist_window_state()
             self.window._save_settings()
             self.assertTrue(path.exists())

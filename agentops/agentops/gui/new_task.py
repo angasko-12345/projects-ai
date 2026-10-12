@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
 )
 
 from .views.base import AsyncMixin, ViewContext
-from .widgets import divider, faint, ghost_button, label, muted
+from .widgets import agent_icon, divider, faint, ghost_button, label, muted
 
 _WARNING = "A description and repository are required to start a task."
 
@@ -33,7 +33,9 @@ class NewTaskDialog(QDialog, AsyncMixin):
     """First-class task creation flow delegating to ``AgentOpsController``."""
 
     def __init__(self, context: ViewContext, parent: QWidget | None = None,
-                 initial_description: str = "") -> None:
+                 initial_description: str = "",
+                 initial_agent: str | None = None) -> None:
+        self._initial_agent = str(initial_agent) if initial_agent else None
         super().__init__(parent)
         self.ctx = context
         self._init_async(context.bridge)
@@ -178,7 +180,12 @@ class NewTaskDialog(QDialog, AsyncMixin):
             text = f"{display} ({identifier})"
             if not profile.get("availability"):
                 text += " - unavailable"
-            self._agent_combo.addItem(text, identifier)
+            self._agent_combo.addItem(agent_icon(identifier, display), text, identifier)
+        if self._initial_agent:
+            index = self._agent_combo.findData(self._initial_agent)
+            if index >= 0:
+                self._agent_combo.setCurrentIndex(index)
+                self._explicit.setChecked(True)
 
     # -- interaction ---------------------------------------------------
     def _browse(self) -> None:

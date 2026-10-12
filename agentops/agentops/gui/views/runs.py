@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QComboBox, QHBoxLayout
 
 from ..detail import RunDetailPanel
 from ..format import format_duration, format_timestamp, short_id
-from ..widgets import TableColumn
+from ..widgets import TableColumn, danger_button
 from .listdetail import ListDetailView
 
 _RUN_COLUMNS = (
@@ -61,6 +61,29 @@ class RunsView(ListDetailView):
 
         self._status.currentIndexChanged.connect(self._apply_filters)
         self._role.currentIndexChanged.connect(self._apply_filters)
+        self._delete_btn = danger_button("Delete")
+        self._delete_btn.setToolTip("Remove the selected run and its verifications")
+        self._delete_btn.clicked.connect(self._delete_selected_run)
+        toolbar.addWidget(self._delete_btn)
+
+    def _build_hook(self) -> None:
+        self._table.selection_changed.connect(
+            lambda _row: self._delete_btn.setEnabled(
+                self._table.selected_row() is not None))
+        self._delete_btn.setEnabled(False)
+
+    def _delete_selected_run(self) -> None:
+        row = self._table.selected_row() or {}
+        agent = str(row.get("agent") or "")
+        role = str(row.get("role") or "")
+        detail = f"{agent} - {role}".strip(" -")
+        self.delete_selected(
+            "agent run",
+            lambda repository, run_id: self.ctx.controller.delete_agent_run(
+                repository, run_id),
+            detail=detail,
+            extra="Linked verification runs go with it; failure rows stay readable.",
+        )
 
     # ------------------------------------------------------------------
     def _load(self) -> list[dict]:

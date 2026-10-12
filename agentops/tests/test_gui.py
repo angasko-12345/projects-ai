@@ -415,3 +415,201 @@ class TaskManagementTests(unittest.TestCase):
                 lonely_state.close()
             with self.assertRaises(ValueError):
                 controller.delete_task(root, lonely.id)
+
+
+class RecordManagementTests(unittest.TestCase):
+    """Delete/rename for workflows, runs, verifications, failures, artifacts."""
+
+    def _controller(self, directory):
+        from pathlib import Path as _Path
+
+        root = _Path(directory)
+        return (AgentOpsController(
+            config=AppConfig({}, {}, (), max_attempts=1, concurrency=1)), root)
+
+    def _seed_workflow(self, controller, root):
+        from agentops.artifacts import Artifact, ArtifactKind
+
+        state = StateStore(controller._state_path(root))
+        try:
+            workflow_id = state.create_workflow("managed workflow")
+            first = state.add_task(Task("first work", "implementation",
+                                        workflow_id, max_attempts=1))
+            second = state.add_task(Task("second work", "review",
+                                         workflow_id, max_attempts=1))
+            run = state.create_agent_run(AgentRunContext(
+                agent="codex", workflow_id=workflow_id, task_id=first.id))
+            profile = VerificationProfile(
+                name="unit", mode=VerificationProfileMode.FAIL_FAST,
+                concurrency=1, default_timeout_seconds=30, checks=())
+            verification = state.create_verification_run(
+                workflow_id, first.id, profile, source_agent_run_id=run.id)
+            state.finish_verification_run(
+                verification.id, VerificationRunStatus.COMPLETED,
+                VerificationReportStatus.PASSED, 0, 0, 0, 0, 0, 0.0)
+            failure = state.create_failure(Failure(
+                id="failure-1", workflow_id=workflow_id, task_id=first.id,
+                agent_run_id=run.id, source=FailureSource.AGENT,
+                category=FailureCategory.AGENT_ERROR,
+                severity=FailureSeverity.HIGH,
+                retryable=True, repairable=True, evidence="boom",
+                recommended_action=RepairAction.RETRY_SAME_AGENT,
+                recovery_state=RecoveryState.INTERRUPTED_AGENT_EXECUTION,
+            ))
+            artifact = state.create_artifact_record(Artifact(
+                workflow_id=workflow_id, task_id=first.id,
+                kind=ArtifactKind.PLANS, name="plan.md"))
+            state.finish_agent_run(run.id, AgentRunOutcome(
+                status=AgentRunStatus.COMPLETED, exit_code=0))
+        finally:
+            state.close()
+        return workflow_id, first, second, run, verification, failure, artifact
+
+    def test_rename_workflow_updates_the_description(self):
+        with tempfile.TemporaryDirectory() as directory:
+            controller, root = self._controller(directory)
+            workflow_id, *_rest = self._seed_workflow(controller, root)
+            updated = controller.rename_workflow(root, workflow_id, "renamed flow")
+            self.assertEqual(updated["description"], "renamed flow")
+            with self.assertRaises(ValueError):
+                controller.rename_workflow(root, workflow_id, "   ")
+            with self.assertRaises(KeyError):
+                controller.rename_workflow(root, "no-such-flow", "name")
+
+    def test_delete_workflow_cascades_everything(self):
+        with tempfile.TemporaryDirectory() as directory:
+            controller, root = self._controller(directory)
+            workflow_id, _first, _second, run, verification, _failure, _artifact = (
+                self._seed_workflow(controller, root))
+            removed = controller.delete_workflow(root, workflow_id)
+            counts = removed["removed"]
+            self.assertEqual(counts["tasks"], 2)
+            self.assertEqual(counts["agent_runs"], 1)
+            self.assertEqual(counts["verification_runs"], 1)
+            self.assertEqual(counts["failures"], 1)
+            self.assertEqual(counts["artifacts"], 1)
+            self.assertEqual(counts["workflows"], 1)
+            state = StateStore(controller._state_path(root))
+            try:
+                self.assertIsNone(state.get_workflow(workflow_id))
+                self.assertEqual(state.list_tasks(workflow_id), [])
+                self.assertEqual(state.list_events(workflow_id), [])
+                with self.assertRaises(KeyError):
+                    state.get_agent_run(run.id)
+                with self.assertRaises(KeyError):
+                    state.get_verification_run(verification.id)
+            finally:
+                state.close()
+            with self.assertRaises(KeyError):
+                controller.delete_workflow(root, workflow_id)
+
+    def test_delete_workflow_refuses_live_work(self):
+        with tempfile.TemporaryDirectory() as directory:
+            controller, root = self._controller(directory)
+            workflow_id, first, _second, _run, _ver, _fail, _art = (
+                self._seed_workflow(controller, root))
+            state = StateStore(controller._state_path(root))
+            try:
+                state.claim_task(first.id)
+            finally:
+                state.close()
+            with self.assertRaises(ValueError):
+                controller.delete_workflow(root, workflow_id)
+
+    def test_delete_agent_run_cascades_verifications_but_keeps_failures(self):
+        with tempfile.TemporaryDirectory() as directory:
+            controller, root = self._controller(directory)
+            _wf, _first, _second, run, verification, failure, _art = (
+                self._seed_workflow(controller, root))
+            removed = controller.delete_agent_run(root, run.id)
+            self.assertEqual(removed["id"], run.id)
+            state = StateStore(controller._state_path(root))
+            try:
+                with self.assertRaises(KeyError):
+                    state.get_agent_run(run.id)
+                with self.assertRaises(KeyError):
+                    state.get_verification_run(verification.id)
+                kept = [item for item in state.list_failures()
+                        if item.id == failure.id]
+                self.assertEqual(len(kept), 1)
+            finally:
+                state.close()
+
+    def test_delete_agent_run_refuses_live_and_parent_runs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            controller, root = self._controller(directory)
+            workflow_id, first, _second, _run, _ver, _fail, _art = (
+                self._seed_workflow(controller, root))
+            state = StateStore(controller._state_path(root))
+            try:
+                live = state.create_agent_run(AgentRunContext(
+                    agent="codex", workflow_id=workflow_id, task_id=first.id))
+                parent = state.create_agent_run(AgentRunContext(
+                    agent="codex", workflow_id=workflow_id, task_id=first.id))
+                child = state.create_agent_run(AgentRunContext(
+                    agent="codex", workflow_id=workflow_id, task_id=first.id,
+                    parent_run_id=parent.id,
+                    relationship="retry"))
+                state.finish_agent_run(child.id, AgentRunOutcome(
+                    status=AgentRunStatus.COMPLETED, exit_code=0))
+                state.finish_agent_run(parent.id, AgentRunOutcome(
+                    status=AgentRunStatus.COMPLETED, exit_code=0))
+            finally:
+                state.close()
+            with self.assertRaises(ValueError):
+                controller.delete_agent_run(root, live.id)
+            with self.assertRaises(ValueError):
+                controller.delete_agent_run(root, parent.id)
+            with self.assertRaises(KeyError):
+                controller.delete_agent_run(root, "no-such-run")
+            controller.delete_agent_run(root, child.id)
+
+    def test_delete_verification_run_drops_checks_and_report(self):
+        with tempfile.TemporaryDirectory() as directory:
+            controller, root = self._controller(directory)
+            _wf, _first, _second, _run, verification, _fail, _art = (
+                self._seed_workflow(controller, root))
+            removed = controller.delete_verification_run(root, verification.id)
+            self.assertEqual(removed["id"], verification.id)
+            state = StateStore(controller._state_path(root))
+            try:
+                with self.assertRaises(KeyError):
+                    state.get_verification_run(verification.id)
+                self.assertEqual(
+                    state.list_verification_checks(verification.id), [])
+            finally:
+                state.close()
+            with self.assertRaises(KeyError):
+                controller.delete_verification_run(root, verification.id)
+
+    def test_delete_verification_run_refuses_live_runs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            controller, root = self._controller(directory)
+            workflow_id, first, _second, _run, _ver, _fail, _art = (
+                self._seed_workflow(controller, root))
+            profile = VerificationProfile(
+                name="unit", mode=VerificationProfileMode.FAIL_FAST,
+                concurrency=1, default_timeout_seconds=30, checks=())
+            state = StateStore(controller._state_path(root))
+            try:
+                live = state.create_verification_run(
+                    workflow_id, first.id, profile)
+                state.start_verification_run(live.id)
+            finally:
+                state.close()
+            with self.assertRaises(ValueError):
+                controller.delete_verification_run(root, live.id)
+
+    def test_delete_failure_and_artifact(self):
+        with tempfile.TemporaryDirectory() as directory:
+            controller, root = self._controller(directory)
+            _wf, _first, _second, _run, _ver, failure, artifact = (
+                self._seed_workflow(controller, root))
+            self.assertEqual(
+                controller.delete_failure(root, failure.id)["id"], failure.id)
+            with self.assertRaises(KeyError):
+                controller.delete_failure(root, failure.id)
+            removed = controller.delete_artifact(root, artifact.id)
+            self.assertEqual(removed["name"], "plan.md")
+            with self.assertRaises(KeyError):
+                controller.delete_artifact(root, artifact.id)

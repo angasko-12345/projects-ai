@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QCheckBox, QComboBox, QHBoxLayout
 
 from ..detail import FailureDetailPanel
 from ..format import elide, format_timestamp, short_id
-from ..widgets import TableColumn
+from ..widgets import TableColumn, danger_button
 from .listdetail import ListDetailView
 
 
@@ -63,6 +63,10 @@ class FailuresView(ListDetailView):
         )
         self._actionable.toggled.connect(lambda _on: self._set_rows(self._all_rows))
         toolbar.addWidget(self._actionable)
+        self._delete_btn = danger_button("Delete")
+        self._delete_btn.setToolTip("Remove the selected failure record")
+        self._delete_btn.clicked.connect(self._delete_selected_failure)
+        toolbar.addWidget(self._delete_btn)
 
     def _apply_filters(self, *_args: object) -> None:
         super()._apply_filters()
@@ -71,6 +75,19 @@ class FailuresView(ListDetailView):
     def _build_hook(self) -> None:
         self._all_rows: list[dict] = []
         self._detail.changed.connect(self.refresh)
+        self._table.selection_changed.connect(
+            lambda _row: self._delete_btn.setEnabled(
+                self._table.selected_row() is not None))
+        self._delete_btn.setEnabled(False)
+
+    def _delete_selected_failure(self) -> None:
+        row = self._table.selected_row() or {}
+        self.delete_selected(
+            "failure",
+            lambda repository, failure_id: self.ctx.controller.delete_failure(
+                repository, failure_id),
+            detail=str(row.get("primary_error") or row.get("category") or ""),
+        )
 
     # ------------------------------------------------------------------
     def _load(self) -> list[dict]:

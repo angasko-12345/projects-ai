@@ -7,8 +7,16 @@ widgets here only lay out what the controller already reported.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QSplitter, QTabWidget, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QComboBox,
+    QHBoxLayout,
+    QInputDialog,
+    QMessageBox,
+    QSplitter,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
+)
 
 from .. import control_center as projection
 from ..detail import _confirm
@@ -24,6 +32,7 @@ from ..widgets import (
     SectionHeader,
     StageFlow,
     TablePanel,
+    SearchBox,
     TableColumn,
     Tally,
     danger_button,
@@ -133,7 +142,28 @@ class WorkflowsView(BaseView):
         self._recover = ghost_button("Recover interrupted")
         self._recover.clicked.connect(self._recover_workflow)
         self._page_header.add_action(self._recover)
+        self._rename_btn = ghost_button("Rename...")
+        self._rename_btn.setToolTip("Edit the selected workflow's description")
+        self._rename_btn.clicked.connect(self._rename_workflow)
+        self._page_header.add_action(self._rename_btn)
+        self._delete_btn = danger_button("Delete")
+        self._delete_btn.setToolTip("Remove the selected workflow and its records")
+        self._delete_btn.clicked.connect(self._delete_workflow)
+        self._page_header.add_action(self._delete_btn)
         root.addWidget(self._page_header)
+        list_toolbar = QHBoxLayout()
+        list_toolbar.setSpacing(8)
+        self._wf_search = SearchBox("Search workflows...")
+        self._wf_search.textChanged.connect(self._apply_list_filters)
+        list_toolbar.addWidget(self._wf_search, stretch=1)
+        self._wf_status = QComboBox()
+        self._wf_status.addItem("All statuses", None)
+        for status in ("pending", "running", "passed", "failed", "blocked",
+                       "completed", "merged", "cancelled"):
+            self._wf_status.addItem(status.title(), status)
+        list_toolbar.addWidget(self._wf_status)
+        self._wf_status.currentIndexChanged.connect(self._apply_list_filters)
+        root.addLayout(list_toolbar)
 
         splitter = QSplitter()
         self._list = TablePanel(
@@ -286,6 +316,85 @@ class WorkflowsView(BaseView):
     # ------------------------------------------------------------------
     # data
     # ------------------------------------------------------------------
+    # -- list filter and record management -------------------------------
+    def _apply_list_filters(self, *_args: object) -> None:
+        self._list.set_filter(self._wf_search.text())
+        self._list.set_column_filter("status", self._wf_status.currentData() or "")
+
+    def _current_row(self) -> dict | None:
+        """Selected list row, falling back to the open workflow."""
+        for index in range(self._list.proxy.rowCount()):
+            record = self._list.row_of(self._list.proxy.index(index, 0))
+            if record and str(record.get("id") or "") == (self._current_id or ""):
+                return record
+        return None
+
+    def _rename_workflow(self) -> None:
+        row = self._current_row()
+        if not row:
+            self.ctx.toast("No workflow selected",
+                           "Pick a workflow to rename it.", "warning")
+            return
+        workflow_id = str(row.get("id") or "")
+        text, accepted = QInputDialog.getText(
+            self, "Rename workflow", "Description:",
+            text=str(row.get("description") or ""))
+        if not accepted:
+            return
+        repository = self.repository()
+
+        def done(_result: object) -> None:
+            self.ctx.toast("Workflow renamed", "", "success")
+            self._load_current()
+            self.refresh()
+
+        self.submit(
+            "rename-workflow",
+            lambda: self.ctx.controller.rename_workflow(
+                repository, workflow_id, text),
+            done,
+            lambda message: self.ctx.toast("Rename failed", message, "error"),
+        )
+
+    def _delete_workflow(self) -> None:
+        row = self._current_row()
+        if not row:
+            self.ctx.toast("No workflow selected",
+                           "Pick a workflow to delete it.", "warning")
+            return
+        workflow_id = str(row.get("id") or "")
+        counts = self._payload if self._payload.get("workflow", {}).get("id") == workflow_id else {}
+        parts = []
+        for key, label in (("tasks", "tasks"), ("runs", "runs"),
+                           ("verifications", "verification runs"),
+                           ("failures", "failures"), ("artifacts", "artifacts")):
+            total = len(counts.get(key) or [])
+            if total:
+                parts.append(f"{total} {label}")
+        detail = f"\n\nRemoves {', '.join(parts)}." if parts else ""
+        answer = QMessageBox.question(
+            self, "Delete workflow",
+            f"Delete this workflow?\n\n{elide(row.get('description'), 80)}"
+            f"{detail}\n\nOn-disk worktrees are left alone.",
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        repository = self.repository()
+
+        def done(_result: object) -> None:
+            self._current_id = None
+            self._selected_task_id = None
+            self._payload = {}
+            self.ctx.toast("Workflow deleted", "", "success")
+            self.refresh()
+
+        self.submit(
+            "delete-workflow",
+            lambda: self.ctx.controller.delete_workflow(repository, workflow_id),
+            done,
+            lambda message: self.ctx.toast("Delete failed", message, "error"),
+        )
+
     def refresh(self) -> None:
         repository = self.repository()
         if not repository:

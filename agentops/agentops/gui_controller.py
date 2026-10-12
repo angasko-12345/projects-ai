@@ -655,6 +655,129 @@ class AgentOpsController:
         finally:
             state.close()
 
+    @staticmethod
+    def _record_status(record: object) -> str:
+        status = getattr(record, "status", "")
+        return str(getattr(status, "value", status))
+
+    def rename_workflow(self, directory: str | Path, workflow_id: str,
+                        description: str) -> dict[str, object]:
+        """Replace a workflow's description (its display name everywhere)."""
+        text = str(description or "").strip()
+        if not text:
+            raise ValueError("A workflow description cannot be empty.")
+        root = self._operation_root(directory)
+        state = StateStore(self._state_path(root))
+        try:
+            workflow = state.get_workflow(str(workflow_id))
+            if workflow is None:
+                raise KeyError(f"Unknown workflow: {workflow_id}")
+            workflow.description = text
+            if not state.rename_workflow(workflow.id, text):
+                raise KeyError(f"Unknown workflow: {workflow_id}")
+            return serialize_workflow(workflow)
+        finally:
+            state.close()
+
+    def delete_workflow(self, directory: str | Path,
+                        workflow_id: str) -> dict[str, object]:
+        """Remove a workflow and every record that belongs to it.
+
+        Refuses live work (a running workflow or any running task). The
+        on-disk worktree and its branch are deliberately left alone for
+        the Worktrees surface to clean up.
+        """
+        root = self._operation_root(directory)
+        state = StateStore(self._state_path(root))
+        try:
+            workflow = state.get_workflow(str(workflow_id))
+            if workflow is None:
+                raise KeyError(f"Unknown workflow: {workflow_id}")
+            if self._record_status(workflow) == "running":
+                raise ValueError("A running workflow cannot be deleted.")
+            live = [
+                task.id for task in state.list_tasks(workflow.id)
+                if self._task_status(task) == "running"
+            ]
+            if live:
+                raise ValueError("A workflow with running tasks cannot be deleted.")
+            removed = state.delete_workflow(workflow.id)
+            if not removed.get("workflows"):
+                raise KeyError(f"Unknown workflow: {workflow_id}")
+            return {"id": workflow.id, "description": workflow.description,
+                    "removed": removed}
+        finally:
+            state.close()
+
+    def delete_agent_run(self, directory: str | Path,
+                         run_id: str) -> dict[str, object]:
+        """Remove an agent run with its linked verification runs.
+
+        Failure rows keep plain-text references and stay readable. Refuses
+        live runs and runs that follow-up runs still reference.
+        """
+        root = self._operation_root(directory)
+        state = StateStore(self._state_path(root))
+        try:
+            run = state.get_agent_run(str(run_id))
+            if self._record_status(run) in ("pending", "starting", "running"):
+                raise ValueError("A live agent run cannot be deleted.")
+            if not state.delete_agent_run(run.id):
+                raise ValueError(
+                    "This run has follow-up runs; delete those first.")
+            return {"id": run.id, "workflow_id": run.workflow_id,
+                    "task_id": run.task_id}
+        finally:
+            state.close()
+
+    def delete_verification_run(self, directory: str | Path,
+                                run_id: str) -> dict[str, object]:
+        """Remove a verification run with its checks and report."""
+        root = self._operation_root(directory)
+        state = StateStore(self._state_path(root))
+        try:
+            run = state.get_verification_run(str(run_id))
+            if self._record_status(run) in ("pending", "running"):
+                raise ValueError("A live verification run cannot be deleted.")
+            if not state.delete_verification_run(run.id):
+                raise KeyError(f"Unknown verification run: {run_id}")
+            return {"id": run.id, "workflow_id": run.workflow_id,
+                    "task_id": run.task_id}
+        finally:
+            state.close()
+
+    def delete_failure(self, directory: str | Path,
+                       failure_id: str) -> dict[str, object]:
+        """Remove one failure record."""
+        root = self._operation_root(directory)
+        state = StateStore(self._state_path(root))
+        try:
+            if not state.delete_failure(str(failure_id)):
+                raise KeyError(f"Unknown failure: {failure_id}")
+            return {"id": str(failure_id)}
+        finally:
+            state.close()
+
+    def delete_artifact(self, directory: str | Path,
+                        artifact_id: str) -> dict[str, object]:
+        """Remove an artifact's file and its metadata row together."""
+        root = self._operation_root(directory)
+        state = StateStore(self._state_path(root))
+        try:
+            artifact = state.get_artifact(str(artifact_id))
+            if artifact is None:
+                raise KeyError(f"Unknown artifact: {artifact_id}")
+            store = ArtifactStore(self._artifact_root(root))
+            try:
+                store.delete(artifact)
+            except ArtifactError as error:
+                raise ValueError(str(error))
+            state.delete_artifact_record(artifact.id)
+            return {"id": artifact.id, "name": artifact.name}
+        finally:
+            state.close()
+
+
 
     def list_workflows(
         self,

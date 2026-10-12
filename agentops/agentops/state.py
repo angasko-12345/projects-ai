@@ -630,6 +630,137 @@ class StateStore:
             self.connection.commit()
             return cursor.rowcount == 1
 
+    def rename_workflow(self, workflow_id: str, description: str) -> bool:
+        """Replace a workflow header's description; True when a row changed."""
+        with self._lock:
+            cursor = self.connection.execute(
+                "UPDATE workflows SET description=?, updated_at=? WHERE id=?",
+                (description, utc_now(), workflow_id),
+            )
+            self.connection.commit()
+            return cursor.rowcount == 1
+
+    def delete_failure(self, failure_id: str) -> bool:
+        """Remove one failure row; True when a row was removed."""
+        with self._lock:
+            cursor = self.connection.execute(
+                "DELETE FROM failures WHERE id = ?", (failure_id,))
+            self.connection.commit()
+            return cursor.rowcount == 1
+
+    def delete_verification_run(self, run_id: str) -> bool:
+        """Remove a verification run with its checks and report."""
+        with self._lock:
+            self.connection.execute(
+                "DELETE FROM verification_checks WHERE run_id = ?", (run_id,))
+            self.connection.execute(
+                "DELETE FROM verification_reports WHERE run_id = ?", (run_id,))
+            cursor = self.connection.execute(
+                "DELETE FROM verification_runs WHERE id = ?", (run_id,))
+            self.connection.commit()
+            return cursor.rowcount == 1
+
+    def delete_agent_run(self, run_id: str) -> bool:
+        """Remove an agent run with its linked verification runs.
+
+        Linked verifications cascade (their checks and reports go with
+        them); failure rows keep plain-text references and stay readable.
+        Refuses (False) when follow-up runs still reference this one —
+        deleting a retried run out from under its retry would orphan the
+        chain, so callers surface that instead.
+        """
+        with self._lock:
+            child = self.connection.execute(
+                """SELECT id FROM agent_runs WHERE parent_run_id = ?
+                   OR retry_of = ? OR repair_of = ? LIMIT 1""",
+                (run_id, run_id, run_id),
+            ).fetchone()
+            if child is not None:
+                return False
+            linked = [
+                row["id"] for row in self.connection.execute(
+                    "SELECT id FROM verification_runs WHERE source_agent_run_id = ?",
+                    (run_id,),
+                ).fetchall()
+            ]
+            for verification_id in linked:
+                self.connection.execute(
+                    "DELETE FROM verification_checks WHERE run_id = ?",
+                    (verification_id,),
+                )
+                self.connection.execute(
+                    "DELETE FROM verification_reports WHERE run_id = ?",
+                    (verification_id,),
+                )
+                self.connection.execute(
+                    "DELETE FROM verification_runs WHERE id = ?", (verification_id,))
+            cursor = self.connection.execute(
+                "DELETE FROM agent_runs WHERE id = ?", (run_id,))
+            self.connection.commit()
+            return cursor.rowcount == 1
+
+    def delete_workflow(self, workflow_id: str) -> dict[str, int]:
+        """Remove a workflow and every row that belongs to it.
+
+        Ordered for enforced foreign keys (checks before runs, childless
+        agent runs before their parents). Timeline events go with the
+        workflow; on-disk worktrees and their branches are left alone for
+        the Worktrees surface to clean up. Returns per-table row counts.
+        """
+        removed: dict[str, int] = {}
+        with self._lock:
+            run_ids = [
+                row["id"] for row in self.connection.execute(
+                    "SELECT id FROM verification_runs WHERE workflow_id = ?",
+                    (workflow_id,),
+                ).fetchall()
+            ]
+            checks = 0
+            for verification_id in run_ids:
+                cursor = self.connection.execute(
+                    "DELETE FROM verification_checks WHERE run_id = ?",
+                    (verification_id,),
+                )
+                checks += cursor.rowcount
+            removed["checks"] = checks
+            cursor = self.connection.execute(
+                "DELETE FROM verification_reports WHERE run_id IN "
+                "(SELECT id FROM verification_runs WHERE workflow_id = ?)",
+                (workflow_id,),
+            )
+            removed["reports"] = cursor.rowcount
+            cursor = self.connection.execute(
+                "DELETE FROM verification_runs WHERE workflow_id = ?", (workflow_id,))
+            removed["verification_runs"] = cursor.rowcount
+            runs = 0
+            run_total = self.connection.execute(
+                "SELECT COUNT(*) AS total FROM agent_runs WHERE workflow_id = ?",
+                (workflow_id,),
+            ).fetchone()["total"]
+            for _ in range(int(run_total) + 1):
+                cursor = self.connection.execute(
+                    """DELETE FROM agent_runs WHERE workflow_id = ? AND id NOT IN (
+                           SELECT parent_run_id FROM agent_runs WHERE parent_run_id IS NOT NULL
+                           UNION SELECT retry_of FROM agent_runs WHERE retry_of IS NOT NULL
+                           UNION SELECT repair_of FROM agent_runs WHERE repair_of IS NOT NULL
+                       )""",
+                    (workflow_id,),
+                )
+                runs += cursor.rowcount
+                if cursor.rowcount == 0:
+                    break
+            removed["agent_runs"] = runs
+            for table in ("failures", "tasks", "artifacts", "worktree_refs",
+                          "events", "typed_events"):
+                cursor = self.connection.execute(
+                    f"DELETE FROM {table} WHERE workflow_id = ?", (workflow_id,))
+                removed[table] = cursor.rowcount
+            cursor = self.connection.execute(
+                "DELETE FROM workflows WHERE id = ?", (workflow_id,))
+            removed["workflows"] = cursor.rowcount
+            self.connection.commit()
+            return removed
+
     def claim_task(self, task_id: str) -> Task | None:
         """Atomically claim a PENDING task for execution."""
         now = utc_now()

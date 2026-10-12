@@ -14,6 +14,7 @@ from pathlib import Path
 from PySide6.QtCore import QByteArray, QEasingCurve, QPropertyAnimation, Qt, QTimer
 from PySide6.QtGui import QAction, QColor, QIcon, QKeySequence, QPainter, QPixmap, QShortcut
 from PySide6.QtWidgets import (
+    QComboBox,
     QFileDialog,
     QFrame,
     QGraphicsOpacityEffect,
@@ -85,7 +86,7 @@ class MainWindow(QMainWindow, AsyncMixin):
         super().__init__()
         self.setObjectName("MainWindow")
         self.setWindowTitle("AgentOps")
-        self.setMinimumSize(1024, 680)
+        self.setMinimumSize(960, 620)
         self._controller = controller
         self._settings = settings if settings is not None else load_settings()
         self._settings_file = settings_file
@@ -148,11 +149,12 @@ class MainWindow(QMainWindow, AsyncMixin):
         repo_column = QVBoxLayout()
         repo_column.setSpacing(0)
         repo_column.addWidget(faint("Current repository"))
-        self._repo_label = QLabel("")
-        self._repo_label.setProperty("role", "mono")
-        self._repo_label.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse)
-        repo_column.addWidget(self._repo_label)
+        self._repo_combo = QComboBox()
+        self._repo_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self._repo_combo.setMinimumWidth(240)
+        self._repo_combo.setToolTip("Switch repository")
+        self._repo_combo.activated.connect(self._on_repo_combo)
+        repo_column.addWidget(self._repo_combo)
         bar.addLayout(repo_column)
         change = ghost_button("Change...")
         change.clicked.connect(self.choose_repository)
@@ -176,7 +178,7 @@ class MainWindow(QMainWindow, AsyncMixin):
 
         self._new_task_btn = QPushButton("New Task")
         self._new_task_btn.setProperty("variant", "primary")
-        self._new_task_btn.clicked.connect(self.open_new_task)
+        self._new_task_btn.clicked.connect(lambda _checked=False: self.open_new_task())
         bar.addWidget(self._new_task_btn)
         root.addWidget(topbar)
 
@@ -308,7 +310,7 @@ class MainWindow(QMainWindow, AsyncMixin):
         hide_action = QAction("Hide AgentOps", self)
         hide_action.triggered.connect(self.hide)
         new_action = QAction("New Task...", self)
-        new_action.triggered.connect(self.open_new_task)
+        new_action.triggered.connect(lambda _checked=False: self.open_new_task())
         quit_action = QAction("Quit", self)
         quit_action.triggered.connect(self.close)
         menu.addAction(show_action)
@@ -365,9 +367,30 @@ class MainWindow(QMainWindow, AsyncMixin):
     # repository
     # ------------------------------------------------------------------
     def _sync_repository_label(self) -> None:
-        path = self._repository or "No repository chosen"
-        self._repo_label.setText(elide(path, 56))
-        self._repo_label.setToolTip(path)
+        """Rebuild the repository switcher: current repo first, recents after."""
+        combo = self._repo_combo
+        combo.blockSignals(True)
+        try:
+            combo.clear()
+            paths = [self._repository, *self._settings.recent_repositories]
+            seen: list[str] = []
+            for path in paths:
+                if path and path not in seen:
+                    seen.append(path)
+            if not seen:
+                combo.addItem("No repository chosen", None)
+            for path in seen:
+                combo.addItem(elide(path, 56), path)
+                combo.setItemData(combo.count() - 1, path, Qt.ItemDataRole.ToolTipRole)
+            combo.setCurrentIndex(0)
+        finally:
+            combo.blockSignals(False)
+
+    def _on_repo_combo(self, index: int) -> None:
+        """Instant repository switch straight from the persisted recents."""
+        path = self._repo_combo.itemData(index)
+        if isinstance(path, str) and path.strip():
+            self.set_repository(path)
 
     def set_repository(self, path: str) -> None:
         cleaned = str(path).strip()
@@ -676,13 +699,15 @@ class MainWindow(QMainWindow, AsyncMixin):
         self._palette.set_commands(commands)
         self._palette.open_centered()
 
-    def open_new_task(self, initial_description: str = "") -> None:
+    def open_new_task(self, initial_description: str = "",
+                      initial_agent: str | None = None) -> None:
         if self._active:
             self.toast("Operation in progress",
                        "Cancel the running task before starting another.", "warning")
             return
         dialog = NewTaskDialog(self._views_ctx, self,
-                               initial_description=initial_description)
+                               initial_description=initial_description,
+                               initial_agent=initial_agent)
         if dialog.exec():
             values = dialog.values()
             self.start_task(

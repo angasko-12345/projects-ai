@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Callable, Sequence
+import zlib
 
 from PySide6.QtCore import (
     QAbstractTableModel,
@@ -21,7 +22,7 @@ from PySide6.QtCore import (
     QVariantAnimation,
     Signal,
 )
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
@@ -504,6 +505,43 @@ class Badge(QLabel):
             f"background: {with_alpha(background, 0.16)}; "
             f"border: 1px solid {with_alpha(foreground, 0.35)}; }}"
         )
+
+
+def _agent_hue(identifier: str) -> int:
+    """Stable 0..359 hue for an agent id (crc32, not salted ``hash``)."""
+    return zlib.crc32(str(identifier or "").encode("utf-8")) % 360
+
+
+def agent_icon(identifier: str, display_name: str = "", size: int = 16) -> QIcon:
+    """Monogram tile identifying one agent in pickers and headers.
+
+    Brand logos stay out on purpose: they need network fetches and carry
+    redistribution baggage, while a hue-per-id tile with the agent's
+    initial is offline, deterministic, and consistent across surfaces.
+    """
+    letter = ""
+    for character in str(display_name or identifier or ""):
+        if character.isalnum():
+            letter = character.upper()
+            break
+    letter = letter or "?"
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    try:
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor.fromHsv(_agent_hue(identifier), 150, 110))
+        painter.drawRoundedRect(0, 0, size, size, size // 4, size // 4)
+        painter.setPen(QColor("#ffffff"))
+        font = painter.font()
+        font.setPixelSize(max(8, int(size * 0.6)))
+        font.setBold(True)
+        painter.setFont(font)
+        painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, letter)
+    finally:
+        painter.end()
+    return QIcon(pixmap)
 
 
 # ---------------------------------------------------------------------------

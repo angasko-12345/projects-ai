@@ -21,11 +21,11 @@ from agentops.gui.tokens import ASSET_DIR, DARK, build_stylesheet
 try:  # `discover -s tests` puts tests/ on sys.path; direct runs do not.
     from tests.qt_display import destroy, make_context, qt_app, requires_qt, wait, wait_until
     from tests.test_gui_qt import (
-        FAILURES, REPOSITORY, RUNS, TASKS, VERIFICATIONS, FakeController)
+        FAILURES, PROFILES, REPOSITORY, RUNS, TASKS, VERIFICATIONS, FakeController)
 except ModuleNotFoundError:
     from qt_display import destroy, make_context, qt_app, requires_qt, wait, wait_until
     from test_gui_qt import (
-        FAILURES, REPOSITORY, RUNS, TASKS, VERIFICATIONS, FakeController)
+        FAILURES, PROFILES, REPOSITORY, RUNS, TASKS, VERIFICATIONS, FakeController)
 
 
 # Every test in this class builds a real MainWindow, and `setUp` imports
@@ -413,16 +413,18 @@ class VisualStateTest(unittest.TestCase):
     def test_dashboard_hero_hands_its_text_to_task_creation(self):
         from dataclasses import replace
 
-        received: list[str] = []
+        received: list[tuple] = []
         self._activate("dashboard")
         view = self.window._views["dashboard"]
-        view.ctx = replace(view.ctx, new_task=received.append)
+        view.ctx = replace(
+            view.ctx, new_task=lambda text, agent=None: received.append(
+                (text, agent)))
         view._hero_input.setPlainText("  hero task  ")
         view._start_hero_task()
-        self.assertEqual(received, ["hero task"])
+        self.assertEqual(received, [("hero task", None)])
         view._hero_input.setPlainText("   ")
         view._start_hero_task()
-        self.assertEqual(received, ["hero task"])
+        self.assertEqual(received, [("hero task", None)])
 
     def test_new_task_dialog_accepts_a_prefilled_description(self):
         from agentops.gui.new_task import NewTaskDialog
@@ -434,6 +436,172 @@ class VisualStateTest(unittest.TestCase):
                 dialog._description.toPlainText(), "prefilled work")
         finally:
             dialog.deleteLater()
+
+    def test_workflow_list_filters_narrow_before_delete(self):
+        view = self.window._views["workflows"]
+        self._activate("workflows")
+        self.assertTrue(wait_until(lambda: view._list.proxy.rowCount() == 1))
+        view._wf_search.setText("zzz-no-such-workflow")
+        self.assertEqual(view._list.proxy.rowCount(), 0)
+        view._wf_search.setText("")
+        self.assertEqual(view._list.proxy.rowCount(), 1)
+        failed_index = view._wf_status.findText("Failed")
+        self.assertGreater(failed_index, 0)
+        view._wf_status.setCurrentIndex(failed_index)
+        self.assertEqual(view._list.proxy.rowCount(), 0)
+        view._wf_status.setCurrentIndex(0)
+        self.assertEqual(view._list.proxy.rowCount(), 1)
+
+    def test_workflow_rename_and_delete_call_through(self):
+        from PySide6.QtWidgets import QMessageBox
+
+        view = self.window._views["workflows"]
+        self._activate("workflows")
+        self.assertTrue(wait_until(lambda: view._list.proxy.rowCount() == 1))
+        view._list.select_row_index(0)
+        self.assertTrue(wait_until(lambda: view._tasks.proxy.rowCount() == 4))
+        renamed: list[tuple] = []
+        self.controller.rename_workflow = (  # type: ignore[attr-defined]
+            lambda directory, workflow_id, description: renamed.append(
+                (workflow_id, description)) or {"id": workflow_id})
+        with patch("agentops.gui.views.workflows.QInputDialog.getText",
+                   return_value=("renamed flow", True)):
+            view._rename_workflow()
+        self.assertTrue(wait_until(lambda: len(renamed) == 1))
+        self.assertEqual(renamed[0], ("wf-1", "renamed flow"))
+        deleted: list[tuple] = []
+        self.controller.delete_workflow = (  # type: ignore[attr-defined]
+            lambda directory, workflow_id: deleted.append(workflow_id) or {
+                "id": workflow_id})
+        with patch("agentops.gui.views.workflows.QMessageBox.question",
+                   return_value=QMessageBox.StandardButton.Yes):
+            view._delete_workflow()
+        self.assertTrue(wait_until(lambda: len(deleted) == 1))
+        self.assertEqual(deleted[0], "wf-1")
+
+    def test_record_delete_buttons_call_through(self):
+        cases = (
+            ("runs", 3, "delete_agent_run"),
+            ("verification", 2, "delete_verification_run"),
+            ("failures", 1, "delete_failure"),
+            ("artifacts", 1, "delete_artifact"),
+        )
+        for view_id, rows, method in cases:
+            with self.subTest(view=view_id):
+                from PySide6.QtWidgets import QMessageBox
+
+                view = self.window._views[view_id]
+                calls: list[str] = []
+                setattr(self.controller, method, (
+                    lambda directory, item_id: calls.append(item_id)
+                    or {"id": item_id}))
+                self._activate(view_id)
+                self.assertTrue(
+                    wait_until(lambda: view._table.proxy.rowCount() == rows))
+                view._table.select_row_index(0)
+                self.assertTrue(
+                    wait_until(lambda: view._delete_btn.isEnabled()))
+                with patch(
+                        "agentops.gui.views.listdetail.QMessageBox.question",
+                        return_value=QMessageBox.StandardButton.Yes):
+                    view._delete_btn.click()
+                self.assertTrue(wait_until(lambda: len(calls) == 1))
+
+    def test_worktree_delete_and_managed_filter(self):
+        from PySide6.QtWidgets import QMessageBox
+
+        view = self.window._views["worktrees"]
+        self._activate("worktrees")
+        self.assertTrue(wait_until(lambda: view._table.proxy.rowCount() == 1))
+        managed_index = view._managed.findText("Unmanaged")
+        view._managed.setCurrentIndex(managed_index)
+        self.assertEqual(view._table.proxy.rowCount(), 0)
+        view._managed.setCurrentIndex(0)
+        self.assertEqual(view._table.proxy.rowCount(), 1)
+        calls: list[tuple] = []
+        self.controller.cleanup_worktree = (  # type: ignore[attr-defined]
+            lambda directory, path, delete_branch=False: calls.append(
+                (directory, path, delete_branch)) or {"removed_worktree": True})
+        view._table.select_row_index(0)
+        self.assertTrue(wait_until(lambda: view._delete_btn.isEnabled()))
+        with patch("agentops.gui.views.worktrees.QMessageBox.question",
+                   return_value=QMessageBox.StandardButton.Yes):
+            view._delete_btn.click()
+        self.assertTrue(wait_until(lambda: len(calls) == 1))
+        self.assertTrue(str(calls[0][1]).endswith("wf-1"))
+
+    def test_artifact_kind_combo_populates_from_rows(self):
+        view = self.window._views["artifacts"]
+        self._activate("artifacts")
+        self.assertTrue(wait_until(lambda: view._table.proxy.rowCount() == 1))
+        kinds = [view._kind.itemText(index)
+                 for index in range(view._kind.count())]
+        self.assertIn("All kinds", kinds)
+        self.assertIn("plans", kinds)
+        view._kind.setCurrentIndex(view._kind.findText("plans"))
+        self.assertEqual(view._table.proxy.rowCount(), 1)
+
+    def test_repo_switcher_lists_recents_and_switches(self):
+        import tempfile
+        from pathlib import Path as _Path
+
+        self.window._settings_file = _Path(tempfile.mkdtemp()) / "settings.json"
+        self.window.set_repository("D:/other-repo")
+        combo = self.window._repo_combo
+        self.assertEqual(combo.count(), 2)
+        index = combo.findData("D:/repo")
+        self.assertGreaterEqual(index, 0)
+        combo.setCurrentIndex(index)
+        combo.activated.emit(index)
+        self.assertEqual(self.window._repository, "D:/repo")
+
+    def test_hero_agent_picker_flows_into_task_creation(self):
+        from dataclasses import replace
+
+        self._activate("dashboard")
+        view = self.window._views["dashboard"]
+        self.assertTrue(wait_until(lambda: view._agents_loaded))
+        self.assertEqual(view._hero_agent.count(), 2)
+        self.assertFalse(view._hero_agent.itemIcon(1).isNull())
+        view._hero_agent.setCurrentIndex(1)
+        self.assertEqual(view._hero_agent.currentData(), "codex")
+        received: list[tuple] = []
+        view.ctx = replace(
+            view.ctx, new_task=lambda text, agent=None: received.append(
+                (text, agent)))
+        view._hero_input.setPlainText("hero work")
+        view._start_hero_task()
+        self.assertEqual(received, [("hero work", "codex")])
+
+    def test_new_task_dialog_prefills_agent_choice(self):
+        from agentops.gui.new_task import NewTaskDialog
+
+        context = make_context(object())
+        dialog = NewTaskDialog(context, initial_agent="codex")
+        try:
+            dialog._on_agents(PROFILES)
+            self.assertTrue(dialog._explicit.isChecked())
+            self.assertEqual(dialog._agent_combo.currentData(), "codex")
+        finally:
+            dialog.deleteLater()
+
+    def test_agent_icons_are_stable_sized_and_lettered(self):
+        from agentops.gui.widgets import _agent_hue, agent_icon
+
+        self.assertEqual(_agent_hue("codex"), _agent_hue("codex"))
+        self.assertTrue(0 <= _agent_hue("codex") < 360)
+        self.assertTrue(0 <= _agent_hue("") < 360)
+        icon = agent_icon("codex", "Codex", 16)
+        self.assertFalse(icon.isNull())
+        self.assertEqual(icon.pixmap(16, 16).width(), 16)
+
+    def test_dashboard_scrolls_and_window_has_compact_minimum(self):
+        from PySide6.QtWidgets import QScrollArea
+
+        view = self.window._views["dashboard"]
+        self.assertIsNotNone(view.findChild(QScrollArea))
+        self.assertEqual(self.window.minimumWidth(), 960)
+        self.assertEqual(self.window.minimumHeight(), 620)
 
 
 

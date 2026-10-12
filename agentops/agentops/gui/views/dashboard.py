@@ -11,19 +11,23 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QComboBox,
     QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QVBoxLayout,
+    QWidget,
 )
 
 from ..format import elide, format_timestamp, short_id
 from ..tokens import DARK
 from ..widgets import (
+    agent_icon,
     Card,
     PageHeader,
     StatCard,
@@ -78,7 +82,17 @@ class DashboardView(BaseView):
 
     # ------------------------------------------------------------------
     def _build(self) -> None:
-        root = QVBoxLayout(self)
+        # Scrollable so short windows reach every card instead of clipping
+        # the activity feed; the inner layout keeps the usual margins.
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        outer.addWidget(scroll)
+        inner = QWidget()
+        scroll.setWidget(inner)
+        root = QVBoxLayout(inner)
         root.setContentsMargins(18, 18, 18, 18)
         root.setSpacing(12)
 
@@ -107,6 +121,11 @@ class DashboardView(BaseView):
         self._hero_input.setMaximumHeight(110)
         hero_body.addWidget(self._hero_input)
         hero_row = QHBoxLayout()
+        self._hero_agent = QComboBox()
+        self._hero_agent.setMinimumWidth(200)
+        self._hero_agent.setToolTip("Which agent should do this task")
+        self._hero_agent.addItem("Automatic routing", None)
+        hero_row.addWidget(self._hero_agent)
         hero_row.addStretch(1)
         self._hero_hint = QLabel("Opens task setup with this description")
         self._hero_hint.setProperty("role", "faint")
@@ -278,7 +297,8 @@ class DashboardView(BaseView):
             self.ctx.toast("Unavailable",
                            "Task creation is not wired in this context.", "error")
             return
-        start(text)
+        agent = self._hero_agent.currentData()
+        start(text, str(agent) if agent else None)
 
     def on_operation_event(self, event: dict) -> None:
         if str(event.get("kind") or "") in (
@@ -375,4 +395,20 @@ class DashboardView(BaseView):
             "available now" if profiles else "none detected")
         self._hero_agents.setText(
             f"{available} of {len(profiles)} agents available")
+        current = self._hero_agent.currentData()
+        self._hero_agent.blockSignals(True)
+        try:
+            self._hero_agent.clear()
+            self._hero_agent.addItem("Automatic routing", None)
+            for profile in profiles:
+                if not profile.get("availability"):
+                    continue
+                identifier = str(profile.get("identifier") or "")
+                display = str(profile.get("display_name") or identifier)
+                self._hero_agent.addItem(
+                    agent_icon(identifier, display), display, identifier)
+            index = self._hero_agent.findData(current)
+            self._hero_agent.setCurrentIndex(index if index >= 0 else 0)
+        finally:
+            self._hero_agent.blockSignals(False)
         self._agents_loaded = True
