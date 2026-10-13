@@ -173,6 +173,19 @@ class SchemaTests(unittest.TestCase):
                             for p in check_schema(document)))
 
 
+    def test_recorded_failed_product_is_rejected(self):
+        # Issue #12: a record with result != "pass" must fail the check, so
+        # a red suite can never read as verified evidence.
+        document = good_document()
+        document["products"][0]["result"] = "fail"
+        document["products"][0]["failures"] = 2
+        document["products"][0]["summary"] = [
+            "Ran 100 tests in 1.0s", "FAILED (failures=2)"]
+        problems = check_schema(document)
+        self.assertTrue(
+            any("only a passing result" in p for p in problems), problems)
+        self.assertTrue(check(document))
+
 class StalenessTests(unittest.TestCase):
     """Judged per record, against the commit that record was measured at."""
 

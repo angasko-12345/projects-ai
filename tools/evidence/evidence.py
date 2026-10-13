@@ -246,6 +246,14 @@ def check_schema(document: object) -> list[str]:
                             "the run was not understood")
         if record["result"] == "pass" and record["skipped"] == record["total"]:
             problems.append(f"{label}: every test skipped, which is never a pass")
+        # A recorded failure is a measurement too, but it can never anchor a
+        # passing claim: the checker must exit non-zero while any product is
+        # red so a failing suite cannot be mistaken for verified evidence.
+        if record["result"] != "pass":
+            problems.append(
+                f"{label}: result is {record['result']!r}; only a passing "
+                "result can anchor verification evidence -- fix the suite "
+                "and regenerate")
 
         # Re-derive the counts from the recorded runner output. This is what
         # catches a hand-edited number: the fields and the summary lines the

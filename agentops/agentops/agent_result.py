@@ -620,6 +620,7 @@ def evaluate_execution(
             merge_eligible=False,
             reasons=("outcome evaluation fallback",),
         )
+from .verdict import Verdict, parse_verdict, verdict_to_json
 
 
 __all__ = [
@@ -630,8 +631,11 @@ __all__ = [
     "ExecutionOutcome",
     "ParseMode",
     "ParsedAgentResult",
+    "Verdict",
     "agent_result_from_dict",
     "coerce_agent_result",
     "evaluate_execution",
     "parse_agent_result",
+    "parse_verdict",
+    "verdict_to_json",
 ]

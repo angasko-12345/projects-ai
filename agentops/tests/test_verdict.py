@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import unittest
 
 from agentops.verdict import Verdict, parse_verdict, verdict_to_json
@@ -51,6 +52,52 @@ class VerdictTest(unittest.TestCase):
 
     def test_parse_verdict_missing_verdict_returns_none(self):
         text = '{"schema_version": 1, "blocking": [], "non_blocking": [], "confidence": 0.9}'
+        self.assertIsNone(parse_verdict(text))
+
+    def test_parse_verdict_rejects_missing_or_malformed_required_fields(self):
+        valid = {
+            "schema_version": 1,
+            "verdict": "approve",
+            "blocking": [],
+            "non_blocking": [],
+            "confidence": 0.9,
+        }
+        malformed = []
+        for field in ("blocking", "non_blocking", "confidence"):
+            payload = dict(valid)
+            del payload[field]
+            malformed.append(payload)
+        for value in (None, "none", 7, {"finding": "hidden"}):
+            malformed.append(dict(valid, blocking=value))
+        malformed.append(dict(valid, non_blocking="not a list"))
+        malformed.append(dict(valid, non_blocking=["ok", 7]))
+        malformed.append(dict(valid, confidence=10**400))
+
+        for payload in malformed:
+            with self.subTest(payload=payload):
+                self.assertIsNone(parse_verdict(json.dumps(payload)))
+
+    def test_parse_verdict_uses_the_last_json_object_in_output_order(self):
+        text = (
+            '{"schema_version":1,"verdict":"approve","blocking":[],'
+            '"non_blocking":[],"confidence":0.99}\nFinal review:\n```json\n'
+            '{\n  "schema_version": 1,\n  "verdict": "reject",\n'
+            '  "blocking": ["unsafe"],\n  "non_blocking": [],\n'
+            '  "confidence": 0.99\n}\n```\n'
+        )
+        parsed = parse_verdict(text)
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed.verdict, "reject")
+        self.assertFalse(parsed.is_approved)
+
+    def test_parse_verdict_does_not_fall_back_to_approval_after_malformed_final_block(self):
+        text = (
+            '{"schema_version":1,"verdict":"approve","blocking":[],'
+            '"non_blocking":[],"confidence":0.99}\n'
+            "Final review:\n```json\n"
+            '{"schema_version":1,"verdict":"reject","blocking":["unsafe"],\n'
+            "```\n"
+        )
         self.assertIsNone(parse_verdict(text))
 
     def test_parse_verdict_wrong_schema_version_returns_none(self):

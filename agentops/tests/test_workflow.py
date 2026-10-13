@@ -50,7 +50,13 @@ class WorkflowTests(unittest.TestCase):
             return_value=AgentRunMetadata(files_changed=("src/app.py",)))
 
     async def _run_agent(self, agent, prompt, directory, task_id, cancel_event=None):
-        return RunResult(agent.config.name, ("fake",), 0, "done", "", 0.01, False, Path(f"{task_id}.log"))
+        role = self.state.get_task(task_id).role
+        stdout = (
+            '{"schema_version":1,"verdict":"approve","blocking":[],'
+            '"non_blocking":[],"confidence":0.99}'
+            if role == "review" else "done"
+        )
+        return RunResult(agent.config.name, ("fake",), 0, stdout, "", 0.01, False, Path(f"{task_id}.log"))
 
     def tearDown(self):
         self.state.close()
@@ -273,8 +279,19 @@ class CancelledAndTerminatedAreNotSuccessTests(WorkflowTests):
 
     def _engine_returning(self, **result_kwargs):
         async def _run(agent, prompt, directory, task_id, cancel_event=None):
+            role = self.state.get_task(task_id).role
+            stdout = (
+                '{"schema_version":1,"verdict":"approve","blocking":[],'
+                '"non_blocking":[],"confidence":0.99}'
+                if role == "review" and not (
+                    result_kwargs.get("cancelled", False)
+                    or result_kwargs.get("terminated", False)
+                    or result_kwargs["timed_out"]
+                    or result_kwargs["exit_code"] != 0
+                ) else "partial output"
+            )
             return RunResult(agent.config.name, ("fake",), result_kwargs["exit_code"],
-                             "partial output", "", 0.01, result_kwargs["timed_out"],
+                             stdout, "", 0.01, result_kwargs["timed_out"],
                              Path(f"{task_id}.log"),
                              cancelled=result_kwargs.get("cancelled", False),
                              terminated=result_kwargs.get("terminated", False))
@@ -442,8 +459,14 @@ class StructuredAgentResultTaskStatusTests(WorkflowTests):
             text = stdout if stdout is not None else "done"
 
         async def _run(agent, prompt, directory, task_id, cancel_event=None):
+            role = self.state.get_task(task_id).role
+            review_verdict = (
+                '{"schema_version":1,"verdict":"approve","blocking":[],'
+                '"non_blocking":[],"confidence":0.99}'
+            )
+            task_text = review_verdict if role == "review" else text
             return RunResult(agent.config.name, ("fake",), exit_code,
-                             text, "", 0.01, False, Path(f"{task_id}.log"),
+                             task_text, "", 0.01, False, Path(f"{task_id}.log"),
                              structured_result=structured)
         self.runner.run_agent = _run
         collector = MagicMock(return_value=AgentRunMetadata(files_changed=("a.txt",)))

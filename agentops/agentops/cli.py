@@ -27,7 +27,7 @@ from .state import StateStore
 from .verification import Verifier
 from .verification_kernel import VerificationKernel
 from .verification_model import VerificationReportStatus
-from .workflow import WorkflowEngine, WorkflowResult
+from .workflow import WorkflowEngine, WorkflowResult, verdict_summary_for_task
 
 
 # The merge rule lives in finalize.py so the CLI and the desktop client cannot
@@ -234,6 +234,14 @@ def main(argv: list[str] | None = None, services: CliServices | None = None) -> 
                 print(f"{workflow.id}  {workflow.status.value}  {workflow.description}")
                 for task in state.list_tasks(workflow.id):
                     print(f"  {task.status:<8} {task.role:<16} {task.description}")
+                    try:
+                        summary = verdict_summary_for_task(task)
+                    except Exception:
+                        summary = None
+                    if summary is not None:
+                        blocking = "; ".join(str(item) for item in summary["blocking"][:3])
+                        extra = f" blocking=[{blocking}]" if blocking else ""
+                        print(f"  {'':<8} {'verdict':<16} {summary['verdict']}{extra}")
                 for run in state.list_agent_runs(workflow.id, limit=50):
                     print(
                         f"  run {run.status.value:<10} {run.agent or '<no-agent>':<14} "

@@ -13,7 +13,7 @@ from agentops.logging import LogManager, _redact
 from agentops.registry import AgentRegistry
 from agentops.runner import AgentRunner, RunResult
 from agentops.state import StateStore
-from agentops.tasks import Task
+from agentops.tasks import Task, TaskStatus
 from agentops.verification import Verifier
 from agentops.workflow import WorkflowEngine
 
@@ -77,6 +77,59 @@ class VerificationRegressions(unittest.TestCase):
             self.assertFalse(final.verified)
         finally:
             state.close()
+
+
+class ReviewVerdictWorkflowRegressions(unittest.TestCase):
+    """A review task must satisfy the structured verdict contract to pass."""
+
+    def _run_review(self, stdout):
+        config, state, registry, runner, verifier = _engine(
+            max_attempts=1, max_repair_cycles=0,
+        )
+        prompts = []
+
+        async def _review(agent, prompt, directory, task_id, cancel_event=None):
+            prompts.append(prompt)
+            return RunResult(
+                agent.config.name, ("fake",), 0, stdout, "", 0.01, False,
+                Path(f"{task_id}.log"),
+            )
+
+        runner.run_agent = _review
+        try:
+            engine = WorkflowEngine(config, state, registry, runner, verifier)
+            workflow_id = state.create_workflow("review verdict test")
+            task = state.add_task(Task("Review the change", "review", workflow_id, max_attempts=1))
+            asyncio.run(engine.execute(workflow_id, Path.cwd()))
+            return state.get_task(task.id), prompts[0]
+        finally:
+            state.close()
+
+    def test_review_without_verdict_fails_and_prompt_requires_contract(self):
+        task, prompt = self._run_review("Looks good to me.")
+        self.assertEqual(task.status, TaskStatus.FAILED)
+        self.assertIn("review verdict", (task.result or "").lower())
+        self.assertIn('"schema_version": 1', prompt)
+        self.assertIn('"blocking"', prompt)
+
+    def test_review_rejection_or_blocking_findings_fails(self):
+        outputs = (
+            '{"schema_version":1,"verdict":"reject","blocking":["unsafe input"],'
+            '"non_blocking":[],"confidence":0.99}',
+            '{"schema_version":1,"verdict":"approve","blocking":["missing test"],'
+            '"non_blocking":[],"confidence":0.99}',
+        )
+        for output in outputs:
+            with self.subTest(output=output):
+                task, _ = self._run_review(output)
+                self.assertEqual(task.status, TaskStatus.FAILED)
+
+    def test_review_with_valid_approval_passes(self):
+        task, _ = self._run_review(
+            '{"schema_version":1,"verdict":"approve","blocking":[],'
+            '"non_blocking":[],"confidence":0.99}'
+        )
+        self.assertEqual(task.status, TaskStatus.PASSED)
 
 
 class DependencyRegressions(unittest.TestCase):

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import re
 import subprocess
 import sys
 import threading
@@ -50,6 +51,8 @@ from .failure import (
 )
 from .logging import redact_text
 from .persistence import DegradationRecorder, event_emitter
+from .security import findings_for_prompt, scan_many
+from .verdict import parse_verdict
 
 
 def _scrub_structured(value: object) -> object:
@@ -68,8 +71,10 @@ def _scrub_structured(value: object) -> object:
     except Exception:
         return "[UNREPRESENTABLE]"
     return value
+
+
 from .config import AppConfig
-from .events import Event, EventType
+from .events import Event, EventSeverity, EventType
 from .registry import AgentRegistry, DetectedAgent
 from .routing import AgentRouter
 from .runner import AgentRunner, OperationCancelled, RunResult
@@ -78,6 +83,119 @@ from .tasks import Task, TaskStatus, utc_now
 from .verification import Verifier
 from .verification_kernel import VerificationKernel
 from .verification_model import VerificationReportStatus
+
+
+def _requires_review_verdict(role: object) -> bool:
+    """Whether a task role is required to end with an explicit review verdict."""
+    normalized = " ".join(
+        str(role or "").strip().lower().replace("_", " ").replace("-", " ").split()
+    )
+    return normalized in {"review", "security review", "security"}
+
+
+def verdict_summary_for_task(task: object) -> dict[str, object] | None:
+    """Small redacted verdict summary for a review/security task, if any."""
+    try:
+        role = getattr(task, "role", None)
+        if not _requires_review_verdict(role):
+            return None
+        verdict = parse_verdict(getattr(task, "result", None))
+        if verdict is None:
+            return {"role": role, "verdict": "missing", "approved": False,
+                    "blocking": [], "non_blocking": []}
+        return {"role": role, "verdict": verdict.verdict, "approved": verdict.is_approved,
+                "blocking": [redact_text(item)[:500] for item in verdict.blocking],
+                "non_blocking": [redact_text(item)[:500] for item in verdict.non_blocking]}
+    except Exception:
+        return None
+
+
+def _is_security_role(role: object) -> bool:
+    """Whether a task role is the optional security review."""
+    normalized = " ".join(
+        str(role or "").strip().lower().replace("_", " ").replace("-", " ").split()
+    )
+    return normalized in {"security", "security review"}
+
+
+def _local_security_findings(working_directory: str | Path) -> list:
+    """Redacted secret findings for the worktree diff. Never raises."""
+    try:
+        root = str(working_directory)
+        parts: list[tuple[str, str | None]] = []
+        try:
+            diff = subprocess.run(
+                ("git", "diff", "HEAD", "--", "."),
+                cwd=root, capture_output=True, text=True, timeout=15,
+                encoding="utf-8", errors="replace",
+                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
+            )
+            if diff.returncode == 0 and (diff.stdout or "").strip():
+                parts.append(("diff", diff.stdout))
+        except Exception:
+            pass
+        try:
+            status = subprocess.run(
+                ("git", "status", "--porcelain", "--", "."),
+                cwd=root, capture_output=True, text=True, timeout=15,
+                encoding="utf-8", errors="replace",
+                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
+            )
+            if status.returncode == 0:
+                shown = 0
+                for line in (status.stdout or "").splitlines():
+                    if not line.startswith("??") or shown >= 20:
+                        continue
+                    shown += 1
+                    name = line[2:].strip().strip('"')
+                    try:
+                        candidate = Path(root, name)
+                        if candidate.stat().st_size > 100 * 1024:
+                            continue
+                        parts.append((name, candidate.read_text(encoding="utf-8", errors="replace")))
+                    except (OSError, ValueError):
+                        continue
+        except Exception:
+            pass
+        if not parts:
+            return []
+        return scan_many(parts)
+    except Exception:
+        return []
+
+
+_ROLE_SCOPE_MAX_CHARS = 4000
+
+
+def _role_scope_text(role: object, working_directory: str | Path) -> str:
+    """Role contract from the target repository, when present.
+
+    Reads ``roles/<role>.md`` under the working directory (trying the raw,
+    hyphenated, and underscored role spellings). Missing files and read
+    errors yield ``""`` so the built-in prompt contract applies; role files
+    are never required for normal operation. Separators in the role name
+    are rejected outright. Never raises.
+    """
+    try:
+        normalized = str(role or "").strip().lower()
+        if not normalized:
+            return ""
+        variants: list[str] = []
+        for variant in (normalized, normalized.replace(" ", "-"), normalized.replace(" ", "_")):
+            if variant and "/" not in variant and "\\" not in variant and variant not in {".", ".."}:
+                if variant not in variants:
+                    variants.append(variant)
+        for variant in variants:
+            try:
+                candidate = Path(str(working_directory), "roles", f"{variant}.md")
+                text = candidate.read_text(encoding="utf-8", errors="replace").strip()
+            except (OSError, ValueError):
+                continue
+            if text:
+                return text[:_ROLE_SCOPE_MAX_CHARS]
+        return ""
+    except Exception:
+        return ""
 
 
 def _safe_workflow_structured(stdout: object) -> object | None:
@@ -96,6 +214,85 @@ def _safe_workflow_structured(stdout: object) -> object | None:
         return None
 
 
+_SUCCESS_KEYS = frozenset({"success", "successful", "succeeded", "passed", "pass", "ok"})
+
+_FALSE_LIKE = frozenset({"false", "0", "no", "n", "off", "fail", "failed", "error", "errored", ""})
+
+
+def _is_verdict_only(payload: object) -> bool:
+    """True for a review-verdict object, which is not an agent-status signal."""
+    try:
+        if not isinstance(payload, dict):
+            return False
+        if "verdict" not in payload or "status" in payload:
+            return False
+        return not (_SUCCESS_KEYS & frozenset(payload))
+    except Exception:
+        return False
+
+
+def _payload_denies_success(payload: object) -> bool:
+    """True when a structured payload explicitly reports non-success."""
+    try:
+        if not isinstance(payload, dict):
+            return False
+        for key in _SUCCESS_KEYS:
+            if key not in payload:
+                continue
+            value = payload[key]
+            if value is None:
+                continue
+            if isinstance(value, bool):
+                if not value:
+                    return True
+            elif isinstance(value, (int, float)):
+                if value == 0:
+                    return True
+            elif isinstance(value, str):
+                if value.strip().lower() in _FALSE_LIKE:
+                    return True
+        return False
+    except Exception:
+        return False
+
+
+def _stdout_candidate_dicts(stdout: object) -> list[dict]:
+    """Best-effort JSON-object scan of agent stdout. Never raises."""
+    found: list[dict] = []
+    try:
+        import json as _json
+
+        if not isinstance(stdout, str) or not stdout.strip():
+            return found
+        try:
+            whole = _json.loads(stdout.strip())
+        except (ValueError, TypeError):
+            whole = None
+        if isinstance(whole, dict):
+            found.append(whole)
+        for match in re.finditer(r"```(?:json)?\s*\n(.*?)```", stdout, re.DOTALL | re.IGNORECASE):
+            try:
+                parsed = _json.loads(match.group(1).strip())
+            except (ValueError, TypeError):
+                continue
+            if isinstance(parsed, dict):
+                found.append(parsed)
+        for line in reversed(stdout.splitlines()):
+            text = line.strip().rstrip(",")
+            if not text or not text.startswith("{"):
+                continue
+            try:
+                parsed = _json.loads(text)
+            except (ValueError, TypeError):
+                continue
+            if isinstance(parsed, dict):
+                found.append(parsed)
+                break
+    except Exception:
+        pass
+    return found
+
+
 def _structured_agent_status(result: object) -> AgentResultStatus | None:
     """Authoritative agent-level outcome for a runner result, if any.
 
@@ -104,23 +301,62 @@ def _structured_agent_status(result: object) -> AgentResultStatus | None:
     so runner doubles that skip the envelope are still honoured. Returns
     ``None`` when no structured payload is available -- the legacy /
     plaintext path -- so callers keep the historical exit-code behaviour.
-    Never raises.
+    Review-verdict objects (``{"verdict": ...}`` without a ``status``) are
+    not agent-status signals and are skipped, so a pure verdict line can
+    never masquerade as agent success or failure. Never raises.
     """
     try:
+        candidates = [item for item in _stdout_candidate_dicts(getattr(result, "stdout", None))
+                      if not _is_verdict_only(item)]
+        if candidates:
+            coerced = coerce_agent_result(candidates[-1])
+            if coerced is not None:
+                return coerced.status
+            return AgentResultStatus.UNKNOWN
         coerced = coerce_agent_result(getattr(result, "structured_result", None))
         if coerced is not None:
+            envelope = getattr(result, "structured_result", None)
+            if isinstance(envelope, dict) and _is_verdict_only(envelope):
+                return None
             return coerced.status
     except Exception:
         pass
-    try:
-        stdout = getattr(result, "stdout", None)
-        if isinstance(stdout, str) and stdout.strip():
-            parsed = parse_agent_result(stdout)
-            if parsed.parse_mode in (ParseMode.STRUCTURED, ParseMode.PARTIAL):
-                return parsed.result.status
-    except Exception:
-        pass
     return None
+
+
+def _explicit_success_denied(result: object) -> bool:
+    """True when any structured payload explicitly denies success.
+
+    Catches ``{"success": false}``-shaped output that carries no ``status``
+    field and would otherwise coerce to UNKNOWN. Verdict-only objects are
+    not success signals either way and are ignored here; the verdict gate
+    judges them. Never raises.
+    """
+    try:
+        payloads: list[object] = []
+        envelope = getattr(result, "structured_result", None)
+        if isinstance(envelope, str):
+            try:
+                import json as _json
+
+                envelope = _json.loads(envelope.strip())
+            except (ValueError, TypeError, AttributeError):
+                envelope = None
+        if isinstance(envelope, dict):
+            payloads.append(envelope)
+            try:
+                legacy = envelope.get("metadata", {}).get("legacy_payload")
+            except (AttributeError, TypeError):
+                legacy = None
+            if isinstance(legacy, dict):
+                payloads.append(legacy)
+        payloads.extend(
+            item for item in _stdout_candidate_dicts(getattr(result, "stdout", None))
+            if not _is_verdict_only(item)
+        )
+        return any(_payload_denies_success(payload) for payload in payloads)
+    except Exception:
+        return False
 
 
 class _RecordingObserver:
@@ -376,7 +612,15 @@ class WorkflowEngine:
         review = self.state.add_task(Task(f"Review the completed change for: {description}", STANDARD_TASK_ROLES[3], workflow_id,
                                           dependencies=(verification.id, implementation.id),
                                           max_attempts=self.config.max_attempts))
-        return workflow_id, [plan, implementation, verification, review]
+        tasks = [plan, implementation, verification, review]
+        if getattr(self.config, "security_review", False):
+            security = self.state.add_task(Task(
+                f"Security-review the completed change for: {description}",
+                "security", workflow_id,
+                dependencies=(review.id, implementation.id),
+                max_attempts=self.config.max_attempts))
+            tasks.append(security)
+        return workflow_id, tasks
 
     def create_workflow(self, description: str, specifications: list[dict[str, object]]) -> tuple[str, list[Task]]:
         """Create a user-defined dependency graph from a validated workflow file."""
@@ -631,6 +875,23 @@ class WorkflowEngine:
                     if task.status is TaskStatus.FAILED:
                         self._record_legacy_verification_failure(task, results)
             else:
+                if _is_security_role(task.role):
+                    prescan_reason = self._security_prescan_reason(task, working_directory)
+                    if prescan_reason is not None:
+                        task.status = TaskStatus.FAILED
+                        task.result = prescan_reason
+                        self._record_review_verdict(task, None)
+                        self.record_failure(
+                            task,
+                            FailureClassifier.classify(
+                                source=FailureSource.REVIEW, error=prescan_reason,
+                                role=task.role,
+                            ),
+                            evidence=prescan_reason, primary_error=prescan_reason,
+                        )
+                        task.finished_at = utc_now()
+                        self.state.update_task(task)
+                        return
                 excluded = {task.assigned_agent} if task.assigned_agent and task.attempts > 1 else set()
                 agent = self._select_agent(task, excluded)
                 if agent is None:
@@ -677,9 +938,33 @@ class WorkflowEngine:
                     # must never override the agent's own failure signal.
                     satisfied, reason = self._evidence_satisfied(task, result, working_directory)
                     agent_status = _structured_agent_status(result)
-                    structured_ok = agent_status not in (AgentResultStatus.FAILURE, AgentResultStatus.PARTIAL)
-                    task.status = TaskStatus.PASSED if (result.succeeded and satisfied and structured_ok) \
-                        else TaskStatus.FAILED
+                    # Only an explicit SUCCESS (or no structured payload at all,
+                    # the legacy plaintext path) counts as agent success.
+                    # FAILURE, PARTIAL, and UNKNOWN must never be promoted.
+                    structured_ok = agent_status in (None, AgentResultStatus.SUCCESS)
+                    success_denied = _explicit_success_denied(result)
+                    verdict_ok = True
+                    verdict_reason = ""
+                    verdict = None
+                    if _requires_review_verdict(task.role):
+                        verdict = parse_verdict(result.stdout)
+                        verdict_ok = verdict is not None and verdict.is_approved
+                        if verdict is None:
+                            verdict_reason = (
+                                "review verdict missing or malformed; expected the final output line "
+                                "to contain a valid structured verdict"
+                            )
+                        elif not verdict.is_approved:
+                            if verdict.blocking:
+                                findings = redact_text("; ".join(verdict.blocking))[:1000]
+                                verdict_reason = f"review verdict rejected the change; blocking findings: {findings}"
+                            else:
+                                verdict_reason = "review verdict rejected the change"
+                    self._record_review_verdict(task, verdict)
+                    task.status = TaskStatus.PASSED if (
+                        result.succeeded and satisfied and structured_ok
+                        and not success_denied and verdict_ok
+                    ) else TaskStatus.FAILED
                     if not satisfied and result.succeeded:
                         task.result = f"{task.result}\n\n{reason}".strip()
                     if not structured_ok and result.succeeded and satisfied:
@@ -688,6 +973,13 @@ class WorkflowEngine:
                             "cleanly but its structured result reports "
                             f"{agent_status.value}, so the task did not pass"
                         ).strip()
+                    if success_denied and result.succeeded and satisfied and structured_ok:
+                        task.result = (
+                            f"{task.result}\n\nthe agent exited cleanly but its structured "
+                            "output explicitly reports success=false, so the task did not pass"
+                        ).strip()
+                    if verdict_reason:
+                        task.result = f"{task.result}\n\n{verdict_reason}".strip()
                     if task.status is TaskStatus.FAILED:
                         self._record_agent_failure(task, result)
         except StateTransitionError:
@@ -1386,17 +1678,58 @@ class WorkflowEngine:
     def _prompt(self, task: Task, working_directory: str | Path) -> str:
         # The fallback path in `_run_task_agent` carries the same dependency
         # context, so a prompt does not depend on whether history read worked.
-        base = (
+        common = (
             f"You are the {task.role} agent for AgentOps task {task.id}.\n"
             f"Workspace: {Path(working_directory).resolve()}\n"
             f"Request: {task.description}\n"
             "Work only in this workspace. Do not read secrets or alter AgentOps configuration. "
-            "Summarize changes and tests in your final response. "
-            "Optionally end with a JSON AgentResult object "
-            '{"schema_version": 1, "status": "success|failure|partial|unknown", '
-            '"summary": "...", "files_changed": [], "tests_run": 0, '
-            '"tests_passed": 0, "tests_failed": 0}; plain-text summaries remain valid.'
         )
+        if _is_security_role(task.role):
+            try:
+                scan_report = findings_for_prompt(_local_security_findings(working_directory))
+            except Exception:
+                scan_report = "Local secret scan: unavailable."
+            base = common + (
+                "Security-review the completed change. Inspect each item and "
+                "report concrete file:line evidence for anything suspicious: "
+                "(1) secrets or credentials in the diff; "
+                "(2) authentication and permission changes; "
+                "(3) dependency, manifest, and lockfile changes; "
+                "(4) newly added shell commands or network calls; "
+                "(5) files changed outside the task's declared scope. "
+                f"{scan_report} "
+                "Never quote a suspected secret value in your output -- name the file and pattern only. "
+                "Summarize your findings first. Your FINAL output line "
+                "MUST be one valid JSON object using this schema: "
+                '{"schema_version": 1, "verdict": "approve", "blocking": [], '
+                '"non_blocking": [], "confidence": 0.9}. '
+                "Use verdict=\"reject\" if any blocking issue remains or you cannot approve safely. "
+                "Both finding fields must be arrays of strings; include every field. Approve only with "
+                "an empty blocking array. Do not put any other JSON object after the verdict, and do not "
+                "write anything after its final line."
+            )
+        elif _requires_review_verdict(task.role):
+            base = common + (
+                "Review the completed work and summarize your findings first. Your FINAL output line "
+                "MUST be one valid JSON object using this schema: "
+                '{"schema_version": 1, "verdict": "approve", "blocking": [], '
+                '"non_blocking": [], "confidence": 0.9}. '
+                "Use verdict=\"reject\" if any blocking issue remains or you cannot approve safely. "
+                "Both finding fields must be arrays of strings; include every field. Approve only with "
+                "an empty blocking array. Do not put any other JSON object after the verdict, and do not "
+                "write anything after its final line."
+            )
+        else:
+            base = common + (
+                "Summarize changes and tests in your final response. "
+                "Optionally end with a JSON AgentResult object "
+                '{"schema_version": 1, "status": "success|failure|partial|unknown", '
+                '"summary": "...", "files_changed": [], "tests_run": 0, '
+                '"tests_passed": 0, "tests_failed": 0}; plain-text summaries remain valid.'
+            )
+        scope = _role_scope_text(task.role, working_directory)
+        if scope:
+            base = f"{base}\n\nRole scope:\n{scope}"
         handoff = self._dependency_handoff(task)
         return f"{base}\n\n{handoff}" if handoff else base
 
@@ -1426,10 +1759,112 @@ class WorkflowEngine:
         for failure in failures:
             add(failure.primary_error or failure.evidence)
         add(review.result)
+        # The parsed blocking findings are the actionable repair context:
+        # they name what the reviewer wants changed, while raw transcripts
+        # bury it. They lead so a repair agent reads them first.
+        try:
+            blocking = (verdict_summary_for_task(review) or {}).get("blocking") or []
+            if blocking:
+                findings = "\n".join(f"- {redact_text(str(item))[:500]}" for item in blocking)
+                parts.insert(0, f"Blocking review findings:\n{findings}")
+        except Exception:
+            pass
         context = "\n\n".join(parts)
         if len(context) > HANDOFF_RESULT_CHARS:
             context = context[:HANDOFF_RESULT_CHARS].rstrip() + "\n[truncated]"
         return context
+
+    def _record_review_verdict(self, task: Task, verdict: object | None) -> None:
+        """Persist the review/security verdict as a redacted timeline event."""
+        try:
+            if not _requires_review_verdict(task.role):
+                return
+            if verdict is None:
+                payload: dict[str, object] = {"verdict": "missing", "approved": False,
+                                             "blocking": [], "non_blocking": []}
+                severity = EventSeverity.WARNING
+            else:
+                payload = {"verdict": verdict.verdict, "approved": verdict.is_approved,
+                           "blocking": [redact_text(item)[:500] for item in verdict.blocking],
+                           "non_blocking": [redact_text(item)[:500] for item in verdict.non_blocking]}
+                severity = EventSeverity.INFO if verdict.is_approved else EventSeverity.WARNING
+            self.state.record_typed_event(Event(
+                workflow_id=task.workflow_id, task_id=task.id,
+                type=EventType.REVIEW_COMPLETED, severity=severity,
+                message=f"{task.role} verdict: {payload['verdict']}",
+                payload=_scrub_structured(payload),
+            ))
+        except Exception as error:
+            self.degradation.record(
+                "event.review_verdict", error,
+                workflow_id=getattr(task, "workflow_id", None),
+                task_id=getattr(task, "id", None),
+            )
+
+    def _security_prescan_reason(
+        self, task: Task, working_directory: str | Path,
+    ) -> str | None:
+        """Fail-closed secret screen for the security role.
+
+        Returns a redacted failure reason when the local scan finds
+        credential-like patterns in the worktree diff, else ``None``. A
+        positive local scan is demonstrated evidence -- like a failed
+        verification -- so the task fails without invoking an agent: no
+        agent verdict can waive a secret sitting in the diff. Never raises.
+        """
+        try:
+            findings = _local_security_findings(working_directory)
+        except Exception:
+            return None
+        if not findings:
+            return None
+        try:
+            lines = [
+                "security policy: the local secret scan found "
+                f"{len(findings)} credential-like pattern(s) in the change; "
+                "remove them (or prove them inert) before this can merge.",
+            ]
+            for finding in findings[:10]:
+                lines.append(f"- {finding.describe()}")
+            if len(findings) > 10:
+                lines.append(f"({len(findings) - 10} more omitted)")
+            # Findings carry pattern names and locations only, never values;
+            # redact defensively before persisting.
+            return redact_text("\n".join(lines))
+        except Exception:
+            return "security policy: the local secret scan found credential-like patterns."
+
+    async def _gate_repair_security(
+        self,
+        workflow_id: str,
+        description: str,
+        working_directory: str | Path,
+        cancel_event: threading.Event | None,
+        implementation_id: str,
+        review_id: str,
+    ) -> Task | None:
+        """Fresh security check for a repaired change, when enabled.
+
+        The pre-repair security verdict (if any) judged the unrepaired
+        change, so a repair that passes re-review gets its own security
+        task rather than inheriting the old one. Returns ``None`` when
+        the security gate is disabled. Never merges; the caller decides.
+        """
+        try:
+            if not getattr(self.config, "security_review", False):
+                return None
+            security = self.state.add_task(Task(
+                f"Security-review the repaired change for: {description}",
+                "security", workflow_id,
+                dependencies=(review_id, implementation_id),
+                max_attempts=self.config.max_attempts))
+        except Exception:
+            return None
+        await self.execute(workflow_id, working_directory, cancel_event)
+        try:
+            return self.state.get_task(security.id)
+        except Exception:
+            return None
 
     async def _repair_failed_review(
         self,
@@ -1444,8 +1879,11 @@ class WorkflowEngine:
 
         Each cycle persists three real tasks -- debugging, verification, review
         -- so the repair is part of the run's history, not an invisible retry.
-        Bounded by `max_repair_cycles`, and READY is still decided only by
-        `assert_tasks_ready`, so an exhausted budget returns not READY.
+        Bounded by `workflows.max_review_rounds` (default 2); the debugging
+        prompt leads with the parsed blocking findings as actionable repair
+        context. READY is still decided only by `assert_tasks_ready`, so an
+        exhausted budget returns not READY with the last verdict preserved.
+        Rejected or unreviewed changes are never merged.
         """
         if review.status is not TaskStatus.FAILED:
             # Only a FAILED review demonstrated a problem. BLOCKED means the
@@ -1456,8 +1894,13 @@ class WorkflowEngine:
                 f"Review was {review.status.value}; no review failure was "
                 f"demonstrated, so no repair was attempted.",
             )
+        max_rounds = getattr(self.config, "max_review_rounds", 2)
+        try:
+            max_rounds = max(0, int(max_rounds))
+        except (TypeError, ValueError):
+            max_rounds = 2
         review_context = self._review_failure_context(review)
-        for _ in range(self.config.max_repair_cycles):
+        for _ in range(max_rounds):
             repair = self.state.add_task(Task(
                 "Repair the review findings.\n" + review_context,
                 "debugging", workflow_id, dependencies=(implementation_id,),
@@ -1483,6 +1926,16 @@ class WorkflowEngine:
                     f"review repair; the repaired change does not verify.",
                 )
             if review.status is TaskStatus.PASSED:
+                security = await self._gate_repair_security(
+                    workflow_id, description, working_directory, cancel_event,
+                    implementation_id, review.id,
+                )
+                if security is not None and security.status is not TaskStatus.PASSED:
+                    return WorkflowResult(
+                        workflow_id, False,
+                        f"Security review was {security.status.value} after repair; "
+                        "the repaired change is not ready.",
+                    )
                 ready = assert_tasks_ready(
                     self.state.list_tasks(workflow_id), workflow_id,
                     verification_task_id=verification.id, review_task_id=review.id,
@@ -1494,7 +1947,16 @@ class WorkflowEngine:
                     f"Review was {review.status.value} after repair; no further "
                     f"review failure was demonstrated.",
                 )
-        return WorkflowResult(workflow_id, False, "Review did not pass after the repair budget was exhausted.")
+        last_verdict = (verdict_summary_for_task(review) or {}).get("verdict", "missing")
+        last_blocking = (verdict_summary_for_task(review) or {}).get("blocking") or []
+        blocked = "; ".join(str(item) for item in last_blocking[:5])
+        suffix = f" Last verdict: {last_verdict}."
+        if blocked:
+            suffix += f" Blocking findings: {redact_text(blocked)[:1000]}"
+        return WorkflowResult(
+            workflow_id, False,
+            f"Review did not pass after {max_rounds} review round(s); the workflow is BLOCKED." + suffix,
+        )
 
     async def run_high_level(
         self,
@@ -1508,6 +1970,14 @@ class WorkflowEngine:
         if verification.status is TaskStatus.PASSED and verification.verified:
             review = self.state.get_task(tasks[3].id)
             if review.status is TaskStatus.PASSED:
+                if len(tasks) > 4 and _is_security_role(tasks[4].role):
+                    security = self.state.get_task(tasks[4].id)
+                    if security.status is not TaskStatus.PASSED:
+                        return WorkflowResult(
+                            workflow_id, False,
+                            f"Security review was {security.status.value}; "
+                            "the change is not ready.",
+                        )
                 # One authoritative READY rule: verification + review + evidence.
                 ready = assert_tasks_ready(
                     self.state.list_tasks(workflow_id), workflow_id,
@@ -1552,6 +2022,12 @@ class WorkflowEngine:
             final_review = self.state.get_task(final_review.id)
             if verification.status is TaskStatus.PASSED and verification.verified:
                 if final_review.status is TaskStatus.PASSED:
+                    security = await self._gate_repair_security(
+                        workflow_id, description, working_directory, cancel_event,
+                        implementation.id, final_review.id,
+                    )
+                    if security is not None and security.status is not TaskStatus.PASSED:
+                        return WorkflowResult(workflow_id, False, "Repair or review did not pass.")
                     # One authoritative READY rule, scoped to this repair cycle's
                     # verification/review pair.
                     ready = assert_tasks_ready(

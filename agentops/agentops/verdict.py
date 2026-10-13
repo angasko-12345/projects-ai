@@ -86,43 +86,64 @@ def _coerce_str_list(value: Any) -> tuple[str, ...]:
 
 
 def _extract_candidate_objects(text: str) -> list[dict[str, Any]]:
-    """Collect candidate JSON objects from text, last one wins."""
-    candidates: list[dict[str, Any]] = []
-    # Try fenced JSON blocks first (most explicit)
-    try:
-        for match in re.finditer(r"```(?:json)?\s*\n(.*?)```", text, re.DOTALL | re.IGNORECASE):
-            content = match.group(1).strip()
-            if content:
-                parsed = json.loads(content)
-                if isinstance(parsed, dict):
-                    candidates.append(parsed)
-    except Exception:
-        pass
-    # Try whole text as JSON
-    try:
-        stripped = text.strip()
-        if stripped:
+    """Collect candidate objects in their actual order in the output text."""
+    candidates: list[tuple[int, dict[str, Any]]] = []
+    fenced_ranges: list[tuple[int, int]] = []
+    last_fenced: tuple[int, dict[str, Any] | None] | None = None
+    for match in re.finditer(r"```(?:json)?\s*\n(.*?)```", text, re.DOTALL | re.IGNORECASE):
+        content = match.group(1)
+        fenced_ranges.append((match.start(1), match.end(1)))
+        if not content.strip():
+            last_fenced = (match.start(), None)
+            continue
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError:
+            parsed = None
+        fenced_payload = parsed if isinstance(parsed, dict) else None
+        last_fenced = (match.start(), fenced_payload)
+        if fenced_payload is not None:
+            position = match.start(1) + len(content) - len(content.lstrip())
+            candidates.append((position, fenced_payload))
+
+    stripped = text.strip()
+    if stripped:
+        try:
             parsed = json.loads(stripped)
+        except json.JSONDecodeError:
+            pass
+        else:
+            # If the entire output is one JSON object, nested objects are part
+            # of its schema and must not displace the top-level candidate.
             if isinstance(parsed, dict):
-                candidates.append(parsed)
-    except Exception:
-        pass
-    # Try trailing lines that look like JSON (one per line, last wins)
-    try:
-        for line in reversed(text.splitlines()):
-            line = line.strip().rstrip(",")
-            if not line or not line.startswith("{"):
-                continue
-            try:
-                parsed = json.loads(line)
-                if isinstance(parsed, dict):
-                    candidates.append(parsed)
-                    break  # Last valid line wins
-            except json.JSONDecodeError:
-                continue
-    except Exception:
-        pass
-    return candidates
+                return [parsed]
+
+    offset = 0
+    for line in text.splitlines(keepends=True):
+        content = line.strip().rstrip(",")
+        position = offset + len(line) - len(line.lstrip())
+        offset += len(line)
+        if not content.startswith("{"):
+            continue
+        if any(start <= position < end for start, end in fenced_ranges):
+            continue
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            candidates.append((position, parsed))
+
+    # Never fall back to an older approval when the output contains a later,
+    # malformed fenced JSON response. The final review response is the trust
+    # boundary, so malformed newer output must fail closed.
+    if last_fenced is not None and last_fenced[1] is None:
+        later_candidates = [position for position, _ in candidates if position > last_fenced[0]]
+        if not later_candidates:
+            return []
+
+    candidates.sort(key=lambda item: item[0])
+    return [payload for _position, payload in candidates]
 
 
 def parse_verdict(stdout: str | None) -> Verdict | None:
@@ -144,12 +165,12 @@ def parse_verdict(stdout: str | None) -> Verdict | None:
     # Take the last candidate (final verdict)
     payload = candidates[-1]
 
-    # Validate schema version
+    # Validate the schema version strictly; strings and booleans are not ints
+    # in this contract, even though Python can coerce them to one.
     version = payload.get("schema_version")
-    try:
-        version_int = int(version) if version is not None else 0
-    except (TypeError, ValueError):
+    if isinstance(version, bool) or not isinstance(version, int):
         return None
+    version_int = version
     if version_int != VERDICT_SCHEMA_VERSION:
         return None
 
@@ -158,10 +179,30 @@ def parse_verdict(stdout: str | None) -> Verdict | None:
     if verdict_value not in ("approve", "reject"):
         return None
 
-    # Extract fields with coercion
-    blocking = _coerce_str_list(payload.get("blocking"))
-    non_blocking = _coerce_str_list(payload.get("non_blocking"))
-    confidence = _coerce_confidence(payload.get("confidence"))
+    # These fields define the approval boundary. Missing or malformed lists
+    # must never collapse to empty lists, as that would turn bad output into an
+    # accidental approval.
+    if any(field not in payload for field in ("blocking", "non_blocking", "confidence")):
+        return None
+    blocking_value = payload["blocking"]
+    non_blocking_value = payload["non_blocking"]
+    confidence_value = payload["confidence"]
+    if not isinstance(blocking_value, list) or any(not isinstance(item, str) for item in blocking_value):
+        return None
+    if not isinstance(non_blocking_value, list) or any(not isinstance(item, str) for item in non_blocking_value):
+        return None
+    if isinstance(confidence_value, bool) or not isinstance(confidence_value, (int, float)):
+        return None
+    try:
+        confidence_number = float(confidence_value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not float("-inf") < confidence_number < float("inf"):
+        return None
+
+    blocking = tuple(blocking_value)
+    non_blocking = tuple(non_blocking_value)
+    confidence = _coerce_confidence(confidence_number)
 
     return Verdict(
         schema_version=version_int,

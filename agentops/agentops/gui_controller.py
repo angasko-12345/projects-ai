@@ -32,7 +32,7 @@ from .verification_kernel import VerificationKernel
 from .execution_model import assess_workflow_readiness
 from .failure import Failure
 from .verification_model import VerificationCheck, VerificationReport, VerificationRun
-from .workflow import WorkflowEngine, STANDARD_TASK_ROLES
+from .workflow import WorkflowEngine, STANDARD_TASK_ROLES, verdict_summary_for_task
 
 
 def serialize_failure(failure: Failure) -> dict[str, object]:
@@ -64,6 +64,10 @@ EventCallback = Callable[[dict[str, object]], None]
 
 def serialize_task(task: Task) -> dict[str, object]:
     """Phase 1: Task dataclass -> plain dict at the controller boundary."""
+    try:
+        review_verdict = verdict_summary_for_task(task)
+    except Exception:
+        review_verdict = None
     return {
         "id": task.id,
         "workflow_id": task.workflow_id,
@@ -77,6 +81,7 @@ def serialize_task(task: Task) -> dict[str, object]:
         "result": task.result,
         "verified": task.verified,
         "verification_run_id": task.verification_run_id,
+        "review_verdict": review_verdict,
         "created_at": task.created_at,
         "started_at": task.started_at,
         "finished_at": task.finished_at,
@@ -812,11 +817,20 @@ class AgentOpsController:
             key = run.status.value
             run_counts[key] = run_counts.get(key, 0) + 1
         payload = serialize_workflow(workflow)
+        review_verdicts: list[dict[str, object]] = []
+        for task in tasks:
+            try:
+                summary = verdict_summary_for_task(task)
+            except Exception:
+                summary = None
+            if summary is not None:
+                review_verdicts.append({"task_id": task.id, **summary})
         payload.update({
             "task_count": len(tasks),
             "task_counts": counts,
             "run_count": len(runs),
             "run_counts": run_counts,
+            "review_verdicts": review_verdicts,
         })
         return payload
 
@@ -841,6 +855,10 @@ class AgentOpsController:
                 "tasks": tasks, "runs": runs,
                 "verifications": verifications, "failures": failures,
                 "worktree_ref": serialize_worktree_ref(ref) if ref is not None else None,
+                "review_verdicts": [
+                    dict(task["review_verdict"], task_id=task["id"])
+                    for task in tasks if task.get("review_verdict") is not None
+                ],
             })
             return payload
         finally:

@@ -59,6 +59,8 @@ class AppConfig:
     backoff_factor: float = 2.0
     routing_enabled: bool = True
     systemd_run_enabled: bool = False
+    security_review: bool = False
+    max_review_rounds: int = 2
 
 
 # Bundled as package data by AgentOps.spec, so it resolves identically from a
@@ -323,8 +325,18 @@ def load_config(path: str | Path | None = None) -> AppConfig:
         raise ValueError("runtime.pass_env.names must be a list of non-empty strings.")
     if not isinstance(prefixes, list) or not all(isinstance(item, str) and item for item in prefixes):
         raise ValueError("runtime.pass_env.prefixes must be a list of non-empty strings.")
+    workflows = data.get("workflows", {})
+    if not isinstance(workflows, dict):
+        raise ValueError("workflows must be a mapping.")
+    security_review = workflows.get("security_review", False)
+    if not isinstance(security_review, bool):
+        raise ValueError("workflows.security_review must be a boolean.")
+    max_review_rounds = workflows.get("max_review_rounds", 2)
+    if isinstance(max_review_rounds, bool) or not isinstance(max_review_rounds, int) or max_review_rounds < 0:
+        raise ValueError("workflows.max_review_rounds must be zero or greater.")
     return AppConfig(agents, role_preferences, verification_commands, max_attempts, concurrency,
                      max_repair_cycles, tuple(names), tuple(prefixes),
                      verification_profiles, default_profile,
                      float(backoff_base), float(backoff_max), float(backoff_factor),
-                     routing_enabled, systemd_run_enabled)
+                     routing_enabled, systemd_run_enabled,
+                     security_review, max_review_rounds)

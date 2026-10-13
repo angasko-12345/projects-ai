@@ -1,0 +1,490 @@
+"""Behavioral gates for Issue #12: strict review verdicts and merge safety.
+
+Every test drives the real WorkflowEngine with a fake agent runner: the
+verdict contract, structured-status handling, security gate, and bounded
+repair loop are production code paths, not mocks.
+"""
+
+import asyncio
+import io
+import json
+import shutil
+import subprocess
+import tempfile
+import unittest
+from contextlib import redirect_stdout
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+
+from agentops.agent_run import AgentRunMetadata
+from agentops.config import AppConfig, AgentConfig, load_config
+from agentops.events import EventType
+from agentops.execution_model import assess_workflow_readiness
+from agentops.registry import DetectedAgent
+from agentops.runner import RunResult
+from agentops.state import StateStore
+from agentops.tasks import Task, TaskStatus
+from agentops.workflow import (
+    WorkflowEngine,
+    _explicit_success_denied,
+    _role_scope_text,
+    _structured_agent_status,
+    verdict_summary_for_task,
+)
+from agentops.agent_result import AgentResultStatus
+
+
+APPROVE = (
+    '{"schema_version":1,"verdict":"approve","blocking":[],'
+    '"non_blocking":[],"confidence":0.9}'
+)
+REJECT = (
+    '{"schema_version":1,"verdict":"reject","blocking":["unsafe input"],'
+    '"non_blocking":[],"confidence":0.99}'
+)
+APPROVE_BLOCKING = (
+    '{"schema_version":1,"verdict":"approve","blocking":["missing test"],'
+    '"non_blocking":[],"confidence":0.9}'
+)
+
+_ALL_ROLES = ("architecture", "implementation", "review", "debugging",
+              "security", "verification")
+
+
+def _engine(security_review=False, max_review_rounds=2, max_attempts=1):
+    config = AppConfig(
+        {"fallback": AgentConfig("fallback", "fake", ("{prompt}",), _ALL_ROLES)},
+        {role: ("fallback",) for role in _ALL_ROLES},
+        (("test",),),
+        max_attempts=max_attempts, concurrency=1, max_repair_cycles=1,
+        security_review=security_review, max_review_rounds=max_review_rounds,
+    )
+    state = StateStore(":memory:")
+    registry = MagicMock()
+    registry.select.return_value = DetectedAgent(
+        config.agents["fallback"], True, "fake")
+    runner = MagicMock()
+    verifier = MagicMock()
+    return config, state, registry, runner, verifier
+
+
+def _ok_verifier():
+    verifier = MagicMock()
+
+    def _run(*args, **kwargs):
+        return asyncio.sleep(
+            0, result=[SimpleNamespace(succeeded=True, output="ok")])
+
+    verifier.run = MagicMock(side_effect=_run)
+    return verifier
+
+
+def _evidence_collector():
+    return MagicMock(return_value=AgentRunMetadata(
+        files_changed=("src/app.py",)))
+
+
+def _dispatch_runner(state, outputs_by_role):
+    """Fake run_agent answering per task role; string or list per role."""
+    cursors = {role: 0 for role in outputs_by_role}
+
+    async def _run(agent, prompt, directory, task_id, cancel_event=None,
+                   **kwargs):
+        role = state.get_task(task_id).role
+        output = outputs_by_role.get(role, "done")
+        if isinstance(output, list):
+            output = output[min(cursors[role], len(output) - 1)]
+            cursors[role] += 1
+        if isinstance(output, tuple):
+            stdout, structured = output
+        else:
+            stdout, structured = output, None
+        return RunResult(agent.config.name, ("fake",), 0, stdout, "", 0.01,
+                         False, Path(f"{task_id}.log"),
+                         structured_result=structured)
+
+    return _run
+
+
+class StructuredStatusTests(unittest.TestCase):
+    def _result(self, stdout, structured=None):
+        return SimpleNamespace(stdout=stdout, structured_result=structured,
+                               succeeded=True)
+
+    def test_verdict_only_output_is_not_an_agent_status(self):
+        status = _structured_agent_status(self._result(APPROVE))
+        self.assertIsNone(status)
+
+    def test_explicit_unknown_is_not_success(self):
+        status = _structured_agent_status(self._result(
+            '{"schema_version":1,"status":"unknown","summary":"shrug"}'))
+        self.assertEqual(status, AgentResultStatus.UNKNOWN)
+        self.assertNotIn(status, (None, AgentResultStatus.SUCCESS))
+
+    def test_explicit_failure_is_not_success(self):
+        status = _structured_agent_status(self._result(
+            '{"schema_version":1,"status":"failure","summary":"broke"}'))
+        self.assertEqual(status, AgentResultStatus.FAILURE)
+
+    def test_explicit_success_false_is_denied(self):
+        self.assertTrue(_explicit_success_denied(
+            self._result('{"success": false}')))
+        self.assertFalse(_explicit_success_denied(self._result("done")))
+        self.assertFalse(_explicit_success_denied(self._result(APPROVE)))
+
+    def test_success_false_inside_legacy_payload_is_denied(self):
+        structured = {"schema_version": 1, "status": "success",
+                      "metadata": {"legacy_payload": {"success": False}}}
+        self.assertTrue(_explicit_success_denied(
+            self._result("done", structured)))
+
+    def test_parse_verdict_reexported_in_agent_result(self):
+        import agentops.agent_result as agent_result
+        import agentops.verdict as verdict
+
+        self.assertIs(agent_result.parse_verdict, verdict.parse_verdict)
+        self.assertIs(agent_result.Verdict, verdict.Verdict)
+
+
+class ReviewGateTests(unittest.TestCase):
+    def _run_review_task(self, stdout, role="review", structured=None):
+        config, state, registry, runner, verifier = _engine()
+        runner.run_agent = _dispatch_runner(
+            state, {role: [(stdout, structured)]})
+        try:
+            engine = WorkflowEngine(config, state, registry, runner, verifier)
+            workflow_id = state.create_workflow("gate test")
+            task = state.add_task(Task("Review the change", role, workflow_id,
+                                       max_attempts=1))
+            asyncio.run(engine.execute(workflow_id, Path.cwd()))
+            return state.get_task(task.id)
+        finally:
+            state.close()
+
+    def test_reject_with_exit_zero_fails_and_stays_not_ready(self):
+        task = self._run_review_task(REJECT)
+        self.assertEqual(task.status, TaskStatus.FAILED)
+        self.assertIn("unsafe input", task.result or "")
+        readiness = assess_workflow_readiness(
+            [task], task.workflow_id, review_task_id=task.id)
+        self.assertFalse(readiness.ready)
+
+    def test_missing_verdict_is_not_approved(self):
+        task = self._run_review_task("Looks good to me, approved!")
+        self.assertEqual(task.status, TaskStatus.FAILED)
+        self.assertIn("verdict", (task.result or "").lower())
+
+    def test_malformed_verdict_is_not_approved(self):
+        bad = ('{"schema_version":1,"verdict":"approve",'
+               '"blocking":"everything","non_blocking":[],"confidence":0.9}')
+        task = self._run_review_task(bad)
+        self.assertEqual(task.status, TaskStatus.FAILED)
+
+    def test_truncated_verdict_is_not_approved(self):
+        task = self._run_review_task(
+            '{"schema_version": 1, "verdict": "approve"')
+        self.assertEqual(task.status, TaskStatus.FAILED)
+
+    def test_success_false_is_not_approved(self):
+        task = self._run_review_task('{"success": false}')
+        self.assertEqual(task.status, TaskStatus.FAILED)
+
+    def test_approve_with_empty_blocking_and_exit_zero_passes(self):
+        task = self._run_review_task(APPROVE)
+        self.assertEqual(task.status, TaskStatus.PASSED)
+
+    def test_approve_with_blocking_is_not_approved(self):
+        task = self._run_review_task(APPROVE_BLOCKING)
+        self.assertEqual(task.status, TaskStatus.FAILED)
+        self.assertIn("missing test", task.result or "")
+
+    def test_structured_failure_for_implementation_is_not_success(self):
+        config, state, registry, runner, verifier = _engine()
+        runner.run_agent = _dispatch_runner(state, {
+            "implementation": [('{"schema_version":1,"status":"failure",'
+                                '"summary":"broke"}', None)],
+        })
+        try:
+            engine = WorkflowEngine(config, state, registry, runner, verifier,
+                                    metadata_collector=_evidence_collector())
+            workflow_id = state.create_workflow("structured failure")
+            task = state.add_task(Task("Do the thing", "implementation",
+                                       workflow_id, max_attempts=1))
+            asyncio.run(engine.execute(workflow_id, Path.cwd()))
+            self.assertEqual(state.get_task(task.id).status,
+                             TaskStatus.FAILED)
+        finally:
+            state.close()
+
+    def test_structured_unknown_for_implementation_is_not_success(self):
+        config, state, registry, runner, verifier = _engine()
+        runner.run_agent = _dispatch_runner(state, {
+            "implementation": [('{"schema_version":1,"status":"unknown"}',
+                                None)],
+        })
+        try:
+            engine = WorkflowEngine(config, state, registry, runner, verifier,
+                                    metadata_collector=_evidence_collector())
+            workflow_id = state.create_workflow("structured unknown")
+            task = state.add_task(Task("Do the thing", "implementation",
+                                       workflow_id, max_attempts=1))
+            asyncio.run(engine.execute(workflow_id, Path.cwd()))
+            self.assertEqual(state.get_task(task.id).status,
+                             TaskStatus.FAILED)
+        finally:
+            state.close()
+
+    def test_review_verdict_event_is_persisted(self):
+        config, state, registry, runner, verifier = _engine()
+        runner.run_agent = _dispatch_runner(state, {"review": [REJECT]})
+        try:
+            engine = WorkflowEngine(config, state, registry, runner, verifier)
+            workflow_id = state.create_workflow("verdict event")
+            task = state.add_task(Task("Review the change", "review",
+                                       workflow_id, max_attempts=1))
+            asyncio.run(engine.execute(workflow_id, Path.cwd()))
+            kinds = [event["kind"] for event in
+                     state.list_events(workflow_id)]
+            self.assertIn(EventType.REVIEW_COMPLETED.value, kinds)
+        finally:
+            state.close()
+
+
+class RepairRoundTests(unittest.TestCase):
+    def test_rejection_then_approval_within_rounds_is_ready(self):
+        config, state, registry, runner, verifier = _engine(
+            max_review_rounds=2)
+        runner.run_agent = _dispatch_runner(state, {
+            "review": [REJECT, APPROVE],
+        })
+        try:
+            engine = WorkflowEngine(config, state, registry, runner,
+                                    _ok_verifier(),
+                                    metadata_collector=_evidence_collector())
+            result = asyncio.run(
+                engine.run_high_level("Fix the thing", Path.cwd()))
+            self.assertTrue(result.ready, result.summary)
+            self.assertIn("READY", result.summary)
+        finally:
+            state.close()
+
+    def test_repeated_rejection_beyond_budget_is_blocked(self):
+        config, state, registry, runner, verifier = _engine(
+            max_review_rounds=1)
+        runner.run_agent = _dispatch_runner(state, {
+            "review": [REJECT, REJECT, REJECT, REJECT],
+        })
+        try:
+            engine = WorkflowEngine(config, state, registry, runner,
+                                    _ok_verifier(),
+                                    metadata_collector=_evidence_collector())
+            result = asyncio.run(
+                engine.run_high_level("Fix the thing", Path.cwd()))
+            self.assertFalse(result.ready)
+            self.assertIn("BLOCKED", result.summary)
+            self.assertIn("unsafe input", result.summary)
+            tasks = state.list_tasks(result.workflow_id)
+            self.assertEqual(len(tasks), 4 + 3)
+            readiness = assess_workflow_readiness(tasks, result.workflow_id)
+            self.assertFalse(readiness.ready)
+        finally:
+            state.close()
+
+
+class SecurityGateTests(unittest.TestCase):
+    @staticmethod
+    def _repo_with_secret():
+        if shutil.which("git") is None:
+            raise unittest.SkipTest("git is not available")
+        root = Path(tempfile.mkdtemp(prefix="agentops-security-"))
+        _git_args = ("-c", "user.name=t", "-c", "user.email=t@example.com")
+        subprocess.run(("git", "init", "-q"), cwd=str(root),
+                       capture_output=True, check=True)
+        (root / "app.py").write_text("x = 1\n", encoding="utf-8")
+        subprocess.run(("git", *_git_args, "add", "-A"), cwd=str(root),
+                       capture_output=True, check=True)
+        subprocess.run(("git", *_git_args, "commit", "-q", "-m", "base"),
+                       cwd=str(root), capture_output=True, check=True)
+        with (root / "app.py").open("a", encoding="utf-8") as handle:
+            handle.write('AWS_KEY = "AKIAIOSFODNN7EXAMPLE"\n')
+        return root
+
+    def test_fake_secret_in_diff_blocks_the_workflow(self):
+        root = self._repo_with_secret()
+        try:
+            config, state, registry, runner, verifier = _engine(
+                security_review=True)
+            runner.run_agent = _dispatch_runner(state, {
+                "review": [APPROVE],
+                "security": [APPROVE],
+            })
+            engine = WorkflowEngine(config, state, registry, runner,
+                                    _ok_verifier(),
+                                    metadata_collector=_evidence_collector())
+            result = asyncio.run(
+                engine.run_high_level("Add the feature", root))
+            self.assertFalse(result.ready, result.summary)
+            security = next(task for task in
+                            state.list_tasks(result.workflow_id)
+                            if task.role == "security")
+            self.assertEqual(security.status, TaskStatus.FAILED)
+            self.assertIn("secret scan", (security.result or "").lower())
+            self.assertNotIn("AKIAIOSFODNN7EXAMPLE",
+                             security.result or "")
+        finally:
+            state.close()
+            shutil.rmtree(root, ignore_errors=True)
+
+    def test_clean_tree_passes_security(self):
+        if shutil.which("git") is None:
+            raise unittest.SkipTest("git is not available")
+        root = Path(tempfile.mkdtemp(prefix="agentops-security-clean-"))
+        try:
+            subprocess.run(("git", "init", "-q"), cwd=str(root),
+                           capture_output=True, check=True)
+            config, state, registry, runner, verifier = _engine(
+                security_review=True)
+            runner.run_agent = _dispatch_runner(state, {
+                "review": [APPROVE],
+                "security": [APPROVE],
+            })
+            engine = WorkflowEngine(config, state, registry, runner,
+                                    _ok_verifier(),
+                                    metadata_collector=_evidence_collector())
+            result = asyncio.run(
+                engine.run_high_level("Add the feature", root))
+            self.assertTrue(result.ready, result.summary)
+        finally:
+            state.close()
+            shutil.rmtree(root, ignore_errors=True)
+
+
+class RoleScopeTests(unittest.TestCase):
+    def test_role_file_is_used_when_present(self):
+        config, state, registry, runner, verifier = _engine()
+        try:
+            engine = WorkflowEngine(config, state, registry, runner, verifier)
+            with tempfile.TemporaryDirectory() as directory:
+                Path(directory, "roles").mkdir()
+                Path(directory, "roles", "review.md").write_text(
+                    "Always check the changelog.", encoding="utf-8")
+                self.assertIn(
+                    "Always check the changelog.",
+                    engine._prompt(Task("r", "review", "w"), directory))
+                self.assertEqual(_role_scope_text("review", directory),
+                                 "Always check the changelog.")
+        finally:
+            state.close()
+
+    def test_missing_role_file_falls_back_to_builtin(self):
+        config, state, registry, runner, verifier = _engine()
+        try:
+            engine = WorkflowEngine(config, state, registry, runner, verifier)
+            with tempfile.TemporaryDirectory() as directory:
+                self.assertEqual(_role_scope_text("review", directory), "")
+                prompt = engine._prompt(Task("r", "review", "w"), directory)
+                self.assertIn('"schema_version": 1', prompt)
+        finally:
+            state.close()
+
+
+class WorkflowsConfigTests(unittest.TestCase):
+    def test_workflows_section_parses(self):
+        with tempfile.NamedTemporaryFile("w", suffix=".json",
+                                         delete=False) as handle:
+            json.dump({"agents": {},
+                       "workflows": {"security_review": True,
+                                     "max_review_rounds": 3}}, handle)
+            path = handle.name
+        try:
+            config = load_config(path)
+            self.assertTrue(config.security_review)
+            self.assertEqual(config.max_review_rounds, 3)
+        finally:
+            Path(path).unlink()
+
+    def test_workflows_defaults_are_off_and_two(self):
+        with tempfile.NamedTemporaryFile("w", suffix=".json",
+                                         delete=False) as handle:
+            json.dump({"agents": {}}, handle)
+            path = handle.name
+        try:
+            config = load_config(path)
+            self.assertFalse(config.security_review)
+            self.assertEqual(config.max_review_rounds, 2)
+        finally:
+            Path(path).unlink()
+
+    def test_invalid_workflows_section_rejected(self):
+        with tempfile.NamedTemporaryFile("w", suffix=".json",
+                                         delete=False) as handle:
+            json.dump({"agents": {},
+                       "workflows": {"security_review": "yes"}}, handle)
+            path = handle.name
+        try:
+            with self.assertRaises(ValueError):
+                load_config(path)
+        finally:
+            Path(path).unlink()
+
+
+class VerdictSummaryTests(unittest.TestCase):
+    def test_summary_reports_blocking_role_and_findings(self):
+        task = Task("Review", "review", "w",
+                    result=f"notes\n{APPROVE_BLOCKING}")
+        summary = verdict_summary_for_task(task)
+        self.assertIsNotNone(summary)
+        assert summary is not None
+        self.assertEqual(summary["role"], "review")
+        self.assertEqual(summary["verdict"], "approve")
+        self.assertFalse(summary["approved"])
+        self.assertEqual(list(summary["blocking"]), ["missing test"])
+
+    def test_summary_ignores_non_review_roles(self):
+        self.assertIsNone(verdict_summary_for_task(
+            Task("Build", "implementation", "w", result="done")))
+
+    def test_serialize_task_carries_review_verdict(self):
+        from agentops.gui_controller import serialize_task
+
+        payload = serialize_task(
+            Task("Review", "review", "w", result=APPROVE))
+        self.assertEqual(payload["review_verdict"]["verdict"], "approve")
+        self.assertTrue(payload["review_verdict"]["approved"])
+        plain = serialize_task(Task("Build", "implementation", "w"))
+        self.assertIsNone(plain["review_verdict"])
+
+    def test_status_command_shows_the_verdict(self):
+        from agentops.cli import CliServices, main
+
+        store = StateStore(":memory:")
+        workflow_id = store.create_workflow("ship it")
+        review = store.add_task(Task("Review it", "review", workflow_id))
+        review.status = TaskStatus.PASSED
+        review.result = f"done\n{APPROVE_BLOCKING}"
+        store.update_task(review)
+
+        class _Manager:
+            def repository_root(self, directory):
+                return Path("/fake-root")
+
+        services = CliServices(
+            config=AppConfig({}, {}, (), max_attempts=1, concurrency=1),
+            state_store=lambda path: store,
+            worktree_manager=lambda: _Manager(),
+            log_manager=lambda root: MagicMock(name="logs"),
+        )
+        buffer = io.StringIO()
+        try:
+            with redirect_stdout(buffer):
+                code = main(["status"], services=services)
+        finally:
+            store.close()
+        self.assertEqual(code, 0)
+        self.assertIn("approve", buffer.getvalue())
+        self.assertIn("missing test", buffer.getvalue())
+
+
+if __name__ == "__main__":
+    unittest.main()
