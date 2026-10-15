@@ -82,7 +82,7 @@ export function timestampName(): string {
   return `qr-code-${second}-${sameSecondCount}`;
 }
 
-async function resolveTargetDirectory(rootUri: string): Promise<string> {
+export async function resolveTargetDirectory(rootUri: string): Promise<string> {
   try {
     return await StorageAccessFramework.makeDirectoryAsync(rootUri, 'QR Generator');
   } catch {

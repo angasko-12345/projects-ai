@@ -27,6 +27,7 @@ import {
 import { contentLabel, validateDraft } from './src/qr/content';
 import { sanitizeAppearance } from './src/qr/contrast';
 import { QrEncodingError, buildQrMatrix } from './src/qr/matrix';
+import { buildQrSvg } from './src/qr/svg';
 import { canSaveCode, effectiveAppearance } from './src/premium/entitlements';
 import { PremiumProvider, usePremium } from './src/premium/PremiumContext';
 import { CustomizeSheet } from './src/sheets/CustomizeSheet';
@@ -44,6 +45,7 @@ import {
 } from './src/types';
 import { ToastBanner, type ToastData } from './src/ui/Toast';
 import { captureQrPng, copyQrPng, saveQrPng, shareQrPng } from './src/util/qrExport';
+import { readLogoDataUri, saveQrSvg, shareQrSvg } from './src/util/qrSvgExport';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -209,6 +211,18 @@ function MainScreen() {
     }
   };
 
+  // Serializes the current preview to a standalone SVG, embedding the logo as a
+  // self-contained data URI when one is set. Returns null if nothing is ready.
+  const buildSvgForExport = async (): Promise<string | null> => {
+    if (preview.kind !== 'ready') {
+      return null;
+    }
+    const logoHref = renderedAppearance.logoUri
+      ? await readLogoDataUri(renderedAppearance.logoUri)
+      : null;
+    return buildQrSvg({ matrix: preview.matrix, appearance: renderedAppearance, logoHref });
+  };
+
   const handleSavePng = () =>
     runExport(async () => {
       const image = await captureQrPng(captureViewRef);
@@ -235,6 +249,33 @@ function MainScreen() {
       const image = await captureQrPng(captureViewRef);
       await copyQrPng(image);
       showToast('QR code image copied.', 'success');
+    });
+
+  const handleSaveSvg = () =>
+    runExport(async () => {
+      const svg = await buildSvgForExport();
+      if (!svg) {
+        return;
+      }
+      const result = await saveQrSvg(svg, lastSaveDirectoryRef.current);
+      if (result.status === 'saved') {
+        lastSaveDirectoryRef.current = result.directoryUri;
+        showToast('QR code saved as SVG.', 'success');
+      } else if (result.status === 'error') {
+        showToast(result.message, 'error');
+      }
+    });
+
+  const handleShareSvg = () =>
+    runExport(async () => {
+      const svg = await buildSvgForExport();
+      if (!svg) {
+        return;
+      }
+      const result = await shareQrSvg(svg);
+      if (result.status === 'unavailable' || result.status === 'error') {
+        showToast(result.message, 'error');
+      }
     });
 
   const handleClear = () => {
@@ -349,6 +390,8 @@ function MainScreen() {
             onShare={handleShare}
             onCopy={handleCopy}
             onClear={handleClear}
+            onSaveSvg={handleSaveSvg}
+            onShareSvg={handleShareSvg}
           />
 
           <View style={styles.toolbarRow}>
