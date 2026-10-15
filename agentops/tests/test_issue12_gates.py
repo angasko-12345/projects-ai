@@ -28,6 +28,7 @@ from agentops.tasks import Task, TaskStatus
 from agentops.workflow import (
     WorkflowEngine,
     _explicit_success_denied,
+    _local_security_scan,
     _role_scope_text,
     _structured_agent_status,
     verdict_summary_for_task,
@@ -355,6 +356,87 @@ class SecurityGateTests(unittest.TestCase):
             result = asyncio.run(
                 engine.run_high_level("Add the feature", root))
             self.assertTrue(result.ready, result.summary)
+        finally:
+            state.close()
+            shutil.rmtree(root, ignore_errors=True)
+
+    def test_scan_reports_completion_not_just_findings(self):
+        # Reviewer finding: git errors and scan exceptions collapsed to an
+        # empty finding list, so "the scan could not run" read as "the scan
+        # found nothing". The helper now reports completion explicitly.
+        if shutil.which("git") is None:
+            raise unittest.SkipTest("git is not available")
+        root = self._repo_with_secret()
+        plain = Path(tempfile.mkdtemp(prefix="agentops-security-plain-"))
+        try:
+            findings, completed = _local_security_scan(root)
+            self.assertTrue(completed)
+            self.assertTrue(findings)
+            self.assertNotIn("AKIAIOSFODNN7EXAMPLE",
+                             " ".join(f.describe() for f in findings))
+            self.assertEqual(_local_security_scan(plain), ([], False))
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+            shutil.rmtree(plain, ignore_errors=True)
+
+    def test_prescan_unavailable_is_recorded_not_silent(self):
+        # Reviewer finding: a prescan that could not run left no trace. The
+        # degradation must be visible in the timeline instead of reading as
+        # a clean change.
+        config, state, registry, runner, verifier = _engine(
+            security_review=True)
+        try:
+            engine = WorkflowEngine(config, state, registry, runner,
+                                    _ok_verifier(),
+                                    metadata_collector=_evidence_collector())
+            workflow_id = state.create_workflow("prescan unavailable")
+            task = state.add_task(Task("Security-review", "security",
+                                       workflow_id, max_attempts=1))
+            with tempfile.TemporaryDirectory() as plain:
+                self.assertIsNone(
+                    engine._security_prescan_reason(task, plain))
+            events = state.query_events(event_type=EventType.NOTE)
+            self.assertTrue(events)
+            self.assertEqual(events[0].severity.value, "warning")
+            self.assertIn("prescan", events[0].message)
+        finally:
+            state.close()
+
+    def test_security_gate_error_fails_closed(self):
+        # Reviewer finding: when security_review is enabled but the security
+        # task cannot be created or read, _gate_repair_security returns None
+        # and the callers read it as "gate disabled" -- waiving the gate on
+        # a state error. None must mean failure whenever the gate is on.
+        root = self._repo_with_secret()
+        try:
+            config, state, registry, runner, verifier = _engine(
+                security_review=True, max_review_rounds=1)
+
+            class SecurityTaskFailingState:
+                """State proxy that fails only the post-repair security task."""
+
+                def __init__(self, inner):
+                    self._inner = inner
+
+                def add_task(self, task):
+                    if (getattr(task, "role", None) == "security"
+                            and "repaired" in (task.description or "")):
+                        raise RuntimeError("state unavailable")
+                    return self._inner.add_task(task)
+
+                def __getattr__(self, name):
+                    return getattr(self._inner, name)
+
+            runner.run_agent = _dispatch_runner(state, {
+                "review": [REJECT, APPROVE],
+            })
+            engine = WorkflowEngine(config, SecurityTaskFailingState(state),
+                                    registry, runner, _ok_verifier(),
+                                    metadata_collector=_evidence_collector())
+            result = asyncio.run(engine.run_high_level("Add the feature",
+                                                        root))
+            self.assertFalse(result.ready, result.summary)
+            self.assertIn("security", result.summary.lower())
         finally:
             state.close()
             shutil.rmtree(root, ignore_errors=True)

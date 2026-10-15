@@ -85,32 +85,44 @@ def _coerce_str_list(value: Any) -> tuple[str, ...]:
     return ()
 
 
+#: Fenced blocks whose label is empty or "json" carry the JSON response
+#: itself. Any other label (text, python, ...) is illustrative content: its
+#: inner lines must never stand in for the verdict.
+_JSON_FENCE_LABELS = frozenset({"", "json"})
+
+
 def _extract_candidate_objects(text: str) -> list[dict[str, Any]]:
     """Collect candidate objects in their actual order in the output text."""
     candidates: list[tuple[int, dict[str, Any]]] = []
     fenced_ranges: list[tuple[int, int]] = []
-    last_fenced: tuple[int, dict[str, Any] | None] | None = None
-    for match in re.finditer(r"```(?:json)?\s*\n(.*?)```", text, re.DOTALL | re.IGNORECASE):
-        content = match.group(1)
-        fenced_ranges.append((match.start(1), match.end(1)))
+    last_json_fence: tuple[int, dict[str, Any] | None] | None = None
+    last_malformed_line = -1
+    for match in re.finditer(r"```([^\n`]*)\n(.*?)```", text, re.DOTALL | re.IGNORECASE):
+        label = match.group(1).strip().lower()
+        content = match.group(2)
+        fenced_ranges.append((match.start(2), match.end(2)))
+        if label not in _JSON_FENCE_LABELS:
+            # Illustrative content in another language's fence: never a
+            # verdict candidate, and never a malformed-response trigger.
+            continue
         if not content.strip():
-            last_fenced = (match.start(), None)
+            last_json_fence = (match.start(), None)
             continue
         try:
             parsed = json.loads(content)
-        except json.JSONDecodeError:
+        except (ValueError, RecursionError):
             parsed = None
         fenced_payload = parsed if isinstance(parsed, dict) else None
-        last_fenced = (match.start(), fenced_payload)
+        last_json_fence = (match.start(), fenced_payload)
         if fenced_payload is not None:
-            position = match.start(1) + len(content) - len(content.lstrip())
+            position = match.start(2) + len(content) - len(content.lstrip())
             candidates.append((position, fenced_payload))
 
     stripped = text.strip()
     if stripped:
         try:
             parsed = json.loads(stripped)
-        except json.JSONDecodeError:
+        except (ValueError, RecursionError):
             pass
         else:
             # If the entire output is one JSON object, nested objects are part
@@ -129,16 +141,27 @@ def _extract_candidate_objects(text: str) -> list[dict[str, Any]]:
             continue
         try:
             parsed = json.loads(content)
-        except json.JSONDecodeError:
+        except (ValueError, RecursionError):
+            # A later malformed JSON-looking line is a malformed final
+            # response, exactly like a malformed JSON fence: it must fail
+            # closed instead of silently falling back to an older approval.
+            last_malformed_line = max(last_malformed_line, position)
             continue
         if isinstance(parsed, dict):
             candidates.append((position, parsed))
 
     # Never fall back to an older approval when the output contains a later,
-    # malformed fenced JSON response. The final review response is the trust
-    # boundary, so malformed newer output must fail closed.
-    if last_fenced is not None and last_fenced[1] is None:
-        later_candidates = [position for position, _ in candidates if position > last_fenced[0]]
+    # malformed JSON response -- fenced or bare. The final review response is
+    # the trust boundary, so malformed newer output must fail closed.
+    boundaries = [
+        boundary for boundary in (
+            last_json_fence[0] if last_json_fence is not None and last_json_fence[1] is None else None,
+            last_malformed_line if last_malformed_line >= 0 else None,
+        ) if boundary is not None
+    ]
+    if boundaries:
+        boundary = max(boundaries)
+        later_candidates = [position for position, _ in candidates if position > boundary]
         if not later_candidates:
             return []
 

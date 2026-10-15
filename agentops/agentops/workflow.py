@@ -118,11 +118,18 @@ def _is_security_role(role: object) -> bool:
     return normalized in {"security", "security review"}
 
 
-def _local_security_findings(working_directory: str | Path) -> list:
-    """Redacted secret findings for the worktree diff. Never raises."""
+def _local_security_scan(working_directory: str | Path) -> tuple[list, bool]:
+    """Redacted secret findings for the worktree diff.
+
+    Returns ``(findings, completed)``. ``completed`` is False when the scan
+    could not actually run -- git unavailable, a git error, a timeout, or an
+    internal failure -- so a caller can tell "no findings" apart from
+    "no scan" instead of reading a failed scan as a clean change. Never raises.
+    """
     try:
         root = str(working_directory)
         parts: list[tuple[str, str | None]] = []
+        completed = True
         try:
             diff = subprocess.run(
                 ("git", "diff", "HEAD", "--", "."),
@@ -130,10 +137,13 @@ def _local_security_findings(working_directory: str | Path) -> list:
                 encoding="utf-8", errors="replace",
                 creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
             )
-            if diff.returncode == 0 and (diff.stdout or "").strip():
-                parts.append(("diff", diff.stdout))
+            if diff.returncode == 0:
+                if (diff.stdout or "").strip():
+                    parts.append(("diff", diff.stdout))
+            else:
+                completed = False
         except Exception:
-            pass
+            completed = False
         try:
             status = subprocess.run(
                 ("git", "status", "--porcelain", "--", "."),
@@ -155,13 +165,15 @@ def _local_security_findings(working_directory: str | Path) -> list:
                         parts.append((name, candidate.read_text(encoding="utf-8", errors="replace")))
                     except (OSError, ValueError):
                         continue
+            else:
+                completed = False
         except Exception:
-            pass
+            completed = False
         if not parts:
-            return []
-        return scan_many(parts)
+            return [], completed
+        return scan_many(parts), completed
     except Exception:
-        return []
+        return [], False
 
 
 _ROLE_SCOPE_MAX_CHARS = 4000
@@ -257,7 +269,14 @@ def _payload_denies_success(payload: object) -> bool:
 
 
 def _stdout_candidate_dicts(stdout: object) -> list[dict]:
-    """Best-effort JSON-object scan of agent stdout. Never raises."""
+    """Best-effort JSON-object scan of agent stdout. Never raises.
+
+    One pathological line must not abort the whole scan: every parse failure
+    -- including ``RecursionError`` from pathologically nested JSON -- is
+    skipped per candidate so an earlier structured signal is still seen,
+    rather than collapsing the scan to "no candidates" (which the callers
+    would read as the legacy plaintext path).
+    """
     found: list[dict] = []
     try:
         import json as _json
@@ -266,14 +285,14 @@ def _stdout_candidate_dicts(stdout: object) -> list[dict]:
             return found
         try:
             whole = _json.loads(stdout.strip())
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, RecursionError):
             whole = None
         if isinstance(whole, dict):
             found.append(whole)
         for match in re.finditer(r"```(?:json)?\s*\n(.*?)```", stdout, re.DOTALL | re.IGNORECASE):
             try:
                 parsed = _json.loads(match.group(1).strip())
-            except (ValueError, TypeError):
+            except (ValueError, TypeError, RecursionError):
                 continue
             if isinstance(parsed, dict):
                 found.append(parsed)
@@ -283,7 +302,7 @@ def _stdout_candidate_dicts(stdout: object) -> list[dict]:
                 continue
             try:
                 parsed = _json.loads(text)
-            except (ValueError, TypeError):
+            except (ValueError, TypeError, RecursionError):
                 continue
             if isinstance(parsed, dict):
                 found.append(parsed)
@@ -1686,7 +1705,12 @@ class WorkflowEngine:
         )
         if _is_security_role(task.role):
             try:
-                scan_report = findings_for_prompt(_local_security_findings(working_directory))
+                findings, completed = _local_security_scan(working_directory)
+                scan_report = (
+                    findings_for_prompt(findings) if completed
+                    else "Local secret scan: unavailable (the scan did not "
+                         "complete; no prescan findings either way)."
+                )
             except Exception:
                 scan_report = "Local secret scan: unavailable."
             base = common + (
@@ -1810,12 +1834,29 @@ class WorkflowEngine:
         credential-like patterns in the worktree diff, else ``None``. A
         positive local scan is demonstrated evidence -- like a failed
         verification -- so the task fails without invoking an agent: no
-        agent verdict can waive a secret sitting in the diff. Never raises.
+        agent verdict can waive a secret sitting in the diff. A scan that
+        could not run is never silent: the degradation is recorded as a
+        WARNING timeline event, because "no findings" must not be readable
+        as "nothing to find". Never raises.
         """
+        findings: list = []
+        completed = False
         try:
-            findings = _local_security_findings(working_directory)
+            findings, completed = _local_security_scan(working_directory)
         except Exception:
-            return None
+            completed = False
+        if not completed:
+            try:
+                self.state.record_typed_event(Event(
+                    workflow_id=task.workflow_id, task_id=task.id,
+                    type=EventType.NOTE, severity=EventSeverity.WARNING,
+                    message="local secret prescan did not complete; the "
+                            "security agent reviews without prescan findings",
+                    payload=_scrub_structured({"role": task.role,
+                                               "reason": "prescan_unavailable"}),
+                ))
+            except Exception:
+                pass
         if not findings:
             return None
         try:
@@ -1926,16 +1967,22 @@ class WorkflowEngine:
                     f"review repair; the repaired change does not verify.",
                 )
             if review.status is TaskStatus.PASSED:
-                security = await self._gate_repair_security(
-                    workflow_id, description, working_directory, cancel_event,
-                    implementation_id, review.id,
-                )
-                if security is not None and security.status is not TaskStatus.PASSED:
-                    return WorkflowResult(
-                        workflow_id, False,
-                        f"Security review was {security.status.value} after repair; "
-                        "the repaired change is not ready.",
+                if getattr(self.config, "security_review", False):
+                    security = await self._gate_repair_security(
+                        workflow_id, description, working_directory, cancel_event,
+                        implementation_id, review.id,
                     )
+                    # An enabled gate must never read as a disabled one: None
+                    # here means the security task could not be created or
+                    # read, which is a failure, not a waiver.
+                    if security is None or security.status is not TaskStatus.PASSED:
+                        shown = (security.status.value if security is not None
+                                 else "unavailable")
+                        return WorkflowResult(
+                            workflow_id, False,
+                            f"Security review was {shown} after repair; "
+                            "the repaired change is not ready.",
+                        )
                 ready = assert_tasks_ready(
                     self.state.list_tasks(workflow_id), workflow_id,
                     verification_task_id=verification.id, review_task_id=review.id,
@@ -2022,12 +2069,20 @@ class WorkflowEngine:
             final_review = self.state.get_task(final_review.id)
             if verification.status is TaskStatus.PASSED and verification.verified:
                 if final_review.status is TaskStatus.PASSED:
-                    security = await self._gate_repair_security(
-                        workflow_id, description, working_directory, cancel_event,
-                        implementation.id, final_review.id,
-                    )
-                    if security is not None and security.status is not TaskStatus.PASSED:
-                        return WorkflowResult(workflow_id, False, "Repair or review did not pass.")
+                    if getattr(self.config, "security_review", False):
+                        security = await self._gate_repair_security(
+                            workflow_id, description, working_directory,
+                            cancel_event, implementation.id, final_review.id,
+                        )
+                        # An enabled gate must never read as a disabled one:
+                        # None means the security task could not be created or
+                        # read, which is a failure, not a waiver.
+                        if security is None or security.status is not TaskStatus.PASSED:
+                            return WorkflowResult(
+                                workflow_id, False,
+                                "Repair or review did not pass; the security "
+                                "review could not be completed.",
+                            )
                     # One authoritative READY rule, scoped to this repair cycle's
                     # verification/review pair.
                     ready = assert_tasks_ready(

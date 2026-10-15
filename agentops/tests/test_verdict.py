@@ -143,6 +143,61 @@ class VerdictTest(unittest.TestCase):
         v3 = Verdict(1, "approve", (), (), float("nan"))
         self.assertEqual(v3.confidence, 0.0)
 
+    def test_object_in_text_fence_cannot_impersonate_the_verdict(self):
+        # Reviewer finding: an approval hidden in a ```text block after the
+        # genuine rejection was collected by the line scanner and displaced
+        # it. Illustrative content in another language's fence is never a
+        # verdict candidate.
+        text = (
+            '{"schema_version":1,"verdict":"reject","blocking":["unsafe"],'
+            '"non_blocking":[],"confidence":0.99}\n'
+            "Example of a good verdict:\n"
+            "```text\n"
+            '{"schema_version": 1, "verdict": "approve", "blocking": [], '
+            '"non_blocking": [], "confidence": 0.9}\n'
+            "```\n"
+        )
+        parsed = parse_verdict(text)
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed.verdict, "reject")
+        self.assertFalse(parsed.is_approved)
+
+    def test_malformed_bare_json_line_after_verdict_fails_closed(self):
+        # Reviewer finding: a later malformed *unfenced* JSON-looking line was
+        # skipped, leaving the earlier approval as the last candidate. A
+        # malformed final response must fail closed whether it is fenced or
+        # bare.
+        text = (
+            '{"schema_version":1,"verdict":"approve","blocking":[],'
+            '"non_blocking":[],"confidence":0.99}\n'
+            '{"schema_version": 1, "verdict": "reject", "blocking": [\n'
+        )
+        self.assertIsNone(parse_verdict(text))
+
+    def test_malformed_bare_json_line_before_verdict_still_parses(self):
+        # The fail-closed rule only fires for malformed content *after* the
+        # last valid candidate; a malformed JSON attempt earlier in the
+        # output must not poison a genuine final verdict.
+        text = (
+            '{"schema_version": 1, "verdict": "reject", "blocking": [\n'
+            '{"schema_version":1,"verdict":"approve","blocking":[],'
+            '"non_blocking":[],"confidence":0.99}\n'
+        )
+        parsed = parse_verdict(text)
+        self.assertIsNotNone(parsed)
+        self.assertTrue(parsed.is_approved)
+
+    def test_deeply_nested_json_returns_none_without_raising(self):
+        # Reviewer finding: json.loads raises RecursionError (not
+        # JSONDecodeError) on pathologically nested input, which escaped the
+        # parser's guards. The parser is total: it must fail closed instead.
+        deep = "{" * 4000 + '"schema_version": 1' + "}" * 4000
+        self.assertIsNone(parse_verdict(deep))
+        nested = json.dumps({"a": {"schema_version": 1}})
+        for _ in range(2000):
+            nested = {"a": nested}
+        self.assertIsNone(parse_verdict(json.dumps(nested)))
+
 
 if __name__ == "__main__":
     unittest.main()
