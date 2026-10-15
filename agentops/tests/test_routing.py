@@ -421,7 +421,15 @@ class WorkflowRoutingTests(unittest.TestCase):
         self.runner = MagicMock()
 
         async def run_agent(agent, prompt, directory, task_id, cancel_event=None):
-            return RunResult(agent.config.name, ("fake",), 0, "done", "", 0.01, False, Path(f"{task_id}.log"))
+            # Review tasks must satisfy the structured verdict contract
+            # (Issue #12); every other role answers with plain text.
+            role = self.state.get_task(task_id).role
+            review_verdict = (
+                '{"schema_version":1,"verdict":"approve","blocking":[],'
+                '"non_blocking":[],"confidence":0.99}'
+            )
+            task_text = review_verdict if role == "review" else "done"
+            return RunResult(agent.config.name, ("fake",), 0, task_text, "", 0.01, False, Path(f"{task_id}.log"))
 
         self.runner.run_agent = run_agent
         self.verifier = MagicMock()

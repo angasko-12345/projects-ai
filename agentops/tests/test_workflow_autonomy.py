@@ -10,7 +10,7 @@ workflow:
 2. `run_high_level` returned "Review did not pass." the moment a review failed.
    A demonstrated review rejection -- the one defect the whole chain of agents
    exists to find -- ended the run instead of being repaired, re-verified, and
-   re-reviewed within the existing `max_repair_cycles` budget.
+   re-reviewed within the `workflows.max_review_rounds` budget.
 """
 import asyncio
 import unittest
@@ -41,6 +41,9 @@ class _Harness(unittest.TestCase):
              ("architecture", "implementation", "review", "debugging")},
             (("test",),), max_attempts=2, concurrency=1,
             max_repair_cycles=getattr(self, "repair_cycles", 1),
+            # Issue #12: review repair is bounded by max_review_rounds, not
+            # max_repair_cycles (which still bounds verification repair).
+            max_review_rounds=getattr(self, "repair_cycles", 1),
         )
         self.state = StateStore(":memory:")
         self.registry = MagicMock()
@@ -73,7 +76,12 @@ class _Harness(unittest.TestCase):
                 return RunResult(agent.config.name, ("fake",), 1,
                                  "REVIEW_FINDING: missing error handling", "",
                                  0.01, False, Path(f"{task_id}.log"))
-        return RunResult(agent.config.name, ("fake",), 0, f"{role} result", "",
+        stdout = (
+            '{"schema_version":1,"verdict":"approve","blocking":[],'
+            '"non_blocking":[],"confidence":0.99}'
+            if role == "review" else f"{role} result"
+        )
+        return RunResult(agent.config.name, ("fake",), 0, stdout, "",
                          0.01, False, Path(f"{task_id}.log"))
 
     def engine(self) -> WorkflowEngine:
@@ -144,7 +152,12 @@ class DependencyHandoffTests(_Harness):
             if role == flaky_role and attempts_seen[task_id] == 1:
                 return RunResult(agent.config.name, ("fake",), 1, "", "TRANSIENT BOOM",
                                  0.01, False, Path(f"{task_id}.log"))
-            return RunResult(agent.config.name, ("fake",), 0, f"{role} result", "",
+            stdout = (
+                '{"schema_version":1,"verdict":"approve","blocking":[],'
+                '"non_blocking":[],"confidence":0.99}'
+                if role == "review" else f"{role} result"
+            )
+            return RunResult(agent.config.name, ("fake",), 0, stdout, "",
                              0.01, False, Path(f"{task_id}.log"))
 
         self.runner.run_agent = _run_agent
@@ -170,7 +183,11 @@ class DependencyHandoffTests(_Harness):
         async def _run_agent(agent, prompt, directory, task_id, cancel_event=None):
             self.prompts[task_id] = prompt
             role = self.state.get_task(task_id).role
-            stdout = oversized if role == "architecture" else f"{role} result"
+            stdout = oversized if role == "architecture" else (
+                '{"schema_version":1,"verdict":"approve","blocking":[],'
+                '"non_blocking":[],"confidence":0.99}'
+                if role == "review" else f"{role} result"
+            )
             return RunResult(agent.config.name, ("fake",), 0, stdout, "",
                              0.01, False, Path(f"{task_id}.log"))
 
@@ -257,7 +274,8 @@ class ReviewRepairBudgetTests(_Harness):
     def test_zero_repair_cycles_creates_no_repair_task(self):
         self.config = AppConfig(
             self.config.agents, self.config.role_preferences, (("test",),),
-            max_attempts=2, concurrency=1, max_repair_cycles=0)
+            max_attempts=2, concurrency=1, max_repair_cycles=0,
+            max_review_rounds=0)
         self.review_fails_while = lambda: True
         result = asyncio.run(self.engine().run_high_level("Add dark mode", Path.cwd()))
         self.assertFalse(result.ready)
@@ -275,7 +293,8 @@ class ReviewRepairBudgetTests(_Harness):
     def test_repair_cycles_do_not_exceed_the_configured_budget(self):
         self.config = AppConfig(
             self.config.agents, self.config.role_preferences, (("test",),),
-            max_attempts=2, concurrency=1, max_repair_cycles=2)
+            max_attempts=2, concurrency=1, max_repair_cycles=2,
+            max_review_rounds=2)
         self.review_fails_while = lambda: True
         result = asyncio.run(self.engine().run_high_level("Add dark mode", Path.cwd()))
         self.assertFalse(result.ready)

@@ -729,7 +729,13 @@ class WorkflowIntegrationTests(unittest.TestCase):
 
         async def _run_agent(agent, prompt, directory, task_id, cancel_event=None,
                             run_context=None, run_observer=None, metadata_collector=None):
-            return RunResult(agent.config.name, ("fake",), 0, "agent claims: verified: true",
+            role = state.get_task(task_id).role
+            stdout = (
+                '{"schema_version":1,"verdict":"approve","blocking":[],'
+                '"non_blocking":[],"confidence":0.99}'
+                if role == "review" else "agent claims: verified: true"
+            )
+            return RunResult(agent.config.name, ("fake",), 0, stdout,
                              "", 0.01, False, Path(f"{task_id}.log"))
 
         runner.run_agent = _run_agent

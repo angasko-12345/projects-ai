@@ -203,4 +203,8 @@
             "prefixes": []
         }
     }
+    ,"workflows": {
+        "security_review": false,
+        "max_review_rounds": 2
+    }
 }
