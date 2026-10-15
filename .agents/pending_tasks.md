@@ -17,6 +17,9 @@
 | -- | A8 reviewer pass | A8 implementation is DONE; the read-only opencode/copilot review pass was never run |
 | -- | Control center not yet verified against a real running workflow | All control-center verification used recorded fixtures and an offscreen render. No live workflow has been driven through the new surface end to end, so real timing, real durations, and a real cancellation have not been observed on screen |
 | -- | `.agents/memory/project.md` current-state line still says three products | Deliberately left: the file carries another session's uncommitted 2026-10-07 PR #5 memory notes. Update the line after the owner commits; do not sweep their hunks into an unrelated commit |
+| -- | Issue #12 security reviewer pass still owed | The copilot read-only snapshot review ran 2026-10-15 and drove 4 fixes (`2415b25`); the fcc-claude security pass could not run in that environment (`fcc-server` down, nothing on `127.0.0.1:8082`; opencode probe produced no output). Rerun the security review from a machine where `fcc-server` is up before treating the new security surface (`security.py`, prescan, gate fail-closed paths) as reviewed. Full adjudication: `.agents/memory/decisions.md` 2026-10-15 |
+| -- | `dist/AgentOps.exe` is older than `main` | Packaging code untouched by the 2026-10-15 merges/fixes, so no rebuild was owed then; the shipped exe is still the stale Oct-7 build. Rebuild on the user's cadence (D6) |
+| -- | `.git/hooks/post-commit` never runs (UTF-8 BOM) | The Obsidian mirror hook installed by `tools/obsidian-sync/install-hook.ps1` starts with a BOM, so every commit prints `cannot spawn ... post-commit: Exec format error` and the mirror silently never runs. Reinstall the hook or strip the BOM |
 
 ## AgentOps -- held / requires decision
 

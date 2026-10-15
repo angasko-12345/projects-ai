@@ -1007,3 +1007,10 @@
 - **Root cause:** (1) `restoreGeometry` shrinks to fit minus offscreen window frames, then the minimum re-expands -- the old 1024 test only passed via the old minimum clamp. (2) The proxy sorts newest-first; positional ids are meaningless. (3) Qt passes signal args positionally into defaulted slot params. (4) Unpainted scroll viewports grab as white; same code, same class, renders dark on hardware.
 - **Fix:** size round-trip tests inside the true frame budget (960x730 still asserts exact fidelity); assert selected-row ids, never positions; wrap signal connections in `lambda _checked=False:`; verify visuals against real-display screenshots, treat offscreen slabs as artifacts.
 - **Remember:** when the environment disagrees with the code, suspect the environment first -- but prove it with a minimal snippet before dismissing what you see.
+
+### 2026-10-15 - Adding a strict gate breaks every test that drives the engine, not just the obvious ones
+
+- **Symptom:** the Issue #12 verdict-gate branch shipped 6 adapted test files but left 2 failures in `test_routing.py`, a file that looks like it has nothing to do with review. `WorkflowRoutingTests` drove `run_high_level` with a fake agent that always answered plain text, so the new gate failed the review task and the workflow never reached READY.
+- **Root cause:** "which tests exercise this behavior" was answered from the change's neighborhood (verdict/workflow/review tests) instead of from the code. Any test that runs the standard workflow to completion asserts on the review outcome, whether or not it is about review.
+- **Fix:** before committing a new gate, grep for callers of the gated entry point (`run_high_level`, `execute`) and audit each driving test's fake output against the new contract; adapt the fake, not the gate.
+- **Remember:** a gate is a contract change for every caller, including tests that only care about something else. Grep the entry point, not the feature name. The same pass also showed the corollary: when a reviewer reports a bypass, fix the class of input (fence labels, malformed trailing JSON, error-vs-disabled sentinels), not the single example.

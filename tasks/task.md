@@ -742,3 +742,15 @@ repositories already existed and were untouched.
   skips, OK**; offscreen real-entry smoke 8 s clean; driven offscreen run with the real
   controller (16 palette commands, banner hidden at zero counts, F5, tray tooltip, real probe,
   clean close). Docs baselines updated to 512.
+
+---
+
+## Output (GitHub Issue #12 — strict review verdict gates and merge safety — merged 2026-10-15)
+
+Status: complete and merged into `main`.
+
+- **Shipped on `main`:** `2e80160` (strict review verdict gates: hardened `verdict.py` contract, `security.py` local secret prescan, opt-in `workflows.security_review` + `workflows.max_review_rounds`, bounded review repair, verdict summaries in CLI/GUI/events), `f039092` (routing-test contract fix), `a3b1a8f` (severity aliases), `2415b25` (reviewer-found bypasses), plus the `origin/main` sync merge `5e67e5e` and the branch merge `b7feb2c`.
+- **Verification:** `cd agentops && python -m unittest discover -s tests` → 818 tests, OK, 4 environment skips, exit 0. `.agents/evidence/verification.json` regenerated from a clean clone at the merged tip; `python tools/evidence/check.py` green.
+- **Reviews:** copilot read-only snapshot review (`/tmp/agentops-review-issue12`) — 6 findings, 4 fixed with 7 new regression tests, 2 rejected with file/line evidence; adjudication in `.agents/memory/decisions.md` (2026-10-15). fcc-claude security pass unavailable in that environment — owed (see `.agents/pending_tasks.md`).
+- **Behavior changes:** review/security roles now require a structured verdict JSON; review-repair budget default `max_repair_cycles=1` → `max_review_rounds=2`; structured agent status is SUCCESS-only; optional security task with local fail-closed prescan (values never persisted).
+- **Environment note:** part of this work ran while `D:/admin` refused file creation (see `.agents/memory/lessons.md` / project memory); integration completed once writability returned.
