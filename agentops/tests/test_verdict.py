@@ -191,12 +191,13 @@ class VerdictTest(unittest.TestCase):
         # Reviewer finding: json.loads raises RecursionError (not
         # JSONDecodeError) on pathologically nested input, which escaped the
         # parser's guards. The parser is total: it must fail closed instead.
-        deep = "{" * 4000 + '"schema_version": 1' + "}" * 4000
-        self.assertIsNone(parse_verdict(deep))
-        nested = json.dumps({"a": {"schema_version": 1}})
-        for _ in range(2000):
-            nested = {"a": nested}
-        self.assertIsNone(parse_verdict(json.dumps(nested)))
+        # The payloads are built as strings on purpose: json.dumps of a
+        # structure this deep raises in the *encoder* on some interpreters
+        # (observed on CPython 3.11), which would fail the test itself.
+        deep_object = "{" * 4000 + '"schema_version": 1' + "}" * 4000
+        self.assertIsNone(parse_verdict(deep_object))
+        deep_array = "[" * 4000 + "]" * 4000
+        self.assertIsNone(parse_verdict(deep_array))
 
 
 if __name__ == "__main__":
