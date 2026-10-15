@@ -132,6 +132,13 @@ _STATUS_COLORS: dict[str, tuple[str, str]] = {
     "interrupted": ("warning", "warning"),
     "skipped": ("text_faint", "text_faint"),
     "unknown": ("text_faint", "text_faint"),
+    # FailureSeverity values (failure.py) render through the same pill
+    # delegate in the Failures table, so they alias into the token table
+    # instead of falling through to the neutral "unknown" pair.
+    "critical": ("danger", "danger"),
+    "high": ("danger", "danger"),
+    "medium": ("warning", "warning"),
+    "low": ("text_muted", "text_muted"),
 }
 
 _STATUS_ALIASES = {
