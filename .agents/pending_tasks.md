@@ -76,8 +76,8 @@ the product code needs nothing further. See `.agents/memory/project.md` (2026-10
 |---|---|---|
 | -- | `qr-generator/PRIVACY_POLICY.md:75` still contains `[SET YOUR CONTACT EMAIL BEFORE PUBLISHING]` | README and the landing page both call the policy a draft. Edit it before hosting it at a public URL or linking it from a store listing |
 | -- | `qr-generator/LICENSE` carries the Expo/650 Industries boilerplate copyright line | decide the correct copyright line before publishing widely; it is the only license file in the public repository |
-| -- | Three marketing drafts still carry `[LINK_TO_RELEASE]` / `[LINK_TO_REPO]` / `[LINK_TO_ISSUES]` placeholders | fill before posting. Nothing has been posted, sent, or auto-published; each community's rules must be read first |
-| -- | First 10 genuine testers not yet recruited | plan is `marketing/marketing-checklist.md` in the public repo `D:/admin/code/qr-generator-public` (the parent's `qr-generator/` has no `marketing/`); count a tester only when they report an actual scan result |
+| -- | Three marketing drafts still carry `[LINK_TO_RELEASE]` / `[LINK_TO_REPO]` / `[LINK_TO_ISSUES]` placeholders | **Placeholders filled 2026-10-16** in the public repo (`D:/admin/code/qr-generator-public` commit `be52ea7`: release tag page, repo, and issues URLs; release verified live via `gh`). Nothing posted yet — posting still requires reading each community's rules first |
+| -- | First 10 genuine testers not yet recruited | plan is `marketing/marketing-checklist.md` in the public repo `D:/admin/code/qr-generator-public` (the parent's `qr-generator/` has no `marketing/`); count a tester only when they report an actual scan result. Note: the public copy is behind the parent — the SVG export (`e2bbe33`) was ported into the public repo in `be52ea7` but the released beta APK still predates it |
 
 ## Superseded / historical pointer
 
