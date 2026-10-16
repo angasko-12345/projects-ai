@@ -173,15 +173,17 @@ invent stories. Adding more scripts is a file edit, not an API call.
 
 ```
 output/
-  videos/     <NN>-<slug>-<hash>.mp4    <- the deliverable
+  videos/     <slug>-<hash>[-repeat-NN].mp4    <- the deliverable
   audio/      narration
   captions/   burned-in subtitle source (.srt)
   metadata/   title, script, caption, hashtags, scene recipes, duration
   visuals/    generated silent visual track (safe to delete; re-rendered)
 ```
 
-Filenames use a stable SHA-256 digest, so the same idea always produces the
-same filename. Re-running is idempotent instead of creating duplicates.
+Filenames use a stable SHA-256 digest, so an idea keeps the same filename when
+the batch order changes. Repeated instances of the same idea receive a stable
+`-repeat-NN` suffix. Re-running the same batch is idempotent instead of creating
+duplicates.
 
 ## Configuration
 

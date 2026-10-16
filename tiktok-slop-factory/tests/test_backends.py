@@ -241,6 +241,23 @@ def test_local_ideas_are_read_from_the_file(monkeypatch, tmp_path):
     assert local_text.generate_ideas(1) == [_VALID["scripts"][0]["idea"]]
 
 
+def test_local_pipeline_reuses_scripts_to_honor_requested_video_count(monkeypatch, tmp_path):
+    monkeypatch.setenv("TEXT_PROVIDER_JSON", str(_write_local(tmp_path, _VALID)))
+    monkeypatch.setattr(pipeline, "get_output_dir", lambda: tmp_path / "output")
+    calls = []
+
+    def fake_produce(idea, occurrence, provider=None):
+        calls.append((idea, occurrence))
+        return {"file": f"fake-{occurrence}.mp4", "idea": idea}
+
+    monkeypatch.setattr(pipeline, "_produce_one", fake_produce)
+    result = pipeline.run_pipeline(3, backend="local")
+
+    expected_idea = _VALID["scripts"][0]["idea"]
+    assert len(result["success"]) == 3
+    assert calls == [(expected_idea, 0), (expected_idea, 1), (expected_idea, 2)]
+
+
 def test_local_text_path_defaults_to_project_root(monkeypatch):
     monkeypatch.delenv("TEXT_PROVIDER_JSON", raising=False)
     assert config.get_local_text_path() == config.get_project_root() / "local_text.json"

@@ -706,6 +706,19 @@ class AgentOpsController:
             ]
             if live:
                 raise ValueError("A workflow with running tasks cannot be deleted.")
+            artifacts = []
+            offset = 0
+            while True:
+                page = state.list_artifacts(workflow_id=workflow.id, limit=1000, offset=offset)
+                if not page:
+                    break
+                artifacts.extend(page)
+                offset += len(page)
+            if artifacts:
+                store = ArtifactStore(self._artifact_root(root))
+                for artifact in artifacts:
+                    if artifact.rel_path:
+                        store.delete(artifact)
             removed = state.delete_workflow(workflow.id)
             if not removed.get("workflows"):
                 raise KeyError(f"Unknown workflow: {workflow_id}")

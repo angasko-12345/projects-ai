@@ -54,7 +54,13 @@ def test_build_stem_is_deterministic_across_processes():
 def test_build_stem_is_filesystem_safe():
     stem = pipeline.build_stem('Weird/idea: with "quotes" & <chars>', 0)
     assert "/" not in stem and ":" not in stem
-    assert stem.startswith("01-")
+    assert "weird-idea" in stem
+
+
+def test_build_stem_keeps_distinct_occurrences_for_repeated_local_ideas():
+    idea = "A lighthouse keeper finds a message in a bottle"
+    assert pipeline.build_stem(idea, 0) == pipeline.build_stem(idea, 0)
+    assert pipeline.build_stem(idea, 1) != pipeline.build_stem(idea, 0)
 
 
 def test_build_stem_distinguishes_different_ideas():

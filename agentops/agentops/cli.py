@@ -499,12 +499,21 @@ def main(argv: list[str] | None = None, services: CliServices | None = None) -> 
     workflow_id = None
     remove_worktree = False
     try:
-        worktree = manager.create(args.cwd, description)
+        specifications = None
         if definition and definition.get("tasks"):
             specifications = definition["tasks"]
-            if not isinstance(specifications, list) or not all(isinstance(item, dict) for item in specifications):
+            if not isinstance(specifications, list) or not all(
+                isinstance(item, dict) for item in specifications
+            ):
                 print("ERROR: workflow 'tasks' must be a list of mappings.")
                 return 2
+            try:
+                engine.validate_workflow_specifications(specifications)
+            except ValueError as error:
+                print(f"ERROR: invalid workflow tasks: {error}")
+                return 2
+        worktree = manager.create(args.cwd, description)
+        if specifications is not None:
             workflow_id, _ = engine.create_workflow(description, specifications)
             asyncio.run(engine.execute(workflow_id, worktree.path))
             # Custom DAGs get the same READY contract as the standard flow:

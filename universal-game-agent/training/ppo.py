@@ -202,9 +202,9 @@ class PPOTrainer:
 
     # -- rollout ---------------------------------------------------------
     @torch.no_grad()
-    def collect_rollout(self):
+    def collect_rollout(self, respect_budget: bool = False):
         if self._vec:
-            return self._collect_vector()
+            return self._collect_vector(respect_budget=respect_budget)
         cfg = self.config
         # Fresh trainer (or one restored from checkpoint, which carries no
         # mid-episode state) starts a new episode; otherwise continue.
@@ -218,7 +218,12 @@ class PPOTrainer:
         hidden_traj = []  # post-step hidden per timestep (pre-reset), for timeout bootstrap
         next_list = []  # true post-step frame per timestep (pre-reset)
         comp_sums: dict = {}  # per-component external reward sums (diagnostics only)
-        for _ in range(cfg.rollout_length):
+        rollout_steps = cfg.rollout_length
+        if respect_budget:
+            rollout_steps = min(
+                rollout_steps, max(cfg.total_timesteps - self.num_timesteps, 1)
+            )
+        for _ in range(rollout_steps):
             t = torch.from_numpy(np.ascontiguousarray(obs, dtype=np.float32)).unsqueeze(0).to(self.device)
             logits, value, hidden = self.model(t, hidden)
             dist = Categorical(logits=logits.squeeze(0))
@@ -258,8 +263,8 @@ class PPOTrainer:
         if self.curiosity is not None:
             int_scaled, int_raw = self.curiosity.intrinsic(buf["obs"], buf["actions"], buf["next_obs"], valid)
         else:
-            int_scaled = torch.zeros(cfg.rollout_length)
-            int_raw = torch.zeros(cfg.rollout_length)
+            int_scaled = torch.zeros(rollout_steps)
+            int_raw = torch.zeros(rollout_steps)
         buf["int_rewards"] = int_scaled.float()
         buf["rewards"] = buf["ext"] + buf["int_rewards"]  # total drives GAE
         # No frame pair exists for a one-step rollout: report 0.0 (no observed
@@ -274,7 +279,7 @@ class PPOTrainer:
         acc_i = getattr(self, "_ep_int", 0.0)
         acc_l = getattr(self, "_ep_len", 0)
         ep_rewards, ep_lengths, ep_ext, ep_int, ep_term = [], [], [], [], []
-        for t in range(cfg.rollout_length):
+        for t in range(rollout_steps):
             acc_e, acc_i, acc_l = acc_e + float(buf["ext"][t]), acc_i + float(int_scaled[t]), acc_l + 1
             if buf["dones"][t]:
                 ep_rewards.append(acc_e + acc_i)
@@ -300,11 +305,11 @@ class PPOTrainer:
             )[1].squeeze(0).cpu()
         buf["int_raw_mean"] = float(int_raw.mean())
         buf["comp_sums"] = {k: float(v) for k, v in comp_sums.items()}
-        buf["comp_steps"] = cfg.rollout_length
+        buf["comp_steps"] = rollout_steps
         return buf, ep_rewards, ep_lengths, ep_ext, ep_int, ep_term
 
     @torch.no_grad()
-    def _collect_vector(self):
+    def _collect_vector(self, respect_budget: bool = False):
         """Rollout over ``[time, env]``: one hidden slice per slot.
 
         Same boundary contract as the single path, applied per slot: the
@@ -316,6 +321,15 @@ class PPOTrainer:
         """
         cfg = self.config
         slots = self._num_slots
+        rollout_steps = cfg.rollout_length
+        if respect_budget:
+            remaining = cfg.total_timesteps - self.num_timesteps
+            if remaining % slots:
+                raise ValueError(
+                    f"total_timesteps must be divisible by num_envs ({slots}) "
+                    "when training with a vector environment."
+                )
+            rollout_steps = min(rollout_steps, max(remaining // slots, 1))
         if self.num_timesteps == 0 or not hasattr(self, "_carry_obs"):
             obs_list, _ = self.env.reset(
                 seeds=[cfg.seed + self.num_updates + e for e in range(slots)])
@@ -326,7 +340,7 @@ class PPOTrainer:
         buf["h0"] = hidden.clone()
         hidden_traj = []  # post-step hidden (L,N,H) per step, pre-reset
         next_list = []  # true post-step frames per step, pre-reset
-        for _ in range(cfg.rollout_length):
+        for _ in range(rollout_steps):
             t = torch.stack([torch.from_numpy(
                 np.ascontiguousarray(o, dtype=np.float32)) for o in obs_list]).to(self.device)
             logits, value, hidden = self.model(t, hidden)
@@ -362,17 +376,17 @@ class PPOTrainer:
         buf["next_obs"] = torch.stack(next_list)  # (T, N, C, H, W), cpu
         valid = ~buf["dones"]
         if self.curiosity is not None:
-            flat = cfg.rollout_length * slots
+            flat = rollout_steps * slots
             int_scaled, int_raw = self.curiosity.intrinsic(
                 buf["obs"].reshape(flat, *buf["obs"].shape[2:]),
                 buf["actions"].reshape(flat),
                 buf["next_obs"].reshape(flat, *buf["next_obs"].shape[2:]),
                 valid.reshape(flat))
-            buf["int_rewards"] = int_scaled.float().reshape(cfg.rollout_length, slots)
+            buf["int_rewards"] = int_scaled.float().reshape(rollout_steps, slots)
         else:
-            int_scaled = torch.zeros(cfg.rollout_length * slots)
-            int_raw = torch.zeros(cfg.rollout_length * slots)
-            buf["int_rewards"] = torch.zeros(cfg.rollout_length, slots)
+            int_scaled = torch.zeros(rollout_steps * slots)
+            int_raw = torch.zeros(rollout_steps * slots)
+            buf["int_rewards"] = torch.zeros(rollout_steps, slots)
         buf["rewards"] = buf["ext"] + buf["int_rewards"]
         buf["pixel_change"] = (
             float(torch.abs(buf["obs"][1:] - buf["obs"][:-1]).mean())
@@ -383,8 +397,8 @@ class PPOTrainer:
         acc_i = list(getattr(self, "_vacc_i", [0.0] * slots))
         acc_l = list(getattr(self, "_vacc_l", [0] * slots))
         ep_rewards, ep_lengths, ep_ext, ep_int, ep_term = [], [], [], [], []
-        flat_scaled = int_scaled.reshape(cfg.rollout_length, slots)
-        for t in range(cfg.rollout_length):
+        flat_scaled = int_scaled.reshape(rollout_steps, slots)
+        for t in range(rollout_steps):
             for e in range(slots):
                 acc_e[e] += float(buf["ext"][t, e])
                 acc_i[e] += float(flat_scaled[t, e])
@@ -414,7 +428,7 @@ class PPOTrainer:
         # Component breakdowns are a single-env diagnostic (per-env
         # ``last_breakdown``); vector mode reports none rather than mixing.
         buf["comp_sums"] = {}
-        buf["comp_steps"] = cfg.rollout_length * slots
+        buf["comp_steps"] = rollout_steps * slots
         return buf, ep_rewards, ep_lengths, ep_ext, ep_int, ep_term
 
     # -- update ----------------------------------------------------------
@@ -422,6 +436,7 @@ class PPOTrainer:
         if self._vec:
             return self._update_vector(buf)
         cfg = self.config
+        steps = int(buf["obs"].shape[0])
         values = buf["values"].float().reshape(-1)
         rewards = buf["rewards"].float()
         terminated = buf["terminated"].float()
@@ -435,8 +450,8 @@ class PPOTrainer:
         t0 = self.num_timesteps
         for _ in range(cfg.update_epochs):
             hidden = buf["h0"].to(self.device)  # (L,1,H): rollout-start state
-            for start in range(0, cfg.rollout_length, cfg.minibatch_size):
-                end = min(start + cfg.minibatch_size, cfg.rollout_length)
+            for start in range(0, steps, cfg.minibatch_size):
+                end = min(start + cfg.minibatch_size, steps)
                 # Replay in segments split at done (= terminated or truncated)
                 # boundaries: the env resets in both cases and rollout ran
                 # post-done steps from zeroed hidden, so replay must too.
@@ -500,7 +515,7 @@ class PPOTrainer:
         """
         cfg = self.config
         slots = self._num_slots
-        steps = cfg.rollout_length
+        steps = int(buf["obs"].shape[0])
         values = buf["values"].float()  # (T, N)
         flat = steps * slots
         advantages = torch.zeros(steps, slots)
@@ -659,6 +674,11 @@ class PPOTrainer:
 
     def train(self) -> dict[str, list]:
         cfg = self.config
+        if self._vec and cfg.total_timesteps % self._num_slots:
+            raise ValueError(
+                f"total_timesteps ({cfg.total_timesteps}) must be divisible by "
+                f"num_envs ({self._num_slots}) to train with vector environments."
+            )
         ckpt_dir = Path(cfg.checkpoint_dir)
         # Created before the is_complete() early return so an already-finished
         # run still leaves a header-only CSV. None means disabled: no file,
@@ -679,7 +699,9 @@ class PPOTrainer:
                 print(f"kept existing final checkpoint {final}")
                 return self.history
         while self.num_timesteps < cfg.total_timesteps:
-            buf, ep_rewards, ep_lengths, ep_ext, ep_int, ep_term = self.collect_rollout()
+            buf, ep_rewards, ep_lengths, ep_ext, ep_int, ep_term = self.collect_rollout(
+                respect_budget=True
+            )
             stats = self.update(buf)
             for r in ep_rewards:
                 self._reward_window.append(r)

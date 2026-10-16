@@ -15,6 +15,16 @@ from unittest import mock
 
 import numpy as np
 import torch
+# `unittest discover -s tests` adds this directory to `sys.path`, but pytest's
+# import mode does not. Add the test directory explicitly before importing the
+# shared corpus builder so both supported runners can collect this module.
+TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(TESTS_DIR)
+if TESTS_DIR not in sys.path:
+    sys.path.insert(0, TESTS_DIR)
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+
 from test_pipeline import build_data  # noqa: E402  (shared corpus builder)
 from src.config import Config, load_data_meta  # noqa: E402
 from src.dataset import TokenDataset, build_dataloader, collate_windows  # noqa: E402

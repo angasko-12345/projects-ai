@@ -364,6 +364,32 @@ def test_pipeline_validation_error_converted_to_pipeline_error(monkeypatch, tmp_
     assert (tmp_path / "videos" / f"{stem}.mp4").exists()
 
 
+def test_caption_metadata_failure_does_not_leave_a_valid_video_without_metadata(monkeypatch, tmp_path):
+    narration = " ".join(["word"] * 10)
+    audio_duration = 5.0
+    _setup_pipeline_mocks(monkeypatch, tmp_path, narration, audio_duration)
+
+    def fake_render(audio_path, visuals_path, srt_path, out_path, duration=0.0):
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_bytes(b"valid enough for this test")
+        return out_path
+
+    def caption_failure(_script):
+        raise RuntimeError("caption provider unavailable")
+
+    monkeypatch.setattr(pipeline.renderer, "render_video", fake_render)
+    monkeypatch.setattr(pipeline.renderer, "validate_final_output", lambda *a, **kw: 5.0)
+    monkeypatch.setattr(pipeline.gemini, "generate_caption", caption_failure)
+
+    entry = pipeline._produce_one("caption metadata failure", 0)
+
+    stem = pipeline.build_stem("caption metadata failure", 0)
+    assert "error" in entry
+    assert "caption provider unavailable" in entry["error"]
+    assert not (tmp_path / "videos" / f"{stem}.mp4").exists()
+    assert not (tmp_path / "metadata" / f"{stem}.json").exists()
+
+
 # ---------------------------------------------------------------------------
 # FFprobe JSON edge cases
 # ---------------------------------------------------------------------------

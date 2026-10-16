@@ -394,6 +394,27 @@ class TaskManagementTests(unittest.TestCase):
             finally:
                 state.close()
 
+    def test_delete_task_refuses_when_another_task_depends_on_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            controller, root, workflow_id, first, _second = self._seed(directory)
+            state = StateStore(controller._state_path(root))
+            try:
+                downstream = state.add_task(Task(
+                    "downstream", "review", workflow_id, dependencies=(first.id,)
+                ))
+            finally:
+                state.close()
+
+            with self.assertRaisesRegex(ValueError, "dependency"):
+                controller.delete_task(root, first.id)
+
+            state = StateStore(controller._state_path(root))
+            try:
+                self.assertEqual(state.get_task(first.id).status, TaskStatus.PENDING)
+                self.assertEqual(state.get_task(downstream.id).status, TaskStatus.PENDING)
+            finally:
+                state.close()
+
     def test_delete_task_refuses_running_and_last_tasks(self):
         with tempfile.TemporaryDirectory() as directory:
             controller, root, _workflow_id, first, _second = self._seed(directory)
@@ -502,6 +523,30 @@ class RecordManagementTests(unittest.TestCase):
                 state.close()
             with self.assertRaises(KeyError):
                 controller.delete_workflow(root, workflow_id)
+
+    def test_delete_workflow_removes_files_for_stored_artifacts(self):
+        from agentops.artifacts import ArtifactKind, ArtifactStore
+
+        with tempfile.TemporaryDirectory() as directory:
+            controller, root = self._controller(directory)
+            workflow_id, *_ = self._seed_workflow(controller, root)
+            store = ArtifactStore(controller._artifact_root(root))
+            artifact = store.write(
+                b"private workflow artifact", kind=ArtifactKind.PLANS,
+                name="private-plan", workflow_id=workflow_id, redact_text=False,
+            )
+            artifact_path = store.root / artifact.rel_path
+            state = StateStore(controller._state_path(root))
+            try:
+                state.create_artifact_record(artifact)
+            finally:
+                state.close()
+            self.assertTrue(artifact_path.is_file())
+
+            controller.delete_workflow(root, workflow_id)
+
+            self.assertFalse(artifact_path.exists())
+            self.assertEqual(store.find_orphans([]), [])
 
     def test_delete_workflow_refuses_live_work(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -113,6 +113,21 @@ class TestPPOTrainer(unittest.TestCase):
             self.assertTrue((Path(tmp) / "ppo_final.pt").exists())
             self.assertGreaterEqual(history["episodes"][-1], 1)  # short env => episodes finish
 
+    def test_training_stops_at_non_divisible_timestep_budget(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = PreprocessingWrapper(ToyPongEnv(max_steps=64))
+            model = ActorCritic(num_actions=int(env.action_space.n))
+            config = _tiny_config(
+                rollout_length=4, minibatch_size=2, total_timesteps=10,
+                checkpoint_dir=tmp,
+            )
+            trainer = PPOTrainer(env, model, config)
+
+            history = trainer.train()
+
+            self.assertEqual(trainer.num_timesteps, 10)
+            self.assertEqual(history["timesteps"], [4, 8, 10])
+
     def test_config_validation(self):
         with self.assertRaises(ValueError):
             PPOConfig(learning_rate=-1.0)

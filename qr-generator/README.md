@@ -18,6 +18,8 @@ free tier never requires a purchase.
 - Large live QR preview; the code updates as you type
 - Save as PNG (Android Storage Access Framework folder picker), system share sheet,
   copy image to clipboard, clear/reset
+- Vector SVG export (save or share): scalable output for print, reusing the same
+  module/eye geometry as the live preview, with the logo embedded as a data URI
 - Dark, light, and system theme with persistence
 - Free tier: basic generation, PNG export, sharing, 3 saved codes, square style
 - Premium tier (entitlement-gated): custom QR/background colors, rounded and dot
@@ -56,11 +58,11 @@ qr-generator/
     components/           # type selector, form, preview card, action row, locked sections
     data/                 # AsyncStorage persistence (saved, history, settings)
     premium/              # entitlements + premium context/sheet
-    qr/                   # pure logic: content parsing/validation, QR matrix, styles
+    qr/                   # pure logic: content parsing/validation, QR matrix, styles, SVG export
     sheets/               # Customize, Library, Premium sheets
     theme/                # tokens + ThemeContext (system/light/dark)
     ui/                   # toast banner
-    util/                 # PNG capture/export helpers
+    util/                 # PNG capture and SVG export helpers
   PRIVACY_POLICY.md       # publish at a public URL for Play Console
   README.md
 ```
