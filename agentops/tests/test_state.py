@@ -28,6 +28,19 @@ class StateStoreTests(unittest.TestCase):
         self.assertEqual(self.state.ready_tasks(self.workflow_id), [])
         self.assertEqual(self.state.get_task(second.id).status, TaskStatus.BLOCKED)
 
+    def test_delete_task_refuses_to_orphan_pending_dependents(self):
+        upstream = self.state.add_task(Task("upstream", "implementation", self.workflow_id))
+        downstream = self.state.add_task(Task(
+            "downstream", "review", self.workflow_id, dependencies=(upstream.id,)
+        ))
+
+        with self.assertRaisesRegex(ValueError, "dependency"):
+            self.state.delete_task(upstream.id)
+
+        self.assertEqual(self.state.get_task(upstream.id).status, TaskStatus.PENDING)
+        self.assertEqual(self.state.get_task(downstream.id).status, TaskStatus.PENDING)
+        self.assertEqual([t.id for t in self.state.ready_tasks(self.workflow_id)], [upstream.id])
+
     def test_count_interrupted_work_mirrors_recover_all(self):
         """The banner's read-only counts must equal what recovery reaps."""
         from agentops.agent_run import AgentRunContext

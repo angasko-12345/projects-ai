@@ -431,6 +431,20 @@ class MainWindowShellTests(unittest.TestCase):
             self.assertTrue(self.window._settings.sidebar_collapsed)
             self.assertTrue(path.exists())
 
+    def test_clearing_recent_repositories_updates_the_shell_and_persists(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.window._settings_file = Path(directory) / "settings.json"
+            self.window._settings.recent_repositories.append("C:/repos/old-project")
+            self.window._sync_repository_label()
+            self.assertEqual(self.window._repo_combo.count(), 2)
+
+            self.window.update_settings({"recent_repositories": []})
+
+            self.assertEqual(self.window._settings.recent_repositories, [])
+            self.assertEqual(self.window._repo_combo.count(), 1)
+            from agentops.gui.settings import load_settings
+            self.assertEqual(load_settings(self.window._settings_file).recent_repositories, [])
+
     def test_command_palette_opens_and_closes(self):
         self.window.open_palette()
         wait(50)

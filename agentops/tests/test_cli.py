@@ -1181,6 +1181,23 @@ class TaskWorkflowCommandTests(CliTestCase):
         self.assertIn("ERROR: workflow 'tasks' must be a list of mappings.",
                       stdout)
 
+    def test_workflow_invalid_task_fields_are_rejected_before_worktree_creation(self):
+        engine = MagicMock(name="engine")
+        engine.validate_workflow_specifications.side_effect = ValueError(
+            "Each workflow task requires string description and role fields."
+        )
+        services = self._workflow_services(engine)
+        definition = {"description": "invalid graph", "tasks": [
+            {"id": "a", "description": "first", "role": 42},
+        ]}
+        with patch("agentops.cli._load_data", return_value=definition):
+            code, stdout, _ = self._invoke(["workflow", "flow.yaml"], services)
+
+        self.assertEqual(code, 2)
+        self.assertIn("ERROR: invalid workflow tasks", stdout)
+        self.assertEqual(self.manager.created, [])
+        engine.create_workflow.assert_not_called()
+
     def test_workflow_missing_file_is_an_error(self):
         services = self._workflow_services(MagicMock(name="engine"))
         with patch("agentops.cli._load_data",

@@ -135,6 +135,12 @@ _STATUS_COLORS: dict[str, tuple[str, str]] = {
 }
 
 _STATUS_ALIASES = {
+    # Failure records use severity values in the same badge delegate as task
+    # statuses, so map their vocabulary onto existing visual tokens.
+    "critical": "error",
+    "high": "failed",
+    "medium": "blocked",
+    "low": "pending",
     "timed-out": "timed_out",
     "timedout": "timed_out",
     "not-run": "skipped",

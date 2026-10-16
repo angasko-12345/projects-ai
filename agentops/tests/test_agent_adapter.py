@@ -50,7 +50,10 @@ class DerivationHonestyTests(unittest.TestCase):
             self.assertIn(capability, implementation.capabilities())
         reviewer = adapter_for(_config(roles=("review",)))
         for capability in (Capability.CODE_REVIEW, Capability.SECURITY_REVIEW, Capability.DOCUMENTATION):
-            self.assertIn(capability, reviewer.capabilities())
+            if capability is Capability.SECURITY_REVIEW:
+                self.assertNotIn(capability, reviewer.capabilities())
+            else:
+                self.assertIn(capability, reviewer.capabilities())
 
     def test_declared_extras_apply(self):
         adapter = adapter_for(_config(), )

@@ -133,6 +133,42 @@ class ReviewVerdictWorkflowRegressions(unittest.TestCase):
 
 
 class DependencyRegressions(unittest.TestCase):
+    def test_invalid_task_fields_leave_no_partial_workflow(self):
+        config, state, registry, runner, verifier = _engine()
+        try:
+            engine = WorkflowEngine(config, state, registry, runner, verifier)
+            with self.assertRaisesRegex(ValueError, "string description and role"):
+                engine.create_workflow("w", [
+                    {"id": "valid", "description": "first", "role": "implementation"},
+                    {"id": "invalid", "description": "second", "role": 5},
+                ])
+            self.assertEqual(state.connection.execute("SELECT COUNT(*) FROM workflows").fetchone()[0], 0)
+            self.assertEqual(state.connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0], 0)
+        finally:
+            state.close()
+
+    def test_partial_task_insert_failure_rolls_back_the_workflow(self):
+        config, state, registry, runner, verifier = _engine()
+        try:
+            engine = WorkflowEngine(config, state, registry, runner, verifier)
+            add_task = state.add_task
+
+            def fail_second_task(task):
+                if task.description == "second":
+                    raise RuntimeError("simulated task insert failure")
+                return add_task(task)
+
+            state.add_task = fail_second_task
+            with self.assertRaisesRegex(RuntimeError, "simulated task insert failure"):
+                engine.create_workflow("w", [
+                    {"id": "first", "description": "first", "role": "implementation"},
+                    {"id": "second", "description": "second", "role": "review"},
+                ])
+            self.assertEqual(state.connection.execute("SELECT COUNT(*) FROM workflows").fetchone()[0], 0)
+            self.assertEqual(state.connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0], 0)
+        finally:
+            state.close()
+
     def test_self_dependency_rejected(self):
         config, state, registry, runner, verifier = _engine()
         try:

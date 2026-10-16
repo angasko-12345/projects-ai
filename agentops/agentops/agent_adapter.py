@@ -96,7 +96,6 @@ TASK_CAPABILITIES_FOR_ROLES: dict[str, frozenset[Capability]] = {
     }),
     "review": frozenset({
         Capability.CODE_REVIEW,
-        Capability.SECURITY_REVIEW,
         Capability.DOCUMENTATION,
     }),
 }

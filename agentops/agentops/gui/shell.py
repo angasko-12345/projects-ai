@@ -34,7 +34,7 @@ from .bridge import ControllerBridge
 from .format import elide, format_duration
 from .new_task import NewTaskDialog
 from .palette import Command, CommandPalette
-from .settings import AppSettings, load_settings, save_settings
+from .settings import AppSettings, RECENT_REPOSITORY_LIMIT, load_settings, save_settings
 from .toast import ToastHost
 from .tokens import DARK, status_colors
 from .views import VIEW_SPECS, create_views
@@ -428,6 +428,20 @@ class MainWindow(QMainWindow, AsyncMixin):
             if key in updates and getattr(self._settings, key) != updates[key]:
                 setattr(self._settings, key, updates[key])
                 changed = True
+        if "recent_repositories" in updates:
+            recent = updates["recent_repositories"]
+            if not isinstance(recent, list) or any(not isinstance(item, str) for item in recent):
+                raise ValueError("recent_repositories must be a list of repository paths.")
+            cleaned: list[str] = []
+            for item in recent:
+                path = item.strip()
+                if path and path not in cleaned:
+                    cleaned.append(path)
+            cleaned = cleaned[:RECENT_REPOSITORY_LIMIT]
+            if cleaned != self._settings.recent_repositories:
+                self._settings.recent_repositories = cleaned
+                changed = True
+            self._sync_repository_label()
         if "sidebar_collapsed" in updates:
             self._apply_sidebar()
         if changed:

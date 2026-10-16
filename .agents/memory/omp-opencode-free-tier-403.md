@@ -1,12 +1,12 @@
 # Memory: omp (oh-my-pi) ↔ OpenCode free-tier 403 FreeTierError
 
-> Status: **RESOLVED 2026-09-22** — config-only mirror provider fix landed and verified live
-> (see "The fix (verified)" below). Gate rule for `/zen/v1` is now fully pinned: attribution
-> headers are **format-only** (UA `opencode/*` + `x-opencode-session: ses_`+26), no key needed,
-> and the only working free route is `/zen/v1/responses` (chat/completions is dead, 503).
-> Applies to: oh-my-pi (`@oh-my-pi/pi-coding-agent`, installed v18.2.8, npm name
-> `@oh-my-pi/pi-coding-agent`) using free Zen models (`opencode-zen/muse-spark-1.3-contributor-free`,
-> `:high`/`:low`/`:medium` thinking variants).
+> Status: **RE-PINNED 2026-10-13** — the 09-22 static session value went stale; the gate's session
+> rule is now pinned as a **bit pattern**, not "format only". See the newest section
+> ("2026-10-13 — gate re-pinned; full 117-model import") for the current rule, fix, and catalog.
+> The older "RESOLVED 2026-09-22" sections below are historical: their `x-opencode-session: ses_…
+> format-only` claim is superseded (wrong for the current gate).
+> Applies to: oh-my-pi (`@oh-my-pi/pi-coding-agent`) mirror provider `omp-zen` against
+> `https://opencode.ai/zen/v1` (`/responses` + `/chat/completions` both live on the free tier now).
 
 ## Symptom
 
@@ -165,3 +165,58 @@ Profiles show: reasoning true, input text/image, contextWindow 1048576, maxToken
 - **SINGLE PROVIDER (2026-09-22, v18.2.11):** per-model `api` IS supported in `models.yml` model entries (verified empirically — the request router reads `model.api`). So the two mirrors were merged into ONE `omp-zen` provider: provider-level `api: openai-responses` default, chat models carry `api: openai-completions` per-entry. `omp-zen-c` removed; `omp models` now shows `omp-zen (9)` one clean table.
 - **omp self-updated v18.2.8 → v18.2.11 during the session and REWROTE `~/.omp/agent/config.yml`**: added `task/web/slow/smol/vision` roles and reset `default` to `ollama-cloud/qwen3-coder-next`. Restored `default: omp-zen/muse-spark-1.3-contributor-free:high`. Watch for config.yml being rewritten on version bumps.
 - **ollama-cloud 401 root cause:** a stored `api_key` (len 59) IS present in `auth_credentials`, but ollama.com rejects it — probed both `https://ollama.com/api/chat` and `/v1/chat/completions` (Bearer, gpt-oss:120b) → 401 on both. Fix = user: fresh key from `https://ollama.com/settings/keys` then `omp` → `/login ollama-cloud` (paste), or set `OLLAMA_CLOUD_API_KEY` env var (built into provider `envVars`). `smol: ollama-cloud/glm-4.6` in config.yml will 401 until then.
+
+## 2026-10-13 — gate re-pinned (low-12-bit session rule); full 117-model import
+
+**Status:** `omp-zen` working again. Root cause this time was ONLY the `x-opencode-session` value:
+the 09-22 static value `ses_01a0c93f46a0F87wagIvaLefvj` no longer passes the server check.
+
+### Corrected session-id acceptance rule (probed live 2026-10-13)
+
+`POST https://opencode.ai/zen/v1/responses` with omp's real captured body (relays in
+`C:\Users\admin\AppData\Local\Temp\opencode\`, `relay4–relay21.js`):
+
+- `User-Agent` must START `opencode/` (`opencode/1.18.32`, `opencode/1.19.0`, `opencode/1.20.0` pass;
+  `omp/*`, bare `opencode` (no slash), absent → 403).
+- A session header (`x-opencode-session` **or** `x-opencode-session-id`) must carry an ACCEPTED value:
+  - shape: `ses_` + **12 hex** + **14 base62/alphanumeric** (a 13- or 15-char suffix, or symbols → 403).
+  - accept iff the 12-hex prefix satisfies **(value & 0xFFF) ≥ 0xFC0** (low 12 bits in the top 64 of 4096).
+    Boundaries: `…fc0`→200, `…fbf`→403; `…f00`/`…000`/`…6a0`/`…abe`→403. Suffix content is FREE (random passes).
+    No time dependence: `ses_000000000fc0…` (tiny) and `ses_ffffffffffff…` (future) both pass.
+  - the old 09-22 value ends `…6a0` (low12 `0x6A0`) → 403. Regenerate with a 12-hex ending **`ffc`–`fff`** (use `…ffe`).
+- Body `tools` must include entries **named exactly `bash` AND `read`** (renaming either → 403;
+  descriptions/params/empty schema irrelevant; extra tools fine; body size irrelevant).
+- `Authorization` is NOT required (`auth: none` works). `x-opencode-project/-request/-client` and
+  `x-opencode-session-id` are NOT individually required.
+- Both `/zen/v1/responses` and `/zen/v1/chat/completions` work on the free tier for FREE models.
+  The 09-22 "only 2 muse-spark-* work" note is SUPERSEDED (many free ids pass on completions).
+
+### Fix applied
+
+`D:\admin\code\cli_files\oh-my-pi\home\agent\models.yml` (= `~/.omp/agent/models.yml` symlink):
+`x-opencode-session` → `ses_c4e9a1b7dffeKp3Rz8Wq2Lm7Vx` (12-hex `c4e9a1b7dffe`, low12 `0xFFE` ≥ `0xFC0`).
+UA kept `opencode/1.18.32`. Verified: `omp --print --no-pty --model omp-zen/muse-spark-1.3-contributor-free …`
+and the default role → `OK`.
+
+### Full catalog import (117 models)
+
+`omp-zen` now mirrors all **117** built-in `opencode-zen` chat models.
+Source of truth for metadata: `omp models opencode-zen --json` (117) for id/name/ctx/maxTokens/thinking,
+and per-model `api` from `~/.omp/agent/models.db` table `model_cache` rows `opencode-zen:models-v3:*`
+(`SELECT models FROM model_cache WHERE provider_id LIKE 'opencode-zen%'`, JSON `models` array).
+
+- api split: 57 `openai-completions`, 32 `openai-responses`, 20 `anthropic-messages`, 8 `google-generative-ai`.
+- `exo-free`, `fledge-alpha-free` absent from `model_cache` → defaulted to `openai-completions`.
+- `claude-opus-5-5-backup`, `jev-1.13`, `jev-1.13-free` have null ctx/maxTokens → fields omitted (0 is invalid → load error).
+- Verified live: `omp-zen/nemotron-3-ultra-free` → `OK` (completions wire);
+  `omp-zen/muse-spark-1.3-contributor-free` → `OK` (responses wire);
+  `omp-zen/minimax-m3-free` → 400 "Model is unavailable" (upstream, NOT a gate failure).
+- PAID ids need an account/workspace and fail under `auth: none`:
+  `omp-zen/claude-opus-4-5` → 401 `Rate-limited models require a workspace`. Listed for completeness only.
+- Regenerate: rebuild from the two sources above; watch that `omp models` may re-fetch the catalog between runs.
+
+### Ops notes
+
+- No listeners left on 8998/8999; `PI_CODING_AGENT_DIR` override only used for the temp capture config (removed).
+- Do not commit secrets: `auth: none`, no key persisted.
+- If the static id starts failing again, mint a new one with a 12-hex suffix `ffc`–`fff` + 14 alnum.

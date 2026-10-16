@@ -94,6 +94,32 @@ instructions, (4) `decisions.md`, (5) `architecture.md`, (6) `project.md`,
 
 Update other files if necessary and relevant to the completed task.
 
+### 4a. Refresh the Obsidian agent-memory mirror (after `.agents/` changes)
+
+Whenever this task made substantial changes to `.agents/` memory or
+instructions (the files in §4's table, `.agents/AGENTS.md`, `.agents/team.md`,
+product `AGENTS.md` files, skills, plans, outputs, or evidence), refresh the
+read-only Obsidian mirror so the vault stays current:
+
+```bat
+tools\obsidian-sync\sync-now.bat
+```
+
+If `sync-filelist.txt` is stale (files were added/renamed/removed), refresh
+it first:
+
+```bat
+git ls-files .agents tasks AGENTS.md pi_AGENTS.md agentops/AGENTS.md universal-game-agent/AGENTS.md small-projects/mini-llm/AGENTS.md ai-token-tracker/AGENTS.md qr-generator/AGENTS.md .github/copilot-instructions.md > tools\obsidian-sync\sync-filelist.txt
+```
+
+Rules: the repository's `.agents/` remains authoritative; the Obsidian copy
+under `Agent Memory/projects-ai/` is a read-only mirror. Never edit the
+mirror to change memory — edit the repo and re-run the sync. A local
+post-commit hook (installed via `tools/obsidian-sync/install-hook.ps1`) also
+re-runs the sync best-effort after each commit, but the manual step above is
+the reliable trigger — verify the mirror updated.
+
+
 ## 5. Commit and push
 
 - Back up the dirty tree **before** substantial work, not after:

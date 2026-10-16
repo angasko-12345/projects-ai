@@ -254,6 +254,32 @@ class TestTimestepAccounting(unittest.TestCase):
             self.assertEqual(trainer.history["timesteps"], [8, 16])
             self.assertEqual(trainer.num_timesteps, 16)
 
+    def test_history_stops_at_non_divisible_vector_rollout_budget(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = SyncVectorEnv(
+                [lambda: _ScriptedEnv([(0.0, False, False)] * 16, slot=s) for s in range(2)]
+            )
+            trainer = PPOTrainer(
+                env, ActorCritic(num_actions=2),
+                _config(num_envs=2, total_timesteps=10,
+                        checkpoint_dir=str(Path(tmp) / "ckpt")),
+            )
+            with redirect_stdout(_io.StringIO()):
+                trainer.train()
+            self.assertEqual(trainer.history["timesteps"], [8, 10])
+            self.assertEqual(trainer.num_timesteps, 10)
+
+    def test_vector_training_rejects_budget_not_divisible_by_env_count(self):
+        env = SyncVectorEnv(
+            [lambda: _ScriptedEnv([(0.0, False, False)] * 8, slot=s) for s in range(2)]
+        )
+        trainer = PPOTrainer(
+            env, ActorCritic(num_actions=2), _config(num_envs=2, total_timesteps=9),
+        )
+        with self.assertRaisesRegex(ValueError, "divisible by num_envs"):
+            trainer.train()
+        self.assertEqual(trainer.num_timesteps, 0)
+
     def test_history_total_samples_single(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = _ScriptedEnv([(0.0, False, False)] * 16)

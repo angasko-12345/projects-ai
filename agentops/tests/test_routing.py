@@ -121,7 +121,17 @@ class AgentCapabilityResolverTests(unittest.TestCase):
             "reviewer", ("architecture",), capabilities=("review",)
         )))
         self.assertIn("code review", reviewing.capabilities)
-        self.assertIn("security review", reviewing.capabilities)
+        self.assertNotIn("security review", reviewing.capabilities)
+
+    def test_security_review_requires_an_explicit_capability(self):
+        generic = self.resolver.profile(_detected(_config("generic-reviewer", ("review",))))
+        security = self.resolver.profile(_detected(_config(
+            "security-reviewer", ("review",), capabilities=("security review",)
+        )))
+
+        self.assertTrue(self.resolver.matches(generic, ("code review",)))
+        self.assertFalse(self.resolver.matches(generic, ("security review",)))
+        self.assertTrue(self.resolver.matches(security, ("security review",)))
 
 
 class AgentRouterTests(unittest.TestCase):
@@ -421,7 +431,13 @@ class WorkflowRoutingTests(unittest.TestCase):
         self.runner = MagicMock()
 
         async def run_agent(agent, prompt, directory, task_id, cancel_event=None):
-            return RunResult(agent.config.name, ("fake",), 0, "done", "", 0.01, False, Path(f"{task_id}.log"))
+            stdout = (
+                '{"schema_version":1,"verdict":"approve","blocking":[],'
+                '"non_blocking":[],"confidence":0.99}'
+                if "You are the review agent" in prompt
+                else "done"
+            )
+            return RunResult(agent.config.name, ("fake",), 0, stdout, "", 0.01, False, Path(f"{task_id}.log"))
 
         self.runner.run_agent = run_agent
         self.verifier = MagicMock()

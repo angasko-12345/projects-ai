@@ -641,11 +641,26 @@ class StateStore:
 
         Runs, verifications, failures, and events reference tasks by plain
         text (no foreign keys), so deleting a task never cascades: history
-        recorded against it stays readable. Callers must guard liveness
-        (never delete a running task) and keep at least one task per
-        workflow; this method only removes the row.
+        recorded against it stays readable. A task that another task depends
+        on cannot be deleted because doing so would make the dependent task
+        permanently blocked. The controller guards liveness and workflow size.
         """
         with self._lock:
+            target = self.connection.execute(
+                "SELECT workflow_id FROM tasks WHERE id = ?", (task_id,)
+            ).fetchone()
+            if target is None:
+                return False
+            rows = self.connection.execute(
+                "SELECT * FROM tasks WHERE id != ?", (task_id,)
+            ).fetchall()
+            for row in rows:
+                dependent = self._task_from_row(row)
+                if task_id in dependent.dependencies:
+                    raise ValueError(
+                        f"Task {task_id!r} cannot be deleted because task "
+                        f"{dependent.id!r} has a dependency on it."
+                    )
             cursor = self.connection.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
             self.connection.commit()
             return cursor.rowcount == 1

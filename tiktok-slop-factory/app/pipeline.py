@@ -154,15 +154,16 @@ def _slug(text: str, max_len: int = 40) -> str:
     return (slug[:max_len].strip("-") or "story")
 
 
-def build_stem(idea: str, index: int | None = None) -> str:
+def build_stem(idea: str, occurrence: int | None = None) -> str:
     """Return a deterministic, filesystem-safe stem for an idea.
 
-    Uses a SHA-256 digest instead of ``hash()`` so names are stable across
-    processes and runs.
+    The base name depends only on the idea, so reordering a batch cannot create
+    duplicate files. Repeated instances of the same idea receive a stable
+    occurrence suffix (1-based in the filename, 0-based in this argument).
     """
     digest = hashlib.sha256((idea or "").strip().encode("utf-8")).hexdigest()[:8]
-    prefix = f"{index + 1:02d}-" if index is not None else ""
-    return f"{prefix}{_slug(idea, 32)}-{digest}"
+    repeat = f"-repeat-{occurrence + 1:02d}" if occurrence is not None and occurrence > 0 else ""
+    return f"{_slug(idea, 32)}-{digest}{repeat}"
 
 
 def select_best_ideas(ideas: List[str], count: int = 3) -> List[str]:
@@ -312,7 +313,14 @@ def run_pipeline(
     cleanup_stale(out_dir / "visuals", ("*.partial.mp4",))
 
     try:
-        ideas = select_best_ideas(provider.generate_ideas(max(count * 3, 6)), count)
+        if providers.backend_name(provider) == "local":
+            # The keyless backend deliberately reuses its scripts when the
+            # requested count exceeds the local library. Deduplicating here
+            # silently reduces --count, making the documented repeat contract
+            # impossible to satisfy.
+            ideas = list(provider.generate_ideas(count))
+        else:
+            ideas = select_best_ideas(provider.generate_ideas(max(count * 3, 6)), count)
     except Exception as e:
         result["failed"].append({"step": "ideas", "error": str(e)})
         return result
@@ -321,8 +329,12 @@ def run_pipeline(
         result["failed"].append({"step": "ideas", "error": "No usable ideas returned"})
         return result
 
-    for index, idea in enumerate(ideas):
-        entry = _produce_one(idea, index, provider)
+    occurrences: dict[str, int] = {}
+    for idea in ideas:
+        key = idea.strip().casefold()
+        occurrence = occurrences.get(key, 0)
+        occurrences[key] = occurrence + 1
+        entry = _produce_one(idea, occurrence, provider)
         if entry.get("file"):
             result["success"].append(entry)
         else:
@@ -331,17 +343,22 @@ def run_pipeline(
     return result
 
 
-def _produce_one(idea: str, index: int, provider=None) -> Dict[str, Any]:
+def _produce_one(idea: str, occurrence: int, provider=None) -> Dict[str, Any]:
     """Produce a single video, returning either a success or a failure entry.
 
     ``provider`` defaults to the Gemini module, which is what the pipeline has
     always used here.
     """
     provider = provider if provider is not None else gemini
-    stem = build_stem(idea, index)
+    stem = build_stem(idea, occurrence)
     out_dir = get_output_dir()
+    for sub in ("videos", "audio", "captions", "metadata", "visuals"):
+        (out_dir / sub).mkdir(parents=True, exist_ok=True)
     audio_path: Path | None = None
     srt_path: Path | None = None
+    out_path: Path | None = None
+    metadata_path: Path | None = None
+    output_validated = False
 
     try:
         script = provider.generate_script(idea)
@@ -365,7 +382,7 @@ def _produce_one(idea: str, index: int, provider=None) -> Dict[str, Any]:
         _assert_narration_coherent(narration, audio_path, duration)
 
         # Visuals are generated locally from the script: no stock-media API.
-        scenes = visuals.plan_scenes(script, duration=duration, seed=_seed(idea, index))
+        scenes = visuals.plan_scenes(script, duration=duration, seed=_seed(idea, occurrence))
         if not scenes:
             raise PipelineError("Could not plan any scenes from the script")
         visuals_path = visuals.render_background(
@@ -389,6 +406,7 @@ def _produce_one(idea: str, index: int, provider=None) -> Dict[str, Any]:
             renderer.validate_final_output(out_path, min_duration=duration)
         except renderer.OutputValidationError as e:
             raise PipelineError(str(e)) from e
+        output_validated = True
 
         meta = build_metadata(
             title=script.get("title") or "Fictional story",
@@ -401,7 +419,8 @@ def _produce_one(idea: str, index: int, provider=None) -> Dict[str, Any]:
         )
         meta_dir = out_dir / "metadata"
         meta_dir.mkdir(parents=True, exist_ok=True)
-        (meta_dir / f"{stem}.json").write_text(
+        metadata_path = meta_dir / f"{stem}.json"
+        metadata_path.write_text(
             json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8"
         )
 
@@ -414,6 +433,16 @@ def _produce_one(idea: str, index: int, provider=None) -> Dict[str, Any]:
         }
     except Exception as e:
         # Remove this video's intermediates so failures do not leave litter.
+        # If the video passed validation but the remaining publication steps
+        # failed (for example, caption metadata generation), remove the final
+        # video too; otherwise it is an untracked deliverable with no metadata.
+        if output_validated:
+            for published in (out_path, metadata_path):
+                if published is not None and published.exists():
+                    try:
+                        published.unlink()
+                    except OSError:
+                        pass
         for p in (srt_path, audio_path, locals().get("visuals_path")):
             if p is not None and p.exists():
                 try:

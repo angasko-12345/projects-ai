@@ -370,7 +370,7 @@ class AgentCapabilityResolver:
         if "planning" in resolved:
             resolved.add("architecture")
         if "review" in resolved:
-            resolved.update({"code review", "security review"})
+            resolved.add("code review")
 
         return frozenset(item for item in resolved if item)
 

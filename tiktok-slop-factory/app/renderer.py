@@ -134,7 +134,11 @@ def validate_final_output(path: Path, *, min_duration: Optional[float] = None) -
         )
 
     # 4. Contains a video stream.
-    has_video = any(s.get("codec_type") == "video" for s in (streams or []))
+    # Guard against malformed ffprobe payloads: retain valid stream entries and
+    # ignore unexpected scalars instead of crashing validation on .get().
+    usable_streams = [stream for stream in streams if isinstance(stream, dict)] \
+        if isinstance(streams, list) else []
+    has_video = any(stream.get("codec_type") == "video" for stream in usable_streams)
     if not has_video:
         raise OutputValidationError(
             f"Final output validation failed: file contains no video stream: {path}"
