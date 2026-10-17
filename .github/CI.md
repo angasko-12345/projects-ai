@@ -1,6 +1,6 @@
 # What CI validates
 
-Three independent products, three workflows, plus one workflow that checks the
+Four independent products, four workflows, plus one workflow that checks the
 recorded verification evidence. Each product workflow triggers only on its own
 paths and runs that product's supported test command from that product's
 directory. There is no repository-wide test command.
@@ -10,6 +10,7 @@ directory. There is no repository-wide test command.
 | `agentops.yml` | `agentops/` | `python -m unittest discover -s tests` | none (stdlib only) |
 | `universal-game-agent.yml` | `universal-game-agent/` | `python -m unittest discover -s tests` | `pip install -r requirements.txt` |
 | `mini-llm.yml` | `small-projects/mini-llm/` | `python -m unittest discover -s tests` | `pip install -r requirements.txt` |
+| `ai-token-tracker.yml` | `ai-token-tracker/` | `python -m unittest discover -s tests -v` | none (stdlib only) |
 | `evidence.yml` | repository root | `python tools/evidence/check.py` | none (stdlib only); needs full history |
 
 All jobs run on `ubuntu-latest` with Python 3.11 (the lowest supported

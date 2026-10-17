@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -417,3 +418,19 @@ def collector_statuses(conn: sqlite3.Connection) -> list[dict]:
         "FROM collector_status ORDER BY tool COLLATE NOCASE, source"
     ).fetchall()
     return [dict(row) for row in rows]
+
+
+def default_db_path() -> Path:
+    """Where the tracker stores usage when no override is configured.
+
+    Lives here, not in ``gui.py``, so the default-location rule is Qt-free and
+    unit-testable without the optional desktop dependency: the GUI calls this
+    and only the windowing itself needs PySide6.
+    """
+    env = os.environ.get("AI_TOKEN_TRACKER_DB")
+    if env:
+        path = Path(env)
+        return path / "usage.db" if path.is_dir() else path
+    if os.name == "nt" and Path("D:/").exists():
+        return Path("D:/ai-token-tracker/usage.db")
+    return Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "ai-token-tracker" / "usage.db"
