@@ -1,0 +1,32 @@
+# AI Token Tracker tests. See ../CI.md for what CI does and does not
+# validate.
+#
+# This is the fourth product workflow. It exists because `evidence.yml`
+# triggers on `ai-token-tracker/**` and the recorded evidence is only as
+# trustworthy as the suite that produced it -- without this job, a commit
+# could change the product code and the evidence would stay green on the
+# strength of a workflow that never ran it.
+name: ai-token-tracker
+
+on:
+  push:
+    paths:
+      - "ai-token-tracker/**"
+      - ".github/workflows/ai-token-tracker.yml"
+  pull_request:
+    paths:
+      - "ai-token-tracker/**"
+      - ".github/workflows/ai-token-tracker.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run the AI Token Tracker suite
+        run: |
+          cd ai-token-tracker
+          python -m unittest discover -s tests -v
