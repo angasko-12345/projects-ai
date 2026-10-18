@@ -22,7 +22,7 @@ from agentops.config import AppConfig, AgentConfig, load_config
 from agentops.events import EventType
 from agentops.execution_model import assess_workflow_readiness
 from agentops.registry import DetectedAgent
-from agentops.runner import RunResult
+from agentops.runner import RunResult, _safe_structured_result
 from agentops.state import StateStore
 from agentops.tasks import Task, TaskStatus
 from agentops.workflow import (
@@ -116,6 +116,21 @@ class StructuredStatusTests(unittest.TestCase):
     def test_verdict_only_output_is_not_an_agent_status(self):
         status = _structured_agent_status(self._result(APPROVE))
         self.assertIsNone(status)
+
+    def test_real_running_envelope_verdict_only_output_is_not_an_agent_status(self):
+        """Regression (2026-10-18, live acceptance round 2): the real runner
+        attaches ``_safe_structured_result(stdout)`` as the envelope. For
+        verdict-only review output the envelope parses the verdict as an
+        UNKNOWN agent status, and ``_structured_agent_status`` returned that
+        UNKNOWN, so a compliant reviewer (exactly what the review prompt
+        demands: prose + final verdict line) FAILED the status gate. The
+        verdict-aware filter that the stdout-candidate path applies must also
+        hold when the only structured JSON came through the envelope path.
+        Live: workflow b901b8ac reviews d8dd91b3/c567aa07/e0d2e455."""
+        envelope = _safe_structured_result(APPROVE)
+        gate = ReviewGateTests()
+        task = gate._run_review_task(APPROVE, structured=envelope)
+        self.assertEqual(task.status, TaskStatus.PASSED)
 
     def test_explicit_unknown_is_not_success(self):
         status = _structured_agent_status(self._result(
@@ -250,6 +265,34 @@ class ReviewGateTests(unittest.TestCase):
             self.assertIn(EventType.REVIEW_COMPLETED.value, kinds)
         finally:
             state.close()
+
+
+class PromptContractTests(unittest.TestCase):
+    def _engine(self):
+        config, state, registry, runner, verifier = _engine()
+        engine = WorkflowEngine(config, state, registry, runner, verifier)
+        return engine
+
+    def test_nonreview_prompt_requires_structured_agent_result(self):
+        """Regression (2026-10-18, live acceptance round 2): the non-review
+        prompt told agents the AgentResult JSON was optional and that plain
+        text remains valid, while the success gate fails any run whose
+        structured status is UNKNOWN. Agents obeying the prompt were
+        guaranteed to fail. The prompt must demand the structured object the
+        gate enforces. Live: workflow 5b55fbd3 implementation 2026-10-17."""
+        engine = self._engine()
+        state = engine.state
+        workflow_id = state.create_workflow("prompt contract")
+        task = state.add_task(Task("Do the thing", "implementation",
+                                   workflow_id, max_attempts=1))
+        try:
+            prompt = engine._prompt(task, Path.cwd())
+        finally:
+            state.close()
+        self.assertIn('"schema_version": 1', prompt)
+        self.assertIn('"status"', prompt)
+        self.assertIn("MUST", prompt)
+        self.assertNotIn("plain-text summaries remain valid", prompt)
 
 
 class RepairRoundTests(unittest.TestCase):

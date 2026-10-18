@@ -324,14 +324,40 @@ def _structured_agent_status(result: object) -> AgentResultStatus | None:
     not agent-status signals and are skipped, so a pure verdict line can
     never masquerade as agent success or failure. Never raises.
     """
+def _structured_agent_status(result: object) -> AgentResultStatus | None:
+    """Authoritative agent-level outcome for a runner result, if any.
+
+    Prefers the runner-attached ``structured_result`` envelope (what the
+    runner parsed from stdout); falls back to parsing ``stdout`` directly
+    so runner doubles that skip the envelope are still honoured. Returns
+    ``None`` when no structured payload is available -- the legacy /
+    plaintext path -- so callers keep the historical exit-code behaviour.
+    Review-verdict objects (``{"verdict": ...}`` without a ``status``) are
+    not agent-status signals and are skipped, so a pure verdict line can
+    never masquerade as agent success or failure. Never raises.
+    """
     try:
-        candidates = [item for item in _stdout_candidate_dicts(getattr(result, "stdout", None))
-                      if not _is_verdict_only(item)]
+        stdout_candidates = _stdout_candidate_dicts(getattr(result, "stdout", None))
+        candidates = [item for item in stdout_candidates if not _is_verdict_only(item)]
         if candidates:
             coerced = coerce_agent_result(candidates[-1])
             if coerced is not None:
                 return coerced.status
             return AgentResultStatus.UNKNOWN
+        verdict_only_candidates = [
+            item for item in stdout_candidates if _is_verdict_only(item)
+        ]
+        if verdict_only_candidates:
+            # The only structured JSON in stdout is a review verdict
+            # object, which is not an agent-status signal. The real runner
+            # attaches an envelope parsed from that same stdout; its
+            # UNKNOWN status is the verdict misread as an agent report,
+            # not a claimed outcome. Keep it out of the gate: return None
+            # (legacy path) exactly as the no-envelope doubles do.
+            # 2026-10-18 regression: a compliant reviewer output (prose +
+            # final verdict line, what the review prompt mandates) FAILED
+            # the status gate live through workflows b901b8ac reviews.
+            return None
         coerced = coerce_agent_result(getattr(result, "structured_result", None))
         if coerced is not None:
             envelope = getattr(result, "structured_result", None)
@@ -1770,10 +1796,14 @@ class WorkflowEngine:
         else:
             base = common + (
                 "Summarize changes and tests in your final response. "
-                "Optionally end with a JSON AgentResult object "
-                '{"schema_version": 1, "status": "success|failure|partial|unknown", '
+                "Your FINAL output line MUST be one valid JSON AgentResult "
+                "object using exactly this schema: "
+                '{"schema_version": 1, "status": "success|failure|partial", '
                 '"summary": "...", "files_changed": [], "tests_run": 0, '
-                '"tests_passed": 0, "tests_failed": 0}; plain-text summaries remain valid.'
+                '"tests_passed": 0, "tests_failed": 0}. '
+                "Use status=failure when the work could not be completed, "
+                "with a plain-language summary of what happened. "
+                "Do not write anything after that final JSON line."
             )
         scope = _role_scope_text(task.role, working_directory)
         if scope:
