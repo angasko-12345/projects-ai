@@ -17,7 +17,8 @@
             "command": "codex",
             "args": [
                 "exec",
-                "--approve-for-me",
+                "--sandbox",
+                "workspace-write",
                 "{prompt}"
             ],
             "roles": [
