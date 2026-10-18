@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -177,13 +176,12 @@ QStatusBar {{ background: {c['surface']}; border-top: 1px solid {c['border']}; c
 
 
 def resolve_db_path() -> Path:
-    env = os.environ.get("AI_TOKEN_TRACKER_DB")
-    if env:
-        path = Path(env)
-        return path / "usage.db" if path.is_dir() else path
-    if os.name == "nt" and Path("D:/").exists():
-        return Path("D:/ai-token-tracker/usage.db")
-    return Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "ai-token-tracker" / "usage.db"
+    """Where the tracker stores usage when no override is configured.
+
+    Re-exports the Qt-free rule from :func:`token_tracker.db.default_db_path`
+    so the GUI stays a thin caller; the logic and its tests live in ``db``.
+    """
+    return db.default_db_path()
 
 
 class DailyChart(QWidget):
