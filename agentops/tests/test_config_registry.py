@@ -24,6 +24,40 @@ class ConfigAndRegistryTests(unittest.TestCase):
             ("/bin/pi", "--print", "do it"),
         )
 
+    def test_bundled_codex_args_use_only_known_flags(self):
+        # Regression: the bundled config passed `--approve-for-me`, an
+        # automatic-approval escalation, for an unattended run. Model-generated
+        # shell commands must instead stay inside the explicit workspace-write
+        # sandbox; `codex exec` is non-interactive and exposes no approval
+        # policy, so nothing is ever prompted. Allowlist comes from
+        # `codex exec --help` on codex-cli 0.163.0.
+        known = {
+            "-c", "--config", "--enable", "--disable", "--strict-config",
+            "-i", "--image", "-m", "--model", "--oss", "--local-provider",
+            "-p", "--profile", "-s", "--sandbox", "--approve-for-me",
+            "--dangerously-bypass-approvals-and-sandbox",
+            "--dangerously-bypass-hook-trust", "-C", "--cd", "--worktree",
+            "--add-dir", "--thread-source", "--cyber-access-program",
+            "--skip-git-repo-check", "--ephemeral", "--ignore-user-config",
+            "--ignore-rules", "--output-schema", "--color", "--json",
+            "-o", "--output-last-message", "-h", "--help", "-V", "--version",
+        }
+        from agentops.registry import DetectedAgent
+        from agentops.runner import AgentRunner
+        config = load_config()
+        args = config.agents["codex"].args
+        self.assertEqual(args[0], "exec")
+        flags = [argument for argument in args if argument.startswith("-")]
+        self.assertEqual([flag for flag in flags if flag not in known], [])
+        self.assertNotIn("--approve-for-me", args)
+        self.assertIn("--sandbox", args)
+        self.assertEqual(args[args.index("--sandbox") + 1], "workspace-write")
+        self.assertEqual(
+            AgentRunner.build_command(
+                DetectedAgent(config.agents["codex"], True, "/bin/codex"), "do it"),
+            ("/bin/codex", "exec", "--sandbox", "workspace-write", "do it"),
+        )
+
     @patch("agentops.registry.subprocess.run")
     @patch("agentops.registry.shutil.which")
     def test_detects_installed_agents_and_falls_back_by_role(self, which, run):
