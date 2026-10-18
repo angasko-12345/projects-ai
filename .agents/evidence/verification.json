@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-10-18T04:05:36+00:00",
-  "commit": "33634716736d0b27799bf754088461ca5e1a3f15",
+  "generated_at": "2026-10-18T04:23:00+00:00",
+  "commit": "94dbc3ba59a202a5c05e2fdd53870f444e20eb17",
   "python": "3.14.7",
   "platform": "Windows 11 (AMD64)",
-  "measured_in": "a clean clone of 33634716736d",
+  "measured_in": "a clean clone of 94dbc3ba59a2",
   "clean_checkout": true,
   "command_note": "Every command runs from its own product directory with the interpreter that ran this script. There is no repository-wide test command and these products share no dependencies.",
   "excluded": {
@@ -14,7 +14,7 @@
     {
       "product": "agentops",
       "directory": "agentops",
-      "commit": "33634716736d0b27799bf754088461ca5e1a3f15",
+      "commit": "94dbc3ba59a202a5c05e2fdd53870f444e20eb17",
       "command": [
         "C:\\Python314\\python.exe",
         "-m",
@@ -25,12 +25,12 @@
       ],
       "dirty_paths": [],
       "total": 827,
-      "duration_seconds": 177.633,
+      "duration_seconds": 164.716,
       "skipped": 4,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 827 tests in 177.633s",
+        "Ran 827 tests in 164.716s",
         "OK (skipped=4)"
       ],
       "result": "pass"
@@ -86,7 +86,7 @@
     {
       "product": "ai-token-tracker",
       "directory": "ai-token-tracker",
-      "commit": "abe0d7384ab19bcf2229eca3949c6c5bdd0130d4",
+      "commit": "94dbc3ba59a202a5c05e2fdd53870f444e20eb17",
       "command": [
         "C:\\Python314\\python.exe",
         "-m",
@@ -97,12 +97,12 @@
       ],
       "dirty_paths": [],
       "total": 46,
-      "duration_seconds": 4.062,
+      "duration_seconds": 3.597,
       "skipped": 0,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 46 tests in 4.062s",
+        "Ran 46 tests in 3.597s",
         "OK"
       ],
       "result": "pass"
