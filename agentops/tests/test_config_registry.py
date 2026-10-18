@@ -25,11 +25,12 @@ class ConfigAndRegistryTests(unittest.TestCase):
         )
 
     def test_bundled_codex_args_use_only_known_flags(self):
-        # Regression: the bundled config passed `--approve-for-me`, an
-        # automatic-approval escalation, for an unattended run. Model-generated
-        # shell commands must instead stay inside the explicit workspace-write
-        # sandbox; `codex exec` is non-interactive and exposes no approval
-        # policy, so nothing is ever prompted. Allowlist comes from
+        # Regression: the bundled config passed `--approve-for-me` for an
+        # unattended run. The flag exists in codex-cli 0.163.0 (it routes
+        # escalation requests through automatic review) but grants more than
+        # needed. Model-generated shell commands must stay inside the explicit
+        # workspace-write sandbox; `codex exec` is non-interactive and exposes
+        # no approval policy, so nothing is ever prompted. Allowlist comes from
         # `codex exec --help` on codex-cli 0.163.0.
         known = {
             "-c", "--config", "--enable", "--disable", "--strict-config",
