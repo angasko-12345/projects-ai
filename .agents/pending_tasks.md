@@ -92,3 +92,5 @@ the product code needs nothing further. See `.agents/memory/project.md` (2026-10
 - The Agent Intercom Windows EPERM fix, the AgentOps packaging/release work, the roadmap
   Phase 1+3 delivery, A4, A3, B7, the temp-archive and restore operations, and the A8
   implementation are all complete. Their history is in `.agents/memory/project.md`.
+
+| Integration | OpenRouter provider-side activity import for ai-token-tracker (`GET /api/v1/activity` with `OPENROUTER_API_KEY`); new additive collector, idempotent page-through, fills the real-cost gap for the dominant Claude Code route (437/449 records) | nice-to-have | - |

@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-10-18T04:23:00+00:00",
-  "commit": "94dbc3ba59a202a5c05e2fdd53870f444e20eb17",
+  "generated_at": "2026-10-19T13:55:01+00:00",
+  "commit": "ad73f309938c195a115dabb45c562b4f55aa304a",
   "python": "3.14.7",
   "platform": "Windows 11 (AMD64)",
-  "measured_in": "a clean clone of 94dbc3ba59a2",
+  "measured_in": "a clean clone of ad73f309938c",
   "clean_checkout": true,
   "command_note": "Every command runs from its own product directory with the interpreter that ran this script. There is no repository-wide test command and these products share no dependencies.",
   "excluded": {
@@ -86,7 +86,7 @@
     {
       "product": "ai-token-tracker",
       "directory": "ai-token-tracker",
-      "commit": "94dbc3ba59a202a5c05e2fdd53870f444e20eb17",
+      "commit": "ad73f309938c195a115dabb45c562b4f55aa304a",
       "command": [
         "C:\\Python314\\python.exe",
         "-m",
@@ -96,13 +96,13 @@
         "tests"
       ],
       "dirty_paths": [],
-      "total": 46,
-      "duration_seconds": 3.597,
+      "total": 52,
+      "duration_seconds": 12.251,
       "skipped": 0,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 46 tests in 3.597s",
+        "Ran 52 tests in 12.251s",
         "OK"
       ],
       "result": "pass"
