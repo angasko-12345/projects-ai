@@ -54,6 +54,20 @@ class DatabaseTest(unittest.TestCase):
         self.assertEqual(totals["total_tokens"], 0)
         self.assertEqual(totals["exact_tokens"], 0)
         self.assertEqual(totals["estimated_tokens"], 0)
+        self.assertEqual(totals["cost_events"], 0)
+
+    def test_totals_reports_cost_coverage(self):
+        """cost_events counts events that carry a reported cost, including $0."""
+        db.insert_events(self.conn, [
+            make_event("2026-10-06T10:00:00.000Z", request_id="paid", input_tokens=10, cost=0.25),
+            make_event("2026-10-06T10:00:01.000Z", request_id="free", input_tokens=5, cost=0.0),
+            make_event("2026-10-06T10:00:02.000Z", request_id="unknown", input_tokens=7, cost=None),
+        ])
+        totals = db.totals(self.conn)
+        self.assertEqual(totals["cost_events"], 2)  # unknown cost not counted
+        self.assertAlmostEqual(totals["cost"], 0.25)
+        window = db.totals(self.conn, since="2026-10-07")
+        self.assertEqual(window["cost_events"], 0)
 
     def test_reimport_of_identical_event_is_unchanged(self):
         event = make_event("2026-10-06T10:00:00.000Z", request_id="msg_1", input_tokens=100)
