@@ -6,6 +6,7 @@ real installation.
 """
 
 import json
+import os
 import sqlite3
 import tempfile
 import unittest
@@ -214,11 +215,34 @@ def build_hermes_db(path: Path) -> None:
         "  'summarize', 1, 10, 5, 0, 0, 0, 0.75, 0.0, 'estimated', 'pricing_table',"
         "  1791112702.5, 1791112800.5)"
     )
+    # Real-store rows where no pricing engine produced anything:
+    # cost_status NULL or 'unknown' and both cost columns zero. Storing $0.00
+    # would fabricate money; the tracker stores NULL instead.
+    con.execute(
+        "INSERT INTO session_model_usage VALUES"
+        " ('h3', 'model-free', 'nous', 'https://inference-api.nousresearch.com/v1',"
+        "  '', 2, 50, 8, 0, 0, 0, 0.0, 0.0, NULL, NULL,"
+        "  1791113702.5, 1791113800.5)"
+    )
+    con.execute(
+        "INSERT INTO session_model_usage VALUES"
+        " ('h4', 'model-w', 'nous', 'https://inference-api.nousresearch.com/v1',"
+        "  '', 4, 80, 12, 0, 0, 0, 0.0, 0.0, 'unknown', 'provider_models_api',"
+        "  1791114702.5, 1791114800.5)"
+    )
     con.commit()
     con.close()
 
 
 def build_copilot_dir(root: Path) -> None:
+    """Copilot session-state shaped like the real store (verified 2026-10-19).
+
+    Real semantics (e.g. session 0642f84c): usage.inputTokens (511997) is the
+    TOTAL input including cache reads/writes; tokenDetails.input.tokenCount
+    (33) is the EXCLUSIVE non-cached input: 33 + 436512 + 75452 == 511997.
+    usage.outputTokens includes reasoning. A second event carries no
+    tokenDetails, which must fall back to subtracting cache from inputTokens.
+    """
     session = root / "uuid-fixture"
     session.mkdir(parents=True)
     lines = [
@@ -232,16 +256,41 @@ def build_copilot_dir(root: Path) -> None:
                 "data": {
                     "modelMetrics": {
                         "gpt-5.6-luna": {
-                            "requests": {"count": 3, "cost": 1.0},
+                            "requests": {"count": 11, "cost": 1.0},
                             "usage": {
                                 "inputTokens": 511997,
-                                "outputTokens": 900,
+                                "outputTokens": 5895,
                                 "cacheReadTokens": 436512,
                                 "cacheWriteTokens": 75452,
-                                "reasoningTokens": 200,
+                                "reasoningTokens": 1960,
                             },
                             "tokenDetails": {
-                                "input": {"tokenCount": 511997},
+                                "input": {"tokenCount": 33},
+                                "cache_read": {"tokenCount": 436512},
+                                "cache_write": {"tokenCount": 75452},
+                                "output": {"tokenCount": 5895},
+                            },
+                        }
+                    }
+                },
+            }
+        ),
+        # Older stores expose no tokenDetails: inclusive input, subtract cache.
+        json.dumps(
+            {
+                "type": "session.shutdown",
+                "timestamp": "2026-10-03T05:50:19.487Z",
+                "id": "shutdown-2",
+                "data": {
+                    "modelMetrics": {
+                        "mai-code-1.1-flash": {
+                            "requests": {"count": 3, "cost": 1.0},
+                            "usage": {
+                                "inputTokens": 3000,
+                                "outputTokens": 500,
+                                "cacheReadTokens": 2000,
+                                "cacheWriteTokens": 100,
+                                "reasoningTokens": 100,
                             },
                         }
                     }
@@ -259,13 +308,14 @@ def build_claude_dir(root: Path) -> None:
     """Claude Code projects: one JSONL file with assistant records including duplicates."""
     project_dir = root / "D--admin-code-projects" / "session-1"
     project_dir.mkdir(parents=True)
-    # Record 1: normal assistant message with usage
+    # Record 1: normal assistant message with usage; model string uses the
+    # real router alias "open_router" (437 of 449 records in the live store).
     rec1 = {
         "type": "assistant",
         "requestId": "req-1",
         "timestamp": "2026-10-06T10:00:00.100Z",
         "cwd": "D:/admin/code/projects",
-        "model": "anthropic/openrouter/google/gemma-4-26b-a4b-it:free",
+        "model": "anthropic/open_router/google/gemma-4-26b-a4b-it:free",
         "message": {
             "role": "assistant",
             "usage": {
@@ -277,13 +327,14 @@ def build_claude_dir(root: Path) -> None:
             },
         },
     }
-    # Record 2: duplicate rid, different timestamp (streaming fork)
+    # Record 2: duplicate rid, different timestamp (newline-append copy with
+    # identical usage, the pattern observed across the live store's files)
     rec2 = {
         "type": "assistant",
         "requestId": "req-1",
         "timestamp": "2026-10-06T10:00:01.200Z",
         "cwd": "D:/admin/code/projects",
-        "model": "anthropic/openrouter/google/gemma-4-26b-a4b-it:free",
+        "model": "anthropic/open_router/google/gemma-4-26b-a4b-it:free",
         "message": {
             "role": "assistant",
             "usage": {
@@ -313,14 +364,25 @@ def build_claude_dir(root: Path) -> None:
             },
         },
     }
-    # Record 4: synthetic (no usage)
+    # Record 4: synthetic placeholder; real stores attach a zero-usage block
+    # to these rows (client placeholders, not API usage) and must be skipped.
     rec4 = {
         "type": "assistant",
         "requestId": "",
         "timestamp": "2026-10-06T10:10:00.000Z",
         "cwd": "D:/admin/code/projects",
         "model": "<synthetic>",
-        "message": {"role": "assistant", "content": "placeholder"},
+        "message": {
+            "role": "assistant",
+            "content": "placeholder",
+            "usage": {
+                "input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
+                "output_tokens": 0,
+                "output_tokens_details": {"thinking_tokens": 0},
+            },
+        },
     }
     # Record 5: user message (should be skipped)
     rec5 = {
@@ -550,7 +612,7 @@ class CollectorParsingTest(unittest.TestCase):
         hermes_db = self.root / "state.db"
         build_hermes_db(hermes_db)
         events = collectors.collect_hermes(hermes_db)
-        self.assertEqual(len(events), 2)
+        self.assertEqual(len(events), 4)
         by_model = {e.model: e for e in events}
         real = by_model["model-y"]
         self.assertEqual(real.tool, "Hermes")
@@ -565,31 +627,51 @@ class CollectorParsingTest(unittest.TestCase):
         self.assertEqual(est.cost, 0.75)  # estimated cost, flagged in metadata
         self.assertEqual(est.raw_metadata["cost_source"], "pricing_table")
         self.assertTrue(all(e.exact for e in events))  # tokens API-counted
+        # No pricing result (status NULL/'unknown', both cost columns empty):
+        # cost stays None; a fabricated $0.00 would invent money data.
+        self.assertIsNone(by_model["model-free"].cost)
+        self.assertIsNone(by_model["model-w"].cost)
+        # Token data still lands even when cost is unknown.
+        self.assertEqual(by_model["model-free"].total_tokens, 58)
 
-    def test_copilot_splits_inclusive_totals_per_model(self):
+    def test_copilot_uses_exclusive_input_details_and_splits_totals(self):
         copilot_dir = self.root / "session-state"
         build_copilot_dir(copilot_dir)
         events = collectors.collect_copilot(copilot_dir)
-        self.assertEqual(len(events), 1)  # malformed + non-shutdown lines skipped
-        event = events[0]
-        self.assertEqual(event.tool, "GitHub Copilot")
-        self.assertEqual(event.provider, "github-copilot")
-        self.assertEqual(event.model, "gpt-5.6-luna")
-        # tokenDetails.input.tokenCount includes cache; outputTokens includes
-        # reasoning. Stored values must split cleanly and sum to the totals.
+        self.assertEqual(len(events), 2)  # malformed + non-shutdown lines skipped
+        by_model = {e.model: e for e in events}
+        details_event = by_model["gpt-5.6-luna"]
+        self.assertEqual(details_event.tool, "GitHub Copilot")
+        self.assertEqual(details_event.provider, "github-copilot")
+        # tokenDetails.input.tokenCount is the vendor's EXCLUSIVE non-cached
+        # input (33); it must land directly in input_tokens, not be double-
+        # subtracted as if it were the inclusive total (511997).
         self.assertEqual(
-            (event.input_tokens, event.cache_read_tokens, event.cache_write_tokens,
-             event.output_tokens, event.reasoning_tokens),
-            (33, 436512, 75452, 700, 200),
+            (details_event.input_tokens, details_event.cache_read_tokens,
+             details_event.cache_write_tokens, details_event.output_tokens,
+             details_event.reasoning_tokens),
+            (33, 436512, 75452, 3935, 1960),
         )
+        # Tracker invariant vs the vendor's reported totals.
         self.assertEqual(
-            event.input_tokens + event.cache_read_tokens + event.cache_write_tokens
-            + event.output_tokens + event.reasoning_tokens,
-            511997 + 900,
+            details_event.input_tokens + details_event.cache_read_tokens
+            + details_event.cache_write_tokens + details_event.output_tokens
+            + details_event.reasoning_tokens,
+            511997 + 5895,
         )
-        self.assertEqual(event.raw_metadata["requests"], 3)
-        self.assertIsNone(event.cost)  # request-cost units are not documented
-        self.assertTrue(event.exact)
+        self.assertEqual(details_event.raw_metadata["requests"], 11)
+        self.assertEqual(details_event.raw_metadata["input_total_reported"], 511997)
+        self.assertIsNone(details_event.cost)  # request-cost units are not documented
+        self.assertTrue(details_event.exact)
+        # Without tokenDetails: inclusive inputTokens minus cache sides.
+        fallback = by_model["mai-code-1.1-flash"]
+        self.assertEqual(
+            (fallback.input_tokens, fallback.cache_read_tokens,
+             fallback.cache_write_tokens, fallback.output_tokens,
+             fallback.reasoning_tokens),
+            (900, 2000, 100, 400, 100),
+        )
+        self.assertEqual(fallback.total_tokens, 3000 + 500)
 
     def test_claude_dedupes_duplicate_rids_and_splits_usage(self):
         claude_dir = self.root / "claude"
@@ -602,7 +684,9 @@ class CollectorParsingTest(unittest.TestCase):
         by_rid = {e.request_id: e for e in events}
         e1 = by_rid["req-1"]
         self.assertEqual(e1.tool, "Claude Code")
-        self.assertEqual(e1.provider, "openrouter")  # router model parsed
+        self.assertEqual(e1.provider, "openrouter")  # router model parsed; open_router aliased
+        self.assertEqual(e1.raw_metadata["model_raw"],
+                         "anthropic/open_router/google/gemma-4-26b-a4b-it:free")
         self.assertEqual(e1.model, "google/gemma-4-26b-a4b-it:free")
         self.assertEqual(e1.project, "D:/admin/code/projects")
         # Anthropic: input excludes cache; output includes thinking
@@ -620,6 +704,60 @@ class CollectorParsingTest(unittest.TestCase):
         self.assertEqual(e2.output_tokens, 1200)
         self.assertEqual(e2.total_tokens, 6200)
         self.assertTrue(e2.exact)
+        self.assertIsNone(e2.cost)  # live store carries no costUSD field
+
+    def test_claude_skips_synthetic_zero_usage_rows(self):
+        # Real stores attach zero-usage blocks to <synthetic> placeholder rows
+        # (client error placeholders); they are not API usage and must be
+        # skipped, not recorded as zero-valued events.
+        claude_dir = self.root / "claude"
+        build_claude_dir(claude_dir)
+        events = collectors.collect_claude(claude_dir)
+        self.assertEqual(len(events), 2)
+        self.assertNotIn("<synthetic>", [(e.model or "") for e in events])
+        self.assertEqual(
+            [e.total_tokens for e in events if e.total_tokens == 0],
+            [],  # no zero-usage rows survived
+        )
+
+    def test_claude_dedupe_prefers_records_that_carry_usage(self):
+        # A rid group whose earliest copy lacks usage must not swallow the
+        # usage-bearing sibling copied into another session file.
+        claude_dir = self.root / "claude-dedupe"
+        project_dir = claude_dir / "proj" / "session-1"
+        project_dir.mkdir(parents=True)
+        bare = {
+            "type": "assistant",
+            "requestId": "req-9",
+            "timestamp": "2026-10-06T09:00:00.000Z",
+            "cwd": "D:/work/p",
+            "model": "claude-sonnet-4-5",
+            "message": {"role": "assistant", "content": "placeholder"},
+        }
+        with_usage = {
+            "type": "assistant",
+            "requestId": "req-9",
+            "timestamp": "2026-10-06T09:00:01.000Z",
+            "cwd": "D:/work/p",
+            "model": "claude-sonnet-4-5",
+            "message": {
+                "role": "assistant",
+                "usage": {
+                    "input_tokens": 100,
+                    "cache_read_input_tokens": 0,
+                    "cache_creation_input_tokens": 0,
+                    "output_tokens": 40,
+                    "output_tokens_details": {"thinking_tokens": 0},
+                },
+            },
+        }
+        # Earlier file gets the usage-less copy first (rglob sorted order).
+        (project_dir / "a.jsonl").write_text(json.dumps(bare) + "\n", encoding="utf-8")
+        (project_dir / "b.jsonl").write_text(json.dumps(with_usage) + "\n", encoding="utf-8")
+        events = collectors.collect_claude(claude_dir)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].input_tokens, 100)
+        self.assertEqual(events[0].request_id, "req-9")
 
     def test_cline_splits_inclusive_input_and_tracks_model(self):
         cline_dir = self.root / "cline"
@@ -873,8 +1011,12 @@ class SyncAllTest(unittest.TestCase):
         self.assertEqual(statuses["kilo"]["error"], None)
         self.assertEqual(statuses["kilo"]["events"], 2)
         self.assertIsNotNone(statuses["kilo"]["last_sync"])
-        self.assertEqual(statuses["ghost"]["capability"], "unavailable")
+        self.assertEqual(statuses["ghost"]["capability"], "error")
         self.assertIn("not found", statuses["ghost"]["error"])
+        # A transient collection failure is an error, not a designed
+        # "unavailable": the coverage indicator must not claim the source was
+        # audited and found without usable data.
+        self.assertNotEqual(statuses["ghost"]["capability"], "unavailable")
         # a failed collector leaves other collectors' data untouched
         self.assertEqual(db.totals(self.conn)["events"], 2)
 
@@ -906,6 +1048,7 @@ class SyncAllTest(unittest.TestCase):
         statuses = {r["source"]: r for r in db.collector_statuses(self.conn)}
         self.assertIsNotNone(statuses["kilo"]["error"])
         self.assertIsNone(statuses["kilo"]["last_sync"])
+        self.assertEqual(statuses["kilo"]["capability"], "error")
 
         kilo_db = self.root / "kilo.db"
         build_kilo_db(kilo_db)
@@ -919,6 +1062,20 @@ class SyncAllTest(unittest.TestCase):
         self.assertIsNone(statuses["kilo"]["error"])
         self.assertIsNotNone(statuses["kilo"]["last_sync"])
         self.assertEqual(statuses["kilo"]["events"], 2)
+        # The source's own declared capability returns after success.
+        self.assertEqual(statuses["kilo"]["capability"], "exact")
+
+    def test_finder_for_local_share_kilo_database(self):
+        """Real Kilo installs keep the DB at ~/.local/share/kilo/kilo.db."""
+        fake_home = self.root / "home"
+        kilo_dir = fake_home / ".local" / "share" / "kilo"
+        kilo_dir.mkdir(parents=True)
+        kilo_db = kilo_dir / "kilo.db"
+        kilo_db.write_bytes(b"")  # existence is all find_kilo checks
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("KILO_DB", None)
+            with mock.patch.object(collectors, "_user_home", lambda: fake_home):
+                self.assertEqual(collectors.find_kilo(), kilo_db)
 
 
 # ----------------------------------------------------- legacy imports

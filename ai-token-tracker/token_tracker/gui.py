@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import collectors, db
-from .format import human_count, human_tokens
+from .format import cost_summary, human_count, human_tokens
 
 # Theme palettes: PALETTE always holds the active theme's colors; painters
 # and the stylesheet builder read from it so a toggle repaints everything.
@@ -550,9 +550,13 @@ class MainWindow(QMainWindow):
         for key, (value_label, detail_label) in self.range_cards.items():
             window_totals = ranges[key]
             value_label.setText(human_tokens(window_totals["total_tokens"]))
+            # Reported cost is shown on the all-time card only: it is the one
+            # window where provider-reported cost coverage is meaningful.
+            suffix = cost_summary(window_totals) if key == "life" else ""
             detail_label.setText(
                 f"exact {human_tokens(window_totals['exact_tokens'])} · "
                 f"estimated {human_tokens(window_totals['estimated_tokens'])}"
+                f"{suffix}"
             )
 
         self.chart.set_series(db.daily_series(self.conn, days=30))
@@ -605,8 +609,10 @@ class MainWindow(QMainWindow):
         self._fill_status_rows()
 
     def _fill_status_rows(self) -> None:
-        colors = {"exact": "#16A34A", "estimated": "#B45309", "unavailable": "#6B7280"}
-        labels = {"exact": "● Exact", "estimated": "● Estimated", "unavailable": "● Unavailable"}
+        colors = {"exact": "#16A34A", "estimated": "#B45309", "unavailable": "#6B7280",
+                  "error": "#DC2626"}
+        labels = {"exact": "● Exact", "estimated": "● Estimated",
+                  "unavailable": "● Unavailable", "error": "● Error"}
         table = self.status_table
         table.setSortingEnabled(False)
         table.setRowCount(0)

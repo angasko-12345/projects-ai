@@ -20,13 +20,14 @@ On launch the app syncs every registered collector (read-only against their loca
 
 **Dashboard**
 - tokens today / last 7 days / last 30 days / all time, each with an exact vs estimated split
+- the all-time card appends reported cost (`cost $X across N events`) when sources report cost; missing cost data never shows as $0.00
 - daily usage chart (last 30 days, UTC days)
 - three breakdown tables (by tool, by provider, by model), each with a group-by selector (tool, provider, model, agent), sortable by any column
 
 **Sources**
 - coverage indicator: `Tracked agents 10/10 · exact 10/10 · unavailable 7`
 - rollup tables aggregating independently by agent, provider, and model
-- collector status table: colored status dot (green exact / yellow estimated / gray unavailable), source, tool, last successful sync, events imported, and the error message when a source is unavailable
+- collector status table: colored status dot (green exact / yellow estimated / gray unavailable / red error), source, tool, last successful sync, events imported, and the error message when the source is unavailable or a sync fails
 
 **Recent events**
 - every stored event, newest first, sortable by any column
@@ -46,12 +47,12 @@ All collectors read official local data read-only and import full history on eve
 | Source | Data | Capability | Historical |
 |---|---|---|---|
 | OpenCode | `~/.local/share/opencode/opencode.db` (`OPENCODE_DB` overrides) | exact | full history |
-| Kilo | Kilo Code session SQLite (`KILO_DB` overrides) | exact | full history |
+| Kilo | `~/.kilo/share/kilo.db` or `~/.local/share/kilo/kilo.db` (`KILO_DB` overrides) | exact | full history |
 | Hermes | Hermes session/usage SQLite (`HERMES_STATE_DB` overrides) | exact | full history |
 | Codex | Codex rollout session files (`CODEX_SESSIONS` overrides) | exact | full history |
 | Pi | Pi session JSONL dirs (`PI_SESSIONS` overrides) | exact | full history |
 | Oh My Pi | Oh My Pi session JSONL dirs (`OMP_SESSIONS` overrides) | exact | full history |
-| GitHub Copilot | Copilot CLI `events.jsonl` (AppData) | exact | full history |
+| **GitHub Copilot** | Copilot CLI `events.jsonl` (AppData) | exact | full history |
 | **Claude Code** | `~/.claude/projects/*.jsonl` (`CLAUDE_PROJECTS` overrides) | exact | full history |
 | **Cline** | `~/.cline/data/sessions/*.messages.json` (`CLINE_SESSIONS` overrides) | exact | full history |
 | **DeepSeek Harness** | `~/dsh/sessions/**/session.v4.jsonl.zstd` (`DSH_SESSIONS` overrides) | exact | full history |
@@ -63,7 +64,7 @@ All collectors read official local data read-only and import full history on eve
 | **free-claude-code** | empty local DB; delegates to other CLIs | unavailable | — |
 | **Gemini CLI** | config only; no session data | unavailable | — |
 
-OpenCode's message-level token sums reconcile exactly with its own session rollups, so imported events are marked **exact**. Messages or sessions without recorded usage are skipped, never guessed. Unavailable sources are shown with a gray dot and their reason in the status table; estimates only ever enter the database through manual import, never from a collector.
+OpenCode's message-level token sums reconcile exactly with its own session rollups, so imported events are marked **exact**. Messages or sessions without recorded usage are skipped, never guessed. Claude Code sessions carry no cost field, `<synthetic>` client placeholders (including zero-usage copies) are skipped rather than stored as zero-token requests, and Hermes rows whose pricing engine produced nothing store cost as missing (shown as `-`), never as a fabricated $0.00. Unavailable sources are shown with a gray dot and their reason in the status table; a sync that fails (locked file, missing store) shows a red error dot instead, so a transient failure is never reported as "audited and found unavailable"; estimates only ever enter the database through manual import, never from a collector.
 
 ## Agent vs provider, and deduplication
 
@@ -86,6 +87,13 @@ Reads OpenCode's own database (`~/.local/share/opencode/opencode.db`, `OPENCODE_
 ## Token accounting
 
 `total = input + output + cache_read + cache_write + reasoning` (reasoning is a separate component in OpenCode's own totals, verified against its `tokens.total` on sampled messages).
+
+Collector-verified inclusive/exclusive semantics:
+- **GitHub Copilot**: `usage.inputTokens` is the total including cache reads/writes; `tokenDetails.input.tokenCount` is the exclusive non-cached input (`33 + 436512 + 75452 == 511997` in the live store) and is used directly. `usage.outputTokens` includes reasoning.
+- **Claude Code**: Anthropic semantics, `input_tokens` excludes cache, `output_tokens` includes thinking (split out).
+- **Codex**: `usage.input_tokens` includes cached input; `output_tokens` includes reasoning; both split.
+- **Cline**: `inputTokens` includes cache reads/writes; split.
+- **Hermes**: API-counted rollups where `input + output + cache_read + cache_write = api-reported total`.
 
 ## Tests
 

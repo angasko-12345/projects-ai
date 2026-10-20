@@ -754,3 +754,22 @@ Status: complete and merged into `main`.
 - **Reviews:** copilot read-only snapshot review (`/tmp/agentops-review-issue12`) — 6 findings, 4 fixed with 7 new regression tests, 2 rejected with file/line evidence; adjudication in `.agents/memory/decisions.md` (2026-10-15). fcc-claude security pass unavailable in that environment — owed (see `.agents/pending_tasks.md`).
 - **Behavior changes:** review/security roles now require a structured verdict JSON; review-repair budget default `max_repair_cycles=1` → `max_review_rounds=2`; structured agent status is SUCCESS-only; optional security task with local fail-closed prescan (values never persisted).
 - **Environment note:** part of this work ran while `D:/admin` refused file creation (see `.agents/memory/lessons.md` / project memory); integration completed once writability returned.
+
+---
+
+## Output (ai-token-tracker data-pipeline audit + real-store fixes -- 2026-10-19)
+
+Status: complete. Commit `ad73f30` on `main` (pushed); clean-clone evidence regenerated, `tools/evidence/check.py` green.
+
+- **Scope:** audit token/usage/cost collection across all 17 supported sources, fix correctness bugs found by reading the real on-disk stores (read-only probes; docstrings proved unreliable), and validate end-to-end with real data.
+- **Fixes (all regression-test-first, tests confirmed failing before implementation):**
+  - copilot: `tokenDetails.input.tokenCount` is the EXCLUSIVE non-cached input (verified three-way sum against sessions 0642f84c/c87d49c1); prior inclusive reading zeroed the field; `usage.outputTokens` includes reasoning (not double-counted).
+  - kilo: real DB path `~/.local/share/kilo/kilo.db` added to `find_kilo()` -- the source was silently uncollectable before.
+  - claude: skip `<synthetic>` rows (some carry zero-usage blocks), alias `open_router` -> `openrouter`, prefer earliest usage-bearing record per duplicate `requestId` (108/111 rids duplicated), cost stays None (real store has no costUSD; 0/449 lines).
+  - hermes: missing/unpriced cost stays NULL (`cost_status` None/'unknown' with 0.0 actual+estimated) instead of fabricated $0.00; provenance (exact vs estimated) preserved everywhere.
+  - sync failures now record `capability="error"` (red GUI dot), distinct from designed `unavailable` (gray dot).
+  - collectors.py `_canonical()` removed; raw timestamps flow into the single robust `parse_timestamp` (no crash on None).
+  - cost readout: `db.totals.cost_events`, `format.cost_summary()`, all-time GUI stat card.
+- **Coverage:** 10 exact collectors collect from real stores (opencode 6721, omp 7497, pi 3015, cline 3879, dsh 270, codex 128, claude 109, hermes 36, copilot 21, kilo 5); 7 unavailable with documented reasons; no live tracker DB existed so identity-semantics changes needed no migration. Real-data totals: 21,681 events / 3,449,207,906 tokens / $0.38 reported cost / 0 estimated; idempotent resync; per-event invariant holds; zero dedup collisions.
+- **Verification:** suite 46 -> 52 tests OK (`python -m unittest discover -s tests` from `ai-token-tracker/`, 3.0 s); `.agents/evidence/verification.json` regenerated from a clean clone at `ad73f309938c` (52 pass / 0 skipped); offscreen GUI smoke (`cost $0.25 across 1 event`, `* Error` dot). Full source-by-source table and known inaccuracies: `.agents/outputs/token-tracker-data-audit.md`; decisions in `.agents/memory/decisions.md` (2026-10-19).
+- **Next candidate:** OpenRouter `/api/v1/activity` import via `OPENROUTER_API_KEY` (backlogged in `.agents/pending_tasks.md`).

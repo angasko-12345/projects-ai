@@ -25,7 +25,6 @@ import json
 import os
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Iterable
 
@@ -35,22 +34,6 @@ from .model import EventValidationError, UsageEvent, normalize_event
 
 class CollectorError(Exception):
     """A collector could not read its source."""
-
-
-def _canonical(ts: object) -> str:
-    """Any supported timestamp (epoch seconds/millis or ISO) -> canonical UTC ISO."""
-    if isinstance(ts, (int, float)):
-        epoch = float(ts)
-        if epoch > 1e12:  # milliseconds
-            epoch /= 1000.0
-        dt = datetime.fromtimestamp(epoch, tz=timezone.utc)
-    else:
-        text = str(ts).strip()
-        dt = datetime.fromisoformat(text[:-1] + "+00:00" if text.endswith("Z") else text)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        dt = dt.astimezone(timezone.utc)
-    return dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
 def _open_ro(path: Path) -> sqlite3.Connection:
@@ -80,6 +63,7 @@ def find_kilo() -> Path | None:
         ([Path(env)] if env else [])
         + [
             _user_home() / ".kilo" / "share" / "kilo.db",
+            _user_home() / ".local" / "share" / "kilo" / "kilo.db",
             Path("D:/admin/code/cli_files/kilo/home/share/kilo.db"),
         ]
     )
@@ -109,7 +93,7 @@ def collect_kilo(path: Path) -> list[UsageEvent]:
         try:
             events.append(
                 normalize_event(
-                    timestamp=_canonical(time_created),
+                    timestamp=time_created,
                     provider=data.get("providerID") or "kilo",
                     agent=data.get("agent") or session_agent,
                     tool="Kilo",
@@ -152,25 +136,33 @@ def _parse_claude_model(model_str: str | None) -> tuple[str, str]:
 
     Format observed: "<protocol>/<provider>/<vendor>/<model>" or
     "<protocol>/<provider>/<model>". Falls back to provider="anthropic".
+    The provider segment uses router-side spellings ("open_router" in the
+    live store); aliases map to the canonical names used by other sources so
+    provider rollups merge and cross-source dedup keys align.
     """
+    provider_aliases = {"open_router": "openrouter"}
     if not model_str:
         return "anthropic", "unknown"
     parts = model_str.split("/")
     if len(parts) >= 3 and parts[0] in ("anthropic", "openai", "google", "bedrock", "vertex"):
-        provider = parts[1]
+        provider = provider_aliases.get(parts[1].lower(), parts[1].lower())
         model = "/".join(parts[2:])
         return provider, model
     # Plain model like "claude-sonnet-4-5" or "<synthetic>"
     return "anthropic", model_str
 
 
+SYNTHETIC_MODEL = "<synthetic>"
+
+
 def collect_claude(path: Path) -> list[UsageEvent]:
     """Claude Code projects: JSONL files per session; assistant messages carry usage.
 
-    Usage fields follow Anthropic API: input_tokens (excludes cache), cache_read_input_tokens,
-    cache_creation_input_tokens, output_tokens (includes thinking), thinking_tokens.
-    Duplicate request_id records appear within and across session files (forked copies);
-    dedupe by keeping earliest timestamp per request_id.
+    Usage fields follow Anthropic API: input_tokens (excludes cache),
+    cache_read_input_tokens, cache_creation_input_tokens, output_tokens
+    (includes thinking), thinking_tokens. Duplicate request_id records appear
+    within and across session files (forked copies); they carry identical
+    usage in the live store and collapse onto the earliest usage-bearing copy.
     """
     events: list[UsageEvent] = []
     # Group records by request_id to dedupe streaming forks and file copies.
@@ -190,6 +182,15 @@ def collect_claude(path: Path) -> list[UsageEvent]:
                 continue
             if not isinstance(obj, dict) or obj.get("type") != "assistant":
                 continue
+            # <synthetic> means a client-side placeholder (error/streaming
+            # glue), not an API call: real stores attach zero-usage blocks to
+            # these rows and counting them would inflate request counts.
+            message = obj.get("message")
+            model_value = (
+                message.get("model") if isinstance(message, dict) else None
+            ) or obj.get("model")
+            if model_value == SYNTHETIC_MODEL:
+                continue
             rid = obj.get("requestId")
             if not isinstance(rid, str) or not rid:
                 # No request id (synthetic): treat as separate event per record
@@ -197,21 +198,26 @@ def collect_claude(path: Path) -> list[UsageEvent]:
             by_rid.setdefault(rid, []).append(obj)
 
     for rid, records in by_rid.items():
-        # Keep the earliest timestamp record for this request id.
-        canonical = min(
-            records,
-            key=lambda r: r.get("timestamp") or r.get("time") or "",
-        )
-        msg = canonical.get("message")
-        if not isinstance(msg, dict):
+        # Duplicate rids are newline-append/fork copies with identical usage
+        # (verified against the live store). Prefer the earliest record that
+        # actually carries usage; a rid whose copies are all usage-less is
+        # skipped rather than guessed at.
+        usage_bearing = [
+            r for r in records
+            if isinstance(r.get("message"), dict)
+            and isinstance(r["message"].get("usage"), dict)
+        ]
+        if not usage_bearing:
             continue
-        usage = msg.get("usage")
-        if not isinstance(usage, dict):
-            continue
+        canonical = min(usage_bearing, key=lambda r: r.get("timestamp") or r.get("time") or "")
+        msg = canonical["message"]
+        usage = msg["usage"]
         model_str = msg.get("model") or canonical.get("model")
         provider, model = _parse_claude_model(model_str)
         timestamp = canonical.get("timestamp") or canonical.get("time")
         project = canonical.get("cwd")
+        # No Claude Code version in the live store writes a cost field
+        # (0 of 449 assistant lines); cost stays None honestly.
         cost = canonical.get("totalCostUSD")
         # Anthropic: output_tokens includes thinking; cache_* are separate.
         input_tok = int(usage.get("input_tokens") or 0)
@@ -223,7 +229,7 @@ def collect_claude(path: Path) -> list[UsageEvent]:
         try:
             events.append(
                 normalize_event(
-                    timestamp=_canonical(timestamp),
+                    timestamp=timestamp,
                     provider=provider,
                     agent=None,
                     tool="Claude Code",
@@ -312,7 +318,7 @@ def collect_cline(path: Path) -> list[UsageEvent]:
             try:
                 events.append(
                     normalize_event(
-                        timestamp=_canonical(ts),
+                        timestamp=ts,
                         provider=provider,
                         agent=None,
                         tool="Cline",
@@ -422,7 +428,7 @@ def collect_dsh(path: Path) -> list[UsageEvent]:
                 try:
                     events.append(
                         normalize_event(
-                            timestamp=_canonical(timestamp),
+                            timestamp=timestamp,
                             provider=current_provider,
                             agent=None,
                             tool="DeepSeek Harness",
@@ -532,7 +538,7 @@ def collect_session_dir(path: Path, *, source: str, tool: str) -> list[UsageEven
             try:
                 events.append(
                     normalize_event(
-                        timestamp=_canonical(obj.get("timestamp") or msg.get("timestamp")),
+                        timestamp=obj.get("timestamp") or msg.get("timestamp"),
                         provider=msg.get("provider") or "unknown",
                         agent=None,
                         tool=tool,
@@ -629,7 +635,7 @@ def collect_codex(path: Path) -> list[UsageEvent]:
                 try:
                     events.append(
                         normalize_event(
-                            timestamp=_canonical(obj.get("timestamp")),
+                            timestamp=obj.get("timestamp"),
                             provider=provider,
                             agent=None,
                             tool="Codex",
@@ -698,11 +704,13 @@ def collect_hermes(path: Path) -> list[UsageEvent]:
         ) = row
         actual = float(actual_cost or 0.0)
         estimated = float(estimated_cost or 0.0)
-        cost = actual if actual > 0.0 else (estimated if estimated > 0.0 else 0.0)
+        # Missing pricing is not money: no actual or estimated cost in the row
+        # means cost=None (the GUI shows "-"), never a fabricated $0.00.
+        cost: float | None = actual if actual > 0.0 else (estimated if estimated > 0.0 else None)
         try:
             events.append(
                 normalize_event(
-                    timestamp=_canonical(last_seen or first_seen),
+                    timestamp=last_seen or first_seen,
                     provider=billing_provider or "unknown",
                     agent=None,
                     tool="Hermes",
@@ -757,10 +765,15 @@ def collect_copilot(path: Path) -> list[UsageEvent]:
     """Copilot Chat emits one session.shutdown event per session with
     modelMetrics per model (session-level totals, tokenDetails breakdown).
 
-    input tokenDetails.input.tokenCount includes cache reads/writes and
-    outputTokens includes reasoning; both are split to satisfy the tracker
-    invariant. Reported request cost units are kept in metadata only (their
-    unit is not documented, so no dollar figure is asserted).
+    Semantics verified against the live store (sessions 0642f84c, c87d49c1,
+    4532c3fa, etc.): usage.inputTokens is the TOTAL input including cache
+    reads/writes, while tokenDetails.input.tokenCount is the EXCLUSIVE
+    non-cached input (33 + 436512 + 75452 == 511997). usage.outputTokens
+    includes reasoning. The split below satisfies the tracker invariant
+    (input_excl + cache_read + cache_write + output_excl + reasoning equals
+    inputTokens + outputTokens). Reported request cost units are kept in
+    metadata only (their unit is not documented, so no dollar figure is
+    asserted).
     """
     events: list[UsageEvent] = []
     for file in sorted(path.rglob("events.jsonl")):
@@ -787,26 +800,29 @@ def collect_copilot(path: Path) -> list[UsageEvent]:
                     continue
                 usage = model_metrics.get("usage") or {}
                 details = model_metrics.get("tokenDetails") or {}
-                input_total = int(
-                    (details.get("input") or {}).get("tokenCount")
-                    or usage.get("inputTokens")
-                    or 0
-                )
+                input_details = details.get("input") if isinstance(details, dict) else None
+                token_count = (input_details or {}).get("tokenCount") if isinstance(input_details, dict) else None
+                input_total = int(usage.get("inputTokens") or 0)
                 cache_read = int(usage.get("cacheReadTokens") or 0)
                 cache_write = int(usage.get("cacheWriteTokens") or 0)
                 output_total = int(usage.get("outputTokens") or 0)
                 reasoning = int(usage.get("reasoningTokens") or 0)
+                if token_count is not None:
+                    # Vendor's own exclusive count: trust it directly.
+                    input_excl = int(token_count)
+                else:
+                    input_excl = max(input_total - cache_read - cache_write, 0)
                 requests = model_metrics.get("requests") or {}
                 try:
                     events.append(
                         normalize_event(
-                            timestamp=_canonical(obj.get("timestamp")),
+                            timestamp=obj.get("timestamp"),
                             provider="github-copilot",
                             agent=None,
                             tool="GitHub Copilot",
                             model=model,
                             project=None,
-                            input_tokens=max(input_total - cache_read - cache_write, 0),
+                            input_tokens=input_excl,
                             output_tokens=max(output_total - reasoning, 0),
                             cache_read_tokens=cache_read,
                             cache_write_tokens=cache_write,
@@ -818,6 +834,7 @@ def collect_copilot(path: Path) -> list[UsageEvent]:
                                 "shutdown_id": obj.get("id"),
                                 "requests": requests.get("count"),
                                 "reported_cost_units": requests.get("cost"),
+                                "input_total_reported": input_total,
                             },
                         )
                     )
@@ -949,7 +966,7 @@ def sync_all(conn: sqlite3.Connection) -> dict[str, dict]:
                 conn,
                 source=collector.source,
                 tool=collector.tool,
-                capability="unavailable",
+                capability="error",
                 error=message,
             )
             results[collector.source] = {"status": "error", "error": message}

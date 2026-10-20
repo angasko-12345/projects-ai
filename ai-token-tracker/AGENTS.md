@@ -53,6 +53,8 @@ Database default location: `D:/ai-token-tracker/usage.db` when `D:` exists, othe
 - Estimates only ever enter the database through manual import, never from a collector.
 - Unavailable sources produce explicit `capability="unavailable"` and an `error` reason; they never fabricate zero-valued fake usage.
 - If a source denies access, only exposes aggregate totals, or lacks per-request token fields, it is marked unavailable with the reason recorded.
+- A sync whose collection itself fails (locked/missing store, malformed data pulled a record apart) is recorded as `capability="error"`, distinct from a designed `unavailable`: the GUI shows a red error dot and does not count it as audited-and-unusable.
+- Missing cost data is stored as NULL (shown as `-`), never as $0.00; a real source-reported $0.00 stays 0.0.
 
 ## Verification
 

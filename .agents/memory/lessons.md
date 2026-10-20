@@ -1014,3 +1014,7 @@
 - **Root cause:** "which tests exercise this behavior" was answered from the change's neighborhood (verdict/workflow/review tests) instead of from the code. Any test that runs the standard workflow to completion asserts on the review outcome, whether or not it is about review.
 - **Fix:** before committing a new gate, grep for callers of the gated entry point (`run_high_level`, `execute`) and audit each driving test's fake output against the new contract; adapt the fake, not the gate.
 - **Remember:** a gate is a contract change for every caller, including tests that only care about something else. Grep the entry point, not the feature name. The same pass also showed the corollary: when a reviewer reports a bypass, fix the class of input (fence labels, malformed trailing JSON, error-vs-disabled sentinels), not the single example.
+
+## 2026-10-19 - shared temp dir can shadow the stdlib
+
+- While probing `ai-token-tracker` stores from `C:\Users\admin\AppData\Local\Temp\opencode\`, a foreign scratch file `inspect.py` in that directory shadowed the stdlib `inspect` module for any script run with that working directory, producing confusing import errors. Running probe scripts from a dedicated subdirectory (e.g. `ttval\`) avoids it. Lesson: when running one-off scripts from a shared scratch directory, assume it is polluted -- isolate scripts in a subdirectory and set `PYTHONIOENCODING` explicitly on Windows (cp1252 console also breaks on unicode arrows in script output).

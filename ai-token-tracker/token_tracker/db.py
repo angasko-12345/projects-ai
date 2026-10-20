@@ -218,6 +218,7 @@ def totals(conn: sqlite3.Connection, since: str | None = None) -> dict:
                COALESCE(SUM(reasoning_tokens), 0) AS reasoning_tokens,
                COALESCE(SUM(total_tokens), 0) AS total_tokens,
                COALESCE(SUM(cost), 0) AS cost,
+               COUNT(cost) AS cost_events,
                COALESCE(SUM(CASE WHEN exact = 1 THEN total_tokens ELSE 0 END), 0) AS exact_tokens,
                COALESCE(SUM(CASE WHEN exact = 0 THEN total_tokens ELSE 0 END), 0) AS estimated_tokens,
                COALESCE(SUM(CASE WHEN exact = 1 THEN 1 ELSE 0 END), 0) AS exact_events

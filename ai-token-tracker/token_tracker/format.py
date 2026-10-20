@@ -50,3 +50,17 @@ def human_ratio(exact_part: int, total: int) -> str:
         return "no data"
     percent = round(100.0 * exact_part / total)
     return f"{percent}% exact"
+
+
+def cost_summary(totals: dict) -> str:
+    """Suffix for a stat card when any event carries reported cost.
+
+    Only events with a real cost value count; missing cost data never
+    contributes money. Empty string when nothing reports cost.
+    """
+    events = int(totals.get("cost_events") or 0) if totals else 0
+    if events <= 0:
+        return ""
+    cost = float(totals.get("cost") or 0.0)
+    noun = "event" if events == 1 else "events"
+    return f" · cost {human_cost(cost)} across {human_count(events)} {noun}"

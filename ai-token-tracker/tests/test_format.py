@@ -1,6 +1,6 @@
 import unittest
 
-from token_tracker.format import human_count, human_cost, human_tokens
+from token_tracker.format import cost_summary, human_count, human_cost, human_tokens
 
 
 class HumanTokensTest(unittest.TestCase):
@@ -20,6 +20,17 @@ class HumanTokensTest(unittest.TestCase):
         self.assertEqual(human_count(1204), "1,204")
         self.assertEqual(human_cost(None), "-")
         self.assertEqual(human_cost(1.5), "$1.50")
+
+
+class CostSummaryTest(unittest.TestCase):
+    def test_empty_when_no_event_reports_cost(self):
+        self.assertEqual(cost_summary({"cost_events": 0, "cost": 0.0}), "")
+        self.assertEqual(cost_summary({}), "")
+
+    def test_reports_money_and_event_coverage(self):
+        totals = {"cost_events": 12, "cost": 4.2537}
+        self.assertEqual(cost_summary(totals), " · cost $4.25 across 12 events")
+        self.assertEqual(cost_summary({"cost_events": 1, "cost": 0.0}), " · cost $0.00 across 1 event")
 
 
 if __name__ == "__main__":
