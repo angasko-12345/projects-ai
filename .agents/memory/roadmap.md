@@ -185,7 +185,11 @@ decision**. A5, A6, and A7 are NOT ordinary backlog and must not be started as r
 > packaging job in CI.
 >
 > Still open under this item: whether CI should **gate** PRs is undecided (roadmap D5
-> follow-up, needs a user decision on secrets/auth). A8's reviewer pass was never run.
+> follow-up, needs a user decision on secrets/auth). **Correction 2026-10-20:** A8's reviewer
+> pass *did* run — the OpenCode architecture review of 2026-09-26 is adjudicated in
+> `.agents/memory/opencode/repo-review-2026-09-26.md` (three observations, all declined with code
+> evidence), and its earlier findings were fixed in `aa830ef`. No copilot A8 snapshot review is
+> recorded, and `team.md` does not require one.
 
 - **Objective:** continuous protection for lifecycle code.
 - **Concrete actions:** GitHub Actions workflow running `python -m unittest discover -s tests` from `agentops/` + `ruff` + a compile check; gate on the standing suite; add targeted regression tests for duplicate task claims, cancellation during agent execution & verification, repeated-recovery idempotency, base-commit races, missing-agent fallback, malformed agent output, persistence failures, orphan recovery.
