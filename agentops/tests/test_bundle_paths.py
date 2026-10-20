@@ -51,6 +51,41 @@ class BundleRootTests(unittest.TestCase):
             self.assertNotEqual(bundle_root(), Path(""))
 
 
+class ConfigShadowingTests(unittest.TestCase):
+    """A decoy at the preferred filesystem location must not shadow the bundle.
+
+    ``resource_path`` checks the directory next to the ``agentops`` package
+    before falling back to ``importlib.resources``. A directory, an empty
+    file, or a stale/unparseable file left at ``agents/agents.yaml`` is not a
+    bundled config and must not be handed to callers.
+    """
+
+    def _resolve(self, populate) -> Path:
+        with tempfile.TemporaryDirectory() as temp:
+            target = Path(temp) / "agents" / "agents.yaml"
+            target.parent.mkdir()
+            populate(target)
+            with mock.patch.object(sys, "_MEIPASS", None, create=True):
+                with mock.patch("agentops.paths.bundle_root", return_value=Path(temp)):
+                    return resource_path("agents", "agents.yaml")
+
+    def _assert_real_bundle(self, resolved: Path) -> None:
+        expected = Path(__file__).resolve().parent.parent / "agentops" / "agents" / "agents.yaml"
+        self.assertTrue(resolved.is_file(), resolved)
+        self.assertEqual(resolved, expected)
+
+    def test_directory_does_not_shadow_bundled_config(self):
+        self._assert_real_bundle(self._resolve(lambda target: target.mkdir()))
+
+    def test_empty_file_does_not_shadow_bundled_config(self):
+        self._assert_real_bundle(
+            self._resolve(lambda target: target.write_text("", encoding="utf-8")))
+
+    def test_stale_unparseable_file_does_not_shadow_bundled_config(self):
+        self._assert_real_bundle(
+            self._resolve(lambda target: target.write_text('{"agents":', encoding="utf-8")))
+
+
 class BundledResourceTests(unittest.TestCase):
     def test_default_config_exists_and_is_outside_cwd(self):
         self.assertTrue(DEFAULT_CONFIG_PATH.is_file(), DEFAULT_CONFIG_PATH)

@@ -6,11 +6,14 @@ source checkout and an installed package keep those files next to the
 through :func:`resource_path` so neither case depends on the current working
 directory.
 
-Standard-library only, no I/O beyond ``sys``: this is a leaf helper.
+Standard-library only; the sole I/O is checking a preferred filesystem
+candidate, so a directory or stale file there cannot shadow a packaged
+resource.
 """
 
 from __future__ import annotations
 
+import json
 import sys
 from importlib import resources
 from pathlib import Path
@@ -28,15 +31,35 @@ def bundle_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
+def _is_bundled_config(path: Path) -> bool:
+    """True when ``path`` is a real, parseable bundled ``agents.yaml``.
+
+    ``resource_path`` prefers the filesystem next to the package. A directory,
+    an empty file, or a stale/unparseable file left at that location is not a
+    bundled config and must fall through to the packaged resource. The bundled
+    file is JSON-valid YAML, so a standard-library parse check needs no extras.
+    """
+    try:
+        if not path.is_file() or path.stat().st_size == 0:
+            return False
+        return isinstance(json.loads(path.read_text(encoding="utf-8")), dict)
+    except (OSError, ValueError):
+        return False
+
+
 def resource_path(*parts: str) -> Path:
     """Absolute path to a bundled resource, e.g. ``("agents", "agents.yaml")``."""
     frozen_root = getattr(sys, "_MEIPASS", None)
     if frozen_root:
         return Path(frozen_root).joinpath(*parts)
     
-    # First try filesystem path (source checkout or editable install)
+    # First try filesystem path (source checkout or editable install). The
+    # config must be a real, parseable file; otherwise use the packaged copy.
     fs_path = bundle_root().joinpath(*parts)
-    if fs_path.exists():
+    if parts == ("agents", "agents.yaml"):
+        if _is_bundled_config(fs_path):
+            return fs_path
+    elif fs_path.exists():
         return fs_path
     
     # Fall back to importlib.resources for installed wheel
