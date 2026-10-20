@@ -1018,3 +1018,10 @@
 ## 2026-10-19 - shared temp dir can shadow the stdlib
 
 - While probing `ai-token-tracker` stores from `C:\Users\admin\AppData\Local\Temp\opencode\`, a foreign scratch file `inspect.py` in that directory shadowed the stdlib `inspect` module for any script run with that working directory, producing confusing import errors. Running probe scripts from a dedicated subdirectory (e.g. `ttval\`) avoids it. Lesson: when running one-off scripts from a shared scratch directory, assume it is polluted -- isolate scripts in a subdirectory and set `PYTHONIOENCODING` explicitly on Windows (cp1252 console also breaks on unicode arrows in script output).
+
+### 2026-10-20 - A generated file is not a conflict to resolve, and the merge strategy is part of the evidence
+
+- **Symptom:** PR #21 sat `DIRTY`/`CONFLICTING` for two days with a single conflicting file, `.agents/evidence/verification.json`, while all of its code files merged cleanly. Both sides of that conflict were "correct" measurements of different commits.
+- **Root cause:** two sessions each regenerated the same generated artifact, so the conflict carried no design information -- but choosing a side silently regresses a real measurement (main's 52-test ai-token-tracker record vs the branch's 46-test one). Separately, the file's value is only meaningful while the commit it names stays reachable, which makes the choice of merge strategy (merge commit vs squash) a correctness constraint, not a style preference.
+- **Fix:** take either side temporarily, commit the merge, then regenerate the artifact from real runs at the merge commit and commit that as its own change. Merge with a merge commit so the measured commit remains an ancestor. Verify with a tree comparison (`git diff <merge> <tested-head>` empty) so "what landed" is provably "what was tested", and re-run `check.py` on `main` afterwards.
+- **Remember:** when a conflict is inside a generated file, the resolution is a new measurement, never a side. And before squashing a PR, check whether any tracked artifact names a commit inside that branch -- squash rewrites the ancestry the artifact depends on.
