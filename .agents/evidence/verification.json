@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-10-19T13:55:01+00:00",
-  "commit": "ad73f309938c195a115dabb45c562b4f55aa304a",
+  "generated_at": "2026-10-20T14:01:53+00:00",
+  "commit": "ac7cae9d0bf2e08a39ed4dfe6c7976fec445f99b",
   "python": "3.14.7",
   "platform": "Windows 11 (AMD64)",
-  "measured_in": "a clean clone of ad73f309938c",
+  "measured_in": "a clean clone of ac7cae9d0bf2",
   "clean_checkout": true,
   "command_note": "Every command runs from its own product directory with the interpreter that ran this script. There is no repository-wide test command and these products share no dependencies.",
   "excluded": {
@@ -14,7 +14,7 @@
     {
       "product": "agentops",
       "directory": "agentops",
-      "commit": "94dbc3ba59a202a5c05e2fdd53870f444e20eb17",
+      "commit": "ac7cae9d0bf2e08a39ed4dfe6c7976fec445f99b",
       "command": [
         "C:\\Python314\\python.exe",
         "-m",
@@ -24,13 +24,13 @@
         "tests"
       ],
       "dirty_paths": [],
-      "total": 827,
-      "duration_seconds": 164.716,
+      "total": 831,
+      "duration_seconds": 236.624,
       "skipped": 4,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 827 tests in 164.716s",
+        "Ran 831 tests in 236.624s",
         "OK (skipped=4)"
       ],
       "result": "pass"
@@ -38,7 +38,7 @@
     {
       "product": "universal-game-agent",
       "directory": "universal-game-agent",
-      "commit": "abe0d7384ab19bcf2229eca3949c6c5bdd0130d4",
+      "commit": "ac7cae9d0bf2e08a39ed4dfe6c7976fec445f99b",
       "command": [
         "C:\\Python314\\python.exe",
         "-m",
@@ -49,12 +49,12 @@
       ],
       "dirty_paths": [],
       "total": 498,
-      "duration_seconds": 41.026,
+      "duration_seconds": 49.126,
       "skipped": 1,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 498 tests in 41.026s",
+        "Ran 498 tests in 49.126s",
         "OK (skipped=1)"
       ],
       "result": "pass"
@@ -62,7 +62,7 @@
     {
       "product": "small-projects/mini-llm",
       "directory": "small-projects/mini-llm",
-      "commit": "abe0d7384ab19bcf2229eca3949c6c5bdd0130d4",
+      "commit": "ac7cae9d0bf2e08a39ed4dfe6c7976fec445f99b",
       "command": [
         "C:\\Python314\\python.exe",
         "-m",
@@ -73,12 +73,12 @@
       ],
       "dirty_paths": [],
       "total": 252,
-      "duration_seconds": 69.172,
+      "duration_seconds": 143.229,
       "skipped": 1,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 252 tests in 69.172s",
+        "Ran 252 tests in 143.229s",
         "OK (skipped=1)"
       ],
       "result": "pass"
@@ -86,7 +86,7 @@
     {
       "product": "ai-token-tracker",
       "directory": "ai-token-tracker",
-      "commit": "ad73f309938c195a115dabb45c562b4f55aa304a",
+      "commit": "ac7cae9d0bf2e08a39ed4dfe6c7976fec445f99b",
       "command": [
         "C:\\Python314\\python.exe",
         "-m",
@@ -97,12 +97,12 @@
       ],
       "dirty_paths": [],
       "total": 52,
-      "duration_seconds": 12.251,
+      "duration_seconds": 138.94,
       "skipped": 0,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 52 tests in 12.251s",
+        "Ran 52 tests in 138.940s",
         "OK"
       ],
       "result": "pass"
