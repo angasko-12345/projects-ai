@@ -41,7 +41,7 @@ python -m unittest discover -s tests
 
 - **Either Pi or Oh-My-Pi is the sole writer** in the dirty tree. Reviewers (opencode,
   fcc-claude, copilot, antigravity only — never Codex/Claude) work via read-only
-  `/tmp/agentops-review-*` snapshots through `agentops run`, never by
+  `D:\tmp\agentops-review-*` snapshots through `agentops run`, never by
   touching the repo. Logs live under the snapshot.
 - Before Intercom-based review: resolve the **exact live name** from
   `intercom_list` (never message remembered names; `intercom_team` shows
@@ -123,7 +123,8 @@ the reliable trigger — verify the mirror updated.
 ## 5. Commit and push
 
 - Back up the dirty tree **before** substantial work, not after:
-  `git diff` + untracked tarball to `/tmp/agentops-backup-*/`.
+  `git diff` + untracked tarball to `D:\tmp\agentops-backup-*/` (the user-ruled
+  temp location; never the C: user-profile temp).
 - `agentops/` is a normal tracked directory (single-repo fold) — run tests
   from `agentops/`, commit from the repo root.
 - Leave externally-rewritten files alone (e.g. `tasks/task-ignorethis.md`

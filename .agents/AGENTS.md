@@ -90,10 +90,11 @@ commit message, or another session's report.
 
 ## Non-negotiable conventions
 
-- Either Pi or Oh-My-Pi is the sole writer in a dirty tree. Never run two writers concurrently in the same tree, and do not make uncoordinated edits to files another session owns. Reviewers work read-only in `/tmp/agentops-review-*` snapshots and never edit the repository directly.
+- Either Pi or Oh-My-Pi is the sole writer in a dirty tree. Never run two writers concurrently in the same tree, and do not make uncoordinated edits to files another session owns. Reviewers work read-only in `D:\tmp\agentops-review-*` snapshots and never edit the repository directly.
 - Allowed review collaborators are OpenCode, free-claude-code (`fcc-claude`), Copilot, Antigravity, and Oh-My-Pi. Do not task Codex or Claude as review collaborators.
 - Antigravity may be tasked as a reviewer only while its quota has remaining capacity. If its quota is fully used up, do not task it: pick another allowed reviewer, or proceed without a review and say so in the report.
 - Do not persist raw prompts, secrets, credentials, tokens, private keys, or sensitive environment values in any product, log, artifact, or memory file. Reuse existing redaction and prompt-hash mechanisms.
+- Write every agent temp file — dirty-tree backups, review snapshots, tarballs, commit-message files, scratch logs — under `D:\tmp\`, never in the C: user-profile temp. This is a 2026-10-21 user rule. Historical `/tmp/...` paths in memory files record where past backups happened to live, not where new ones go.
 - Write a regression test before fixing a bug, and follow the pattern the product's local `AGENTS.md` names.
 - Keep deterministic classification, parsing, and verification logic in leaf modules without SQLite, subprocess, or GUI I/O.
 - On Windows, use the shared no-console-window helpers for subprocesses and avoid raw Unicode writes that can fail in legacy console encodings. (agentops)

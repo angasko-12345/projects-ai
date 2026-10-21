@@ -26,7 +26,7 @@
 1. Understand the task.
 2. Read shared memory (`team.md`, `memory/project.md`, `memory/architecture.md`, relevant `decisions.md` / `lessons.md`, `memory/roadmap.md` for phased work).
 3. The acting sole writer implements (Pi or Oh-My-Pi; back up dirty tree first).
-4. Snapshot reviews: copy relevant files to `/tmp/agentops-review-*`, run each reviewer via `agentops run <agent>` with an explicit READ-ONLY prompt (no file writes, no committing git commands); or via Intercom when a live session exists AND `intercom_list` confirms liveness.
+4. Snapshot reviews: copy relevant files to `D:\tmp\agentops-review-*`, run each reviewer via `agentops run <agent>` with an explicit READ-ONLY prompt (no file writes, no committing git commands); or via Intercom when a live session exists AND `intercom_list` confirms liveness.
 5. Pi addresses findings (fix valid ones, record false positives with evidence).
 6. Run the test suite from the product's local `AGENTS.md`. Both products use the same form, `python -m unittest discover -s tests`, but each must be run from its own directory.
 7. Rebuild + smoke-test `dist/AgentOps.exe` if packaging-affecting code changed.

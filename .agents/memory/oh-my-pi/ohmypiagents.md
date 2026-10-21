@@ -86,7 +86,7 @@ cd universal-game-agent; python -m unittest discover -s tests
 - Allowed review collaborators are OpenCode, free-claude-code (`fcc-claude`), Copilot, Antigravity, and Oh-My-Pi. Do not task Codex or Claude as review collaborators.
 - Antigravity may be tasked only while its quota has remaining capacity. If its quota is fully used up, do not task it: pick another allowed reviewer, or proceed without a review and say so in the report.
 - Either Pi or Oh-My-Pi acts as sole writer in a dirty tree. Never run two writers concurrently in the same tree, and do not make uncoordinated edits to files another session owns.
-- Reviewers work read-only in `/tmp/agentops-review-*` snapshots through `agentops run`; they never edit the repository directly.
+- Reviewers work read-only in `D:\tmp\agentops-review-*` snapshots through `agentops run`; they never edit the repository directly.
 - For Intercom-based review, confirm the reviewer is live with `intercom_list` first. A failed delivery is a disconnect signal: inspect status/logs before retrying.
 - Ask reviewers for findings with file and line evidence. Fix valid findings, add regression tests where appropriate, and record false positives with evidence rather than silently ignoring them.
 - When AgentOps is managing a high-level workflow, leave implementation changes for `finalize.py` to commit and merge. Do not commit, merge, or delete the worktree yourself unless the task explicitly requires direct repository work.
