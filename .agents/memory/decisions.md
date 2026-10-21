@@ -703,3 +703,12 @@
 - **Alternatives considered:** keeping `/tmp/agentops-*` (rejected — on Windows that resolves to or collides with the C: profile temp the user excluded); a drive-relative path (rejected — ambiguous across drives).
 - **Files updated:** `.agents/AGENTS.md` (new convention bullet + snapshot path), `.agents/pi_AGENTS.md`, the `pi_AGENTS.md` shim (the root `AGENTS.md` shim has no `/tmp` reference and was not touched), `.agents/team.md`, `tasks/after-task.md` (backup and snapshot paths), `.agents/memory/oh-my-pi/ohmypiagents.md`. Historical memory/plan/output records that mention past `/tmp/...` backups were deliberately not revised — they are evidence of where old files went.
 - **Agents involved:** GLM (OpenCode session), user (task scope).
+
+## 2026-10-21 - The sole-writer rule is removed
+
+- **Decision:** user-directed. The exclusivity rule ("either Pi or Oh-My-Pi is the sole writer in a dirty tree, never two concurrent writers") is removed from all live instruction files. Two principles remain in their place: do not make uncoordinated edits to files another agent session owns — coordinate first — and reviewers keep working read-only in `D:\tmp\agentops-review-*` snapshots, never editing the repository directly.
+- **Reason:** the user states the rule was used only in the first days of development and was never obeyed again. Carrying an unenforced exclusivity rule misleads every agent that reads the instructions at startup into believing concurrent writers are prohibited.
+- **Alternatives considered:** rewording to a soft preference (rejected — the user asked for removal); leaving the rule in the instruction files and hoping memory corrects it (rejected — instructions outrank memory, so stale instructions win).
+- **Scope note:** historical records keep their sole-writer mentions and are not revised in place: `decisions.md` past entries, `team.md` History section, the `plans/`, `outputs/`, and `memory/archive/` records, and the `lessons.md` entries. `memory/architecture.md`'s universal-contract row was updated because it describes the contract as it stands now.
+- **Files updated:** `.agents/AGENTS.md`, root shims `AGENTS.md` and `pi_AGENTS.md`, `.agents/pi_AGENTS.md`, `.agents/team.md` (roles, workflow step 3, rules line; History preserved), `tasks/after-task.md` section 2, `memory/architecture.md`, and the agent-scoped instruction files `memory/buffy.md`, `memory/antigravity/antigravity_memory.md`, `memory/oh-my-pi/ohmypiagents.md`.
+- **Agents involved:** GLM (OpenCode session), user (task scope).

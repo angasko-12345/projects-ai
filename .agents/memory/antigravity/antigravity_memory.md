@@ -97,8 +97,8 @@ independently.
 
 ## 5. Non-Negotiable Conventions & Operating Constraints
 
-1. **Dirty Tree Isolation**:
-   * Either Pi or Oh-My-Pi is the sole writer during concurrent sessions. Reviewers work in read-only snapshots.
+1. **Shared Tree Coordination**:
+   * Do not make uncoordinated edits to files another agent session owns. Reviewers work in read-only snapshots.
    * Do NOT stage unrelated dirty files (`git status` contains unstaged edits in `.agents/memory/`, `universal-game-agent/`, `tiktok-slop-factory/`). Always stage explicit paths (`git add <specific-file>`), never `git add -A` or `git commit -a`.
 2. **Secrets & Hygiene**:
    * Never commit or persist raw prompts, API keys, tokens, credentials, or environment dumps.

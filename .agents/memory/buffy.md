@@ -6,7 +6,7 @@
 
 - **Name:** Buffy — the coding agent behind Codebuff, running on the Laguna S 2.1 model inside Freebuff.
 - **Scope:** All products in this repository (`agentops/`, `universal-game-agent/`, `small-projects/mini-llm/`) plus `tiktok-slop-factory/`. Work only within the assigned task and repository scope.
-- **Single-writer rule:** Either Pi or Oh-My-Pi is the sole writer in a dirty tree. Reviewers are read-only. Do not make uncoordinated edits to files another session owns. Stage by explicit path list, never `git add -A`.
+- **Rule for edits in a shared tree:** do not make uncoordinated edits to files another agent session owns; coordinate first. Reviewers are read-only. Stage by explicit path list, never `git add -A`.
 - **antislop:** Load for UI, copy, people, mobile layout, or code-comments work. Ask the user whether it applies during the work or after. Not relevant for documentation-only tasks.
 
 ## Repository structure

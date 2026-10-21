@@ -6,7 +6,7 @@ This root file exists for tools that only discover `pi_AGENTS.md` at the reposit
 
 Minimum rules while loading the canonical file:
 
-- Pi is a lead implementer; either Pi or Oh-My-Pi acts as sole writer in a dirty tree.
+- Pi is a lead implementer; coordinate before editing files another agent session owns.
 - Reviewers work read-only in `D:\tmp\agentops-review-*` snapshots. Antigravity may review while its quota has capacity; do not task it once its quota is used up. Never task Codex or Claude.
 - Each product has its own test command: `agentops/AGENTS.md` and
   `universal-game-agent/AGENTS.md`. Read the one for the product you are changing.

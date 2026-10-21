@@ -99,7 +99,7 @@ the product they describe. A change in one product is not a change in the other.
 
 | Layer | File | Scope |
 |---|---|---|
-| Universal contract | `.agents/AGENTS.md` | Three-product identity, canonical locations, startup checklist, per-product command table, memory-hierarchy rule, sole-writer rule, review-collaborator policy, secret-handling rule, leaf-module rule |
+| Universal contract | `.agents/AGENTS.md` | Product identity, canonical locations, startup checklist, per-product command table, memory-hierarchy rule, review-collaborator policy, secret-handling rule, leaf-module rule |
 | Product-local | `agentops/AGENTS.md` | Entry points, architecture map, data flow, packaging + archive inspection, SQLite migration discipline, GUI/Qt threading, leaf-module rule, verification |
 | Product-local | `universal-game-agent/AGENTS.md` | Layer dependency direction, toy vs external path, config/checkpoint handling, CLI entry points, known defects |
 | Product-local | `small-projects/mini-llm/AGENTS.md` | Model identity, tests, conventions, checkpoint/tokenizer path contract |

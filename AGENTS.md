@@ -7,7 +7,7 @@ This root file exists for tools that only discover `AGENTS.md` at the repository
 Minimum rules while loading the canonical file:
 
 - Work only within the assigned task and repository scope.
-- Either Pi or Oh-My-Pi is the sole writer in a dirty tree; reviewers are read-only.
+- Do not make uncoordinated edits to files another session owns; reviewers are read-only.
 - This repository has **four** products. Read `agentops/AGENTS.md`,
   `universal-game-agent/AGENTS.md`, `small-projects/mini-llm/AGENTS.md`, or `ai-token-tracker/AGENTS.md`
   for the one you are changing; each has its own test command and they are not interchangeable.

@@ -37,9 +37,9 @@ python -m unittest discover -s tests
 - If you touched migrations, bump the migration-version assertions in
   `tests/test_events.py` (`[1..N]`).
 
-## 2. Handle reviews (single writer, always)
+## 2. Handle reviews (reviewers read-only)
 
-- **Either Pi or Oh-My-Pi is the sole writer** in the dirty tree. Reviewers (opencode,
+- **No agent edits files another session owns without coordinating first.** Reviewers (opencode,
   fcc-claude, copilot, antigravity only — never Codex/Claude) work via read-only
   `D:\tmp\agentops-review-*` snapshots through `agentops run`, never by
   touching the repo. Logs live under the snapshot.

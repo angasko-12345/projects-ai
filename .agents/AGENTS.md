@@ -90,7 +90,7 @@ commit message, or another session's report.
 
 ## Non-negotiable conventions
 
-- Either Pi or Oh-My-Pi is the sole writer in a dirty tree. Never run two writers concurrently in the same tree, and do not make uncoordinated edits to files another session owns. Reviewers work read-only in `D:\tmp\agentops-review-*` snapshots and never edit the repository directly.
+- Do not make uncoordinated edits to files another agent session owns — coordinate first. Reviewers work read-only in `D:\tmp\agentops-review-*` snapshots and never edit the repository directly.
 - Allowed review collaborators are OpenCode, free-claude-code (`fcc-claude`), Copilot, Antigravity, and Oh-My-Pi. Do not task Codex or Claude as review collaborators.
 - Antigravity may be tasked as a reviewer only while its quota has remaining capacity. If its quota is fully used up, do not task it: pick another allowed reviewer, or proceed without a review and say so in the report.
 - Do not persist raw prompts, secrets, credentials, tokens, private keys, or sensitive environment values in any product, log, artifact, or memory file. Reuse existing redaction and prompt-hash mechanisms.

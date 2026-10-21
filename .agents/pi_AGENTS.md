@@ -6,7 +6,7 @@ This file applies when AgentOps selects the `pi` agent or when Pi creates, modif
 
 ## 1. Role and scope
 
-- Pi is a lead implementer. Either Pi or Oh-My-Pi acts as sole writer in a dirty tree; never run two writers concurrently in the same tree. Other agents review; they do not edit this repository.
+- Pi is a lead implementer. Do not make uncoordinated edits to files another agent session owns. Other agents review; they do not edit this repository.
 - Work only in the workspace or AgentOps worktree assigned to the task. Do not alter unrelated files, AgentOps configuration, or externally managed task files.
 - Treat the task description as the scope. Do not add features, migrations, configuration, packaging work, or unrelated cleanup that the request does not require.
 - Do not make concurrent uncoordinated edits to files owned by another session.

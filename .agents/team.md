@@ -8,9 +8,9 @@
 ## Agents and roles
 
 - **Pi — Session `pi-manager` — Long-term lead / manager.**
-  Maintains project state, priorities, coordination, decisions. Either Pi or Oh-My-Pi acts as the sole writer in a dirty tree; only one at a time. Coordinates reviewers, runs/reviews tests, reviews final diffs, updates memory, reports to user.
-- **Oh-My-Pi — allowed collaborator and acting sole writer.**
-  May act as the sole writer in a dirty tree when Pi is not, never both in the same tree. Also listed as an allowed review collaborator.
+  Maintains project state, priorities, coordination, decisions. Coordinates reviewers, runs/reviews tests, reviews final diffs, updates memory, reports to user.
+- **Oh-My-Pi — allowed collaborator.**
+  Implements and reviews. Do not make uncoordinated edits to files another agent session owns.
 - **Antigravity — reviewer, quota-gated.**
   Allowed as a review collaborator only while its quota has remaining capacity. If the quota is fully used up, do not task it: pick another allowed reviewer, or proceed without a review and say so in the report.
 - **OpenCode — architecture reviewer.**
@@ -25,7 +25,7 @@
 
 1. Understand the task.
 2. Read shared memory (`team.md`, `memory/project.md`, `memory/architecture.md`, relevant `decisions.md` / `lessons.md`, `memory/roadmap.md` for phased work).
-3. The acting sole writer implements (Pi or Oh-My-Pi; back up dirty tree first).
+3. An assigned implementer writes (back up dirty tree first; coordinate before touching another session's files).
 4. Snapshot reviews: copy relevant files to `D:\tmp\agentops-review-*`, run each reviewer via `agentops run <agent>` with an explicit READ-ONLY prompt (no file writes, no committing git commands); or via Intercom when a live session exists AND `intercom_list` confirms liveness.
 5. Pi addresses findings (fix valid ones, record false positives with evidence).
 6. Run the test suite from the product's local `AGENTS.md`. Both products use the same form, `python -m unittest discover -s tests`, but each must be run from its own directory.
@@ -33,7 +33,7 @@
 8. Update shared memory.
 9. Report the result to the user.
 
-Rules: single writer, always, and that writer is either Pi or Oh-My-Pi, never both in the same tree; reviewers never touch the repo (snapshots only); verify Intercom liveness via `intercom_list` before Intercom-based work (it shows live sessions; `intercom_team` shows configured targets — they can disagree); stale session names must never be messaged — resolve the current live name first; AGY-style independence applies to all reviewers (must not rubber-stamp; findings need file/line evidence).
+Rules: do not edit files another agent session owns without coordinating first; reviewers never touch the repo (snapshots only); verify Intercom liveness via `intercom_list` before Intercom-based work (it shows live sessions; `intercom_team` shows configured targets — they can disagree); stale session names must never be messaged — resolve the current live name first; AGY-style independence applies to all reviewers (must not rubber-stamp; findings need file/line evidence).
 
 ## Memory rules (summary — full rules in Part 2 of the setup directive)
 
