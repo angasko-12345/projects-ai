@@ -59,3 +59,8 @@ Thumbs.db
 /test_task.py
 /test_output.txt
 /test_output_full.txt
+
+# Verification-session scratch copies: throwaway test workspaces, log copies,
+# and evidence snapshots materialized under .agents/tmp-tests/. Disposable
+# by-products; every durable claim they fed is recorded in .agents/memory.
+/.agents/tmp-tests/

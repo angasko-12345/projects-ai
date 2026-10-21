@@ -4,11 +4,12 @@ This is the canonical repository instruction file. The root `AGENTS.md` is only 
 
 ## Project identity and scope
 
-- This repository is a container for four independent Python products plus the process material agents use to work on them. The products do not depend on each other, and a change in one is not a change in the other.
+- This repository is a container for five independent Python products plus the process material agents use to work on them. The products do not depend on each other, and a change in one is not a change in the other.
   - `agentops/` — a local-first orchestrator for installed coding-agent CLIs. It plans, implements, verifies, reviews, persists, and merges work in isolated Git worktrees. See `agentops/AGENTS.md`.
   - `universal-game-agent/` — a reinforcement-learning agent that plays Pong, including a Windows-only path that plays a real external game window through screen capture and real keyboard input. See `universal-game-agent/AGENTS.md`.
   - `small-projects/mini-llm/` — a small GPT-style causal language model built from scratch with PyTorch. See `small-projects/mini-llm/AGENTS.md`.
   - `ai-token-tracker/` — a local desktop GUI that tracks AI token usage across providers and coding agents from local agent stores. See `ai-token-tracker/AGENTS.md`.
+  - `tiktok-slop-factory/` — a procedural generator that renders vertical TikTok-style videos from fictional scripts: a Gemini or keyless local text backend plus locally generated FFmpeg visuals. Its suite is pytest, includes real FFmpeg renders, and is excluded from measurement in `verification.json` — read `tiktok-slop-factory/AGENTS.md` before invoking it.
 
 ## Canonical locations
 
@@ -21,6 +22,7 @@ This is the canonical repository instruction file. The root `AGENTS.md` is only 
 - Canonical memory: `.agents/memory/`
 - Live bug ledger: `.agents/memory/opencode/bugfinding/master-bug-synthesis.md` §0
 - Live task queue: `.agents/pending_tasks.md`
+- Active task file: `tasks/task.md` — the active-task slot: the single current task, or a pointer to the queue. Completed task records are preserved verbatim under `.agents/memory/archive/` and are never re-executed.
 - Agent-scoped memory: `.agents/memory/opencode/`, `.agents/memory/oh-my-pi/`, `.agents/memory/cline/` — runbooks and session records only; each has a `README.md` describing its scope
 - Plans and outputs: `.agents/plans/` and `.agents/outputs/`
 - Agent skills: `.agents/skills/`
@@ -32,7 +34,7 @@ Read the local `AGENTS.md` for whichever product the task touches, in addition t
 
 Before substantial work:
 
-1. Read `.agents/AGENTS.md`, `.agents/pi_AGENTS.md` when applicable, `.agents/team.md`, `tasks/task.md`, and `tasks/after-task.md`.
+1. Read `.agents/AGENTS.md`, `.agents/pi_AGENTS.md` when applicable, `.agents/team.md`, `tasks/after-task.md`, and `.agents/pending_tasks.md` — the live task queue. `tasks/task.md` is the active-task slot: a file there containing a completed record is history (archived under `.agents/memory/archive/`), not work to do.
 2. Read the relevant files under `.agents/memory/`, especially `project.md`, `architecture.md`, `roadmap.md`, `decisions.md`, and `lessons.md`.
 3. Inspect current source, tests, `git status`, and the current diff. Current source, tests, and explicit user instructions outrank memory.
 4. Back up the dirty tree before substantial work, including relevant untracked files.
@@ -51,6 +53,7 @@ from its own directory rather than from the repository root. Read the local
 | `universal-game-agent/` | `cd universal-game-agent` then `python -m unittest discover -s tests` |
 | `small-projects/mini-llm/` | `cd small-projects/mini-llm` then `python -m unittest discover -s tests` |
 | `ai-token-tracker/` | `cd ai-token-tracker` then `python -m unittest discover -s tests` |
+| `tiktok-slop-factory/` | `cd tiktok-slop-factory` then `python -m pytest tests -q` (pytest, not unittest; real FFmpeg renders; one credential-gated test — see `tiktok-slop-factory/AGENTS.md` before running) |
 
 Treat any new failure or skip as attributable to the current work until proven otherwise.
 An empty, interrupted, all-skipped, or unknown run is never a pass. Do not invent lint,

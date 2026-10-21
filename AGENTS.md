@@ -13,7 +13,7 @@ Minimum rules while loading the canonical file:
   for the one you are changing; each has its own test command and they are not interchangeable.
 - Keep SQLite migrations additive and use explicit column names.
 - Do not persist prompts, secrets, credentials, tokens, or private keys.
-- Read `.agents/team.md`, `tasks/task.md`, `tasks/after-task.md`, and the relevant `.agents/memory/` files before substantial work.
+- Read `.agents/team.md`, `tasks/after-task.md`, and `.agents/pending_tasks.md` (the live task queue) before substantial work. `tasks/task.md` is the active-task slot; completed records are archived under `.agents/memory/archive/` and must not be re-executed.
 
 <!-- antislop:start -->
 ## antislop

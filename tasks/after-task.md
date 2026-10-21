@@ -85,7 +85,7 @@ values; never print env).
 | `.agents/plans/<name>-plan.md` | Archive the task plan (all subtasks, agent, status) |
 | `.agents/outputs/<name>.md` | What was built, verification, files, follow-ups |
 | `.agents/pending_tasks.md` | Flip resolved items to ✅, add new follow-ups |
-| `tasks/task.md` | Append `## Plan` + `## Output` sections (history preserved) |
+| `tasks/task.md` | Active-task slot only: the current task header + `## Plan` while it runs. On completion, move the whole finished record **verbatim** to `.agents/memory/archive/<date>-<name>.md` and reset `tasks/task.md` to the active-task pointer to `.agents/pending_tasks.md`. Archived records are searchable history — do not re-execute them |
 
 Conflict priority (old memory never overrides current code or explicit
 instructions): (1) current source, (2) current tests, (3) explicit user

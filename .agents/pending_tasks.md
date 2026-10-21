@@ -12,6 +12,12 @@
 > Test counts are **not** stated here. The only current measured result per product is
 > `.agents/evidence/verification.json` (regenerate with `python tools/evidence/generate.py`,
 > verify with `python tools/evidence/check.py`).
+>
+> **2026-10-21 (scoped update, OpenCode/GLM):** root README truth fixes were applied and
+> recorded (completion record in `.agents/memory/project.md`, decision in `decisions.md`,
+> lesson in `lessons.md`). Rows on this page were **not** re-verified in that pass — the
+> 2026-10-20 reconciliation above still stands as the last full pass. One new open row was
+> added under "Repository tooling" below.
 
 ## AgentOps -- open
 
@@ -54,12 +60,26 @@
 ## ai-token-tracker -- open
 
 The 2026-10-19 data-pipeline audit is **complete** and merged (`ad73f30`, records in
-`tasks/task.md` and `.agents/outputs/token-tracker-data-audit.md`); only this follow-on is
+`.agents/memory/archive/2026-09-15-agent-registry-routing-task-record.md` and
+`.agents/outputs/token-tracker-data-audit.md`); only this follow-on is
 open.
 
 | ID | Item | Evidence |
 |---|---|---|
 | -- | OpenRouter provider-side activity import | `GET /api/v1/activity` with `OPENROUTER_API_KEY`; additive collector, idempotent page-through. Fills the real-cost gap: the audited Claude store carries no `costUSD` at all (0/449 usage-bearing lines), so provider-side activity is the only way to recover real cost for that route. Scope and caveats: `.agents/outputs/token-tracker-data-audit.md` |
+
+## tiktok-slop-factory -- open
+
+| ID | Item | Evidence |
+|---|---|---|
+| -- | Make `test_gemini_parsing.py::test_generate_ideas_rejects_duplicate_padding` hermetic | Identified offline 2026-10-21: the test mocks only `_parse_json_ideas`, but `generate_ideas()` still goes through `_call_with_retries` → `_json_request` → live `urllib` (`app/gemini.py:275..175..95..107`), so without `GEMINI_API_KEY` it dies raising `app.config.ConfigError` (not `GeminiError`, verified by real run) and **with a key set it performs a real Gemini API call**. Fix at the `_json_request` seam (the pattern `test_api_key_sent_in_header_not_url` already uses); test-only change, then re-measure the suite. |
+| -- | Evidence-record follow-ups from granting the product discoverability | (1) The `excluded` block recorded in `.agents/evidence/verification.json` (and `.agents/tmp-tests/*` stale copies) still carries the old "No product AGENTS.md / two GEMINI_API_KEY-dependent failures" text — `tools/evidence/evidence.py` `EXCLUSIONS` carries the corrected text; the JSON refreshes at the next real `generate.py` run (do not hand-edit measured sections). (2) `check_documents`' `BASELINE_FILES` (7 files) does not audit `tiktok-slop-factory/AGENTS.md` or the root `README.md`; extending it needs its own regression test first, same shape as the "Add the root README" row under Repository tooling. (3) The historical claim of **two** GEMINI_API_KEY-dependent failures is stale: on 2026-10-21 (offline) only the one test above fails, `test_config.py::test_loads_dotenv_from_project_root` passes standalone and in suite; the 2026-10-04 mechanism was not reproducible. |
+
+
+
+| ID | Item | Evidence |
+|---|---|---|
+| -- | Add the root `README.md` to the evidence checker's document audit | `check_documents` in `tools/evidence/evidence.py` audits exactly the seven files listed in `BASELINE_FILES`; the root README is not one of them, which is how its stale "700+ tests" chip, closed-issue #12 roadmap bullet, and "CI per project" line survived green helpers and green CI until the manual 2026-10-21 truth fix (see `.agents/memory/lessons.md` 2026-10-21). The README now names `.agents/evidence/verification.json`, so adding it to `BASELINE_FILES` would pass today's `check.py` immediately. Needs its own regression test first (assert a count claim in the README fails `check.py`), per the repo regression-test-first rule — do not ship as a doctrine change without it |
 
 ## Frozen
 
@@ -110,11 +130,13 @@ repository + zero-budget launch"). The public repo is `angasko-12345/qr-generato
   `projects-ai-bug-handoff.md`, `projects-ai-review-handoff.md`,
   `repo-review-2026-09-26.md`). They are not instructions and are never revised in place.
 - ROOT-015..ROOT-025 and ROOT-028 are DISPROVEN and are not queue items.
-- **B7 routing is done, and `tasks/task.md` records it as done.** The plan section "Agent
+- **B7 routing is done, and its task record now lives in the archive.** The plan section "Agent
   registry capability resolver and deterministic router — 2026-09-15" has all five subtasks
-  at `Status: done` and an Output section; roadmap B7 is `DONE 2026-09-16`. That section is a
-  completed task record, not live work, and `tasks/task.md` is owned by the task procedure —
-  do not reopen it as a queue item.
+  at `Status: done` and an Output section; roadmap B7 is `DONE 2026-09-16`. As of 2026-10-21
+  that record (plus every other completed Plan/Output previously appended to `tasks/task.md`)
+  is preserved verbatim at `.agents/memory/archive/2026-09-15-agent-registry-routing-task-record.md`,
+  and `tasks/task.md` is the active-task slot pointing at this queue. Completed records are
+  never live work — do not reopen them as queue items.
 - **A8's reviewer pass was run.** The opencode architecture review of A8 is adjudicated in
   `.agents/memory/opencode/repo-review-2026-09-26.md` § "A8 reviewer pass adjudication" (three
   observations, all declined with code evidence); the earlier pass's findings were fixed in

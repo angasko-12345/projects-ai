@@ -16,7 +16,7 @@ This file applies when AgentOps selects the `pi` agent or when Pi creates, modif
 
 Before substantial work:
 
-1. Read `.agents/AGENTS.md`, this file, `tasks/task.md`, and `tasks/after-task.md` when present.
+1. Read `.agents/AGENTS.md`, this file, `tasks/after-task.md`, and `.agents/pending_tasks.md` (the live task queue) when present. `tasks/task.md` is the active-task slot: a completed record there is archived history (`.agents/memory/archive/`), not work to do.
 2. Read `.agents/team.md` and the relevant files under `.agents/memory/`, especially `project.md`, `architecture.md`, `roadmap.md`, `decisions.md`, and `lessons.md`.
 3. Inspect the current source, tests, `git status`, and current diff. Current code and tests outrank memory.
 4. Back up the dirty tree before substantial work, including untracked files that belong to the task.

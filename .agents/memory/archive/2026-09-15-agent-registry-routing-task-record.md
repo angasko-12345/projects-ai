@@ -1,0 +1,838 @@
+# Task
+
+Inspect the current agent registry and selection logic.
+
+Preserve current explicit preferences and fallback behavior.
+
+Upgrade the registry so every installed agent can advertise capabilities.
+
+An agent profile should contain:
+
+identifier
+display name
+executable path
+detected version
+availability
+roles
+capabilities
+supported structured output
+cancellation support
+timeout support
+interactive/noninteractive support
+configured priority
+optional metadata
+
+Initial capabilities:
+
+planning
+architecture
+implementation
+debugging
+refactoring
+testing
+code review
+security review
+documentation
+repository exploration
+
+Create an AgentCapabilityResolver.
+
+Create an AgentRouter that accepts:
+
+role
+task description
+repository characteristics
+required capabilities
+available agents
+user preferences
+historical performance if available
+
+Initially use deterministic scoring.
+
+The router must return an explainable decision:
+
+selected agent
+score
+alternatives
+reasons
+rejected candidates
+constraints
+
+Example:
+
+Selected: codex
+
+Reasons:
+
+implementation capability matched
+preferred agent
+available
+fallback not required
+
+Persist routing decisions as events.
+
+Allow routing to be disabled.
+
+When disabled, preserve existing static preference/fallback behavior.
+
+Add tests for:
+
+capability matching
+disabled agents
+unavailable agents
+fallback
+explicit user preference
+missing capabilities
+deterministic scoring
+explainability
+
+Run the entire test suite.
+
+## Plan (Agent registry capability resolver and deterministic router — 2026-09-15)
+
+### Subtask 1 — Audit registry and define compatible profile contract
+Agent: pi (sole writer)
+Depends on: none
+Status: done
+
+Map current `AgentConfig`, `DetectedAgent`, adapter capabilities, role gates, preference fallback, and event persistence. Define additive profile fields without breaking positional constructors or existing `select()` behavior.
+
+---
+
+### Subtask 2 — Implement capability resolver and agent profiles
+Agent: pi (sole writer)
+Depends on: Subtask 1
+Status: done
+
+Add the requested capability vocabulary, resolver, profile construction, configured priority/metadata support, and deterministic capability matching while preserving disabled/unavailable/role/exclusion behavior.
+
+---
+
+### Subtask 3 — Implement explainable deterministic router
+Agent: pi (sole writer)
+Depends on: Subtask 2
+Status: done
+
+Add `AgentRouter`, deterministic scoring, explicit preference/fallback handling, routing-disable switch, alternatives/rejections/reasons/constraints, and routing-decision event persistence. Integrate it with workflow selection without changing direct registry compatibility.
+
+---
+
+### Subtask 4 — Add coverage and run reviews
+Agent: pi (sole writer)
+Depends on: Subtask 3
+Status: done
+
+Add tests for capability matching, disabled/unavailable agents, fallback, explicit preferences, missing capabilities, deterministic scoring, explainability, disabled routing, and event persistence. Run focused tests, full suite, and read-only reviewer checks.
+
+---
+
+### Subtask 5 — Update memory, task output, and report
+Agent: pi (sole writer)
+Depends on: Subtask 4
+Status: done
+
+Update canonical memory and append the task output. Commit and push unless the user says otherwise; do not rebuild the executable because packaging is not affected.
+
+---
+
+## Output (Agent registry capability resolver and deterministic router)
+
+Status: implementation and both requested reviews complete.
+
+- Added `agentops/routing.py` with profiles, resolver, deterministic scoring router, explainable decisions, and input normalization.
+- Extended task capabilities, config/profile metadata, registry version/profile support, workflow routing-event persistence with executed-agent tracking, routing switch, README documentation, and package exports.
+- Added `tests/test_routing.py` with 25 routing tests for all requested coverage categories plus registry/config compatibility; added one adapter regression test.
+- Full suite: 336 passing, 4 environment skips; `git diff --check` clean.
+- Copilot snapshot review: fixed valid scalar-selector compatibility; rejected two snapshot-packaging artifacts with evidence.
+- OpenCode architecture review: adjudicated all eight findings. Fixed non-ASCII version decoding, role-derived task-capability selection, legacy capability consolidation, executed-agent/event agreement, and single-profile input. Rejected stale bottom-import and stale route-exception observations with code evidence; retained full-vocabulary empty-role profiles by design; swept all `AppConfig` constructions for positional compatibility.
+- Backup: `/tmp/agentops-backup-b7-router-20260916-182309`; snapshot: `/tmp/agentops-review-router`.
+- No executable rebuild: packaging untouched.
+
+---
+
+## Plan (PHASE 3 re-audit + PHASE 4 build — 2026-09-15)
+
+### Subtask 1 — Phase 3 re-audit (no code expected)
+Agent: pi (sole writer)
+Depends on: none
+Status: done
+
+Phase 3 code untouched since the 2026-09-15 audit (only tasks/*.md modified at plan time). Suite re-verified green in Subtask 5.
+
+---
+
+### Subtask 2 — Versioned event model + store + query + subscription
+Agent: pi (sole writer)
+Depends on: Subtask 1
+Status: done
+
+New `agentops/events.py` leaf: `EVENT_SCHEMA_VERSION`, 26 `EventType` members, `EventSeverity`, `Event` dataclass (id, timestamp, workflow/task/agent-run ids, type, severity, message, payload, schema_version), tolerant `to_dict`/`from_dict`/`coerce_event`, `EventSubscriber` protocol + thread-safe `EventBus` (never raises into publishers). State: additive `typed_events` table (schema v4, explicit-column inserts, legacy-DB repair loop), `record_typed_event` + `query_events` (chronological, pagination, task/agent-run/type filters) returning `Event` objects; legacy `event`/`list_events` untouched; store notifies bus on write (best-effort). Payloads never carry secrets (redaction reuse + tests).
+
+---
+
+### Subtask 3 — Artifact store + metadata + retention
+Agent: pi (sole writer)
+Depends on: Subtask 2
+Status: done
+
+New `agentops/artifacts.py`: `ArtifactKind` (plans, diffs, patches, execution_logs, verification_reports, reviews, failure_analysis, risk_reports, workflow_summaries, custom), `Artifact` + `ArtifactMetadata`, `ArtifactStore` (root containment incl. traversal rejection, 0o700/0o600 perms, sha256 on write + verify on read, retention `prune`, missing-artifact sentinel, redaction on text writes). State: additive `artifacts` table (schema v5) with create/get/list/delete. Large content stays in files, metadata in SQLite.
+
+---
+
+### Subtask 4 — CLI + controller + GUI exposure
+Agent: pi (sole writer)
+Depends on: Subtask 3
+Status: done
+
+CLI `events` (workflow/task/run/type filters + limit/offset) and `artifacts` (list/show/prune) mirroring existing styles; controller pass-throughs; GUI artifacts visibility via the Logs-tab pattern (read-only, Tk-thread safe).
+
+---
+
+### Subtask 5 — Tests + full suite
+Agent: pi (sole writer)
+Depends on: Subtask 4
+Status: done
+
+`tests/test_events.py` (14 tests) + `tests/test_artifacts.py` (11 tests). Full suite 209 passing (184 prior + 25 new), 2 skips (1 pre-existing platform skip + 1 Windows perms skip per standing precedent). Two self-found bugs fixed during testing (FK-constrained refs, repr-quoted legacy_type).
+
+---
+
+### Subtask 6 — Snapshot review (read-only)
+Agent: copilot (tests) + opencode (architecture, DONE)
+Depends on: Subtask 5
+Status: done (opencode) / done (copilot — findings received and fixed, see below)
+
+opencode findings received and fixed (adjudication follows); copilot findings received 2026-09-15 (2 issues + 3 test gaps), both fixed: (1) artifact crash-window — true cross-system atomicity is impossible, so narrowed it: temp-write + atomic rename (no partial files), crash-window docstring, `scan_files`/`find_orphans` helpers + orphan test; (2) typed-event legacy compat — bridged by mirroring typed events into the legacy table in the same transaction (workflow-less events stay typed-only, documented). Gap tests added: crash-window/orphan, legacy-mirror compat, symlink + absolute-path traversal. While stress-testing, a real flake surfaced (concurrent first-open SQLITE_LOCKED at WAL pragma + leaked handles) — fixed with whole-open retry (8 attempts, backoff, close-on-failure) + test-handle hygiene; 10/10 stress runs clean. Suite 217 OK (3 environment skips).
+
+**opencode adjudication (15 items). Fixed before merge:** T1 (bus notify moved outside store RLock), M1 (INSERT OR IGNORE on all 5 migration version inserts), A1 (`_jsonable` deep sanitizer for payloads/metadata). **Contract hardening fixed:** L1 (docstring — GUI reads via controller queries; bus is the shared live/API protocol), L4 (public `redact_text`, `_redact` kept as alias), A3 (uniform ValueError pagination, matching existing list_*), A4 (hash-covers-stored-bytes documented), A5 (`EventBus(error_handler)`), T2 (publisher-thread contract documented), T4 (reentrant emits drained iteratively), M4 (store/registry pairing documented). **Noted, not changed:** T3 (pre-existing stateless-fallback, out of scope), L2 (pre-existing Task leak — roadmap Phase 1), M2 (invalid — single atomic commit, no partial shape possible), M3 (by design — global events have no workflow), L3 (typed timeline authoritative; legacy retained for old readers), A2 (reader-side tolerance documented). 5 new regression tests; suite 214 OK.
+
+---
+
+### Subtask 7 — Memory + report + commit + push
+Agent: pi
+Depends on: Subtask 6
+Status: done
+
+Committed `5742b2a`, pushed to origin main. No exe rebuild (packaging untouched).
+
+---
+
+## Output (PHASE 3 re-audit + PHASE 4 build)
+
+**Phase 3:** no gaps (reaffirmed — code untouched since the prior audit; suite green).
+
+**Phase 4 delivered** (`5742b2a`, pushed to origin main):
+
+- `agentops/events.py` (leaf): `Event` schema v1 (id, timestamp, workflow/task/agent-run ids, type, severity, message, payload, schema_version), 27 `EventType` members covering all 26 specified + NOTE, total `event_from_dict`/`coerce_event` (legacy kinds → NOTE with `legacy_type` preserved), `EventBus` (thread-safe fan-out, per-subscriber isolation, error handler, iterative reentrancy drain, delivery count).
+- `agentops/artifacts.py`: `ArtifactKind` (10 families covering all 9 specified + custom), `Artifact` + `ArtifactMetadata`, `ArtifactStore` (containment + traversal rejection, 0o700/0o600 perms, sha256 verify-on-read, retention prune, missing/integrity errors, redaction on text writes). Metadata in SQLite, bytes in files.
+- State: additive schema v4 (`typed_events`) + v5 (`artifacts`), plain-TEXT refs (no FK — recovery evidence), race-safe version inserts, `record_typed_event` + `query_events` (chronological, pagination with uniform ValueError contract, workflow/task/run/type filters), artifact CRUD, bus notification outside the lock. Legacy `events` table + `list_events` untouched.
+- CLI `events` / `artifacts` (list/show/prune-keep); controller `query_events`/`list_artifacts`/`read_artifact`; GUI Artifacts tab (Logs-tab pattern, Tk-safe).
+- Tests: `test_events.py` (19) + `test_artifacts.py` (11); full suite 214 OK (2 environment skips). No secrets in payloads (redaction + test).
+- Review: opencode architecture review — 15 findings, 3 blockers fixed (T1/M1/A1) + 8 hardening, 4 noted with rationale (see Subtask 6). Copilot test review pending at push; follow-up if needed. No exe rebuild (packaging untouched).
+- Files: `events.py`, `artifacts.py` (new); `state.py`, `cli.py`, `gui.py`, `gui_controller.py`, `logging.py` (`redact_text`), `__init__.py`; `test_events.py`, `test_artifacts.py` (new). Backup: `/tmp/agentops-backup-phase4/diff.patch`. Snapshots: `/tmp/agentops-review-phase4/`.
+
+---
+
+## Plan (SUPERSEDED — Failure Analysis audit, kept for history)
+
+### Subtask 1 — Spec-to-code audit
+Agent: pi (sole writer)
+Depends on: none
+Status: done
+
+Verified every header bullet against `agentops/agentops/failure.py`, `workflow.py`, `cli.py`, `gui_controller.py`: Failure object carries all 14 required fields (verification linkage as `verification_run_id`, suggestion as `recommended_action` — functionally equivalent, noted in Output); all 16 categories present; deterministic classifier + repair planner with all 6 decisions; bounded retries (max attempts, backoff, category rules, inherited context + verification evidence); parent-linked repair AgentRuns; persisted decisions; repair chain in `failures`/`recover` CLI and GUI failure views; failed worktrees preserved per `finalize.py` conflict-task path.
+
+---
+
+### Subtask 2 — Test verification + full suite
+Agent: pi (sole writer)
+Depends on: Subtask 1
+Status: done
+
+`tests/test_failure_kernel.py`: 28 tests OK (every category + repair decisions + recovery). Full suite: 184 passing, 1 pre-existing platform skip. No code changes required — implementation predates this task header (Phase 3, committed `935f4dc`, copilot-reviewed with 4 findings fixed).
+
+---
+
+### Subtask 3 — Memory + report
+Agent: pi
+Depends on: Subtask 2
+Status: done
+
+## Output (Failure Analysis audit)
+
+No gaps found — the subsystem as specified already exists and is tested:
+
+- Failure record (`failure.py:110`): id, workflow_id, task_id, agent_run_id, source, category, severity, retryable, repairable, evidence, primary_error, verification_run_id (= related verification checks, via the linked run), recommended_action (= suggested action), created_at (+ updated_at, attempt, repair_cycle, recovery_state).
+- All 16 categories (`failure.py:20-35`): AGENT_ERROR, PROCESS_ERROR, TIMEOUT, CANCELLATION, TEST_FAILURE, LINT_FAILURE, TYPECHECK_FAILURE, BUILD_FAILURE, VERIFICATION_FAILURE, ENVIRONMENT_FAILURE, DEPENDENCY_FAILURE, GIT_CONFLICT, DIRTY_WORKTREE, POLICY_VIOLATION, REVIEW_REJECTION, UNKNOWN.
+- Deterministic classifier first; repair planner decides all 6 (`failure.py:59-65`): retry same/different agent, repair implementation, rerun verification, request human approval, stop permanently. No blind retry: `RetryPolicy` (max_attempts, backoff base/max/factor), category retry rules, inherited context + prior verification evidence (`workflow.py:461-462`, `_prompt_with_history`).
+- Repair attempts mint new parent-linked AgentRuns (`workflow.py:557-573`); decisions persisted in `failures` table; repair chain exposed via `failures`/`recover` CLI (`cli.py:53-59`) and GUI (`gui_controller.py:serialize_failure`).
+- Tests: 28 failure-kernel tests (every category + repair decision + recovery paths); full suite 184 OK. Failed worktrees stay inspectable via the conflict-task + preserved-worktree path.
+- Prior review coverage: copilot snapshot review of this exact code fixed 4 findings (see `.agents/memory/lessons.md` 2026-09-14 entry); no re-review needed as no lines changed.
+
+Note: the previous Plan/Output below (structured-results work) is retained for history but belonged to an earlier task header; the header has since been replaced twice by an external process. Backup of pre-audit tree: `/tmp/agentops-backup-failure-audit/diff.patch`.
+
+---
+
+## Plan (SUPERSEDED — structured-results work, kept for history)
+
+### Subtask 1 — Versioned AgentResult schema + robust parser (leaf module)
+Agent: pi (sole writer)
+Depends on: none
+Status: done
+
+Create `agentops/agent_result.py` (leaf, no I/O): `AgentResultStatus`, `ParseMode`, `AgentResult` dataclass with all 12 required fields + `schema_version`, `ParsedAgentResult`, `parse_agent_result()` (structured JSON incl. fenced blocks + trailing-line scan, partial/malformed tolerance, plain-text + empty fallback, never raises), `coerce_agent_result()` for old-DB backward compat, `ExecutionOutcome` + `evaluate_execution()` distinguishing process/agent/verification/review/merge with `merge_eligible` requiring all applicable signals.
+
+---
+
+### Subtask 2 — Runner + workflow + state integration
+Agent: pi (sole writer)
+Depends on: Subtask 1
+Status: done
+
+Runner stores normalized `AgentResult.to_dict()` as `structured_result` (TEXT column unchanged, no migration); workflow post-hoc fallbacks use the new parser wrapped so they can never crash a valid run; `extract_structured_result` kept unchanged for backward compat; prompt seam gains an optional JSON contract line with plain-text fallback stated.
+
+---
+
+### Subtask 3 — Comprehensive tests + full suite
+Agent: pi (sole writer)
+Depends on: Subtask 2
+Status: done
+
+New `tests/test_agent_result.py`: valid JSON, malformed JSON, empty output, partial output, plain text, process failure, verification failure, reviewer rejection, versioning/migration, old-shape backward compat, never-crash fuzz, merge-eligibility non-equivalence. Then `python -m unittest discover -s tests` → 184 passing (1 pre-existing platform skip).
+
+---
+
+### Subtask 4 — Snapshot reviews (read-only)
+Agent: copilot (tests) + opencode (architecture) + fcc-claude (security, if server up)
+Depends on: Subtask 3
+Status: done
+
+Copy relevant files to `/tmp/agentops-review-structured-results/`, run each reviewer via `agentops run <agent>` with explicit READ-ONLY prompt or via Intercom only after `intercom_list` confirms liveness. Pi addresses findings, re-runs suite. → DONE 2026-09-15: copilot snapshot review completed (94s, 4 findings, all fixed + 6 regression tests); no live Intercom peers so opencode/fcc-claude reviews not requested.
+
+---
+
+### Subtask 5 — Memory + report
+Agent: pi
+Depends on: Subtask 4
+Status: done
+
+Update `.agents/memory/{project,architecture,decisions,lessons}.md`, append `## Output` summary to task.md, report to user. No exe rebuild (packaging untouched) unless review finds packaging impact. → DONE 2026-09-15, no packaging impact.
+
+## Output
+
+Structured-results upgrade complete. `agentops/agent_result.py` (leaf): versioned `AgentResult` schema v1 with all 12 required fields, `parse_agent_result` (structured/fenced/trailing-line JSON, truncated-JSON detection, plain-text + empty fallbacks, never raises), `coerce_agent_result` (dicts, lists, JSON TEXT, legacy payloads preserved), `evaluate_execution` (process/agent/verification/review/merge kept distinct; merge requires all four). Runner + workflow store normalized envelopes in the existing `structured_result` TEXT column (no migration); `extract_structured_result` retained; prompt seam advertises the optional JSON contract, plain text still valid. Tests: `tests/test_agent_result.py` (40 tests: valid/malformed/empty/partial/plain-text, process/verification/review failures, versioning, backward compat, never-crash, non-equivalence); full suite 184 passing, 1 pre-existing skip. Review: copilot read-only snapshot review, 4 findings fixed (+1 self-found repr crash via new regression test). Files changed: `agentops/agent_result.py` (new), `agentops/runner.py`, `agentops/workflow.py`, `agentops/__init__.py`, `tests/test_agent_result.py`. Backup: `/tmp/agentops-backup-structured-results/`. Review snapshot: `/tmp/agentops-review-structured-results/`.
+
+---
+
+## Plan (A3 Shared ProcessRuntime — 2026-09-16)
+
+### Objective
+Agent: pi (sole writer)
+Depends on: none
+Status: done
+
+Implement roadmap A3 as a behavior-preserving shared process layer used by `AgentRunner`, `VerificationKernel`, and legacy `Verifier`. Remove kernel/verifier dependence on runner internals while keeping all public APIs, outcomes, timeouts, cancellation behavior, logging, and persistence integration unchanged except for explicitly documented safety fixes.
+
+---
+
+### Subtask 1 — Audit current process paths
+Agent: pi
+Depends on: none
+Status: done
+
+Audit `runner.py`, `verification_kernel.py`, `verification.py`, environment handling, Windows spawn flags, POSIX process-group behavior, cancellation/timeout paths, injectable factories, and existing tests. Backup: `/tmp/agentops-backup-a3-runtime-20260916-203040`.
+
+---
+
+### Subtask 2 — Improve the A3 design
+Agent: pi
+Depends on: Subtask 1
+Status: done
+
+Improvements over the roadmap paragraph:
+
+- Include legacy `Verifier` in the shared runtime so runner stops being the implicit process layer for all three execution paths.
+- Give every default runtime spawn one cross-platform policy: Windows `CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP`; POSIX `start_new_session=True`.
+- Route Windows `taskkill` cleanup through the same no-window spawn path.
+- Preserve injectable process factories; custom factories retain their existing spawn behavior.
+- Preserve `AgentRunner._environment`, `AgentRunner.terminate`, `AgentRunner._communicate_with_cancel`, `OperationCancelled`, and `VerificationKernel(process_factory=...)` as compatibility seams.
+- Terminate the child process for cooperative cancellation, timeouts, and `asyncio.CancelledError` before propagating cancellation.
+
+---
+
+### Subtask 3 — Implement `ProcessRuntime`
+Agent: pi
+Depends on: Subtask 2
+Status: done
+
+Add `agentops/runtime.py` with environment construction, unified spawn flags, cancellation-aware communication, timeout handling, process-group termination, byte-level result capture, and an injectable spawn factory. Refactor runner, kernel, and legacy verifier to delegate without changing their public signatures.
+
+---
+
+### Subtask 4 — Add regression and parity tests
+Agent: pi
+Depends on: Subtask 3
+Status: done
+
+Add `tests/test_runtime.py` for environment policy, spawn flags, timeout/cancellation, process-group cleanup, custom factories, and real agent-plus-verification smoke coverage. Extend existing runner/kernel/legacy coverage only where needed to lock behavior.
+
+---
+
+### Subtask 5 — Reviews, full suite, packaging, and records
+Agent: pi; reviewers: copilot (tests), opencode (architecture)
+Depends on: Subtask 4
+Status: done (both reviews closed)
+
+Run read-only snapshot reviews, address valid findings, run the full suite from `agentops/`, rebuild/archive-inspect/smoke-test the Windows executable because the new runtime module affects the frozen bundle, update canonical memory and task output, then commit and push.
+
+---
+
+## Output (A3 Shared ProcessRuntime — 2026-09-16)
+
+- New `agentops/runtime.py`: `ProcessRuntime` (reduced env, unified Windows/POSIX spawn policy, cancellation-aware wait, timeouts, process-group termination, byte-level results), `ProcessResult`, `OperationCancelled`, `SpawnFactory`.
+- `AgentRunner`, `VerificationKernel`, and legacy `Verifier` delegate to the runtime; public APIs unchanged; `AgentRunner._environment`/`.terminate`/compat helpers and `VerificationKernel(process_factory=...)` preserved.
+- Safety fixes beyond the roadmap paragraph: POSIX `start_new_session` for all default spawns (killpg can no longer target the parent group), no-window `taskkill` cleanup, child termination on `asyncio.CancelledError`, thread-free cooperative cancellation polling, direct-kill cleanup for custom factories, executed `on_running` lifecycle preserved.
+- Kernel setup fix: duplicate check names fail before a persisted run is started.
+- Kernel semantics fix: required FAILED/TIMED_OUT evidence dominates fail-fast sibling cancellation in the overall report.
+- Tests: `tests/test_runtime.py` (13 tests) + `tests/test_runner.py` running-lifecycle regression + 2 kernel regressions; full suite 335 passing, 4 environment skips.
+- Copilot snapshot review: 6 findings — 5 fixed with regressions (thread leak, custom-factory killpg, on_running orphan, stranded RUNNING run, fail-fast overall), 1 deferred to A8 (state-error swallowing) with rationale.
+- OpenCode architecture review: adjudicated all 11 items. Fixed factory-alias duplication, dead TimeoutError branch, and custom-factory policy documentation; added cleanup-bound, returncode, and cancel/skip asymmetry comments; hardened the POSIX cleanup test. Rejected as stale: threadpool leak and POSIX-test inconsistency (both fixed before the review snapshot). Rebutted with baseline evidence: SIGKILL-first termination is unchanged from pre-A3. Accepted: synthetic cleanup stderr text. Deferred: state-error swallowing (A8), as_posix log paths (pre-existing, out of scope), SpawnFactory Protocol typing (follow-up).
+- Full suite after adjudication: 336 passing, 4 environment skips.
+- Packaging: `dist/AgentOps.exe` rebuilt (14,851,920 bytes), archive-inspected (`agentops.runtime` bundled), startup/shutdown smoke-tested with process-exit verification. Exe stays out of git.
+- Backup: `/tmp/agentops-backup-a3-runtime-20260916-203040`; snapshot: `/tmp/agentops-review-a3-runtime`.
+
+---
+
+## Plan (A4 Structured Failure Evidence — 2026-09-16)
+
+### Objective
+Agent: pi (sole writer)
+Depends on: none
+Status: in progress
+
+Implement roadmap A4: classification driven by structured `FailureEvidence` with substring matching demoted to fallback. Keep `classify()` signature compatible, persist evidence JSON in the `failures` row (additive schema v7), and prove with before/after tests that structured evidence beats string heuristics.
+
+---
+
+### Subtask 1 — Audit classifier and evidence points
+Agent: pi
+Depends on: none
+Status: done
+
+Audit `failure.py` classifier branches, workflow `_record_agent_failure` / `_record_verification_failure` / `record_failure`, state `failures` persistence, and existing kernel tests. Backup: `/tmp/agentops-backup-a4-evidence-20260916-211809`.
+
+---
+
+### Subtask 2 — Improve the A4 design
+Agent: pi
+Depends on: Subtask 1
+Status: done
+
+Improvements over the roadmap paragraph:
+
+- `FailureEvidence` is a frozen leaf dataclass (`source`, `check_class`, `exit_code`, `timed_out`, `cancelled`, `terminated`, `command`, `stderr_peek`) with `to_dict()` and `is_empty()`; empty evidence falls back to strings.
+- Populate evidence at the two workflow failure-recording choke points (from `RunResult` and from the failing verification check) instead of threading new fields through runner/kernel output contracts — keeps A3 output contracts stable.
+- `stderr_peek` is capped at 500 chars and redacted via `logging.redact_text` at construction, so evidence JSON never becomes a secret sink.
+- New additive `structured_evidence TEXT` column (schema v7); `Failure.structured_evidence` appended field; `serialize_failure` exposes it; migration assertion bumped to `[1..7]`.
+- Structured-first branch mirrors string-branch outcomes exactly, so behavior only changes where structured evidence wins.
+
+---
+
+### Subtask 3 — Implement evidence + structured-first classification
+Agent: pi
+Depends on: Subtask 2
+Status: done
+
+Add `FailureEvidence`, extend `classify()` with keyword-only `evidence=`, wire workflow recording paths, persist the evidence column.
+
+---
+
+### Subtask 4 — Add before/after tests
+Agent: pi
+Depends on: Subtask 3
+Status: done
+
+Extend `tests/test_failure_kernel.py`: ≥5 tests proving structured evidence beats string heuristics, plus evidence-empty parity, persistence round-trip, legacy-migration repair, and workflow integration coverage.
+
+---
+
+### Subtask 5 — Reviews, full suite, and records
+Agent: pi; reviewers: copilot (tests), opencode (architecture)
+Depends on: Subtask 4
+Status: done (copilot closed; opencode async reply pending)
+
+Run read-only snapshot reviews, address valid findings, run the full suite from `agentops/`, update canonical memory and task output, then commit and push. No new module is added, so no executable rebuild is required.
+
+---
+
+## Output (A4 Structured Failure Evidence — 2026-09-16)
+
+- New `FailureEvidence` leaf dataclass (`source`, `check_class`, `exit_code`, `timed_out`, `cancelled`, `terminated`, `command`, capped `stderr_peek`) with total constructor/`to_dict()` and `is_empty()` fallback.
+- `FailureClassifier.classify()` gains keyword-only `evidence=`; structured-first branch mirrors string-branch outcomes, so behavior changes only where structured evidence wins.
+- Evidence populated at the two workflow recording choke points (from `RunResult`, from the failing check) plus the legacy verifier path; agent commands persist executable-only, stderr peeks and arbitrary mappings are redacted/scrubbed.
+- Additive `structured_evidence TEXT` column (schema v7); `Failure.structured_evidence` appended field; `serialize_failure` exposes it; migration assertion bumped to `[1..7]`.
+- Tests: 19 new failure-kernel tests plus one redaction test (structured-beats-strings, precedence combos, hostile fields, secret redaction, defensive malformed checks, legacy persistence, migration repair, workflow integration); full suite 356 passing, 4 environment skips.
+- Copilot snapshot review: 5 findings, all fixed with regressions (legacy-path evidence, command/dict secret scrubbing, hostile `to_dict` fields, malformed-check defense, precedence coverage).
+- OpenCode architecture review: adjudicated all items. Fixed unredacted legacy evidence (HIGH), specified timeout-over-dependency precedence, broadened `redact_text` (AKIA/Bearer/GitHub variants); structured commands already scrubbed via `_scrub_structured` (LOW rebutted with evidence).
+- Full suite after adjudication: 356 passing, 4 environment skips.
+- Backup: `/tmp/agentops-backup-a4-evidence-20260916-211809`; snapshot: `/tmp/agentops-review-a4-evidence`.
+- No new module added, so no executable rebuild is required.
+
+---
+
+# USER NOTE TO AGENT: Put everything below this point into dedicated files in "D:\admin\code\projects\.agents\...". Use this as a replaceable, updated summary of recent projects/prompts.
+
+## Recent summary (replaceable — details live in .agents/)
+
+- **B7 Capability Router: DONE 2026-09-16.** `routing.py` + registry profiles + deterministic router + routing-decision events; 25 routing tests + 1 adapter regression; suite 336 OK; copilot + opencode reviews closed. Details: `.agents/outputs/b7-router.md`.
+- **A3 Shared ProcessRuntime: DONE 2026-09-16.** `runtime.py` shared by runner/kernel/legacy verifier; unified spawn policy; 16 new tests; suite 336 OK; exe rebuilt + smoke-tested; copilot + opencode reviews closed. Details: `.agents/outputs/a3-runtime.md`.
+- **Pending follow-ups:** A8 persistence failure policy (deferred kernel state-error handling); `SpawnFactory` Protocol typing; repository characteristics for routing; pending OpenCode architecture reply on A4 (see `## Output (A4 ...)` above).
+- **Pi invocation fix 2026-09-16:** bundled `agents.yaml` passed `--prompt` (rejected by installed pi CLI); now `args: ["--print", "{prompt}"]` with a regression test locking the built command; verified with a real `agentops run pi` round-trip; suite 357 OK; copilot snapshot review clean.
+
+---
+
+## Plan (A8 Persistence Failure Policy — 2026-09-26)
+
+### Subtask 1 — Audit every persistence fallback
+Agent: pi (sole writer)
+Depends on: none
+Status: done
+
+Enumerated every store write wrapped in a swallowing `except`. Classified each as
+safe-to-degrade or must-fail-closed. Probed the deferred A3 item and confirmed it
+was a real fabrication bug, not cosmetic.
+
+### Subtask 2 — Leaf policy module and regression test
+Agent: pi
+Depends on: Subtask 1
+Status: done
+
+`agentops/persistence.py` (policy enum, exhaustive table, `Degradation`,
+`DegradationRecorder`, `event_emitter`) + `EventType.PERSISTENCE_DEGRADED`.
+Regression test written first: patching `finish_verification_check` to raise the
+swallowed `KeyError` must not yield a `passed` report.
+
+### Subtask 3 — Kernel fail-closed + visible degradation
+Agent: pi
+Depends on: Subtask 2
+Status: done
+
+Kernel fails closed on lost check start/finish (per-run state threaded, not
+instance state). Runner observer notifications and workflow `failure.create` /
+`routing.decision` degrade with a recorded warning.
+
+### Subtask 4 — Full suite
+Agent: pi
+Depends on: Subtask 3
+Status: done
+
+---
+
+## Output (A8 Persistence Failure Policy — 2026-09-26)
+
+- **Real defect fixed, confirmed by probe before and after:** a swallowed
+  `finish_verification_check` error produced `overall_status = passed` while the
+  stored check was still `running`; the workflow then set `task.verified = True`
+  on evidence no durable record supported. `assert_report_consistent` could not
+  catch it — it validates a report against its own counters, not against what was
+  actually stored. The same hole existed at `start_verification_check`.
+- **New leaf** `agentops/persistence.py`: `PersistencePolicy`, an exhaustive
+  `PERSISTENCE_POLICIES` table, `Degradation`, `DegradationRecorder` (never
+  raises; falls back to an in-memory entry when the emitter is what broke),
+  `event_emitter` (store injected, so the leaf stays SQLite-free). Unknown
+  operations default to `MUST_FAIL_CLOSED` so a new write cannot silently degrade.
+- **New event type** `PERSISTENCE_DEGRADED` (additive, WARNING severity).
+- **Fail-closed set kept minimal, as the roadmap requires.** Only the
+  previously-swallowed `(KeyError, ValueError)` is caught; a real SQLite error
+  still propagates and aborts the run, which was already fail-closed. Verified
+  end-to-end that a `failure.create` failure persists a WARNING event through a
+  real `StateStore`.
+- **Already-correct paths regression-locked:** `task.update` and
+  `finalize_worktree`'s conflict task were already unguarded (fail-closed); both
+  now have tests so a future refactor cannot quietly add a swallow.
+- **Tests:** `tests/test_persistence.py`, 18 tests (recorder, policy table,
+  fail-closed kernel paths, optional-check case, healthy-run non-regression,
+  unclassified-error propagation, and the three degradation sites). Full suite
+  **375 passing, 4 environment skips** (baseline was 357 + 4).
+- **Files:** `agentops/persistence.py` (new), `tests/test_persistence.py` (new),
+  `verification_kernel.py`, `runner.py`, `workflow.py`, `events.py`, `__init__.py`.
+- **Not done:** no reviewer pass yet (opencode/copilot read-only snapshot review
+  not run). No exe rebuild — packaging untouched.
+- **Backup:** `/tmp/agentops-backup-a8-persistence-20260926-174814`.
+
+---
+
+## Plan (A8 review follow-up — 2026-09-26)
+
+Six items from the opencode architecture review of `ff03eea`. Adjudicated every
+claim against the committed code first: three findings confirmed, one additional
+confirmed finding the reviewer listed in its body but never elevated, and one
+reviewer error (a cited `_operation_lock` that does not exist on the recorder —
+it belongs to `AgentOpsController`).
+
+### Status: all six done
+
+1. `threading.Lock` on `DegradationRecorder` — the controller records from
+   background threads; emit happens outside the lock so a slow store cannot stall.
+2. `worktree_ref.create` added as `SAFE_TO_DEGRADE`.
+3. Four engine observer fallbacks + `recover_incomplete` wired to the recorder.
+4. `record_worktree_ref` wired in the CLI and the controller — and **extracted
+   into `finalize.record_worktree_provenance`**, because both had hand-rolled the
+   same row with shadowed local imports, which is why one missed pattern was two
+   identical holes. Extraction also made it testable.
+5. Seven new tests (recorder limit eviction, threaded concurrent records, runner
+   transition degradation, recovery failure row, provenance loss and success).
+   Suite 382 passing, 4 skips.
+6. Corrected the overstated completeness claim in the module docstring and the
+   commit record; added the audit-scope lesson to `lessons.md`.
+
+### Adjudication notes
+
+- The reviewer cited `_operation_lock` as the reason recorder mutation is safe
+  across threads. No such lock existed; it is on `AgentOpsController`. The
+  conclusion (safe) held for the single-threaded asyncio kernel, but the stated
+  mechanism was wrong — and it pointed at a real gap, since the controller *is*
+  threaded. Item 1 closes that for the right reason.
+- The reviewer flagged the CLI copy of the provenance write as out of scope; it
+  is the same defect and was fixed alongside the controller copy.
+
+---
+
+## Plan (mini-llm cloud GPU compatibility audit — 2026-09-29)
+
+### Subtask 1 — Inspect device, checkpoint, and path handling
+Agent: oh-my-pi (sole writer)
+Status: done
+Audited `src/train.py`, `src/model.py`, `src/config.py`, `src/dataset.py`,
+`prepare_data.py`, `src/generate.py`, `requirements.txt`, checkpoint save/load,
+and the tests. Established the baseline suite (87 tests, 1 pre-existing failure
+from the uncommitted `data/raw/train.txt` expansion: shipped-corpus vocab 3095
+vs committed `meta.json` 308 — user data, untouched).
+
+### Subtask 2 — Regression tests, then minimal hardening
+Agent: oh-my-pi (sole writer)
+Status: done
+Tests first (`TestDeviceSelection`, `TestDeviceFlag`, two CUDA-RNG tests in
+`TestCheckpointSafety`), then `--device {auto,cpu,cuda}` + `resolve_device` and
+CUDA RNG capture/restore keyed off the model device.
+
+### Subtask 3 — Docs, verification, records
+Agent: oh-my-pi (sole writer)
+Status: done
+README (`--device`, Cloud GPU section, resume/test coverage notes), full suite,
+CLI smoke runs, decisions.md entry, this record.
+
+## Output (mini-llm cloud GPU compatibility audit)
+
+Status: audit complete; the code already trains correctly on CUDA; two minimal
+hardening changes implemented, nothing else touched.
+
+- **Verdict:** device-agnostic loaders, `.to(device)` batching, seeds via
+  `torch.manual_seed` (all devices), and `torch.load(map_location="cpu")` +
+  optimizer state cast "to device of param" (verified in installed torch 2.14
+  source) mean GPU/CPU/GPU-portable checkpoints already worked. Paths in
+  checkpoints are project-relative (run from the project root); no
+  machine-specific state found.
+- **Changes:** `src/train.py` — `resolve_device()` + `--device` flag (auto
+  default = old behavior; `cuda` exits 1 instead of silently training on CPU;
+  invalid value exits 2 via argparse); CUDA RNG saved under
+  `rng_state["cuda"]` only when the model is on CUDA, restored on resume with
+  device-count guards, skipped on CPU-only machines and by old checkpoints.
+  Tests: +9 (`TestDeviceSelection`, `TestDeviceFlag`, CPU checkpoint shape,
+  CPU-only restore skip). README documented.
+- **Verification:** full suite 96 tests, 1 env skip (CUDA-device resolve on a
+  CPU box), 1 failure = the pre-existing baseline `TestShippedData` caused by
+  the uncommitted corpus edit (3095 != 308, failed identically before any
+  change). Smoke: `--device cuda` -> exit 1 with message; `--device tpu` ->
+  exit 2; `--device cpu` and `--device auto` train and checkpoint; `--resume`
+  through the new wiring restores step 3 of 4. GPU execution itself not
+  exercised (local torch is a CPU-only build: 2.14.0+cpu).
+- **Not done (by rule):** no mixed precision, attention, or throughput work;
+  no dependency changes; CPU fallback and checkpoint format preserved.
+- **Backup:** `/tmp/agentops-backup-mini-llm-cloud-20260929/diff.patch`
+
+---
+
+## Plan (Desktop visual system for the Qt UI - 2026-10-04)
+
+### Subtask 1 - Design tokens and shared widgets
+Agent: omp (sole writer)
+Depends on: none
+Status: done
+
+Tightened corner radii; added page/section/group label roles; unified all buttons and single-line inputs to 33px; nav checked accent bar + focus states with specificity ordered after variant rules; PageHeader widget; Card/SectionHeader title roles moved to section level; replaced the non-rendering CSS border-triangle combo arrow with a bundled SVG asset (`gui/assets/chevron-down.svg`, referenced through `tokens.ASSET_DIR`).
+
+### Subtask 2 - Application shell
+Depends on: Subtask 1
+Status: done
+
+Top bar restructured (sidebar toggle leftmost with Show/Hide text sync, repository + Change, status cluster right, New Task); sidebar brand row, Orchestrate/Inspect/Configure nav groups mirroring VIEW_SPECS, command-palette hint at the bottom; navigation fade now removes its QGraphicsOpacityEffect when finished (a persistent opacity effect buffered the whole stack offscreen and left stale previous-view regions in the Settings scroll area).
+
+### Subtask 3 - View headers, states, dashboard
+Depends on: Subtask 2
+Status: done
+
+PageHeader + `page_subtitle` on all 10 views; ListDetail first-load loading state, error state before first load, no-repository state, restored empty heading after rows arrive (`_loaded` flag); agents detail placeholder instead of a blank card; dashboard redesign with real persisted metrics, four stat cards, needs-attention and recent-activity lists hidden when empty (Expanding centered empty label fixes Qt spare-height splitting), first-load-only loading text so the 1Hz operation poll never flickers, error subtitle keeping last-good numbers.
+
+### Subtask 4 - Verification and regression tests
+Depends on: Subtask 3
+Status: done
+
+Live launch and screenshots of every view; window resized at 1024x680 / 1280x800 / 1600x900; four visual defects found and fixed during verification (activity-card title inflation, combo-arrow square, blank agents detail, stale navigation region). Added `tests/test_gui_visual_states.py` (7 tests). Full suite green.
+
+---
+
+## Output (Workflow control center — 2026-10-04)
+
+Status: complete. Commit `7a5b472` (local only; no push requested).
+
+- **Qt-free projection layer** `agentops/gui/control_center.py` (new, 684 lines) owns every claim the control center makes — stage flow (standard five stages or a custom DAG's real dependency edges), live panel, current/next stage, recent activity, verification totals, failure summaries, worktree provenance, merge readiness, task/run detail, and cancellation state. No Qt, no SQLite, no I/O; `now` is injected so elapsed time is deterministic.
+- **View** `agentops/gui/views/workflows.py` rewritten: workflow list, live card (current stage, agent, status, model, elapsed, next), a vertical stage flow with labelled dependency edges and per-stage facts, tallies, and tabs for Tasks / Runs / Verification (counts → individual checks) / Failures / Worktree (branch, base branch, base commit, path, changed files, merge readiness + blocking reasons, merge/cleanup/open-folder actions).
+- **Backend untouched apart from one read:** `AgentOpsController.workflow_readiness()` delegates to the existing `assess_workflow_readiness()`, so the GUI reads the engine's READY verdict instead of re-deriving it. No new orchestration semantics, no schema or migration change.
+- **Widgets/design system:** `StageNode`, `StageFlow`, `Tally`, `LiveCard` in `gui/widgets.py`; tab styling, active-card state, and hover border in `gui/tokens.py`.
+- **Tests:** new `tests/test_control_center.py` (56) split into a display-free projection class and a `@requires_qt` view class, covering active workflow display, stage transitions, task/run/verification/failure selection, verification display, cancellation state, conflicting-action disabling, and the final ready/blocked state. `tests/test_gui_qt.py` fixtures enriched and the fake controller gained `query_events`/`workflow_readiness`.
+- **Verification:** `cd agentops && python -m unittest discover -s tests` → **501 tests, 4 environment skips, OK** (445 + 56 new). The view was also rendered offscreen and inspected, which caught two defects no assertion could.
+- **Bugs fixed during the work:** Finalize falsely reporting "running"; elapsed falling back to `updated_at`; `-` shown for an unrecorded duration; worktree enablement reading a sibling widget's property instead of recorded state.
+- **Files:** `agentops/agentops/gui/control_center.py` (new), `agentops/agentops/gui/views/workflows.py`, `agentops/agentops/gui/widgets.py`, `agentops/agentops/gui/tokens.py`, `agentops/agentops/gui_controller.py`, `agentops/tests/test_control_center.py` (new), `agentops/tests/test_gui_qt.py`.
+- **Follow-ups not done:** `.agents/AGENTS.md` and `agentops/AGENTS.md` still state a 444-test baseline (verified figure is now 501); the `AgentOps.spec` rebuild remains owed and packaging code was not touched.
+
+## Output (Desktop visual system for the Qt UI)
+
+Status: complete.
+
+- Design system: `tokens.py` label hierarchy (page 17/600, section 13/600), 33px control heights, unified radii, nav checked/focus states, chevron asset.
+- Shell: top-bar restructure with always-visible sidebar toggle; sidebar brand + grouped navigation + palette hint; fade-effect cleanup (stale-region fix).
+- Views: PageHeader and subtitle on all 10 views; ListDetail loading/empty/error cycle; agents detail placeholder; dashboard real metrics (Active workflows, Current tasks, Verification health, Detected agents), attention/activity empty-state visibility, `_show_no_repo` and error states.
+- Tests: `tests/test_gui_visual_states.py` - nav-group drift guard (every VIEW_SPECS id exactly once), page-header/title contract, dashboard empty vs populated visibility with severity color and tooltip, list-detail error-state restore, top-bar sidebar toggle round trip, navigation fade releasing its graphics effect, combo-asset wiring.
+- Verification: full suite `python -m unittest discover -s tests` from `agentops/` = 445 run, 4 environment skips, OK (438 pre-existing baseline with the new file removed + 7 new); `tests.test_gui_qt` 11 OK after each shell/dashboard edit; live screenshots of all 10 views and three window sizes; no backend/routing/verification/Git/state-schema changes.
+- Files: `agentops/agentops/gui/{shell,tokens,widgets}.py`, `agentops/agentops/gui/views/*.py` (11), `agentops/agentops/gui/assets/chevron-down.svg` (new), `agentops/tests/test_gui_visual_states.py` (new).
+- Memory files untouched: `.agents/memory/**` already dirty from concurrent sessions (sole-writer rule).
+
+## Plan (Desktop application interactions — 2026-10-04)
+
+GUI-only. Palette commands (Ctrl+K) wired to live shell actions; recovery surfaced by a new
+read-only `StateStore.count_interrupted_work()` (mirror of `recover_all()`) exposed through
+`AgentOpsController.interrupted_work()`, shown as a dismissible shell banner with confirm +
+existing `recover_interrupted()`; outcome-specific toasts reading `workflow_readiness()`;
+F5 + shortcut registry; tray status/hide; quit-cancel to kill subprocesses; tests for
+discovery/actions/facade; full suite; no workflow-semantics or persistence change.
+
+## Output (Desktop application interactions — 2026-10-04)
+
+Status: complete. UI/shell files plus two additive reads (`state.py`
+`count_interrupted_work()`, `gui_controller.py` `interrupted_work()`); New Task and recent
+repositories already existed and were untouched.
+
+- Palette: nine `Open <View>` commands + New Task (Ctrl+N), Recover Interrupted Work,
+  Refresh (F5), Settings (Ctrl+0), Toggle sidebar (Ctrl+B), Change repository, cancel-active,
+  recent repositories — actions bound to live methods, typed filtering keyboard-first.
+- Recovery: idle-only probe (first show / repository switch / refresh), `RecoveryBanner`
+  (heading, "2 runs require recovery", Review, Dismiss), notify once per distinct detail
+  (toast + tray when hidden), sticky dismissal, stale-result guards, confirm-then-recover via
+  existing `recover_interrupted()`.
+- Notifications: `ready=False` results read `workflow_readiness()` → `Verification failed`
+  (error) / `Workflow blocked` (warning) with engine reasons; tray on merge/complete/conflict/
+  error/failure.
+- Shortcuts: F5 added, `window._shortcuts` registry, Esc scoped to the armed banner.
+- Tray: live-status tooltip + Hide action; close-while-running cancels first (no orphan
+  subprocesses).
+- Tests +11 across `test_state.py` (recover_all parity), `test_gui.py` (facade round trip),
+  `test_gui_qt.py` (palette/shortcuts/banner/toasts/tray/geometry).
+- Verification: full suite `python -m unittest discover -s tests` = **512 run, 4 environment
+  skips, OK**; offscreen real-entry smoke 8 s clean; driven offscreen run with the real
+  controller (16 palette commands, banner hidden at zero counts, F5, tray tooltip, real probe,
+  clean close). Docs baselines updated to 512.
+
+---
+
+## Output (GitHub Issue #12 — strict review verdict gates and merge safety — merged 2026-10-15)
+
+Status: complete and merged into `main`.
+
+- **Shipped on `main`:** `2e80160` (strict review verdict gates: hardened `verdict.py` contract, `security.py` local secret prescan, opt-in `workflows.security_review` + `workflows.max_review_rounds`, bounded review repair, verdict summaries in CLI/GUI/events), `f039092` (routing-test contract fix), `a3b1a8f` (severity aliases), `2415b25` (reviewer-found bypasses), plus the `origin/main` sync merge `5e67e5e` and the branch merge `b7feb2c`.
+- **Verification:** `cd agentops && python -m unittest discover -s tests` → 818 tests, OK, 4 environment skips, exit 0. `.agents/evidence/verification.json` regenerated from a clean clone at the merged tip; `python tools/evidence/check.py` green.
+- **Reviews:** copilot read-only snapshot review (`/tmp/agentops-review-issue12`) — 6 findings, 4 fixed with 7 new regression tests, 2 rejected with file/line evidence; adjudication in `.agents/memory/decisions.md` (2026-10-15). fcc-claude security pass unavailable in that environment — owed (see `.agents/pending_tasks.md`).
+- **Behavior changes:** review/security roles now require a structured verdict JSON; review-repair budget default `max_repair_cycles=1` → `max_review_rounds=2`; structured agent status is SUCCESS-only; optional security task with local fail-closed prescan (values never persisted).
+- **Environment note:** part of this work ran while `D:/admin` refused file creation (see `.agents/memory/lessons.md` / project memory); integration completed once writability returned.
+
+---
+
+## Output (ai-token-tracker data-pipeline audit + real-store fixes -- 2026-10-19)
+
+Status: complete. Commit `ad73f30` on `main` (pushed); clean-clone evidence regenerated, `tools/evidence/check.py` green.
+
+- **Scope:** audit token/usage/cost collection across all 17 supported sources, fix correctness bugs found by reading the real on-disk stores (read-only probes; docstrings proved unreliable), and validate end-to-end with real data.
+- **Fixes (all regression-test-first, tests confirmed failing before implementation):**
+  - copilot: `tokenDetails.input.tokenCount` is the EXCLUSIVE non-cached input (verified three-way sum against sessions 0642f84c/c87d49c1); prior inclusive reading zeroed the field; `usage.outputTokens` includes reasoning (not double-counted).
+  - kilo: real DB path `~/.local/share/kilo/kilo.db` added to `find_kilo()` -- the source was silently uncollectable before.
+  - claude: skip `<synthetic>` rows (some carry zero-usage blocks), alias `open_router` -> `openrouter`, prefer earliest usage-bearing record per duplicate `requestId` (108/111 rids duplicated), cost stays None (real store has no costUSD; 0/449 lines).
+  - hermes: missing/unpriced cost stays NULL (`cost_status` None/'unknown' with 0.0 actual+estimated) instead of fabricated $0.00; provenance (exact vs estimated) preserved everywhere.
+  - sync failures now record `capability="error"` (red GUI dot), distinct from designed `unavailable` (gray dot).
+  - collectors.py `_canonical()` removed; raw timestamps flow into the single robust `parse_timestamp` (no crash on None).
+  - cost readout: `db.totals.cost_events`, `format.cost_summary()`, all-time GUI stat card.
+- **Coverage:** 10 exact collectors collect from real stores (opencode 6721, omp 7497, pi 3015, cline 3879, dsh 270, codex 128, claude 109, hermes 36, copilot 21, kilo 5); 7 unavailable with documented reasons; no live tracker DB existed so identity-semantics changes needed no migration. Real-data totals: 21,681 events / 3,449,207,906 tokens / $0.38 reported cost / 0 estimated; idempotent resync; per-event invariant holds; zero dedup collisions.
+- **Verification:** suite 46 -> 52 tests OK (`python -m unittest discover -s tests` from `ai-token-tracker/`, 3.0 s); `.agents/evidence/verification.json` regenerated from a clean clone at `ad73f309938c` (52 pass / 0 skipped); offscreen GUI smoke (`cost $0.25 across 1 event`, `* Error` dot). Full source-by-source table and known inaccuracies: `.agents/outputs/token-tracker-data-audit.md`; decisions in `.agents/memory/decisions.md` (2026-10-19).
+- **Next candidate:** OpenRouter `/api/v1/activity` import via `OPENROUTER_API_KEY` (backlogged in `.agents/pending_tasks.md`).
+
+---
+
+## Plan (PR #21 sync, review, and merge — 2026-10-20)
+
+### Subtask 1 — Inspect the PR against current `main`
+Agent: Codebuff (sole writer, dedicated worktree `D:/admin/code/pr21-worktree`)
+Depends on: none
+Status: done
+
+Read base/head SHAs, the 5-commit diff, reviews (none) and checks. Established that
+the PR was a draft, `DIRTY`/`CONFLICTING`, and 5 commits behind `c825a1b`, with
+`.agents/evidence/verification.json` as the only conflicting file.
+
+### Subtask 2 — Sync without discarding work
+Agent: Codebuff (sole writer)
+Depends on: Subtask 1
+Status: done
+
+Merged `origin/main` into the branch (`ac7cae9`). Resolved the generated-file
+conflict by regenerating rather than choosing a side. Proved the branch's own
+changes survived: `git diff dca259e..6b61d9e -- agentops/` and
+`git diff c825a1b..c34f4d7 -- agentops/` are byte-identical.
+
+### Subtask 3 — Preserve least privilege
+Agent: Codebuff
+Depends on: Subtask 2
+Status: done
+
+Confirmed `codex exec --sandbox workspace-write` with no `--approve-for-me`, that
+the flag is real in `codex-cli 0.163.0` (so its removal is privilege reduction, not
+a fix for an invalid flag), and that `test_bundled_codex_args_use_only_known_flags`
+asserts the exact argv.
+
+### Subtask 4 — Measure and regenerate
+Agent: Codebuff
+Depends on: Subtask 3
+Status: done
+
+Windows suite at the final head: 831 tests, OK (skipped=4), exit 0. Evidence
+regenerated by `tools/evidence/generate.py` in clean clones of `ac7cae9`; committed
+as `c34f4d7`. `tools/evidence/check.py` green at the head and on `main` after merge.
+
+### Subtask 5 — Review, check, and merge
+Agent: Codebuff (review); user (merge authorization)
+Depends on: Subtask 4
+Status: done
+
+Inspected the final diff (6 files, 116+/20-), all 4 checks pass, marked ready, then
+merged as `4d1c933` (merge commit). `git diff 4d1c933 c34f4d7` is empty.
+
+---
+
+## Output (PR #21 — least-privilege Codex args and no config shadowing)
+
+Status: complete and merged into `main` as `4d1c933` (2026-10-20).
+
+- **Landed:** Codex runs `codex exec --sandbox workspace-write` with no `--approve-for-me` in the bundled `agents.yaml`; `resource_path` refuses to let a directory, an empty file, or an unparseable file shadow the bundled config; README documents the trade-off and the opt-in; 4 regression tests.
+- **Sync:** base `c825a1b`, merge `ac7cae9`, evidence commit `c34f4d7`, merge to `main` `4d1c933`. No source change was discarded.
+- **Verification:** Windows suite 831 tests OK (skipped=4) at `c34f4d7`; evidence 831/4, 498/1, 252/1, 52/0 from clean clones; 4/4 CI checks green; `check.py` exit 0 on `main`.
+- **Review:** four new tests verified individually (38 tests OK, 0 skips); `--sandbox`/`--approve-for-me` confirmed against the installed `codex-cli 0.163.0`.
+- **Follow-ups (non-blocking):** a positive-path test for the config preference, and the JSON-only validation in `_is_bundled_config` vs the loader's JSON-or-YAML acceptance. Both are open rows in `.agents/pending_tasks.md`.
+- Record: `.agents/outputs/pr21-codex-least-privilege.md`; plan archive: `.agents/plans/pr21-sync-plan.md`.

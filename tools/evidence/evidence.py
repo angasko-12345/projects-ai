@@ -52,10 +52,13 @@ PRODUCTS = (
 #: decision rather than an oversight.
 EXCLUSIONS = {
     "tiktok-slop-factory": (
-        "No product AGENTS.md, so no agreed command; the suite is pytest, takes "
-        "~10 minutes of real FFmpeg renders, and carries two known "
-        "GEMINI_API_KEY-dependent failures. An evidence record here would be "
-        "red for reasons unrelated to the code under test."
+        "Has a product AGENTS.md and an agreed command (pytest from "
+        "tiktok-slop-factory/), but remains excluded: the suite spends ~10 "
+        "minutes on real FFmpeg renders, and one test "
+        "(tests/test_gemini_parsing.py::test_generate_ideas_rejects_duplicate_padding) "
+        "places a real Gemini API call when GEMINI_API_KEY is set and fails the "
+        "run when the variable is absent, so an evidence record here would be "
+        "red or network-dependent for reasons unrelated to the code under test."
     ),
 }
 

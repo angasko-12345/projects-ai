@@ -11,4 +11,4 @@ Minimum rules while loading the canonical file:
 - Each product has its own test command: `agentops/AGENTS.md` and
   `universal-game-agent/AGENTS.md`. Read the one for the product you are changing.
 - Preserve additive SQLite migrations, redact persisted data, and keep GUI updates on the Tk thread.
-- Read `.agents/AGENTS.md`, `.agents/team.md`, `tasks/task.md`, and `tasks/after-task.md` before substantial work.
+- Read `.agents/AGENTS.md`, `.agents/team.md`, `.agents/pending_tasks.md` (the live task queue), and `tasks/after-task.md` before substantial work. `tasks/task.md` is the active-task slot; completed records are archived under `.agents/memory/archive/`.

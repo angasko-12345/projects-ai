@@ -3,13 +3,15 @@
 Local-first AI tools and experiments by [@angasko-12345](https://github.com/angasko-12345).
 Each folder is a self-contained project with its own README, dependencies and tests.
 
+Four of the products here are Python, evidence-tracked and continuously tested — AgentOps, Universal Game Agent, mini-llm and AI Token Tracker. The other folders (QR Generator, TikTok Slop Factory and the smaller utilities) are independent projects without that verification machinery.
+
 Everything here runs on your own machine: no accounts, no hosted backend, and no telemetry unless a project says otherwise.
 
 ## Main projects
 
 | Project | What it is | Status | Stack |
 |---|---|---|---|
-| [**AgentOps**](agentops/) | An orchestrator for the coding-agent CLIs you already have installed (Claude Code, Codex, Copilot, OpenCode, Kilo, Pi and more). It plans, implements, verifies and reviews in isolated Git worktrees, with a SQLite run history and a desktop GUI. | Active · 700+ tests · CI | Python, SQLite, Qt |
+| [**AgentOps**](agentops/) | An orchestrator for the coding-agent CLIs you already have installed (Claude Code, Codex, Copilot, OpenCode, Kilo, Pi and more). It plans, implements, verifies and reviews in isolated Git worktrees, with a SQLite run history and a desktop GUI. | Active · CI | Python, SQLite, Qt |
 | [**QR Generator**](qr-generator/) | An Android QR code maker for text, URLs, email, phone and Wi-Fi. Live preview, PNG export and share, history, dark mode, and an optional Pro tier through Google Play. Runs fully on-device, with no ads and no tracking. | Pre-release, heading to Play closed testing | Expo, React Native, TypeScript |
 | [**AI Token Tracker**](ai-token-tracker/) | A desktop dashboard of the tokens used by every AI coding tool on your PC (Claude Code, Codex, Cline, Kilo, Copilot, OpenCode and more). It reads local session files only. | Usable | Python, SQLite, Qt |
 | [**Universal Game Agent**](universal-game-agent/) | A pixel-only reinforcement-learning testbed: a recurrent PPO agent that learns games from rendered frames, with experiment ledgers and reward diagnostics. | Research · CI | Python, PyTorch |
@@ -56,18 +58,22 @@ tiktok-slop-factory/    Video generation experiment
 small-projects/         mini-llm, privacy audit tool, scripts
 tools/evidence/         Verification-evidence tooling used by CI
 .agents/                Agent instructions, plans and verification records
-.github/workflows/      CI per project
+tasks/                  Active-task slot (or pointer) + after-task procedure; live queue: .agents/pending_tasks.md
+.agents/memory/archive/ Completed task records, preserved verbatim and searchable
+AGENTS.md, pi_AGENTS.md Root instruction shims (canonical copies live in .agents/)
+acceptance_test.py      AgentOps acceptance tests from Issue #4
+.github/workflows/      Test CI for each Python product, plus an evidence checker (QR Generator has no CI)
 ```
 
 ## How work gets verified
 
-Changes are developed with coding agents, then checked before they're trusted. Each project's tests run in CI, and `tools/evidence/` records which commands ran and whether they passed (`.agents/evidence/`). A change isn't done until its tests pass and the evidence is regenerated.
+Changes are developed with coding agents, then checked before they're trusted. Test suites for the four Python products run in CI (QR Generator has none), and `tools/evidence/` records which commands ran and whether they passed in `.agents/evidence/verification.json`. A change isn't done until its tests pass and the evidence is regenerated. Test counts are not quoted in this README — they live in the evidence file.
 
 ## Roadmap
 
 Planned work is tracked in [Issues](https://github.com/angasko-12345/projects-ai/issues). Highlights:
 
-- AgentOps: a review gate that fails closed, plus explicit reviewer and security approval ([#12](https://github.com/angasko-12345/projects-ai/issues/12))
+- AgentOps: finishing the autonomous coding-loop MVP ([#4](https://github.com/angasko-12345/projects-ai/issues/4))
 - AI Token Tracker: per-account limit warnings and session handoff notes ([#13](https://github.com/angasko-12345/projects-ai/issues/13))
 - Universal Game Agent: PPO on a live browser game ([#15](https://github.com/angasko-12345/projects-ai/issues/15))
 - Privacy Audit Tool: a recurring-charge scan from bank statements ([#16](https://github.com/angasko-12345/projects-ai/issues/16))
