@@ -1,0 +1,46 @@
+# CI for qr-generator. See ../CI.md for what CI does and does not validate.
+#
+# The four Python products have no lint or typecheck; this Expo/React Native
+# product does configure both, so this workflow runs them alongside jest. The
+# job pins Node 24, one of the supported ranges declared by react-native's
+# engines field (^20.19.4 || ^22.13.0 || ^24.3.0 || >= 25.0.0).
+name: qr-generator
+
+on:
+  push:
+    paths:
+      - "qr-generator/**"
+      - ".github/workflows/qr-generator.yml"
+      - ".github/CI.md"
+  pull_request:
+    paths:
+      - "qr-generator/**"
+      - ".github/workflows/qr-generator.yml"
+      - ".github/CI.md"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: qr-generator
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: qr-generator/package-lock.json
+      - name: Install dependencies from the lockfile
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Run the qr-generator test suite
+        run: npm test

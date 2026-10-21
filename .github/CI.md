@@ -1,9 +1,12 @@
 # What CI validates
 
-Four independent products, four workflows, plus one workflow that checks the
-recorded verification evidence. Each product workflow triggers only on its own
-paths and runs that product's supported test command from that product's
-directory. There is no repository-wide test command.
+Five product workflows, each scoped to one product's paths, plus one workflow
+that checks the recorded verification evidence. Four products run Python
+suites and are measured in `.agents/evidence/verification.json`;
+`qr-generator/` is an Expo/React Native product whose suite is Node/React
+Native and which is not measured in that evidence file. Each product workflow
+triggers only on its own paths and runs that product's supported commands
+from that product's directory. There is no repository-wide test command.
 
 | Workflow | Directory | Command | Extra setup |
 |---|---|---|---|
@@ -11,10 +14,15 @@ directory. There is no repository-wide test command.
 | `universal-game-agent.yml` | `universal-game-agent/` | `python -m unittest discover -s tests` | `pip install -r requirements.txt` |
 | `mini-llm.yml` | `small-projects/mini-llm/` | `python -m unittest discover -s tests` | `pip install -r requirements.txt` |
 | `ai-token-tracker.yml` | `ai-token-tracker/` | `python -m unittest discover -s tests -v` | none (stdlib only) |
+| `qr-generator.yml` | `qr-generator/` | `npm run typecheck`, `npm run lint`, `npm test` | `npm ci` (installs from the lockfile); Node 24 |
 | `evidence.yml` | repository root | `python tools/evidence/check.py` | none (stdlib only); needs full history |
 
-All jobs run on `ubuntu-latest` with Python 3.11 (the lowest supported
-version) on CPU.
+All jobs run on `ubuntu-latest` on CPU. The four Python products use Python
+3.11 (the lowest supported version). The `qr-generator` job uses Node 24,
+one of the ranges `react-native@0.86`'s engines field supports
+(`^20.19.4 || ^22.13.0 || ^24.3.0 || >= 25.0.0`) — npm pins the dependency
+tree from `package-lock.json`, so the suite runs the versions the developer
+runs, with the cache keyed on `qr-generator/package-lock.json`.
 
 ## Headless GUI policy (agentops)
 
@@ -66,11 +74,19 @@ three suites: those numbers would be a fifth place a count could live.
 
 ## What CI does NOT validate
 
-- No lint, formatter, type-check, or coverage gate: no product configures
-  one, so CI invents none.
-- No tiktok-slop-factory suite: it has no product `AGENTS.md`, so there is no
-  agreed command, and it runs real FFmpeg renders. The exclusion and its reason
-  are recorded in the evidence file under `excluded`.
+- No lint, formatter, type-check, or coverage gate for the four Python
+  products: none of them configures one, so CI invents none. (`qr-generator`
+  does configure eslint and tsc, and `qr-generator.yml` runs them.)
+- No tiktok-slop-factory workflow, even though the product now has
+  `tiktok-slop-factory/AGENTS.md` and an agreed command: the suite runs on the
+  order of ten minutes of local FFmpeg renders against machine-configured
+  `FFMPEG_PATH`/`FFPROBE_PATH`, and one test
+  (`test_gemini_parsing.py::test_generate_ideas_rejects_duplicate_padding`)
+  makes a real Gemini API call when `GEMINI_API_KEY` is set and fails without
+  it. A CI job would either need the real key (against the no-secrets-in-CI
+  posture) or a documented deselect of that single test. The exclusion is
+  recorded in `.agents/evidence/verification.json` under `excluded`; wiring a
+  deterministic-tier workflow is tracked in `.agents/pending_tasks.md`.
 - No GPU training (mini-llm real-corpus runs, UGA training): CPU only.
 - No live external-game runs (UGA Windows path with real window capture and
   keyboard input). External-game tests in CI use fakes and the `synthetic`
