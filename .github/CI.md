@@ -1,10 +1,11 @@
 # What CI validates
 
-Five product workflows, each scoped to one product's paths, plus one workflow
-that checks the recorded verification evidence. Four products run Python
-suites and are measured in `.agents/evidence/verification.json`;
-`qr-generator/` is an Expo/React Native product whose suite is Node/React
-Native and which is not measured in that evidence file. Each product workflow
+Six product workflows, each scoped to one product's paths, plus one workflow
+that checks the recorded verification evidence. Five products run Python
+suites; four of them are measured in `.agents/evidence/verification.json`
+(`privacy-audit` is not measured there), and `qr-generator/` is an
+Expo/React Native product whose suite is Node/React Native, also not
+measured in that evidence file. Each product workflow
 triggers only on its own paths and runs that product's supported commands
 from that product's directory. There is no repository-wide test command.
 
@@ -14,11 +15,15 @@ from that product's directory. There is no repository-wide test command.
 | `universal-game-agent.yml` | `universal-game-agent/` | `python -m unittest discover -s tests` | `pip install -r requirements.txt` |
 | `mini-llm.yml` | `small-projects/mini-llm/` | `python -m unittest discover -s tests` | `pip install -r requirements.txt` |
 | `ai-token-tracker.yml` | `ai-token-tracker/` | `python -m unittest discover -s tests -v` | none (stdlib only) |
+| `privacy-audit.yml` | `small-projects/privacy_audit_tool/` | `python -m unittest discover -s tests` | none (stdlib only; `maigret` is optional, online-scan-only, and deliberately not installed) |
 | `qr-generator.yml` | `qr-generator/` | `npm run typecheck`, `npm run lint`, `npm test` | `npm ci` (installs from the lockfile); Node 24 |
 | `evidence.yml` | repository root | `python tools/evidence/check.py` | none (stdlib only); needs full history |
 
-All jobs run on `ubuntu-latest` on CPU. The four Python products use Python
-3.11 (the lowest supported version). The `qr-generator` job uses Node 24,
+All jobs run on `ubuntu-latest` on CPU. The four measured Python products use
+Python 3.11 (the lowest supported version). The `privacy-audit` job also uses
+Python 3.11, matching the other Python product jobs; the product itself
+declares `requires-python = ">=3.10"`, so that declared floor is not the
+version CI runs. The `qr-generator` job uses Node 24,
 one of the ranges `react-native@0.86`'s engines field supports
 (`^20.19.4 || ^22.13.0 || ^24.3.0 || >= 25.0.0`) — npm pins the dependency
 tree from `package-lock.json`, so the suite runs the versions the developer
@@ -74,9 +79,13 @@ three suites: those numbers would be a fifth place a count could live.
 
 ## What CI does NOT validate
 
-- No lint, formatter, type-check, or coverage gate for the four Python
+- No lint, formatter, type-check, or coverage gate for the five Python
   products: none of them configures one, so CI invents none. (`qr-generator`
   does configure eslint and tsc, and `qr-generator.yml` runs them.)
+- No Maigret / online username scan for `privacy-audit`: CI installs no optional
+  dependency, so the `--online-usernames` path (and the Maigret command builder
+  it uses) can only be exercised through the tests' stubs, never against real
+  external sites.
 - No tiktok-slop-factory workflow, even though the product now has
   `tiktok-slop-factory/AGENTS.md` and an agreed command: the suite runs on the
   order of ten minutes of local FFmpeg renders against machine-configured

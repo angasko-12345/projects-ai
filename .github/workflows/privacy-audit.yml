@@ -1,0 +1,39 @@
+# CI for small-projects/privacy_audit_tool. See ../CI.md for what CI does and
+# does not validate.
+#
+# The core scanner is Python standard library only, so nothing is installed
+# here. Maigret is an optional dependency used only for the explicit
+# --online-usernames scan, which contacts external websites: CI deliberately
+# does not install it, and every Maigret path in the tests is stubbed.
+name: privacy-audit
+
+on:
+  push:
+    paths:
+      - "small-projects/privacy_audit_tool/**"
+      - ".github/workflows/privacy-audit.yml"
+      - ".github/CI.md"
+  pull_request:
+    paths:
+      - "small-projects/privacy_audit_tool/**"
+      - ".github/workflows/privacy-audit.yml"
+      - ".github/CI.md"
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: small-projects/privacy_audit_tool
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run the privacy-audit test suite
+        run: python -m unittest discover -s tests
