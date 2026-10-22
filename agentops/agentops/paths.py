@@ -36,15 +36,35 @@ def _is_bundled_config(path: Path) -> bool:
 
     ``resource_path`` prefers the filesystem next to the package. A directory,
     an empty file, or a stale/unparseable file left at that location is not a
-    bundled config and must fall through to the packaged resource. The bundled
-    file is JSON-valid YAML, so a standard-library parse check needs no extras.
+    bundled config and must fall through to the packaged resource. The
+    parseability contract mirrors ``config._load_data`` so ``resource_path``
+    never rejects a preferred file the loader would have accepted: JSON-valid
+    YAML parses under the standard library alone, and conventional YAML parses
+    when the optional PyYAML extra is installed. A mapping root is required.
     """
     try:
         if not path.is_file() or path.stat().st_size == 0:
             return False
-        return isinstance(json.loads(path.read_text(encoding="utf-8")), dict)
-    except (OSError, ValueError):
+        text = path.read_text(encoding="utf-8")
+    except (OSError, ValueError):  # missing/unreadable/undecodable candidate
         return False
+    return _parses_to_mapping(text)
+
+
+def _parses_to_mapping(text: str) -> bool:
+    """True when ``text`` parses to a mapping on the same terms as the loader."""
+    try:
+        result = json.loads(text)
+    except ValueError:
+        try:
+            import yaml  # type: ignore[import-not-found]
+        except ImportError:
+            return False
+        try:
+            result = yaml.safe_load(text)
+        except yaml.YAMLError:
+            return False
+    return isinstance(result, dict)
 
 
 def resource_path(*parts: str) -> Path:

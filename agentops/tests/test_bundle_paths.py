@@ -5,16 +5,25 @@ that reads packaged data may fall back to the current working directory, or
 ``AgentOps.exe`` breaks the moment it is launched from somewhere else.
 """
 
+import json
 import os
+import shutil
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
-from agentops.config import DEFAULT_CONFIG_PATH
+from agentops.config import DEFAULT_CONFIG_PATH, _load_data
 from agentops.gui.tokens import ASSET_DIR
-from agentops.paths import bundle_root, resource_path
+from agentops.paths import _is_bundled_config, bundle_root, resource_path
+
+try:
+    import yaml as _yaml
+except ImportError:
+    _yaml = None
+HAS_YAML = _yaml is not None
+_YAML_ERRORS = (OSError, ValueError, ImportError) if _yaml is None else (OSError, ValueError, _yaml.YAMLError)
 
 
 class BundleRootTests(unittest.TestCase):
@@ -84,6 +93,87 @@ class ConfigShadowingTests(unittest.TestCase):
     def test_stale_unparseable_file_does_not_shadow_bundled_config(self):
         self._assert_real_bundle(
             self._resolve(lambda target: target.write_text('{"agents":', encoding="utf-8")))
+
+
+class ConfigPreferenceWinTests(unittest.TestCase):
+    """A real, parseable ``agents/agents.yaml`` at the preferred filesystem
+    location must win over the packaged copy (PR #21 review follow-up)."""
+
+    SENTINEL = json.dumps(
+        {"agents": {"sentinel-agent": {"command": "sentinel-cmd", "args": ["{prompt}"]}}}
+    )
+
+    def test_parseable_config_wins_over_packaged_copy(self):
+        with tempfile.TemporaryDirectory() as temp:
+            preferred = Path(temp) / "agents" / "agents.yaml"
+            preferred.parent.mkdir()
+            preferred.write_text(self.SENTINEL, encoding="utf-8")
+            with mock.patch.object(sys, "_MEIPASS", None, create=True):
+                with mock.patch("agentops.paths.bundle_root", return_value=Path(temp)):
+                    resolved = resource_path("agents", "agents.yaml")
+                    self.assertEqual(resolved, preferred)
+                    data = _load_data(resolved)
+        self.assertIn("sentinel-agent", data["agents"])
+        self.assertEqual(data["agents"]["sentinel-agent"]["command"], "sentinel-cmd")
+
+
+class BundledConfigValidatorContractTests(unittest.TestCase):
+    """Validation mirror: ``_is_bundled_config`` must agree with ``_load_data``.
+
+    Contract (config.py ``_load_data``): JSON-valid text always parses;
+    conventional YAML parses when PyYAML is installed. Both accept a mapping
+    root only. ``resource_path`` uses ``_is_bundled_config`` as its shadowing
+    guard, so a disagreement would make ``resource_path`` fall through to the
+    packaged copy on exactly the files ``load_config`` would have accepted at
+    the preferred path.
+    """
+
+    MALFORMED = '{"agents":'
+    VALID_JSON = '{"agents": {"a": {"args": ["{prompt}"]}}}'
+    CONVENTIONAL_YAML = "agents:\n  a:\n    command: yaml-cmd\n    args:\n      - '{prompt}'\n"
+
+    def _write_case(self, populate) -> Path:
+        temp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, temp, ignore_errors=True)
+        base = Path(temp) / "config"
+        populate(base)
+        return base
+
+    def _rejections_agree(self, path: Path) -> None:
+        self.assertFalse(_is_bundled_config(path))
+        with self.assertRaises(_YAML_ERRORS):
+            _load_data(path)
+
+    def _acceptances_agree(self, path: Path, expected_root: dict) -> None:
+        self.assertTrue(_is_bundled_config(path))
+        self.assertEqual(_load_data(path), expected_root)
+
+    def test_decoy_directory_rejected_by_both(self):
+        self._rejections_agree(self._write_case(lambda base: base.mkdir()))
+
+    def test_empty_file_rejected_by_both(self):
+        self._rejections_agree(self._write_case(lambda base: base.write_text("", encoding="utf-8")))
+
+    def test_malformed_file_rejected_by_both(self):
+        self._rejections_agree(self._write_case(
+            lambda base: base.write_text(self.MALFORMED, encoding="utf-8")))
+
+    def test_valid_json_config_accepted_by_both(self):
+        self._acceptances_agree(
+            self._write_case(lambda base: base.write_text(self.VALID_JSON, encoding="utf-8")),
+            json.loads(self.VALID_JSON),
+        )
+
+    def test_conventional_yaml_matches_loader_contract(self):
+        path = self._write_case(
+            lambda base: base.write_text(self.CONVENTIONAL_YAML, encoding="utf-8"))
+        if HAS_YAML:
+            self._acceptances_agree(path, {"agents": {"a": {"command": "yaml-cmd", "args": ["{prompt}"]}}})
+        else:
+            # Without PyYAML the loader's contract is JSON-only; the shadowing
+            # guard must reject so the packaged copy is used instead of an
+            # error-raising preferred path.
+            self._rejections_agree(path)
 
 
 class BundledResourceTests(unittest.TestCase):
