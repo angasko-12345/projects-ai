@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-10-20T14:01:53+00:00",
-  "commit": "ac7cae9d0bf2e08a39ed4dfe6c7976fec445f99b",
+  "generated_at": "2026-10-22T13:24:54+00:00",
+  "commit": "525d39750840c6e08f50cd909ab132fe364eb686",
   "python": "3.14.7",
   "platform": "Windows 11 (AMD64)",
-  "measured_in": "a clean clone of ac7cae9d0bf2",
+  "measured_in": "a clean clone of 525d39750840",
   "clean_checkout": true,
   "command_note": "Every command runs from its own product directory with the interpreter that ran this script. There is no repository-wide test command and these products share no dependencies.",
   "excluded": {
-    "tiktok-slop-factory": "No product AGENTS.md, so no agreed command; the suite is pytest, takes ~10 minutes of real FFmpeg renders, and carries two known GEMINI_API_KEY-dependent failures. An evidence record here would be red for reasons unrelated to the code under test."
+    "tiktok-slop-factory": "Has a product AGENTS.md and an agreed command (pytest from tiktok-slop-factory/), but remains excluded: the suite spends ~10 minutes on real FFmpeg renders, and one test (tests/test_gemini_parsing.py::test_generate_ideas_rejects_duplicate_padding) places a real Gemini API call when GEMINI_API_KEY is set and fails the run when the variable is absent, so an evidence record here would be red or network-dependent for reasons unrelated to the code under test."
   },
   "products": [
     {
@@ -38,7 +38,7 @@
     {
       "product": "universal-game-agent",
       "directory": "universal-game-agent",
-      "commit": "ac7cae9d0bf2e08a39ed4dfe6c7976fec445f99b",
+      "commit": "525d39750840c6e08f50cd909ab132fe364eb686",
       "command": [
         "C:\\Python314\\python.exe",
         "-m",
@@ -49,12 +49,12 @@
       ],
       "dirty_paths": [],
       "total": 498,
-      "duration_seconds": 49.126,
+      "duration_seconds": 27.292,
       "skipped": 1,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 498 tests in 49.126s",
+        "Ran 498 tests in 27.292s",
         "OK (skipped=1)"
       ],
       "result": "pass"
