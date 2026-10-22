@@ -48,15 +48,71 @@ toy pixels -> grayscale/84x84/normalize -> frame stack (4,84,84)
 
 ## Training algorithm (`training/ppo.py`)
 
-- Custom single-environment PPO (no SB3): fixed-length rollouts,
-  timeout-aware GAE (terminations mask, truncations bootstrap from the
-  pre-reset obs/hidden), normalized advantages, clipped policy objective,
-  clipped value objective, entropy bonus, gradient-norm clipping,
-  sequential time-chunk minibatches with hidden carry across chunks and
-  resets at episode boundaries.
+- Custom PPO (no SB3): fixed-length rollouts, timeout-aware GAE (terminations
+  mask, truncations bootstrap from the pre-reset obs/hidden), normalized
+  advantages, clipped policy objective, clipped value objective, entropy
+  bonus, gradient-norm clipping, sequential time-chunk minibatches with
+  hidden carry across chunks and resets at episode boundaries.
+- The single-environment loop is byte-for-byte the legacy behavior. With
+  `ppo.num_envs > 1` the trainer drives a `SyncVectorEnv`
+  (`environment/vec.py`: N envs in one process, stepped in order, no
+  autoreset, explicit per-slot resets), built by `make_env_for_training`
+  (`training/experiment.py`). The vector rollout is `[time, env]` with one
+  hidden state per slot: GAE runs independently per slot while advantage
+  normalization and the chunk loss pool across slots; boundary semantics are
+  the single-path rules applied per slot (terminal step data preserved, only
+  finished slots reset via `reset_env`, terminated slots bootstrap to zero,
+  truncated slots bootstrap from their own final pre-reset obs/hidden).
 - `PPOConfig` holds lr, gamma, GAE lambda, clip range, entropy/value
   coefficients, rollout length, minibatch size, epochs, total steps,
-  grad-norm clip, seed, checkpoint settings.
+  grad-norm clip, seed, checkpoint settings, and the two knobs below.
+
+## Parallel environments (`ppo.num_envs`)
+
+- `ppo.num_envs` (default 1, declared in `configs/default.yaml`) is read by
+  `main.py train`, `python -m training.experiment`, and the module CLI
+  `python -m training.ppo --num-envs N`. `num_envs == 1` builds a plain env
+  instance — identical to legacy training; `num_envs > 1` wraps that many
+  copies of the same env factory in `SyncVectorEnv`. The factory is the
+  generic `make_env_from_config` (toy Pong by default); the shipped
+  external-window runner (`training.external_experiment`) and the synthetic
+  cadence matrix step a single env and neither offers vectorization, so the
+  vector path is exercised by the toy tests only.
+- `PPOConfig.__post_init__` validates `num_envs >= 1`; in vector mode
+  `total_timesteps` must be divisible by `num_envs` or `train()` raises.
+  `total_timesteps` counts total samples across slots, so the evaluation
+  budget stays unchanged.
+- Limits: `SyncVectorEnv` is synchronous and single-process — envs are
+  stepped in order, so throughput comes from batching the model's
+  forward/learning passes, not from parallel stepping. Vector rollouts
+  report no per-update external reward component breakdown (`comp_sums` is
+  empty); curiosity works and masks boundary steps via `dones`.
+
+## Per-update CSV telemetry (`ppo.telemetry_path`)
+
+- Default unset (or empty string) is disabled: no file, no extra work,
+  byte-for-byte legacy output. Set `ppo.telemetry_path` under `ppo:` in a
+  config and `PPOTrainer.train` appends one CSV row per completed update
+  through `PPOUpdateCSVWriter` (`training/telemetry.py`), taken straight
+  from the history row — no duplicated metric math, and nothing reads the
+  file back.
+- Columns are fixed by `FIELDNAMES`: the 18 scalar per-update history
+  series (`timesteps`, `fps`, `policy_loss`, `value_loss`, `entropy`,
+  `mean_reward`, `mean_ext_reward`, `mean_int_reward`, `predictor_loss`,
+  `pixel_change`, `episodes`, `upd_episodes`, `upd_mean_length`,
+  `upd_terminated`, `upd_truncated`, `upd_mean_ext`, `upd_mean_int`,
+  `upd_mean_total`). The two dict series (`components`, `upd_action_share`)
+  have no CSV encoding and are excluded. Column order is an append-only
+  contract: added columns go at the end, never reorder or remove.
+- Files are written at the exact configured path: open in append mode only,
+  so existing rows are never truncated; the header is written once, when
+  the file is created or empty; missing parent directories are created.
+  Re-running with the same path appends to the previous file — deduplicate
+  externally. A run with zero updates (e.g. a resumed checkpoint that
+  already met the budget) still writes a header-only file.
+- A relative path resolves against the process working directory, so
+  configs should prefer an absolute path. `ppo.telemetry_path` has no CLI
+  flag on `python -m training.ppo`; it is a config-only switch.
 
 ## Curiosity (`training/curiosity.py`)
 
@@ -138,7 +194,12 @@ keep training (new episode started; counters preserved). Via CLI:
 - The Windows interface is infrastructure: no generic external-game
   reward/objective handling, no generic reset handling, no external-game
   training loop. "Any game" generalization is a future goal.
-- Single-environment PPO (no vectorization); modest CPU budgets only.
+- PPO vectorization exists but is synchronous and single-process: envs step
+  in order inside one `SyncVectorEnv`, so it batches the model's work rather
+  than parallelizing the environment. `total_timesteps` must divide evenly
+  by `num_envs`; the per-update reward component breakdown is unavailable in
+  vector mode; only the toy path gains vectorization, an external-window run
+  steps a single env. Modest CPU budgets remain the rule.
 - Checkpoints embed config dicts without a schema version.
 
 ## Setup (Python 3.11+)
@@ -168,7 +229,7 @@ python -m unittest discover -s tests -v
 | Toy env demo (pixels-only policy) | `python -m environment.toy_pong --episodes 5 --seed 0` |
 | Vision pipeline demo | `python -m environment.preprocessing --episodes 3 --seed 0 --skip 2` |
 | Random-obs forward pass (torch) | `python -m agent.model --batch-size 4 --steps 3` |
-| Short PPO run, module form (torch) | `python -m training.ppo --total-timesteps 2048 --rollout-length 128 --seed 0` |
+| Short PPO run, module form (torch) | `python -m training.ppo --total-timesteps 2048 --rollout-length 128 --seed 0 [--num-envs N]` |
 | Standalone Pong test game | `python games/extern_pong.py --title ExternPong --seed 0` |
 | External-window OS-loop smoke (no learning) | `python -m training.external_smoke --title ExternPongSmoke --steps 50 --mode random` |
 | Live reward-detector diagnostic (no input) | `python -m training.reward_diagnostic --launch --title DiagGame --seed 3 --captures 300` |

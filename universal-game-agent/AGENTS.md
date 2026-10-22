@@ -139,6 +139,24 @@ The dependency direction is deliberate. Preserve it.
   regenerable in minutes and are deliberately undocumented (the third top-level `.pt`,
   `ppo_untrained.pt`, is untrained). They are not
   interchangeable; identify a checkpoint by directory, never by filename alone.
+- `configs/default.yaml` declares `ppo.num_envs: 1`, and `PPOConfig.__post_init__`
+  validates it (`>= 1`). Vectorization and CSV telemetry are genuinely wired;
+  nothing in the shipped external-window or cadence runners uses either knob:
+  `ppo.num_envs > 1` builds a `SyncVectorEnv` of `make_env_from_config` factories
+  through `training.experiment.make_env_for_training` (`ppo.py:_collect_vector`
+  is the vector rollout; `total_timesteps` must be divisible by `num_envs`);
+  it is read by `main.py train`, `training.experiment`, and
+  `python -m training.ppo --num-envs N`.
+  `ppo.telemetry_path` (default `None` = off; config-only, no CLI flag) makes
+  `PPOTrainer.train` append one CSV row per completed update via
+  `training/telemetry.py:PPOUpdateCSVWriter` — append-only, header written once,
+  parent directories created, relative paths resolve against the CWD, and an
+  already-complete resumed run still writes a header-only file.
+  `training/external_experiment.py` and `training/cadence_experiment.py` step a
+  single env and use neither knob. Standing coverage: `tests/test_num_envs.py`,
+  `tests/test_vec.py`, `tests/test_vec_ppo_equivalence.py`,
+  `tests/test_ppo_vec_multi.py`, `tests/test_telemetry.py`, and
+  `tests/test_telemetry_wiring.py`.
 - `configs/default.yaml` declares a `logging:` block, but no production path calls
   `training.logger.setup_logging`. That config key and that module are both dead. Do not
   rely on either without wiring it up first.
@@ -314,7 +332,7 @@ tracked as canonical roots.
   `external_smoke.py:160-170` and lives in `external_experiment.py:63-88` as
   `wait_attach`/`stop`. A shared session helper would collapse it.
 - `run_experiment` is defined twice with different meanings and different signatures:
-  `training/ppo.py:383` is a toy-PPO CLI helper, `training/experiment.py:66` is the real
+  `training/ppo.py:768` is a toy-PPO CLI helper, `training/experiment.py:84` is the real
   YAML runner. Two same-named entry points with different contracts is a live trap for
   readers and agents. Rename one; do not merge them.
 - `environment/external_game.py:369,414-426` hardcodes `extern_pong` as a first-class

@@ -4,7 +4,7 @@ Runs several Gymnasium-style environments in one process, in order, with
 no autoreset and no multiprocessing.
 
 Episode-reset policy (explicit, decided from the PPO rollout in
-``training/ppo.py:collect_rollout``):
+``training/ppo.py:collect_rollout`` and ``_collect_vector``):
 
 * Finished environments are NEVER reset automatically. PPO needs the
   terminal step's own observation, reward, and flags untouched: the
@@ -22,11 +22,16 @@ Episode-reset policy (explicit, decided from the PPO rollout in
   continues, and both mean the caller restarts that slot from zeroed
   hidden state.
 * Hidden state is entirely caller-side. This container is hidden-agnostic:
-  a future vectorized rollout keeps one hidden state per slot (carry vs.
-  zeros at boundaries), exactly as the single-env path does today.
+  the vectorized PPO rollout (``training/ppo.py:_collect_vector``) keeps
+  one hidden state per slot (carry vs. zeros at boundaries), which is
+  exactly why autoreset must never happen here.
 
-Still deferred: the shared-space contract PPO will need, and PPO wiring
-itself.
+Still deferred: nothing on this container's side. PPO wiring is done
+(``ppo.num_envs > 1`` training runs through
+``training.experiment.make_env_for_training``); factories are still
+expected to be homogeneous, and those spaces are only *reported*
+(``single_*_space``), never verified here -- that caller contract is what
+the trainer's slot stacking relies on.
 
 Factory contract: every factory is a zero-argument callable producing an
 object with ``reset(*, seed=None, options=None)``, ``step(action)``, and

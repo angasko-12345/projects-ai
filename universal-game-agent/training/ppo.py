@@ -2,9 +2,11 @@
 
 Operates strictly through the environment interface (``reset`` / ``step``)
 on preprocessed pixel observations; never touches game internals.
-Single-environment loop (no vectorization): rollout -> GAE -> PPO clipped
-updates in sequential chunks (hidden state carried forward, detached
-between chunks, so recurrence stays consistent) -> checkpoints + metrics.
+Rollout -> GAE -> PPO clipped updates in sequential chunks (hidden state
+carried forward, detached between chunks, so recurrence stays consistent)
+-> checkpoints + metrics. A single env is the byte-for-byte legacy path;
+a ``SyncVectorEnv`` (``ppo.num_envs > 1``) batches slots in a
+``[time, env]`` rollout with the same boundary semantics applied per slot.
 """
 from __future__ import annotations
 
@@ -143,7 +145,9 @@ def summarize_history(history: dict[str, list]) -> dict:
 
 
 class PPOTrainer:
-    """Single-env recurrent PPO with explicit boundary semantics.
+    """Recurrent PPO over a single env or a ``SyncVectorEnv`` (per-slot).
+
+    Same boundary semantics on both paths.
 
     Termination (absorbing): value 0, GAE masks, next episode from zeros,
     replay restarts segments from zeros.
