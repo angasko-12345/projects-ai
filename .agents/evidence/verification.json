@@ -1,20 +1,20 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-10-22T13:24:54+00:00",
-  "commit": "525d39750840c6e08f50cd909ab132fe364eb686",
+  "generated_at": "2026-10-22T14:47:56+00:00",
+  "commit": "6de4c56c8d0f38472ff463c3dac4442860c170f9",
   "python": "3.14.7",
   "platform": "Windows 11 (AMD64)",
-  "measured_in": "a clean clone of 525d39750840",
+  "measured_in": "a clean clone of 6de4c56c8d0f",
   "clean_checkout": true,
   "command_note": "Every command runs from its own product directory with the interpreter that ran this script. There is no repository-wide test command and these products share no dependencies.",
   "excluded": {
-    "tiktok-slop-factory": "Has a product AGENTS.md and an agreed command (pytest from tiktok-slop-factory/), but remains excluded: the suite spends ~10 minutes on real FFmpeg renders, and one test (tests/test_gemini_parsing.py::test_generate_ideas_rejects_duplicate_padding) places a real Gemini API call when GEMINI_API_KEY is set and fails the run when the variable is absent, so an evidence record here would be red or network-dependent for reasons unrelated to the code under test."
+    "tiktok-slop-factory": "Has a product AGENTS.md and an agreed command (pytest from tiktok-slop-factory/), but remains excluded: the suite spends ~10 minutes on real FFmpeg renders. Every test is offline and keyless (HTTP behavior runs behind faked transports; the former credential-gated test was made hermetic at the _json_request seam in 2026-10-22), so exclusion is about runtime cost, not credentials. A keyless full run is wired into .github/workflows/tiktok-slop-factory.yml."
   },
   "products": [
     {
       "product": "agentops",
       "directory": "agentops",
-      "commit": "ac7cae9d0bf2e08a39ed4dfe6c7976fec445f99b",
+      "commit": "6de4c56c8d0f38472ff463c3dac4442860c170f9",
       "command": [
         "C:\\Python314\\python.exe",
         "-m",
@@ -24,13 +24,13 @@
         "tests"
       ],
       "dirty_paths": [],
-      "total": 831,
-      "duration_seconds": 236.624,
+      "total": 837,
+      "duration_seconds": 327.196,
       "skipped": 4,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 831 tests in 236.624s",
+        "Ran 837 tests in 327.196s",
         "OK (skipped=4)"
       ],
       "result": "pass"
