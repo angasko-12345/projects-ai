@@ -41,34 +41,28 @@ python -m pytest tests -q
 ```
 
 The full suite shells out to real FFmpeg and takes on the order of ten minutes,
-dominated by real 1080x1920 renders. Know the three tiers before running:
+dominated by real 1080x1920 renders. Know the two tiers before running:
 
 1. **Deterministic offline unit tests** — config, backend selection, Gemini
-   parse/retry logic with a mocked transport, caption timing, narration
-   coherence logic, filtergraph construction, output-validation logic. No key,
-   no network, no FFmpeg needed.
+   parse/retry logic, caption timing, narration coherence logic, filtergraph
+   construction, output-validation logic. No key, no network, no FFmpeg
+   needed. HTTP behavior is exercised behind faked transports at the
+   `_json_request`/`urlopen` seams, so no test requires `GEMINI_API_KEY` or
+   reaches a live service.
 2. **FFmpeg render tests** — marked `@ffmpeg_required` (`tests/conftest.py`),
    which builds skip conditions from `FFMPEG_PATH`/`FFPROBE_PATH` as resolved
    by `app.config` (`.env` included), **not** from `PATH`. They produce real
    MP4/WAV fixtures in `tmp_path` and are skipped explicitly when FFmpeg is
    unavailable.
-3. **Credential- and network-gated (currently one test)** —
-   `tests/test_gemini_parsing.py::test_generate_ideas_rejects_duplicate_padding`.
-   Without `GEMINI_API_KEY` the run fails (`ConfigError`, not
-   `GeminiError`). With a key set, it makes a **real Gemini API call**, because
-   only `_parse_json_ideas` is mocked while `generate_ideas` still goes through
-   `app.gemini._call_with_retries` → `_json_request` → live `urllib`. Treat it
-   as an integration test, never as part of the deterministic tier. The
-   documented keyless/offline selection that skips exactly this test and
-   nothing else:
 
-   ```bat
-   python -m pytest tests -q --deselect "tests/test_gemini_parsing.py::test_generate_ideas_rejects_duplicate_padding"
-   ```
-
-   An open row in `.agents/pending_tasks.md` covers making it hermetic at the
-   `_json_request` seam instead. Do not count a deselect-restricted run as the
-   full suite passing, and do not claim either tier's result without a real run.
+There is no third, credential-gated tier: the last live-provider test
+(`test_gemini_parsing.py::test_generate_ideas_rejects_duplicate_padding`) was
+made hermetic at the `_json_request` seam in 2026-10-22 and every run of the
+suite is now keyless. Never add a test that calls the live Gemini or Edge
+services; if real provider behavior ever needs coverage, add it as an
+explicitly named integration test that skips with a stated reason when
+credentials are absent, and never as a silently skipped or deselected unit
+test. A whole-suite deselect is no longer part of this product's workflow.
 
 Write regression tests before fixing defects, following the existing file
 conventions (`tests/test_*.py`, small docstrings recording the bug the test

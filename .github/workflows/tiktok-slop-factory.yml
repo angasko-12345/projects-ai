@@ -1,0 +1,46 @@
+# CI for tiktok-slop-factory. See ../CI.md for what CI does and does not
+# validate. The suite is pytest (this product is the repository's unittest
+# exception) and performs real 1080x1920 FFmpeg renders, so the job takes on
+# the order of ten minutes. Every test is offline: faked transports instead of
+# Gemini, dry-run CLI instead of Edge TTS, so no GEMINI_API_KEY is set here.
+name: tiktok-slop-factory
+
+on:
+  push:
+    paths:
+      - "tiktok-slop-factory/**"
+      - ".github/workflows/tiktok-slop-factory.yml"
+      - ".github/CI.md"
+  pull_request:
+    paths:
+      - "tiktok-slop-factory/**"
+      - ".github/workflows/tiktok-slop-factory.yml"
+      - ".github/CI.md"
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: tiktok-slop-factory
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # Installed explicitly rather than assumed from the runner image, so a
+      # missing FFmpeg cannot silently skip the render tier.
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update -o Acquire::Retries=3 -qq
+          sudo apt-get install -y -qq ffmpeg
+      - name: Install runtime dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Run tiktok-slop-factory test suite
+        run: python -m pytest tests -q

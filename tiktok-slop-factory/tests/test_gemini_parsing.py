@@ -152,10 +152,25 @@ def test_extract_audio_decodes_base64():
 
 
 def test_generate_ideas_rejects_duplicate_padding(monkeypatch):
-    """The old code padded short lists by repeating ideas, producing dupes."""
-    monkeypatch.setattr(gemini, "_parse_json_ideas", lambda res: ["only one"])
+    """The old code padded short lists by repeating ideas, producing dupes.
+
+    Faked at the _json_request seam so no GEMINI_API_KEY and no network is
+    involved; mocking only _parse_json_ideas used to leave a live urllib
+    call in the path.
+    """
+    res = _response({"ideas": ["same idea", "same idea", "same idea"]})
+    monkeypatch.setattr(gemini, "_json_request", lambda url, payload, timeout=180: res)
+
     with pytest.raises(gemini.GeminiError):
         gemini.generate_ideas(3)
+
+
+def test_generate_ideas_deduplicates_and_keeps_first_occurrences(monkeypatch):
+    """Repeats in the response are dropped in order, not counted twice."""
+    res = _response({"ideas": ["idea a", "idea b", "idea a", "idea c"]})
+    monkeypatch.setattr(gemini, "_json_request", lambda url, payload, timeout=180: res)
+
+    assert gemini.generate_ideas(3) == ["idea a", "idea b", "idea c"]
 
 
 def test_script_to_text_skips_empty_fields():

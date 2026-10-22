@@ -53,7 +53,7 @@ from its own directory rather than from the repository root. Read the local
 | `universal-game-agent/` | `cd universal-game-agent` then `python -m unittest discover -s tests` |
 | `small-projects/mini-llm/` | `cd small-projects/mini-llm` then `python -m unittest discover -s tests` |
 | `ai-token-tracker/` | `cd ai-token-tracker` then `python -m unittest discover -s tests` |
-| `tiktok-slop-factory/` | `cd tiktok-slop-factory` then `python -m pytest tests -q` (pytest, not unittest; real FFmpeg renders; one credential-gated test — see `tiktok-slop-factory/AGENTS.md` before running) |
+| `tiktok-slop-factory/` | `cd tiktok-slop-factory` then `python -m pytest tests -q` (pytest, not unittest; real FFmpeg renders; fully keyless/offline — see `tiktok-slop-factory/AGENTS.md` before running) |
 
 Treat any new failure or skip as attributable to the current work until proven otherwise.
 An empty, interrupted, all-skipped, or unknown run is never a pass. Do not invent lint,

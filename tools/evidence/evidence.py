@@ -54,11 +54,12 @@ EXCLUSIONS = {
     "tiktok-slop-factory": (
         "Has a product AGENTS.md and an agreed command (pytest from "
         "tiktok-slop-factory/), but remains excluded: the suite spends ~10 "
-        "minutes on real FFmpeg renders, and one test "
-        "(tests/test_gemini_parsing.py::test_generate_ideas_rejects_duplicate_padding) "
-        "places a real Gemini API call when GEMINI_API_KEY is set and fails the "
-        "run when the variable is absent, so an evidence record here would be "
-        "red or network-dependent for reasons unrelated to the code under test."
+        "minutes on real FFmpeg renders. Every test is offline and keyless "
+        "(HTTP behavior runs behind faked transports; the former "
+        "credential-gated test was made hermetic at the _json_request seam "
+        "in 2026-10-22), so exclusion is about runtime cost, not credentials. "
+        "A keyless full run is wired into .github/workflows/"
+        "tiktok-slop-factory.yml."
     ),
 }
 

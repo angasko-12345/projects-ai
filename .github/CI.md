@@ -1,7 +1,7 @@
 # What CI validates
 
-Six product workflows, each scoped to one product's paths, plus one workflow
-that checks the recorded verification evidence. Five products run Python
+Seven product workflows, each scoped to one product's paths, plus one workflow
+that checks the recorded verification evidence. Six products run Python
 suites; four of them are measured in `.agents/evidence/verification.json`
 (`privacy-audit` is not measured there), and `qr-generator/` is an
 Expo/React Native product whose suite is Node/React Native, also not
@@ -17,6 +17,7 @@ from that product's directory. There is no repository-wide test command.
 | `ai-token-tracker.yml` | `ai-token-tracker/` | `python -m unittest discover -s tests -v` | none (stdlib only) |
 | `privacy-audit.yml` | `small-projects/privacy_audit_tool/` | `python -m unittest discover -s tests` | none (stdlib only; `maigret` is optional, online-scan-only, and deliberately not installed) |
 | `qr-generator.yml` | `qr-generator/` | `npm run typecheck`, `npm run lint`, `npm test` | `npm ci` (installs from the lockfile); Node 24 |
+| `tiktok-slop-factory.yml` | `tiktok-slop-factory/` | `python -m pytest tests -q` (pytest, not unittest) | `pip install -r requirements.txt`; `ffmpeg` apt-installed; ~10-minute suite; no key, see below |
 | `evidence.yml` | repository root | `python tools/evidence/check.py` | none (stdlib only); needs full history |
 
 All jobs run on `ubuntu-latest` on CPU. The four measured Python products use
@@ -40,6 +41,26 @@ This is a testing-only policy. Production GUI code is unchanged and still
 fails loudly when no display exists — AgentOps never fabricates a GUI
 success condition. Controller and workflow logic that the GUI depends on is
 covered by non-Tk test classes, which run in CI.
+
+## FFmpeg requirements and runtime (tiktok-slop-factory)
+
+The tiktok-slop-factory suite is the repository's only pytest product and its
+only suite that shells out to real FFmpeg:
+
+- **Requirement:** `ffmpeg`/`ffprobe` binaries. The render tier's skip
+  condition resolves `FFMPEG_PATH`/`FFPROBE_PATH` through `app.config`
+  (project-root `.env` included, falling back to `PATH` when unset), so it
+  never runs hidden-but-interactive. The CI workflow installs FFmpeg with apt
+  explicitly instead of trusting the runner image, so a missing binary fails
+  the install step rather than silently skipping the render tier.
+- **Runtime:** the full suite takes on the order of ten minutes, dominated by
+  real 1080x1920 H.264/AAC renders; the job carries a 30-minute timeout.
+- **Credentials:** none. No `GEMINI_API_KEY` is set in CI and no test needs
+  one: HTTP behavior is exercised behind faked transports, and CLI tests are
+  dry-run only, so no Edge TTS synthesis happens either. The former
+  credential-gated test (`test_generate_ideas_rejects_duplicate_padding`,
+  which failed offline with `ConfigError` and made a real Gemini API call
+  with a key set) was made hermetic at the `_json_request` seam.
 
 ## Verification evidence
 
@@ -86,16 +107,13 @@ three suites: those numbers would be a fifth place a count could live.
   dependency, so the `--online-usernames` path (and the Maigret command builder
   it uses) can only be exercised through the tests' stubs, never against real
   external sites.
-- No tiktok-slop-factory workflow, even though the product now has
-  `tiktok-slop-factory/AGENTS.md` and an agreed command: the suite runs on the
-  order of ten minutes of local FFmpeg renders against machine-configured
-  `FFMPEG_PATH`/`FFPROBE_PATH`, and one test
-  (`test_gemini_parsing.py::test_generate_ideas_rejects_duplicate_padding`)
-  makes a real Gemini API call when `GEMINI_API_KEY` is set and fails without
-  it. A CI job would either need the real key (against the no-secrets-in-CI
-  posture) or a documented deselect of that single test. The exclusion is
-  recorded in `.agents/evidence/verification.json` under `excluded`; wiring a
-  deterministic-tier workflow is tracked in `.agents/pending_tasks.md`.
+- No live Gemini or Edge TTS call for `tiktok-slop-factory`: no key is set in
+  CI and no test needs one. The workflow row above documents the FFmpeg
+  requirement and the ~10-minute runtime. The exclusion of this product from
+  `.agents/evidence/verification.json` remains about the render cost, no
+  longer about credentials: the former credential-gated test is hermetic at
+  the `_json_request` seam (2026-10-22), so a full keyless run is measured by
+  `tiktok-slop-factory.yml` itself.
 - No GPU training (mini-llm real-corpus runs, UGA training): CPU only.
 - No live external-game runs (UGA Windows path with real window capture and
   keyboard input). External-game tests in CI use fakes and the `synthetic`
