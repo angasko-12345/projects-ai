@@ -76,6 +76,7 @@ def _scrub_structured(value: object) -> object:
 from .config import AppConfig
 from .events import Event, EventSeverity, EventType
 from .registry import AgentRegistry, DetectedAgent
+from .repo_inspection import RepositoryInspector
 from .routing import AgentRouter
 from .runner import AgentRunner, OperationCancelled, RunResult
 from .state import StateStore
@@ -474,7 +475,8 @@ class WorkflowEngine:
                  metadata_collector: Callable[[str | Path], AgentRunMetadata] | None = None,
                  verification_kernel: VerificationKernel | None = None,
                  router: AgentRouter | None = None,
-                 degradation: DegradationRecorder | None = None):
+                 degradation: DegradationRecorder | None = None,
+                 repo_inspector: RepositoryInspector | None = None):
         self.config = config
         self.state = state
         self.registry = registry
@@ -486,6 +488,7 @@ class WorkflowEngine:
         self.router = router
         if self.router is None and getattr(config, "routing_enabled", True):
             self.router = AgentRouter()
+        self.repo_inspector = repo_inspector if repo_inspector is not None else RepositoryInspector()
         # A8: persistence failures are classified instead of swallowed.  The
         # recorder emits a WARNING event through the same store it watches, so
         # it degrades to an in-memory entry when the store is the thing that broke.
@@ -816,7 +819,20 @@ class WorkflowEngine:
             if total
         }
 
-    def _select_agent(self, task: Task, excluded: set[str]) -> DetectedAgent | None:
+    def _repository_characteristics(self, working_directory: object) -> dict[str, object]:
+        """Bounded repository hints for the router.
+
+        Inspection is scoring input only, so any failure degrades to `{}` and
+        selection still proceeds through the preference/fallback path.
+        """
+        if not working_directory:
+            return {}
+        try:
+            return self.repo_inspector.routing_flags(working_directory)
+        except Exception:
+            return {}
+
+    def _select_agent(self, task: Task, excluded: set[str], working_directory: object = None) -> DetectedAgent | None:
         """Select through the router when available, otherwise use legacy selection."""
         router = getattr(self, "router", None)
         if router is not None:
@@ -829,7 +845,7 @@ class WorkflowEngine:
                     decision = router.route(
                         role=task.role,
                         task_description=task.description,
-                        repository_characteristics={},
+                        repository_characteristics=self._repository_characteristics(working_directory),
                         # No hard capability filter here: the router still scores
                         # role/task fit, while role gates, availability, explicit
                         # user preferences, and exclusions preserve the legacy path.
@@ -962,7 +978,7 @@ class WorkflowEngine:
                         self.state.update_task(task)
                         return
                 excluded = {task.assigned_agent} if task.assigned_agent and task.attempts > 1 else set()
-                agent = self._select_agent(task, excluded)
+                agent = self._select_agent(task, excluded, working_directory)
                 if agent is None:
                     task.status = TaskStatus.FAILED
                     if excluded:

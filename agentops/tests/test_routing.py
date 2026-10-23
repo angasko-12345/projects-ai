@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import unittest
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
 
 from agentops.agent_adapter import adapter_for
@@ -500,6 +501,162 @@ class WorkflowRoutingTests(unittest.TestCase):
         result = asyncio.run(engine.run_high_level("Add routing", Path.cwd()))
         self.assertTrue(result.ready)
         self.assertEqual(self.state.query_events(event_type=EventType.ROUTING_DECISION), [])
+
+
+class RepositoryCharacteristicRoutingTests(unittest.TestCase):
+    """Repository characteristic flags are real scoring input, not dead kwargs.
+
+    ``workflow.py`` used to pass ``repository_characteristics={}`` forever, so
+    the mapping ``AgentCapabilityResolver.required_capabilities`` reads was
+    always empty.  These tests pin the resolved behavior end to end.
+    """
+
+    def setUp(self):
+        self.resolver = AgentCapabilityResolver()
+        # Equal on role fit, priority, and history, so the identifier
+        # tie-breaker alone decides when no repo signal applies.
+        plain = _detected(_config("plain", ("architecture",)))
+        tester = _detected(_config("tester", ("architecture", "implementation")))
+        self.profiles = _profiles(plain, tester)
+
+    def _route(self, **overrides):
+        kwargs = dict(
+            role="architecture",
+            task_description="Design the module layout",
+            available_agents=self.profiles,
+            repository_characteristics={},
+        )
+        kwargs.update(overrides)
+        return AgentRouter(resolver=self.resolver).route(**kwargs)
+
+    def test_test_runner_signal_changes_the_selection(self):
+        without_signal = self._route()
+        with_signal = self._route(repository_characteristics={"requires_tests": True})
+        # Without a signal both candidates score identically and the stable
+        # identifier tie-break picks "plain".
+        self.assertEqual(without_signal.selected_agent.identifier, "plain")
+        self.assertEqual("tester", with_signal.selected_agent.identifier)
+        self.assertIn("task fit: testing", with_signal.reasons)
+        self.assertNotIn("task fit: testing", without_signal.reasons)
+
+    def test_exploration_signal_is_a_reasoned_change_for_large_repos(self):
+        decision = self._route(repository_characteristics={"repository_exploration_required": True})
+        self.assertIn("task fit: repository exploration", decision.reasons)
+        self.assertEqual("tester", decision.selected_agent.identifier)
+
+    def test_explicit_user_preference_beats_derived_signals(self):
+        decision = self._route(
+            repository_characteristics={"requires_tests": True, "repository_exploration_required": True},
+            user_preferences=("plain",),
+        )
+        self.assertEqual("plain", decision.selected_agent.identifier)
+
+    def test_required_capabilities_stay_hard_gates_despite_repo_signals(self):
+        decision = self._route(
+            required_capabilities=("security review",),
+            repository_characteristics={"requires_tests": True},
+        )
+        self.assertIsNone(decision.selected_agent)
+        self.assertEqual(
+            {item.identifier for item in decision.rejected_candidates},
+            {"plain", "tester"},
+            "repo signals must not resurrect candidates a hard gate rejects",
+        )
+        self.assertTrue(
+            any(
+                "missing required capabilities" in " ".join(item.reasons).lower()
+                for item in decision.rejected_candidates
+            )
+        )
+
+    def test_disabled_router_static_path_ignores_characteristics(self):
+        decision = AgentRouter(resolver=self.resolver, enabled=False).route(
+            role="architecture",
+            task_description="Design",
+            repository_characteristics={"requires_tests": True},
+            available_agents=self.profiles,
+            user_preferences=("tester", "plain"),
+        )
+        self.assertEqual(decision.routing_mode, "static")
+        self.assertEqual("tester", decision.selected_agent.identifier)
+        self.assertTrue(any("routing disabled" in reason.lower() for reason in decision.reasons))
+
+    def test_repo_characteristics_bridge_into_resolver_requirements(self):
+        from agentops.repo_inspection import RepoCharacteristics
+
+        required = self.resolver.required_capabilities(
+            "architecture", "Design the module layout",
+            RepoCharacteristics(test_runner="pytest").routing_flags(),
+        )
+        self.assertIn("testing", required)
+        self.assertEqual(required, tuple(sorted(required)))
+
+
+class WorkflowRepositoryCharacteristicTests(unittest.TestCase):
+    """The engine derives flags from the working directory per selection."""
+
+    def setUp(self):
+        self.config = AppConfig(
+            {"first": _config("first", ("implementation",))},
+            {"implementation": ("first",)},
+            max_attempts=1,
+            concurrency=1,
+        )
+        self.state = StateStore(":memory:")
+        self.addCleanup(self.state.close)
+        self.runner = MagicMock()
+        self.verifier = MagicMock()
+
+    def _engine(self):
+        detected = _detected(_config("first", ("implementation",)))
+        profile = _profiles(detected)[0]
+        registry = MagicMock()
+        registry.profiles.return_value = {"first": profile}
+        registry.get.return_value = detected
+        spy_router = AgentRouter()
+        real_route = spy_router.route
+        calls: list[dict] = []
+
+        def spy_route(**kwargs):
+            calls.append(kwargs)
+            return real_route(**kwargs)
+
+        spy_router.route = spy_route
+        engine = WorkflowEngine(
+            self.config, self.state, registry, self.runner, self.verifier,
+            router=spy_router,
+        )
+        return engine, calls
+
+    def _implementation_task(self) -> Task:
+        workflow_id = self.state.create_workflow("characteristics")
+        return self.state.add_task(Task("Implement", "implementation", workflow_id, max_attempts=1))
+
+    def test_engine_passes_derived_flags_for_the_working_directory(self):
+        with TemporaryDirectory() as directory:
+            (Path(directory) / "conftest.py").write_text("", encoding="utf-8")
+            engine, calls = self._engine()
+            selected = engine._select_agent(self._implementation_task(), set(), Path(directory))
+        self.assertIsNotNone(selected)
+        assert calls, "the engine must route through the spy"
+        flags = calls[0]["repository_characteristics"]
+        self.assertTrue(flags["requires_tests"])
+        self.assertFalse(flags["security_sensitive"])
+
+    def test_engine_without_working_directory_keeps_empty_characteristics(self):
+        engine, calls = self._engine()
+        engine._select_agent(self._implementation_task(), set())
+        self.assertEqual(calls[0]["repository_characteristics"], {})
+
+    def test_inspection_failure_degrades_to_empty_characteristics(self):
+        engine, calls = self._engine()
+        with patch.object(
+            engine.repo_inspector, "routing_flags",
+            side_effect=RuntimeError("inspector exploded"),
+        ):
+            selected = engine._select_agent(self._implementation_task(), set(), Path.cwd())
+        self.assertIsNotNone(selected, "selection survives an inspection failure")
+        self.assertEqual(calls[0]["repository_characteristics"], {})
 
 
 class AgentHealthTests(unittest.TestCase):

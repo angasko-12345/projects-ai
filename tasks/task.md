@@ -11,6 +11,10 @@
 > [`../.agents/memory/archive/2026-09-15-agent-registry-routing-task-record.md`](../.agents/memory/archive/2026-09-15-agent-registry-routing-task-record.md).
 > Its history is searchable there and in git history. Do not re-execute it.
 >
+> On 2026-10-23 one further completed record ("Repository characteristics for routing",
+> OpenCode/GLM) was preserved verbatim and unmodified at
+> [`../.agents/memory/archive/2026-10-23-repo-characteristics-routing.md`](../.agents/memory/archive/2026-10-23-repo-characteristics-routing.md).
+>
 > Completed tasks follow `after-task.md`: the finished record moves to
 > `.agents/memory/archive/`, and the next active task (or this pointer) replaces this file.
 
