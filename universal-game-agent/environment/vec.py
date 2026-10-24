@@ -110,7 +110,7 @@ class SyncVectorEnv:
             raise ValueError(
                 f"need {len(self._envs)} actions, got {len(actions)}")
         observations, rewards, terminateds, truncateds, infos = [], [], [], [], []
-        for env, action in zip(self._envs, actions):
+        for env, action in zip(self._envs, actions, strict=False):
             obs, reward, terminated, truncated, info = env.step(action)
             observations.append(obs)
             rewards.append(reward)

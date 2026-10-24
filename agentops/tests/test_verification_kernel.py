@@ -3,13 +3,12 @@ import io
 import json
 import os
 import sqlite3
-import sys
 import tempfile
 import threading
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 try:  # `discover -s tests` puts tests/ on sys.path; direct runs do not.
     from tests.qt_display import destroy, make_context, requires_qt, wait_until

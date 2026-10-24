@@ -114,7 +114,7 @@ class TestGradientEquivalence(unittest.TestCase):
             _, micro_loss = split(x, y)
             (micro_loss / accum).backward()
 
-        for name, (g_big, p) in enumerate(zip(big_grads, split.parameters())):
+        for name, (g_big, p) in enumerate(zip(big_grads, split.parameters(), strict=False)):
             self.assertTrue(
                 torch.allclose(g_big, p.grad, atol=1e-6),
                 f"gradient mismatch on parameter {name}",

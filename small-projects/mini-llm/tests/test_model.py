@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.config import Config
 from src.generate import generate_tokens
-from src.model import MiniGPT, from_config
+from src.model import from_config
 from src.train import load_checkpoint, save_checkpoint
 
 
@@ -88,7 +88,7 @@ class TestModel(unittest.TestCase):
             self.assertIn("scheduler_state", ckpt)
             self.assertIn("config", ckpt)
             for p_old, p_new in zip(
-                self.model.parameters(), fresh.parameters()
+                self.model.parameters(), fresh.parameters(), strict=False
             ):
                 self.assertTrue(torch.equal(p_old, p_new))
 

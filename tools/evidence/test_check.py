@@ -107,7 +107,7 @@ class SchemaTests(unittest.TestCase):
         document = good_document()
         document["products"][0]["total"] = 999
         document["products"][0]["summary"] = [
-            f"Ran 999 tests in 1.0s", "OK (skipped=1)"]
+            "Ran 999 tests in 1.0s", "OK (skipped=1)"]
         self.assertEqual(check_schema(document), [])
 
     def test_a_skipped_count_beyond_the_total_is_rejected(self):

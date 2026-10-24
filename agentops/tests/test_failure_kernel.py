@@ -12,7 +12,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from agentops.agent_run import AgentRunContext, AgentRunStatus
-from agentops.config import AgentConfig, AppConfig
+from agentops.config import AppConfig
 from agentops.failure import (
     Failure,
     FailureCategory,
@@ -30,7 +30,6 @@ from agentops.failure import (
 )
 from agentops.state import StateStore
 from agentops.tasks import Task, TaskStatus
-from agentops.verification_model import VerificationProfileMode
 from agentops.workflow import WorkflowEngine
 
 

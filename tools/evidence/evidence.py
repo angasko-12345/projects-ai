@@ -263,7 +263,8 @@ def check_schema(document: object) -> list[str]:
         # catches a hand-edited number: the fields and the summary lines the
         # runner actually printed have to agree.
         recorded = record.get("summary")
-        if isinstance(recorded, list) and all(isinstance(l, str) for l in recorded):
+        if isinstance(recorded, list) and all(isinstance(entry, str)
+                                               for entry in recorded):
             derived = parse_unittest_summary("\n".join(recorded))
             if not derived:
                 problems.append(

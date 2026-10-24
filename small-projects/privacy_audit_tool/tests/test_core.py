@@ -105,7 +105,8 @@ class RobustnessTests(unittest.TestCase):
             con = sqlite3.connect(db)
             con.execute('CREATE TABLE urls (url TEXT, title TEXT, last_visit_time INTEGER)')
             con.execute("INSERT INTO urls VALUES ('https://x.io','X',13300000000000000)")
-            con.commit(); con.close()
+            con.commit()
+            con.close()
             recs = []
             m.scan_chromium_history(db, 'Chrome', recs)
             self.assertEqual(len(recs), 1)

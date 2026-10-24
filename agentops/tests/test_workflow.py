@@ -5,7 +5,6 @@ import subprocess
 import tempfile
 import threading
 import unittest
-from dataclasses import replace
 from pathlib import Path
 from unittest.mock import MagicMock
 

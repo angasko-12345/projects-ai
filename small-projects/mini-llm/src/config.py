@@ -60,7 +60,7 @@ def load_data_meta(train_bin: str) -> dict | None:
         return json.load(f)
 
 
-def config_for_data(train_bin: str, **overrides) -> "Config":
+def config_for_data(train_bin: str, **overrides) -> Config:
     """Build a Config that matches the prepared data set at `train_bin`.
 
     prepare_data.py records the real tokenizer size and the real artifact paths in
@@ -237,6 +237,6 @@ class Config:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, d: dict) -> "Config":
+    def from_dict(cls, d: dict) -> Config:
         known = {f for f in cls.__dataclass_fields__}
         return cls(**{k: v for k, v in d.items() if k in known})

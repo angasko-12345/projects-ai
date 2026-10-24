@@ -1,6 +1,5 @@
 """Regression test for wheel install: default config must be findable after pip install."""
 
-import os
 import subprocess
 import sys
 import tempfile

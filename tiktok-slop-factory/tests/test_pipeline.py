@@ -283,7 +283,6 @@ def test_end_to_end_produces_vertical_video(monkeypatch, tmp_path, mp4_factory):
 
     Asserts the acceptance criteria: valid vertical MP4s in output/videos/.
     """
-    import base64
     import subprocess
 
     monkeypatch.setattr(pipeline, "get_output_dir", lambda: tmp_path)

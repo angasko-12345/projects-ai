@@ -95,7 +95,7 @@ def train_with_window_relaunch(new_trainer, make_env, launch_session,
             cleanup()
             if relaunches >= max_relaunches:
                 raise RuntimeError(
-                    f"game window lost {relaunches + 1} times; giving up: {exc}")
+                    f"game window lost {relaunches + 1} times; giving up: {exc}") from exc
             relaunches += 1
             print(f"window lost ({exc}); relaunching "
                   f"({relaunches}/{max_relaunches})...", flush=True)
@@ -162,9 +162,9 @@ def wait_attach(title: str, timeout_s: float = 20.0) -> None:
         try:
             manager.attach()
             return
-        except Exception:
+        except Exception as exc:
             if time.monotonic() > deadline:
-                raise RuntimeError(f"game window {title!r} did not appear within {timeout_s:g} s")
+                raise RuntimeError(f"game window {title!r} did not appear within {timeout_s:g} s") from exc
             time.sleep(0.3)
 
 

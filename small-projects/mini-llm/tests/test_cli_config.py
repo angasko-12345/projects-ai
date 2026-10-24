@@ -20,7 +20,7 @@ import torch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import prepare_data
-from src.config import Config, load_data_meta
+from src.config import Config
 from src.model import from_config
 from src.train import apply_cli_config, make_parser, read_checkpoint
 from src.train import main as train_main

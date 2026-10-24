@@ -1,7 +1,6 @@
 import asyncio
 import io
 import json
-import os
 import sqlite3
 import sys
 import tempfile
@@ -25,12 +24,12 @@ from agentops.agent_run import (
 )
 from agentops.cli import main as cli_main
 from agentops.config import AgentConfig, AppConfig
-from agentops.gui_controller import AgentOpsController, serialize_agent_run
+from agentops.gui_controller import AgentOpsController
 from agentops.logging import LogManager
 from agentops.registry import DetectedAgent
 from agentops.runner import AgentRunner, OperationCancelled, RunResult
 from agentops.state import StateStore
-from agentops.tasks import Task, TaskStatus
+from agentops.tasks import TaskStatus
 from agentops.workflow import WorkflowEngine
 
 

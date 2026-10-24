@@ -133,7 +133,7 @@ class ActorCritic(nn.Module):
         torch.save({"config": self._config, "state": self.state_dict()}, path)
 
     @classmethod
-    def load(cls, path, map_location="cpu") -> "ActorCritic":
+    def load(cls, path, map_location="cpu") -> ActorCritic:
         ckpt = torch.load(path, map_location=map_location, weights_only=True)
         model = cls(**ckpt["config"])
         model.load_state_dict(ckpt["state"])

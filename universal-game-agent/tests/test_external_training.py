@@ -1,8 +1,8 @@
 """Mocked ExternalGameEnv <-> PPO end-to-end tests. No real game."""
 try:
-    from . import _bootstrap
+    from . import _bootstrap  # noqa: F401 - imported for its sys.path bootstrap side effect
 except ImportError:  # run as script or discovered top-level: no package context
-    import _bootstrap
+    import _bootstrap  # noqa: F401 - imported for its sys.path bootstrap side effect
 
 import unittest
 
@@ -14,7 +14,7 @@ try:
     from agent.model import ActorCritic
     from environment.external_game import ExternalGameEnv
     from environment.reward import CompositeReward, EventReward, NullRewardProvider, SurvivalReward
-    from environment.termination import NeverTerminateProvider, StepLimitTermination
+    from environment.termination import StepLimitTermination
     from interface.adapter import GameInterface
     from interface.capture import ScreenCapture, SyntheticBackend
     from interface.controller import ActionDef, ActionMapper, RecordingBackend
@@ -59,7 +59,7 @@ class TestExternalTraining(unittest.TestCase):
         stats = trainer.update(buf)
         for key in ("policy_loss", "value_loss", "entropy"):
             self.assertTrue(abs(stats[key]) != float("inf") and stats[key] == stats[key])
-        self.assertTrue(any(not torch.equal(a, b) for a, b in zip(before, trainer.model.parameters())))
+        self.assertTrue(any(not torch.equal(a, b) for a, b in zip(before, trainer.model.parameters(), strict=False)))
 
     def test_composite_external_reward_flows(self):
         composite = CompositeReward({
@@ -237,7 +237,7 @@ class TestWindowRelaunch(unittest.TestCase):
                                         lifecycle=None))
             self.assertEqual(resumed.num_timesteps, 8)
             self.assertEqual(resumed.num_updates, trainer.num_updates)
-            for a, b in zip(before, resumed.model.parameters()):
+            for a, b in zip(before, resumed.model.parameters(), strict=False):
                 self.assertTrue(torch.equal(a, b))
             self.assertTrue((Path(tmp) / "ppo_interrupted.pt").is_file())
 

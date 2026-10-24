@@ -12,14 +12,14 @@ import threading
 from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Callable
+from collections.abc import Callable
 
 from .agent_run import AgentRun, AgentRunStatus, GitRunMetadataCollector
 from .artifacts import ArtifactError, ArtifactStore
 from .config import AppConfig, load_config
 from .finalize import (
-    finalize_for_outcome, finalize_worktree, implementation_passed,
-    record_worktree_provenance, retry_merge_for_worktree,
+    finalize_for_outcome, implementation_passed,
+    record_worktree_provenance,
 )
 from .git import GitError, GitWorktreeManager, Worktree, WorktreeRef
 from .tasks import Task, Workflow
@@ -789,7 +789,7 @@ class AgentOpsController:
             try:
                 store.delete(artifact)
             except ArtifactError as error:
-                raise ValueError(str(error))
+                raise ValueError(str(error)) from error
             state.delete_artifact_record(artifact.id)
             return {"id": artifact.id, "name": artifact.name}
         finally:
@@ -1115,7 +1115,7 @@ class AgentOpsController:
             try:
                 text = store.read_text(artifact, max_bytes)
             except ArtifactError as error:
-                raise ValueError(str(error))
+                raise ValueError(str(error)) from error
             return {"artifact": artifact.to_dict(), "text": text}
         finally:
             state.close()

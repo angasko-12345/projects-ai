@@ -8,7 +8,7 @@ consistent. Colors and metrics come from ``tokens`` - no literals here.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Sequence
+from collections.abc import Callable, Sequence
 import zlib
 
 from PySide6.QtCore import (
@@ -22,7 +22,7 @@ from PySide6.QtCore import (
     QVariantAnimation,
     Signal,
 )
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QIcon, QPainter, QPen, QPixmap
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
@@ -1205,7 +1205,7 @@ class StageFlow(QWidget):
 
     def attach_clicks(self) -> None:
         """Let each node report its own stage without per-node signal wiring."""
-        for node, stage in zip(self._nodes, self._stages):
+        for node, stage in zip(self._nodes, self._stages, strict=False):
             node.mousePressEvent = (  # type: ignore[method-assign]
                 lambda _event=None, s=stage: self._on_clicked(s)
             )

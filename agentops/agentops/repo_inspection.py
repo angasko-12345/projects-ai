@@ -189,7 +189,7 @@ class RepoCharacteristics:
         self.truncated = bool(truncated)
 
     @classmethod
-    def unknown(cls) -> "RepoCharacteristics":
+    def unknown(cls) -> RepoCharacteristics:
         return cls()
 
     def routing_flags(self) -> dict[str, object]:
@@ -261,7 +261,7 @@ def inspect_repository(
 
 def _scan_tree(
     root: Path,
-    queue: "deque[tuple[str, tuple[os.DirEntry, ...]]]",
+    queue: deque[tuple[str, tuple[os.DirEntry, ...]]],
     *,
     max_files: int,
     max_depth: int,
@@ -353,7 +353,7 @@ class RepositoryInspector:
         self._max_depth = max_depth
         self._max_manifest_bytes = max_manifest_bytes
         self._cache_size = max(1, int(cache_size))
-        self._cache: "OrderedDict[str, RepoCharacteristics]" = OrderedDict()
+        self._cache: OrderedDict[str, RepoCharacteristics] = OrderedDict()
         self._lock = threading.Lock()
 
     def characteristics(self, source: str | os.PathLike[str]) -> RepoCharacteristics:

@@ -88,7 +88,7 @@ def test_timestamps_cover_duration_without_gaps_or_overlap():
     duration = 17.5
     cues = captions.speech_aware_timestamps(_NARRATION, duration)
     assert cues[0][0] == 0.0
-    for (_, prev_end, _), (start, _, _) in zip(cues, cues[1:]):
+    for (_, prev_end, _), (start, _, _) in zip(cues, cues[1:], strict=False):
         assert prev_end == pytest.approx(start, abs=1e-9)
     assert cues[-1][1] == pytest.approx(duration, abs=1e-9)
     assert sum(end - start for start, end, _ in cues) == pytest.approx(
@@ -133,7 +133,7 @@ def test_grouped_timing_still_covers_narration_exactly():
     text = _NARRATION + " Nobody believed him, so he opened it?"
     cues = captions.speech_aware_timestamps(text, duration, max_words=3)
     assert cues[0][0] == 0.0
-    for (_, prev_end, _), (start, _, _) in zip(cues, cues[1:]):
+    for (_, prev_end, _), (start, _, _) in zip(cues, cues[1:], strict=False):
         assert prev_end == pytest.approx(start, abs=1e-9)
     assert cues[-1][1] == pytest.approx(duration, abs=1e-9)
 

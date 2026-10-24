@@ -64,7 +64,7 @@ class TestBatchEquivalence(unittest.TestCase):
             ds = TokenDataset(toks, context_length=32, stride=stride)
             loader = build_dataloader(path, 32, batch_size, shuffle=False,
                                       drop_last=False, stride=stride)
-            for (x, y), (ex, ey) in zip(loader, legacy_batches(ds, batch_size)):
+            for (x, y), (ex, ey) in zip(loader, legacy_batches(ds, batch_size), strict=False):
                 self.assertTrue(torch.equal(x, ex), f"stride={stride}")
                 self.assertTrue(torch.equal(y, ey), f"stride={stride}")
                 self.assertEqual(x.dtype, torch.int64)

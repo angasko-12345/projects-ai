@@ -22,7 +22,7 @@ import re
 import time
 import urllib.error
 import urllib.request
-from typing import Any, Dict, List, NamedTuple, Optional
+from typing import Any, NamedTuple
 
 from .config import (
     get_gemini_api_key,
@@ -48,7 +48,7 @@ MAX_SLEEP_SECONDS = 60.0
 class GeminiError(Exception):
     """Raised for any Gemini API or response-parsing failure."""
 
-    def __init__(self, message: str, status: Optional[int] = None, retryable: bool = False):
+    def __init__(self, message: str, status: int | None = None, retryable: bool = False):
         super().__init__(message)
         self.status = status
         self.retryable = retryable
@@ -90,7 +90,7 @@ def _redact(text: str) -> str:
     return "\n".join(out)
 
 
-def _json_request(url: str, payload: Dict[str, Any], timeout: int = 180) -> Dict[str, Any]:
+def _json_request(url: str, payload: dict[str, Any], timeout: int = 180) -> dict[str, Any]:
     """POST JSON to Gemini and return the decoded body."""
     key = get_gemini_api_key()
     data = json.dumps(payload).encode("utf-8")
@@ -168,9 +168,9 @@ def _retry_delay_from_body(body: str) -> float:
     return 0.0
 
 
-def _call_with_retries(url: str, payload: Dict[str, Any], timeout: int = 180) -> Dict[str, Any]:
+def _call_with_retries(url: str, payload: dict[str, Any], timeout: int = 180) -> dict[str, Any]:
     """Call Gemini, retrying only transient failures with backoff."""
-    last: Optional[GeminiError] = None
+    last: GeminiError | None = None
     for attempt in range(MAX_ATTEMPTS):
         try:
             return _json_request(url, payload, timeout=timeout)
@@ -187,7 +187,7 @@ def _call_with_retries(url: str, payload: Dict[str, Any], timeout: int = 180) ->
     raise last if last else GeminiError("Gemini call failed")
 
 
-def _text_of(res: Dict[str, Any]) -> str:
+def _text_of(res: dict[str, Any]) -> str:
     """Extract text from a generateContent response.
 
     Raises when the model was blocked or returned no parts, instead of
@@ -214,7 +214,7 @@ def _text_of(res: Dict[str, Any]) -> str:
     return text
 
 
-def _loads_lenient(raw: str) -> Dict[str, Any]:
+def _loads_lenient(raw: str) -> dict[str, Any]:
     """Parse JSON that may be wrapped in a markdown code fence."""
     candidate = raw.strip()
     if candidate.startswith("```"):
@@ -249,7 +249,7 @@ SCRIPT_SCHEMA = {
 }
 
 
-def generate_ideas(count: int = 10) -> List[str]:
+def generate_ideas(count: int = 10) -> list[str]:
     """Return exactly ``count`` distinct story ideas.
 
     Raises when fewer distinct ideas come back. The old implementation
@@ -276,7 +276,7 @@ def generate_ideas(count: int = 10) -> List[str]:
     if not ideas:
         raise GeminiError("Gemini returned no usable ideas")
 
-    unique: List[str] = []
+    unique: list[str] = []
     seen = set()
     for idea in ideas:
         low = idea.lower()
@@ -288,7 +288,7 @@ def generate_ideas(count: int = 10) -> List[str]:
     return unique[:count]
 
 
-def _parse_json_ideas(res: Dict[str, Any]) -> List[str]:
+def _parse_json_ideas(res: dict[str, Any]) -> list[str]:
     try:
         data = _loads_lenient(_text_of(res))
     except GeminiError:
@@ -301,7 +301,7 @@ def _parse_json_ideas(res: Dict[str, Any]) -> List[str]:
     return [str(i).strip() for i in ideas if str(i).strip()]
 
 
-def generate_script(idea: str) -> Dict[str, Any]:
+def generate_script(idea: str) -> dict[str, Any]:
     """Return a structured script dict for ``idea``."""
     url = f"{GEMINI_BASE}/models/{get_gemini_text_model()}:generateContent"
     prompt = (
@@ -325,7 +325,7 @@ def generate_script(idea: str) -> Dict[str, Any]:
     return _parse_script(_call_with_retries(url, payload))
 
 
-def _parse_script(res: Dict[str, Any]) -> Dict[str, Any]:
+def _parse_script(res: dict[str, Any]) -> dict[str, Any]:
     try:
         data = _loads_lenient(_text_of(res))
     except GeminiError:
@@ -337,7 +337,7 @@ def _parse_script(res: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(raw_tags, list):
         raw_tags = []
 
-    out: Dict[str, Any] = {
+    out: dict[str, Any] = {
         field: str(data.get(field, "") or "").strip()
         for field in ("hook", "story", "twist", "ending", "cta")
     }
@@ -352,18 +352,18 @@ def _parse_script(res: Dict[str, Any]) -> Dict[str, Any]:
 SCRIPT_FIELDS = ("hook", "story", "twist", "ending", "cta")
 
 
-def script_to_text(script: Dict[str, Any]) -> str:
+def script_to_text(script: dict[str, Any]) -> str:
     """Join the narration fields into one spoken block."""
     parts = [str(script.get(f, "") or "").strip() for f in SCRIPT_FIELDS]
     return " ".join(p for p in parts if p).strip()
 
 
-def generate_caption(script: Dict[str, Any]) -> str:
+def generate_caption(script: dict[str, Any]) -> str:
     """The narration doubles as the on-post caption text."""
     return script_to_text(script)
 
 
-def generate_tts(script: Dict[str, Any]) -> AudioBlob:
+def generate_tts(script: dict[str, Any]) -> AudioBlob:
     """Synthesize narration and return audio plus its real mime type.
 
     Gemini TTS returns ``audio/wav`` (with a 44-byte RIFF header), so callers
@@ -387,7 +387,7 @@ def generate_tts(script: Dict[str, Any]) -> AudioBlob:
     return _extract_audio(_call_with_retries(url, payload, timeout=300))
 
 
-def _extract_audio(res: Dict[str, Any]) -> AudioBlob:
+def _extract_audio(res: dict[str, Any]) -> AudioBlob:
     candidates = res.get("candidates") or []
     if not candidates:
         raise GeminiError("TTS response contained no candidates")

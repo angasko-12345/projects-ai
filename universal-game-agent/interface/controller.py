@@ -11,7 +11,7 @@ import ctypes
 import os
 import time
 from ctypes import wintypes
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 # Virtual-key codes (common subset; raw ints 1..254 also accepted as vk).
 VK = {

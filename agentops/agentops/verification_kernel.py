@@ -29,10 +29,8 @@ from .verification_model import (
     VerificationProfileMode,
     VerificationReport,
     VerificationReportStatus,
-    VerificationRun,
     VerificationRunStatus,
     parse_check_outcome,
-    profile_to_dict,
 )
 
 # Historical alias: the injectable factory type is owned by runtime.
@@ -231,7 +229,6 @@ class VerificationKernel:
                 "configure verification.profiles or verification commands."
             )
         base = Path(working_directory).resolve()
-        snapshot = profile_to_dict(profile)
         started = monotonic()
         specs = list(profile.checks)
         names = [spec.name for spec in specs]

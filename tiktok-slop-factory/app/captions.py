@@ -34,9 +34,9 @@ Deterministic, dependency-free, pure Python.
 """
 import re
 from pathlib import Path
-from typing import List, Sequence, Tuple
+from collections.abc import Sequence
 
-Cue = Tuple[float, float, str]
+Cue = tuple[float, float, str]
 
 # Relative cost of one word, before punctuation.
 BASE_WORD_WEIGHT = 1.0
@@ -132,7 +132,7 @@ def _solve_scale(
 
 def _allocate(
     weights: Sequence[float], total_sec: float, min_cue_sec: float = MIN_CUE_SEC
-) -> List[float]:
+) -> list[float]:
     """Turn relative weights into durations summing to ``total_sec``.
 
     ``MIN_CUE_SEC`` is a hard floor: a narration too short to give every word a
@@ -175,7 +175,7 @@ def _allocate(
 
 def speech_aware_timestamps(
     text: str, duration_sec: float, max_words: int = 1
-) -> List[Cue]:
+) -> list[Cue]:
     """One cue per word, weighted by speech rate, normalized to the audio.
 
     ``max_words`` declares how many words will share one on-screen caption.
@@ -197,13 +197,13 @@ def speech_aware_timestamps(
     phrase_weights = [sum(word_weight(w) for w in phrase) for phrase in phrases]
     spans = _allocate(phrase_weights, float(duration_sec))
 
-    cues: List[Cue] = []
+    cues: list[Cue] = []
     start = 0.0
-    for phrase, span in zip(phrases, spans):
+    for phrase, span in zip(phrases, spans, strict=False):
         weights = [word_weight(w) for w in phrase]
         word_sum = sum(weights)
         cursor = start
-        for word, weight in zip(phrase, weights):
+        for word, weight in zip(phrase, weights, strict=False):
             share = span * weight / word_sum
             cues.append((cursor, cursor + share, word))
             cursor += share
@@ -211,7 +211,7 @@ def speech_aware_timestamps(
     return cues
 
 
-def simple_timestamps(text: str, duration_sec: float) -> List[Cue]:
+def simple_timestamps(text: str, duration_sec: float) -> list[Cue]:
     """Backwards-compatible name for ``speech_aware_timestamps``."""
     return speech_aware_timestamps(text, duration_sec)
 
@@ -236,7 +236,7 @@ MIN_PREDICTED_SEC = 1.0
 DURATION_TOLERANCE = (0.60, 2.00)
 
 
-def estimate_speech_range(text: str) -> Tuple[float, float]:
+def estimate_speech_range(text: str) -> tuple[float, float]:
     """Heuristic duration range ``(low, high)`` for ``text``, in seconds.
 
     Derived from the same caption weights, so long words and punctuated words
@@ -257,7 +257,7 @@ def _ends_sentence(text: str) -> bool:
     return bool(_SENTENCE_END.search(text.rstrip()))
 
 
-def _group_words(words: List[str], max_words: int) -> List[List[str]]:
+def _group_words(words: list[str], max_words: int) -> list[list[str]]:
     """Split words into caption phrases, never merging across a sentence end.
 
     Timing and grouping must agree on where a caption ends, so both go through
@@ -265,7 +265,7 @@ def _group_words(words: List[str], max_words: int) -> List[List[str]]:
     swallowing it into the previous cue hides it.
     """
     max_words = max(1, int(max_words))
-    phrases: List[List[str]] = []
+    phrases: list[list[str]] = []
     for word in words:
         if phrases:
             previous = phrases[-1]
@@ -276,7 +276,7 @@ def _group_words(words: List[str], max_words: int) -> List[List[str]]:
     return phrases
 
 
-def group_cues(cues: List[Cue], max_words: int = 3) -> List[Cue]:
+def group_cues(cues: list[Cue], max_words: int = 3) -> list[Cue]:
     """Merge single-word cues into short readable phrases.
 
     One word per subtitle is unreadable on a phone. TikTok-style captions use
@@ -284,7 +284,7 @@ def group_cues(cues: List[Cue], max_words: int = 3) -> List[Cue]:
     """
     if not cues:
         return []
-    grouped: List[Cue] = []
+    grouped: list[Cue] = []
     index = 0
     for phrase in _group_words([text for _, _, text in cues], max_words):
         start = cues[index][0]
@@ -293,12 +293,12 @@ def group_cues(cues: List[Cue], max_words: int = 3) -> List[Cue]:
     return grouped
 
 
-def to_srt(timestamps: List[Cue], path: Path) -> Path:
+def to_srt(timestamps: list[Cue], path: Path) -> Path:
     """Write cues to an SRT file as UTF-8 (with BOM, which libass accepts)."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    lines: List[str] = []
+    lines: list[str] = []
     for idx, (start, end, text) in enumerate(timestamps, 1):
         if end <= start:
             end = start + 0.001

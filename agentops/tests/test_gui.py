@@ -258,7 +258,7 @@ class RecentRunsPaginationTests(unittest.TestCase):
                 workflow_id = state.create_workflow("pagination workflow")
                 task = state.add_task(Task("work", "implementation",
                                             workflow_id, max_attempts=1))
-                failures = [
+                for index in range(5):
                     state.create_failure(Failure(
                         id=f"failure-{index}", workflow_id=workflow_id, task_id=task.id,
                         agent_run_id=None, source=FailureSource.AGENT,
@@ -268,8 +268,6 @@ class RecentRunsPaginationTests(unittest.TestCase):
                         recommended_action=RepairAction.RETRY_SAME_AGENT,
                         recovery_state=RecoveryState.INTERRUPTED_AGENT_EXECUTION,
                     ))
-                    for index in range(5)
-                ]
             finally:
                 state.close()
 

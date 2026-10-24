@@ -26,7 +26,7 @@ import os
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Iterable
+from collections.abc import Callable, Iterable
 
 from . import db, opencode
 from .model import EventValidationError, UsageEvent, normalize_event
@@ -367,7 +367,7 @@ def _decompress_zstd(data: bytes) -> str:
             import zstandard as zstd
             return zstd.decompress(data).decode("utf-8")
         except ImportError:
-            raise CollectorError("no zstd decoder available (need Python 3.14+ or zstandard package)")
+            raise CollectorError("no zstd decoder available (need Python 3.14+ or zstandard package)") from None
 
 
 def collect_dsh(path: Path) -> list[UsageEvent]:

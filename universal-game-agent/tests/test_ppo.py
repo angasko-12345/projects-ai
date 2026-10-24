@@ -1,12 +1,14 @@
 """Tests for PPO (requires torch; uses the toy game only)."""
 try:
-    from . import _bootstrap
+    from . import _bootstrap  # noqa: F401 - imported for its sys.path bootstrap side effect
 except ImportError:  # run as script or discovered top-level: no package context
-    import _bootstrap
+    import _bootstrap  # noqa: F401 - imported for its sys.path bootstrap side effect
 
 import tempfile
 import unittest
 from pathlib import Path
+
+import numpy as np
 
 try:
     import torch
@@ -81,7 +83,7 @@ class TestPPOTrainer(unittest.TestCase):
         for key in ("policy_loss", "value_loss", "entropy", "timesteps"):
             self.assertIn(key, stats)
             self.assertTrue(abs(stats[key]) != float("inf"))
-        self.assertTrue(any(not torch.equal(a, b) for a, b in zip(before, trainer.model.parameters())))
+        self.assertTrue(any(not torch.equal(a, b) for a, b in zip(before, trainer.model.parameters(), strict=False)))
 
     def test_checkpoint_roundtrip_and_resume(self):
         trainer = _trainer()
@@ -94,7 +96,7 @@ class TestPPOTrainer(unittest.TestCase):
             env2 = PreprocessingWrapper(ToyPongEnv(max_steps=64))
             resumed = PPOTrainer.load_checkpoint(path, env2)
         self.assertEqual(resumed.num_timesteps, trainer.num_timesteps)
-        for a, b in zip(trainer.model.parameters(), resumed.model.parameters()):
+        for a, b in zip(trainer.model.parameters(), resumed.model.parameters(), strict=False):
             self.assertTrue(torch.equal(a, b))
         buf2, *_ = resumed.collect_rollout()  # training continues after restore
         resumed.update(buf2)
@@ -272,9 +274,6 @@ class TestRecurrentFixes(unittest.TestCase):
         buf, *_ = trainer.collect_rollout()
         trainer.update(buf)
         self.assertTrue(trainer.model.training)
-
-
-import numpy as np
 
 
 class ScriptedEnv:

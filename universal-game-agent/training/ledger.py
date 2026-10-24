@@ -319,13 +319,13 @@ def format_table(records) -> str:
             wide = max(wide, len(_cell_text(record[column])))
         widths.append(wide)
     lines = [
-        " | ".join(column.ljust(width) for column, width in zip(TABLE_COLUMNS, widths)),
+        " | ".join(column.ljust(width) for column, width in zip(TABLE_COLUMNS, widths, strict=False)),
         "-+-".join("-" * width for width in widths),
     ]
     for record in records:
         lines.append(" | ".join(
             _cell_text(record[column]).ljust(width)
-            for column, width in zip(TABLE_COLUMNS, widths)))
+            for column, width in zip(TABLE_COLUMNS, widths, strict=False)))
     return "\n".join(lines)
 
 

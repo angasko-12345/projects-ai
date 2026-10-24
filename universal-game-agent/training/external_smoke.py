@@ -163,11 +163,11 @@ def run_external_smoke(title: str = "ExternPongSmoke", steps: int = 50, seed: in
             try:
                 manager.attach()
                 break
-            except Exception:
+            except Exception as exc:
                 if time.monotonic() > deadline:
                     raise RuntimeError(
                         f"could not attach to window {title!r} within {attach_timeout_s:g} s "
-                        f"(is the game running? use --no-launch only for existing windows)")
+                        f"(is the game running? use --no-launch only for existing windows)") from exc
                 time.sleep(0.2)
         lifecycle = WindowLifecycle(manager)
         capture = WindowCapture(manager, backend, capture_size, capture_size)

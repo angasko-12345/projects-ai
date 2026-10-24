@@ -129,7 +129,10 @@ class ArtifactStore:
             resolved = candidate.resolve()
             resolved.relative_to(self.root.resolve())
         except (OSError, ValueError):
-            raise ArtifactError(f"artifact path escapes store root: {rel_path!r}")
+            # The containment check itself is the reason, not the ValueError
+            # from relative_to(), so it is deliberately not chained.
+            raise ArtifactError(
+                f"artifact path escapes store root: {rel_path!r}") from None
         return resolved
 
     def write(
@@ -186,7 +189,8 @@ class ArtifactStore:
             try:
                 rel = path.resolve().relative_to(self.root.resolve()).as_posix()
             except (OSError, ValueError):
-                raise ArtifactError("stored artifact path escapes store root")
+                raise ArtifactError(
+                    "stored artifact path escapes store root") from None
             return Artifact(
                 workflow_id=workflow_id,
                 task_id=task_id,
@@ -208,10 +212,12 @@ class ArtifactStore:
             path = self._contained(artifact.rel_path)
             try:
                 payload = path.read_bytes()
-            except FileNotFoundError:
-                raise ArtifactMissingError(f"artifact file missing: {artifact.rel_path!r}")
+            except FileNotFoundError as error:
+                raise ArtifactMissingError(
+                    f"artifact file missing: {artifact.rel_path!r}") from error
             except OSError as error:
-                raise ArtifactError(f"cannot read artifact {artifact.rel_path!r}: {error}")
+                raise ArtifactError(
+                    f"cannot read artifact {artifact.rel_path!r}: {error}") from error
             if artifact.sha256 and hashlib.sha256(payload).hexdigest() != artifact.sha256:
                 raise ArtifactIntegrityError(f"hash mismatch for artifact {artifact.id!r}")
             return payload

@@ -72,7 +72,7 @@ def resource_path(*parts: str) -> Path:
     frozen_root = getattr(sys, "_MEIPASS", None)
     if frozen_root:
         return Path(frozen_root).joinpath(*parts)
-    
+
     # First try filesystem path (source checkout or editable install). The
     # config must be a real, parseable file; otherwise use the packaged copy.
     fs_path = bundle_root().joinpath(*parts)
@@ -81,7 +81,7 @@ def resource_path(*parts: str) -> Path:
             return fs_path
     elif fs_path.exists():
         return fs_path
-    
+
     # Fall back to importlib.resources for installed wheel
     if parts[0] == "agents":
         # agents.yaml is in agentops.agents package

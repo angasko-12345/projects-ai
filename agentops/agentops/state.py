@@ -25,7 +25,6 @@ from .failure import (
     FailureCategory,
     FailureSeverity,
     FailureSource,
-    InterruptionContext,
     RecoveryState,
     RepairAction,
 )

@@ -224,7 +224,7 @@ class WorkflowsView(BaseView):
                       verifications: list, failures: list) -> None:
         """Show live record counts on the tab labels (e.g. ``Tasks (3)``)."""
         for index, (name, rows) in enumerate(zip(
-                self._tab_names, (tasks, runs, verifications, failures))):
+                self._tab_names, (tasks, runs, verifications, failures), strict=False)):
             self._tabs.setTabText(index, f"{name} ({len(rows)})")
 
     def _build_tasks_tab(self) -> QWidget:

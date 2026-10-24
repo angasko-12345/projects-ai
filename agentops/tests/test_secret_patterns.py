@@ -188,7 +188,7 @@ class LayersShareOneTable(unittest.TestCase):
             [spec.name for spec in SECRET_PATTERNS],
             [name for name, _ in _SECRET_PATTERNS],
         )
-        for spec, (_, regex) in zip(SECRET_PATTERNS, _SECRET_PATTERNS):
+        for spec, (_, regex) in zip(SECRET_PATTERNS, _SECRET_PATTERNS, strict=False):
             self.assertIs(spec.regex, regex)
 
     def test_every_detected_family_is_also_redacted(self):

@@ -1,0 +1,47 @@
+# Repo-wide Ruff configuration. Every Python product in this repository is
+# linted by one command (`ruff check .`), so the rules and their exceptions
+# live here instead of in six copies.
+#
+# Why these rules: F (pyflakes) is the regression net that catches dead code
+# -- a silently shadowed duplicate definition is F811 -- and B (bugbear) plus
+# UP (pyupgrade) cover the bugs and dead syntax that tests do not see. E4/E7/
+# E9 and W are the E/W basics: import placement, statement layout, syntax
+# errors, and whitespace.
+#
+# E5 (line length) is deliberately not selected. No product configures a
+# formatter, most files are written to ~100 columns, and roughly 1,900 lines
+# exceed the 88-column default; wrapping them would bury the dead-code
+# findings this lint exists to surface. Add a formatter before adding E5.
+
+[tool.ruff]
+# Youngest interpreter any product supports (ai-token-tracker: 3.10+), so
+# every UP suggestion is valid in every product. The lint job in CI runs on
+# 3.12, which is only the linter's own interpreter.
+target-version = "py310"
+
+# Agent scratch trees hold full repo checkouts, venvs and evidence copies that
+# are not repository source. Everything else (node_modules, dist, .git) is in
+# Ruff's default exclude list.
+extend-exclude = [".agents"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "W", "F", "B", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+
+# Qt's model interfaces declare `parent: QModelIndex = QModelIndex()`: the
+# empty index is the idiomatic "no parent" value, and B008's rewrite (None
+# default plus a None check) would change a documented Qt signature.
+"agentops/agentops/gui/widgets.py" = ["B008"]
+
+# These suites insert their product root on sys.path before importing the
+# package under test, so the imports genuinely cannot move above the
+# insertion. The imports are still at module scope and run before any test.
+"small-projects/mini-llm/tests/test_attention_sdpa.py" = ["E402"]
+"small-projects/mini-llm/tests/test_checkpoint_rotation.py" = ["E402"]
+"small-projects/mini-llm/tests/test_pipeline.py" = ["E402"]
+"small-projects/mini-llm/tests/test_prepare_streaming.py" = ["E402"]
+
+# pytest inserts the project root for tests; the fixture module follows the
+# same path bootstrap before importing the app package.
+"tiktok-slop-factory/tests/conftest.py" = ["E402"]

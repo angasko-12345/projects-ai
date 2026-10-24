@@ -59,8 +59,8 @@ def _load_config(path: str) -> tuple[dict | None, int | None]:
 def _need_torch(command: str):
     try:
         import torch  # noqa: F401
-    except ImportError:
-        raise SystemExit(f"error: '{command}' needs torch (pip install -r requirements.txt)")
+    except ImportError as err:
+        raise SystemExit(f"error: '{command}' needs torch (pip install -r requirements.txt)") from err
 
 
 def _build_env_model(cfg: dict, base_seed: int):

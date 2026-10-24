@@ -218,5 +218,5 @@ class ListDetailView(BaseView):
             lambda: delete(repository, item_id),
             done,
             lambda message: self.ctx.toast(
-                f"Delete failed", message, "error"),
+                "Delete failed", message, "error"),
         )

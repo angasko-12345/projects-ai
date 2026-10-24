@@ -7,9 +7,9 @@ and CLI integration.  No display, no window.
 """
 
 try:
-    from . import _bootstrap
+    from . import _bootstrap  # noqa: F401 - imported for its sys.path bootstrap side effect
 except ImportError:  # run as script or discovered top-level: no package context
-    import _bootstrap
+    import _bootstrap  # noqa: F401 - imported for its sys.path bootstrap side effect
 
 import tempfile
 import unittest
@@ -232,7 +232,7 @@ class TestTimestepAccounting(unittest.TestCase):
 
     def test_multi_env_one_rollout(self):
         env = SyncVectorEnv(
-            [lambda: _ScriptedEnv([(0.0, False, False)] * 8, slot=s) for s in range(2)]
+            [lambda s=s: _ScriptedEnv([(0.0, False, False)] * 8, slot=s) for s in range(2)]
         )
         trainer = PPOTrainer(env, ActorCritic(num_actions=2), _config(num_envs=2))
         trainer.collect_rollout()
@@ -243,7 +243,7 @@ class TestTimestepAccounting(unittest.TestCase):
     def test_history_total_samples_multi(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = SyncVectorEnv(
-                [lambda: _ScriptedEnv([(0.0, False, False)] * 16, slot=s) for s in range(2)]
+                [lambda s=s: _ScriptedEnv([(0.0, False, False)] * 16, slot=s) for s in range(2)]
             )
             trainer = PPOTrainer(env, ActorCritic(num_actions=2),
                                 _config(num_envs=2, total_timesteps=16,
@@ -257,7 +257,7 @@ class TestTimestepAccounting(unittest.TestCase):
     def test_history_stops_at_non_divisible_vector_rollout_budget(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = SyncVectorEnv(
-                [lambda: _ScriptedEnv([(0.0, False, False)] * 16, slot=s) for s in range(2)]
+                [lambda s=s: _ScriptedEnv([(0.0, False, False)] * 16, slot=s) for s in range(2)]
             )
             trainer = PPOTrainer(
                 env, ActorCritic(num_actions=2),
@@ -271,7 +271,7 @@ class TestTimestepAccounting(unittest.TestCase):
 
     def test_vector_training_rejects_budget_not_divisible_by_env_count(self):
         env = SyncVectorEnv(
-            [lambda: _ScriptedEnv([(0.0, False, False)] * 8, slot=s) for s in range(2)]
+            [lambda s=s: _ScriptedEnv([(0.0, False, False)] * 8, slot=s) for s in range(2)]
         )
         trainer = PPOTrainer(
             env, ActorCritic(num_actions=2), _config(num_envs=2, total_timesteps=9),
@@ -344,7 +344,7 @@ class TestCheckpointNumEnvs(unittest.TestCase):
     def test_checkpoint_stores_num_envs(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = SyncVectorEnv(
-                [lambda: _ScriptedEnv([(0.0, False, False)] * 16, slot=s) for s in range(2)]
+                [lambda s=s: _ScriptedEnv([(0.0, False, False)] * 16, slot=s) for s in range(2)]
             )
             config = _config(num_envs=2, total_timesteps=8,
                              checkpoint_dir=str(Path(tmp) / "ckpt"))
@@ -361,7 +361,7 @@ class TestCheckpointNumEnvs(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             torch.manual_seed(0)
             env = SyncVectorEnv(
-                [lambda: _ScriptedEnv([(0.0, False, False)] * 16, slot=s) for s in range(2)]
+                [lambda s=s: _ScriptedEnv([(0.0, False, False)] * 16, slot=s) for s in range(2)]
             )
             config = _config(num_envs=2, total_timesteps=8,
                              checkpoint_dir=str(Path(tmp) / "ckpt"),
@@ -431,7 +431,7 @@ class TestMultiEnvPPOTraining(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             torch.manual_seed(0)
             env = SyncVectorEnv(
-                [lambda: _ScriptedEnv([(0.0, False, False)] * 16, slot=s) for s in range(2)]
+                [lambda s=s: _ScriptedEnv([(0.0, False, False)] * 16, slot=s) for s in range(2)]
             )
             config = _config(num_envs=2, total_timesteps=16,
                              checkpoint_dir=str(Path(tmp) / "ckpt"),
@@ -455,7 +455,7 @@ class TestMultiEnvPPOTraining(unittest.TestCase):
             torch.manual_seed(0)
             script = [(0.0, False, False)] * 8
             env = SyncVectorEnv(
-                [lambda: _ScriptedEnv(script, slot=s) for s in range(4)]
+                [lambda s=s: _ScriptedEnv(script, slot=s) for s in range(4)]
             )
             config = _config(num_envs=4, total_timesteps=16,
                              checkpoint_dir=str(Path(tmp) / "ckpt"))

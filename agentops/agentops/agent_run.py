@@ -8,7 +8,7 @@ import subprocess
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Protocol
 
 from .git import _no_window_kwargs
 

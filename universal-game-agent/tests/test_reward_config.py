@@ -1,8 +1,8 @@
 """Tests for config-driven reward construction. No live capture."""
 try:
-    from . import _bootstrap
+    from . import _bootstrap  # noqa: F401 - imported for its sys.path bootstrap side effect
 except ImportError:  # run as script or discovered top-level: no package context
-    import _bootstrap
+    import _bootstrap  # noqa: F401 - imported for its sys.path bootstrap side effect
 
 import unittest
 

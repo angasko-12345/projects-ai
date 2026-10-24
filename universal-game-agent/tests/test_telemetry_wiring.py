@@ -5,9 +5,9 @@ Every path is an absolute temp path, so a passing suite cannot leave
 artifacts in the repository working directory.
 """
 try:
-    from . import _bootstrap
+    from . import _bootstrap  # noqa: F401 - imported for its sys.path bootstrap side effect
 except ImportError:  # run as script or discovered top-level: no package context
-    import _bootstrap
+    import _bootstrap  # noqa: F401 - imported for its sys.path bootstrap side effect
 
 import csv
 import tempfile

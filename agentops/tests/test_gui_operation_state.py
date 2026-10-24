@@ -123,7 +123,6 @@ class GuiMergePathTests(unittest.TestCase):
         skip the interesting path, which is why the first two versions of this
         test passed against unfixed code.
         """
-        import subprocess as sp
         from agentops.workflow import WorkflowResult
         from agentops.state import StateStore
         from agentops.tasks import Task, TaskStatus
@@ -204,8 +203,8 @@ class GuiMergePathTests(unittest.TestCase):
         _events, worktrees, _ = self._run_not_ready(root)
         base_log = sp.run(["git", "log", "--oneline"], cwd=root,
                           capture_output=True, text=True).stdout
-        agentops_commits = [l for l in base_log.splitlines()
-                            if "agentops:" in l]
+        agentops_commits = [line for line in base_log.splitlines()
+                            if "agentops:" in line]
         self.assertEqual(agentops_commits, [],
                          "the base branch must carry no agentops commits")
 

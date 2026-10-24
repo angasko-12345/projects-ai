@@ -342,7 +342,8 @@ class MainWindowShellTests(unittest.TestCase):
             self._activate(view_id)
             table = self.window._views[view_id]._table
             with self.subTest(view=view_id):
-                self.assertTrue(wait_until(lambda: table.proxy.rowCount() == rows))
+                self.assertTrue(
+                    wait_until(lambda t=table, n=rows: t.proxy.rowCount() == n))
                 self.assertEqual(table.proxy.rowCount(), rows)
 
     def test_workflow_selection_fills_tasks_runs_and_artifacts(self):

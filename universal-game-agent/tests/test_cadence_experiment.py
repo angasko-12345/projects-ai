@@ -1,9 +1,9 @@
 """Synthetic cadence experiment contract: press timing, probe discrimination,
 settle behavior, and a tiny end-to-end matrix run (virtual time, no OS)."""
 try:
-    from . import _bootstrap
+    from . import _bootstrap  # noqa: F401 - imported for its sys.path bootstrap side effect
 except ImportError:  # run as script or discovered top-level: no package context
-    import _bootstrap
+    import _bootstrap  # noqa: F401 - imported for its sys.path bootstrap side effect
 
 import json
 import os
@@ -60,7 +60,7 @@ class TestPressTiming(unittest.TestCase):
         # 3-4 held ticks x 5 px, phase-dependent. Seven presses from the
         # centre (x=136) never reach the wall.
         xs = self._press_displacements(147.6, 60, 7, action=1)
-        disps = [a - b for a, b in zip(xs, xs[1:])]  # moving left -> positive
+        disps = [a - b for a, b in zip(xs, xs[1:], strict=False)]  # moving left -> positive
         self.assertEqual(len(disps), 7)
         for d in disps:
             self.assertIn(d, (15, 20), f"unexpected left-press displacement: {disps}")
@@ -68,7 +68,7 @@ class TestPressTiming(unittest.TestCase):
     def test_fast_cadence_press_moves_5_px_after_the_first_decision(self):
         # 16.667 ms window: one held tick per decision in steady state.
         xs = self._press_displacements(16.667, 16.667, 5, action=1)
-        disps = [a - b for a, b in zip(xs, xs[1:])]
+        disps = [a - b for a, b in zip(xs, xs[1:], strict=False)]
         for d in disps[1:]:
             self.assertEqual(d, 5, f"fast-cell displacements: {disps}")
 

@@ -1,8 +1,8 @@
 """Tests for the curiosity module + PPO wiring (requires torch)."""
 try:
-    from . import _bootstrap
+    from . import _bootstrap  # noqa: F401 - imported for its sys.path bootstrap side effect
 except ImportError:  # run as script or discovered top-level: no package context
-    import _bootstrap
+    import _bootstrap  # noqa: F401 - imported for its sys.path bootstrap side effect
 
 import unittest
 
@@ -59,7 +59,7 @@ class TestCuriosityModule(unittest.TestCase):
         before = [p.clone() for p in mod.forward_model.parameters()]
         loss = mod.update(obs, actions, nxt, torch.ones(8))
         self.assertTrue(loss >= 0.0)
-        self.assertTrue(any(not torch.equal(a, b) for a, b in zip(before, mod.forward_model.parameters())))
+        self.assertTrue(any(not torch.equal(a, b) for a, b in zip(before, mod.forward_model.parameters(), strict=False)))
 
     def test_empty_valid_mask_is_noop(self):
         mod = CuriosityModule(num_actions=3)

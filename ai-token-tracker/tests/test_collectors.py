@@ -476,7 +476,7 @@ def build_dsh_dir(root: Path) -> None:
         try:
             import zstandard as zstd
         except ImportError:
-            raise unittest.SkipTest("no zstd backend on this interpreter (expected on 3.11)")
+            raise unittest.SkipTest("no zstd backend on this interpreter (expected on 3.11)") from None
     session_dir = root / "session-1" / "run-1"
     session_dir.mkdir(parents=True)
     lines = [

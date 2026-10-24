@@ -6,9 +6,9 @@ identical torch seeds. Every rollout artifact is compared exactly, so any
 semantic drift in the vector path turns red here. No display, no window.
 """
 try:
-    from . import _bootstrap
+    from . import _bootstrap  # noqa: F401 - imported for its sys.path bootstrap side effect
 except ImportError:  # run as script or discovered top-level: no package context
-    import _bootstrap
+    import _bootstrap  # noqa: F401 - imported for its sys.path bootstrap side effect
 
 import tempfile
 import unittest
@@ -158,7 +158,7 @@ class TestVecPPOEquivalence(unittest.TestCase):
         buf2, *_ = _rollout(vec)
         stats1, stats2 = single.update(buf1), vec.update(buf2)
         self.assertEqual(stats1, stats2)
-        for a, b in zip(single.model.parameters(), vec.model.parameters()):
+        for a, b in zip(single.model.parameters(), vec.model.parameters(), strict=False):
             self.assertTrue(torch.equal(a, b))
 
     def test_boundary_uses_slot_reset_not_full_reset(self):

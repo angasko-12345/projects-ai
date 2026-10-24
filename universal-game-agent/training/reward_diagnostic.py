@@ -17,7 +17,6 @@ import sys
 import time
 from pathlib import Path
 
-import numpy as np
 
 from environment.extern_pong_rewards import (
     ExternPongReward,
@@ -56,9 +55,9 @@ def diagnose(title: str, captures: int, capture_size: int = 96,
             try:
                 manager.attach()
                 break
-            except Exception:
+            except Exception as exc:
                 if time.monotonic() > deadline:
-                    raise RuntimeError(f"could not attach to window {title!r}")
+                    raise RuntimeError(f"could not attach to window {title!r}") from exc
                 time.sleep(0.3)
         # Native frames for detection (same as the RL env); the small column
         # shows what the old downscaled path would have counted.

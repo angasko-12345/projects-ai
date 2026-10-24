@@ -23,7 +23,7 @@ import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 from types import TracebackType
-from typing import Callable
+from collections.abc import Callable
 
 from .settings import settings_path
 

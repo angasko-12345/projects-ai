@@ -71,7 +71,6 @@ from .verification_model import VerificationReport, VerificationReportStatus
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from .tasks import Task, TaskStatus
 
 
 @dataclass(frozen=True)

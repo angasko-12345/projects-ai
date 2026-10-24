@@ -13,7 +13,7 @@ import random
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Sequence
+from collections.abc import Sequence
 
 from .config import get_ffmpeg_path
 from .renderer import _run
@@ -76,7 +76,7 @@ _FONT_CANDIDATES = (
 )
 
 
-def find_font() -> Optional[str]:
+def find_font() -> str | None:
     """Return a usable bold font file path, or None when none exists."""
     env = os.getenv("VISUAL_FONT")
     if env and Path(env).is_file():
@@ -100,7 +100,7 @@ class ScenePlan:
     transition: str
     seed: int
     palette: Sequence[str]
-    particles: List[dict] = field(default_factory=list)
+    particles: list[dict] = field(default_factory=list)
 
 
 def _style_for(rng: random.Random, index: int) -> str:
@@ -110,7 +110,7 @@ def _style_for(rng: random.Random, index: int) -> str:
     return rng.choice(STYLES)
 
 
-def _make_particles(rng: random.Random, palette: Sequence[str]) -> List[dict]:
+def _make_particles(rng: random.Random, palette: Sequence[str]) -> list[dict]:
     """A handful of small drifting shapes for parallax and depth."""
     count = rng.randint(2, 4)
     out = []
@@ -125,7 +125,7 @@ def _make_particles(rng: random.Random, palette: Sequence[str]) -> List[dict]:
         })
     return out
 def plan_scenes(script, duration: float = 45.0, seed: int = 0,
-                num_scenes: Optional[int] = None) -> List[ScenePlan]:
+                num_scenes: int | None = None) -> list[ScenePlan]:
     """Turn the script into an ordered list of scene recipes.
 
     Scene count scales with narration length so a long script gets more cuts,
@@ -147,7 +147,7 @@ def plan_scenes(script, duration: float = 45.0, seed: int = 0,
 
     # Regroup sentences into contiguous chunks so narration flows in order
     # instead of being sampled out of sequence.
-    chunks: List[str] = []
+    chunks: list[str] = []
     total = len(sentences)
     for i in range(num_scenes):
         start = int(i * total / num_scenes)
@@ -167,7 +167,7 @@ def plan_scenes(script, duration: float = 45.0, seed: int = 0,
     n = len(chunks)
     budget = max(float(duration), MIN_SCENE_SECONDS * n) + (n - 1) * TRANSITION_SECONDS
 
-    plans: List[ScenePlan] = []
+    plans: list[ScenePlan] = []
     palette_offset = rng.randrange(len(PALETTES))
 
     for i, chunk in enumerate(chunks):
@@ -234,10 +234,10 @@ def _ken_burns(scene: ScenePlan, label_in: str, label_out: str) -> str:
     return f"[{label_in}]{expr},setsar=1[{label_out}]"
 
 
-def _overlay_chain(scene: ScenePlan, label: str) -> List[str]:
+def _overlay_chain(scene: ScenePlan, label: str) -> list[str]:
     """Build the overlay layers for a scene's chosen style."""
     accent = scene.palette[2]
-    parts: List[str] = []
+    parts: list[str] = []
 
     if scene.style == "nebula":
         # Blurred fractal screened over the gradient.
@@ -331,7 +331,7 @@ def _scrim_chain(scene: ScenePlan, label_in: str, label_out: str) -> str:
 
 
 def _text_chain(scene: ScenePlan, label_in: str, label_out: str,
-                font: Optional[str], text_dir: Path) -> str:
+                font: str | None, text_dir: Path) -> str:
     """Burn the scene's keywords and a scene counter into the frame.
 
     drawtext parses its own options out of the filter string, so scene text is
@@ -357,16 +357,16 @@ def _text_chain(scene: ScenePlan, label_in: str, label_out: str,
         f"x=(w-text_w)/2:y=h*0.055"
     )
     return f"[{label_in}]{body}[{label_out}]"
-def build_filtergraph(scenes: List[ScenePlan], text_dir: Path,
-                      font: Optional[str]) -> str:
+def build_filtergraph(scenes: list[ScenePlan], text_dir: Path,
+                      font: str | None) -> str:
     """Compose the complete filter_complex for a scene sequence.
 
     Each scene becomes a gradient plus an overlay, blended, Ken-Burns cropped,
     decorated with particles and keywords, then chained with xfade so cuts land
     on the narration's scene boundaries.
     """
-    parts: List[str] = []
-    scene_labels: List[str] = []
+    parts: list[str] = []
+    scene_labels: list[str] = []
 
     for scene in scenes:
         dark, mid, accent = scene.palette
@@ -416,8 +416,8 @@ def build_filtergraph(scenes: List[ScenePlan], text_dir: Path,
     return ";".join(parts)
 
 
-def render_background(scenes: List[ScenePlan], out_path: Path,
-                      duration: float, work_dir: Optional[Path] = None
+def render_background(scenes: list[ScenePlan], out_path: Path,
+                      duration: float, work_dir: Path | None = None
                       ) -> Path:
     """Render the silent animated visual track for a whole video."""
     if not scenes:

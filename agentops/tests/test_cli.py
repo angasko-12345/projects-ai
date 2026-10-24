@@ -539,7 +539,7 @@ class EventsCommandTests(CliTestCase):
         store = _seeded_store()
         workflow_id = store.latest_workflow().id
         task_id = store.list_tasks(workflow_id)[0].id
-        event = store.record_typed_event(Event(
+        store.record_typed_event(Event(
             workflow_id=workflow_id, task_id=task_id,
             type=EventType.TASK_COMPLETED, severity=EventSeverity.INFO,
             message="task completed"))
@@ -688,7 +688,7 @@ class FailuresCommandTests(CliTestCase):
         store = _seeded_store()
         workflow_id = store.latest_workflow().id
         task_id = store.list_tasks(workflow_id)[0].id
-        failure = store.create_failure(Failure(
+        store.create_failure(Failure(
             id="failure-1", workflow_id=workflow_id, task_id=task_id,
             agent_run_id=None, source=FailureSource.AGENT,
             category=FailureCategory.TIMEOUT, severity=FailureSeverity.HIGH,
@@ -1335,7 +1335,7 @@ class PrintTextTests(unittest.TestCase):
             agent_runner=lambda *args, **kwargs: FakeRunner(result),
             worktree_manager=lambda: FakeWorktreeManager(),
         )
-        stdout, stderr = io.StringIO(), io.StringIO()
+        stderr = io.StringIO()
         with patch("sys.stdout", narrow), redirect_stderr(stderr):
             code = main(["run", "demo", "do the work"], services=services)
         self.assertEqual(code, 0)

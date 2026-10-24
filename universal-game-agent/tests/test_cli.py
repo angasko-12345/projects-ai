@@ -1,8 +1,8 @@
 """Tests for the main.py CLI. Heavy ops mocked; one tiny real integration run."""
 try:
-    from . import _bootstrap
+    from . import _bootstrap  # noqa: F401 - imported for its sys.path bootstrap side effect
 except ImportError:  # run as script or discovered top-level: no package context
-    import _bootstrap
+    import _bootstrap  # noqa: F401 - imported for its sys.path bootstrap side effect
 
 import io
 import sys
@@ -77,7 +77,6 @@ class TestCLIDispatch(unittest.TestCase):
 
     def test_compare_dispatch(self):
         import main as cli_main
-        import training.experiment  # first import must bind the real evaluate,
         # not the side_effect patch active in this test (direct-exec order leak)
 
         def _rep(mean, actions, rewards, hits, misses):
@@ -373,14 +372,14 @@ class TestCLIValidation(unittest.TestCase):
                                for k, v in per.items()}
                               for per in after["state"].values()]
             self.assertEqual(len(after_momentum), len(before_momentum))
-            for a, b in zip(before_momentum, after_momentum):
+            for a, b in zip(before_momentum, after_momentum, strict=False):
                 self.assertEqual(set(a.keys()), set(b.keys()))
                 for k in a:
                     if torch.is_tensor(a[k]):
                         self.assertTrue(torch.equal(a[k], b[k]))
                     else:
                         self.assertEqual(a[k], b[k])
-            for a, b in zip(before_params, resumed.model.parameters()):
+            for a, b in zip(before_params, resumed.model.parameters(), strict=False):
                 self.assertTrue(torch.equal(a, b))
 
     def test_resume_syncs_curiosity_scale(self):
@@ -410,7 +409,7 @@ class TestCLIValidation(unittest.TestCase):
             self.assertAlmostEqual(resumed.curiosity.config.scale, 0.1)
             _sync_curiosity_scale(resumed, {"curiosity": {"scale": 0.7}})
             self.assertAlmostEqual(resumed.curiosity.config.scale, 0.7)
-            for a, b in zip(before_encoder, resumed.curiosity.encoder.parameters()):
+            for a, b in zip(before_encoder, resumed.curiosity.encoder.parameters(), strict=False):
                 self.assertTrue(torch.equal(a, b))
             _sync_curiosity_scale(resumed, {})  # absent section leaves scale alone
             self.assertAlmostEqual(resumed.curiosity.config.scale, 0.7)

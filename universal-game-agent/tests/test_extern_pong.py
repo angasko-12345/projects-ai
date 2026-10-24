@@ -1,15 +1,15 @@
 """Tests for the standalone extern-Pong game mechanics + process launch."""
 try:
-    from . import _bootstrap
+    from . import _bootstrap  # noqa: F401 - imported for its sys.path bootstrap side effect
 except ImportError:  # run as script or discovered top-level: no package context
-    import _bootstrap
+    import _bootstrap  # noqa: F401 - imported for its sys.path bootstrap side effect
 
 import subprocess
 import sys
 import unittest
 from pathlib import Path
 
-from games.pong_logic import HEIGHT, LEFT, NOOP, PADDLE_W, RIGHT, WIDTH, PongLogic
+from games.pong_logic import LEFT, NOOP, PADDLE_W, RIGHT, WIDTH, PongLogic
 
 APP = Path(__file__).resolve().parent.parent / "games" / "extern_pong.py"
 

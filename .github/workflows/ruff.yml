@@ -1,0 +1,26 @@
+# CI for ruff check. Runs ruff check across all Python products.
+name: ruff-check
+
+on:
+  pull_request:
+    paths:
+      - '**/*.py'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ruff
+        run: pip install ruff
+      - name: Run ruff check
+        run: ruff check .

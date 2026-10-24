@@ -135,7 +135,7 @@ class TestPrepareData(unittest.TestCase):
             self.assertIn(tok.token_to_id(special), ids, f"{special} never trained")
 
     def test_val_split_covers_one_context_sample(self):
-        train_bin = build_data(self.tmp.name, context_length=16, val_frac=0.001)
+        build_data(self.tmp.name, context_length=16, val_frac=0.001)
         val = load_token_ids(os.path.join(self.tmp.name, "val.bin"))
         self.assertGreaterEqual(len(val), 18)  # context_length + 2
 
@@ -309,7 +309,9 @@ class TestEvaluate(unittest.TestCase):
 
         per_batch = [b.float().mean().item() for b in batches]
         tokens_per_batch = [b.numel() for b in batches]
-        expected = sum(l * n for l, n in zip(per_batch, tokens_per_batch)) / sum(tokens_per_batch)
+        expected = sum(mean * count
+                       for mean, count in zip(per_batch, tokens_per_batch,
+                                              strict=False)) / sum(tokens_per_batch)
         naive = sum(per_batch) / len(per_batch)
 
         self.assertAlmostEqual(
@@ -735,8 +737,8 @@ class TestCheckpointMetadata(unittest.TestCase):
         for i, version in enumerate([None, "2", True]):
             with self.subTest(schema_version=version):
                 path = self.save(self.cfg(), name=f"unversioned_{i}.pt")
-                self.rewrite(path, lambda c: c["checkpoint_metadata"].update(
-                    schema_version=version))
+                self.rewrite(path, lambda c, v=version: c["checkpoint_metadata"].update(
+                    schema_version=v))
                 with self.assertRaises(ValueError) as ctx:
                     read_checkpoint(path)
                 self.assertIn("schema_version", str(ctx.exception))
@@ -783,8 +785,8 @@ class TestCheckpointMetadata(unittest.TestCase):
         for i, tokenizer in enumerate([{}, {"sha256": "0" * 64}]):
             with self.subTest(tokenizer=tokenizer):
                 path = self.save(self.cfg(), name=f"no_tokenizer_{i}.pt")
-                self.rewrite(path, lambda c: c["checkpoint_metadata"].update(
-                    tokenizer=tokenizer))
+                self.rewrite(path, lambda c, t=tokenizer: c["checkpoint_metadata"].update(
+                    tokenizer=t))
                 with self.assertRaises(ValueError) as ctx:
                     read_checkpoint(path)
                 self.assertIn("tokenizer.path", str(ctx.exception))
@@ -800,8 +802,8 @@ class TestCheckpointMetadata(unittest.TestCase):
         for i, progress in enumerate([{}, {"step": None}]):
             with self.subTest(progress=progress):
                 path = self.save(self.cfg(), name=f"no_progress_{i}.pt")
-                self.rewrite(path, lambda c: c["checkpoint_metadata"].update(
-                    progress=progress))
+                self.rewrite(path, lambda c, p=progress: c["checkpoint_metadata"].update(
+                    progress=p))
                 with self.assertRaises(ValueError) as ctx:
                     read_checkpoint(path)
                 self.assertIn("progress.step", str(ctx.exception))

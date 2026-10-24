@@ -34,7 +34,6 @@ import math
 import os
 import subprocess
 from pathlib import Path
-from typing import List, Optional
 
 from .config import get_ffmpeg_path, get_ffprobe_path
 
@@ -54,7 +53,7 @@ class OutputValidationError(RenderError):
     pass
 
 
-def probe_streams(path: Path) -> Optional[List[dict]]:
+def probe_streams(path: Path) -> list[dict] | None:
     """Return per-stream metadata from ffprobe, or None on failure."""
     cmd = [
         get_ffprobe_path(),
@@ -68,8 +67,7 @@ def probe_streams(path: Path) -> Optional[List[dict]]:
         proc = subprocess.run(
             cmd,
             check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             text=True,
             timeout=60,
             creationflags=creationflags,
@@ -80,7 +78,7 @@ def probe_streams(path: Path) -> Optional[List[dict]]:
         return None
 
 
-def validate_final_output(path: Path, *, min_duration: Optional[float] = None) -> float:
+def validate_final_output(path: Path, *, min_duration: float | None = None) -> float:
     """Validate that *path* is a usable final video.
 
     Checks (in order):
@@ -179,7 +177,7 @@ def validate_final_output(path: Path, *, min_duration: Optional[float] = None) -
     return duration
 
 
-def _run(cmd: List[str], cwd: Optional[Path] = None, timeout: int = 1800) -> str:
+def _run(cmd: list[str], cwd: Path | None = None, timeout: int = 1800) -> str:
     """Run a subprocess, raising RenderError with the tail of stderr on failure."""
     creationflags = 0
     if os.name == "nt":
@@ -189,8 +187,7 @@ def _run(cmd: List[str], cwd: Optional[Path] = None, timeout: int = 1800) -> str
         proc = subprocess.run(
             cmd,
             check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -213,7 +210,7 @@ def _run(cmd: List[str], cwd: Optional[Path] = None, timeout: int = 1800) -> str
         raise RenderError(f"FFmpeg failed: {detail}") from None
 
 
-def probe_duration(path: Path) -> Optional[float]:
+def probe_duration(path: Path) -> float | None:
     """Return the duration of ``path`` in seconds, or None if unknown."""
     cmd = [
         get_ffprobe_path(),
@@ -230,8 +227,7 @@ def probe_duration(path: Path) -> Optional[float]:
         proc = subprocess.run(
             cmd,
             check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             text=True,
             timeout=120,
             creationflags=creationflags,
@@ -259,8 +255,7 @@ def probe_has_audio(path: Path) -> bool:
         proc = subprocess.run(
             cmd,
             check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             text=True,
             timeout=120,
             creationflags=creationflags,
@@ -288,8 +283,7 @@ def probe_integrity(path: Path) -> bool:
         proc = subprocess.run(
             cmd,
             check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             timeout=180,
             creationflags=creationflags,
         )

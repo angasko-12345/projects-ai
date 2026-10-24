@@ -1,8 +1,8 @@
 """Tests for the recurrent actor-critic (requires torch)."""
 try:
-    from . import _bootstrap
+    from . import _bootstrap  # noqa: F401 - imported for its sys.path bootstrap side effect
 except ImportError:  # run as script or discovered top-level: no package context
-    import _bootstrap
+    import _bootstrap  # noqa: F401 - imported for its sys.path bootstrap side effect
 
 import tempfile
 import unittest
@@ -48,9 +48,9 @@ class TestActorCritic(unittest.TestCase):
         with torch.no_grad():
             batch_logits, batch_value, _ = model(obs, model.initial_state(4))
             for i in range(4):
-                l, v, _ = model(obs[i : i + 1], model.initial_state(1))
-                self.assertTrue(torch.allclose(batch_logits[i], l[0], atol=1e-5))
-                self.assertTrue(torch.allclose(batch_value[i], v[0], atol=1e-5))
+                logits, value, _ = model(obs[i : i + 1], model.initial_state(1))
+                self.assertTrue(torch.allclose(batch_logits[i], logits[0], atol=1e-5))
+                self.assertTrue(torch.allclose(batch_value[i], value[0], atol=1e-5))
 
     def test_hidden_state_carries_and_resets(self):
         torch.manual_seed(2)
@@ -76,13 +76,13 @@ class TestActorCritic(unittest.TestCase):
             path = str(Path(tmp) / "model.pt")
             model.save(path)
             restored = ActorCritic.load(path)
-        for a, b in zip(model.parameters(), restored.parameters()):
+        for a, b in zip(model.parameters(), restored.parameters(), strict=False):
             self.assertTrue(torch.equal(a, b))
         self.assertEqual(restored._config["hidden_size"], 64)
         with torch.no_grad():
             expected = model(obs, model.initial_state(2))
             actual = restored.eval()(obs, restored.initial_state(2))
-        for e, a in zip(expected, actual):
+        for e, a in zip(expected, actual, strict=False):
             self.assertTrue(torch.allclose(e, a))
 
     def test_invalid_inputs(self):

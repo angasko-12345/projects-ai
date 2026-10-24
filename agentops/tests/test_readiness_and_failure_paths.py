@@ -473,6 +473,13 @@ class TaskResultRedactionTests(unittest.TestCase):
         verifier = MagicMock()
         verifier.run = MagicMock(return_value=asyncio.sleep(0, result=[passed_check]))
         engine = _engine(self.state, verifier=verifier)
+        workflow_id = self.state.create_workflow("legacy verification")
+        task_id = self.state.add_task(
+            Task("verify", "verification", workflow_id)).id
+        asyncio.run(engine.execute(workflow_id, tempfile.gettempdir()))
+        result = self.state.get_task(task_id).result
+        self.assertNotIn(FAKE_SECRET, result)
+        self.assertIn("[REDACTED]", result)
 
 class VerificationSetupFailureTests(unittest.TestCase):
     """A partial verification setup must not leave the run RUNNING."""

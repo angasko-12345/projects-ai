@@ -24,10 +24,10 @@ import re
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 from . import captions as cap
-from . import gemini, providers, renderer, script as sc, tts, visuals
+from . import gemini, providers, renderer, tts, visuals
 from .config import (
     ConfigError,
     get_backend,
@@ -66,8 +66,7 @@ def _measure_volume_db(path: Path) -> float | None:
     try:
         proc = subprocess.run(
             cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -133,8 +132,7 @@ def _tool_exists(name: str, version_flag: str = "-version") -> bool:
     try:
         proc = subprocess.run(
             [name, version_flag],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             timeout=30,
             creationflags=creationflags,
         )
@@ -166,10 +164,10 @@ def build_stem(idea: str, occurrence: int | None = None) -> str:
     return f"{_slug(idea, 32)}-{digest}{repeat}"
 
 
-def select_best_ideas(ideas: List[str], count: int = 3) -> List[str]:
+def select_best_ideas(ideas: list[str], count: int = 3) -> list[str]:
     """Take the first ``count`` distinct ideas, preserving order."""
     seen = set()
-    out: List[str] = []
+    out: list[str] = []
     for idea in ideas or []:
         clean = str(idea).strip()
         if not clean:
@@ -184,7 +182,7 @@ def select_best_ideas(ideas: List[str], count: int = 3) -> List[str]:
     return out
 
 
-def check_dependencies(provider=None) -> List[str]:
+def check_dependencies(provider=None) -> list[str]:
     """Return a list of human-readable setup problems, empty when all is well.
 
     ``provider`` is the backend module (see ``app.providers``). It defaults to
@@ -192,10 +190,10 @@ def check_dependencies(provider=None) -> List[str]:
     text-file and edge-tts problems instead of a missing API key.
     """
     provider = provider if provider is not None else gemini
-    problems: List[str] = []
+    problems: list[str] = []
     checker = getattr(provider, "check_setup", None)
     if callable(checker):
-        found: List[str] = list(checker())  # type: ignore[call-overload]
+        found: list[str] = list(checker())  # type: ignore[call-overload]
         problems.extend(found)
     elif provider is gemini:
         try:
@@ -235,13 +233,13 @@ def _seed(idea: str, index: int) -> int:
 
 def build_metadata(
     title: str,
-    script: Dict[str, Any],
+    script: dict[str, Any],
     caption: str,
-    hashtags: List[str],
-    scenes: List[Any],
+    hashtags: list[str],
+    scenes: list[Any],
     filename: str,
     duration: float,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     return {
         "title": title,
         "script": script,
@@ -278,14 +276,14 @@ def run_pipeline(
     count: int = 3,
     dry_run: bool = False,
     backend: str | None = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Generate up to ``count`` videos. Never raises for per-idea failures.
 
     ``backend`` selects the text provider ("gemini" or "local"); ``None`` reads
     ``TEXT_BACKEND`` and defaults to Gemini. An unknown name returns a config
     failure entry instead of raising, matching the rest of this function.
     """
-    result: Dict[str, Any] = {"success": [], "failed": []}
+    result: dict[str, Any] = {"success": [], "failed": []}
     count = max(1, int(count))
 
     try:
@@ -343,7 +341,7 @@ def run_pipeline(
     return result
 
 
-def _produce_one(idea: str, occurrence: int, provider=None) -> Dict[str, Any]:
+def _produce_one(idea: str, occurrence: int, provider=None) -> dict[str, Any]:
     """Produce a single video, returning either a success or a failure entry.
 
     ``provider`` defaults to the Gemini module, which is what the pipeline has

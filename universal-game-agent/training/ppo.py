@@ -78,7 +78,7 @@ class PPOConfig:
                 f"(None disables telemetry), got {self.telemetry_path!r}")
 
     @classmethod
-    def from_dict(cls, data: dict) -> "PPOConfig":
+    def from_dict(cls, data: dict) -> PPOConfig:
         import warnings
 
         known = {f.name for f in fields(cls)}
@@ -390,7 +390,7 @@ class PPOTrainer:
             buf["terminated"].append(torch.tensor([bool(x) for x in terms]))
             buf["truncated"].append(torch.tensor([bool(x) for x in truncs]))
             buf["dones"].append(torch.tensor(
-                [bool(a or b) for a, b in zip(terms, truncs)]))
+                [bool(a or b) for a, b in zip(terms, truncs, strict=False)]))
             self.num_timesteps += slots
             for e in range(slots):
                 if terms[e] or truncs[e]:
@@ -695,7 +695,7 @@ class PPOTrainer:
         return path
 
     @classmethod
-    def load_checkpoint(cls, path, env, device="cpu") -> "PPOTrainer":
+    def load_checkpoint(cls, path, env, device="cpu") -> PPOTrainer:
         from training.curiosity import CuriosityConfig, CuriosityModule
 
         ckpt = torch.load(path, map_location=device, weights_only=True)
@@ -765,7 +765,8 @@ class PPOTrainer:
                 self._int_window.append(i)
             episodes_seen += len(ep_rewards)
             fps = self.num_timesteps / max(time.perf_counter() - start, 1e-6)
-            mean = lambda w: float(np.mean(w)) if w else 0.0
+            def mean(w):
+                return float(np.mean(w)) if w else 0.0
             n_ep = len(ep_rewards)
             upd_terminated = sum(1 for t in ep_term if t)
             self.history["timesteps"].append(self.num_timesteps)
@@ -790,7 +791,7 @@ class PPOTrainer:
             total_actions = max(rollout_actions.size, 1)
             self.history["upd_action_share"].append(
                 {str(int(a)): float(c) / float(total_actions)
-                 for a, c in zip(uniq, counts)})
+                 for a, c in zip(uniq, counts, strict=False)})
             self.history["upd_mean_ext"].append(float(np.mean(ep_ext)) if ep_ext else 0.0)
             self.history["upd_mean_int"].append(float(np.mean(ep_int)) if ep_int else 0.0)
             self.history["upd_mean_total"].append(float(np.mean(ep_rewards)) if ep_rewards else 0.0)
@@ -822,7 +823,8 @@ def run_experiment(total_timesteps=2048, rollout_length=128, seed=0, checkpoint_
 
     torch.manual_seed(seed)
     np.random.seed(seed)
-    make_env = lambda: PreprocessingWrapper(ToyPongEnv())
+    def make_env():
+        return PreprocessingWrapper(ToyPongEnv())
     probe = make_env()
     model = ActorCritic(num_actions=int(probe.action_space.n))
     probe.close()

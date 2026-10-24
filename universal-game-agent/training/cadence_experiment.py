@@ -280,7 +280,6 @@ def run_probe(make_env, episodes: int, seed: int) -> dict:
     """Reward discrimination: known-skill policies through the current config."""
     env = make_env()
     try:
-        rng = np.random.default_rng(seed)
         builders = {
             "oracle_lookahead": lambda: _oracle_lookahead,
             "oracle_reactive": lambda: _oracle_reactive,

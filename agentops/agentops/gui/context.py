@@ -13,7 +13,7 @@ This lives outside ``views`` because detail panels and the shell need it too.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable
+from collections.abc import Callable
 
 from .bridge import ControllerBridge
 from .settings import AppSettings

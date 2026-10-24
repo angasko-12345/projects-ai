@@ -84,7 +84,7 @@ class ReportConsistencyTests(unittest.TestCase):
         with self.assertRaises(StateTransitionError):
             assert_report_consistent(_report(passed_checks=0, skipped_checks=3))
 
-    def test_passed_with_required_failures_raises(self):
+    def test_passed_with_required_failures_but_no_failed_checks_raises(self):
         with self.assertRaises(StateTransitionError):
             assert_report_consistent(_report(required_failures=1))
 

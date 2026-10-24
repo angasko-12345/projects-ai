@@ -57,7 +57,7 @@ class AppSettings:
         }
 
     @classmethod
-    def from_dict(cls, data: object) -> "AppSettings":
+    def from_dict(cls, data: object) -> AppSettings:
         """Tolerant load: unknown or malformed fields fall back to defaults."""
         settings = cls()
         if not isinstance(data, dict):

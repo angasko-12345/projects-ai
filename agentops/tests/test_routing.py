@@ -8,7 +8,6 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
 
-from agentops.agent_adapter import adapter_for
 from agentops.config import AgentConfig, AppConfig, load_config
 from agentops.events import EventType
 from agentops.registry import AgentHealth,  AgentRegistry, DetectedAgent

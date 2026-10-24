@@ -1,9 +1,9 @@
 """Tests for training.benchmark throughput measurement."""
 
 try:
-    from . import _bootstrap
+    from . import _bootstrap  # noqa: F401 - imported for its sys.path bootstrap side effect
 except ImportError:
-    import _bootstrap  # type: ignore[no-redef]
+    pass  # type: ignore[no-redef]
 
 import unittest
 

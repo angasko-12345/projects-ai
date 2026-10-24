@@ -34,7 +34,7 @@ class CuriosityConfig:
                 raise ValueError(f"{name} must be positive")
 
     @classmethod
-    def from_dict(cls, data: dict) -> "CuriosityConfig":
+    def from_dict(cls, data: dict) -> CuriosityConfig:
         import warnings
 
         known = {f for f in cls.__dataclass_fields__}

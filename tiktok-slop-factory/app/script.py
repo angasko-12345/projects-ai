@@ -2,7 +2,7 @@
 Script text helpers: scene splitting and scene visual keywords.
 """
 import re
-from typing import Any, Dict, List
+from typing import Any
 
 FIELDS = ("hook", "story", "twist", "ending", "cta")
 
@@ -18,13 +18,13 @@ _STOPWORDS = frozenset(
 )
 
 
-def script_text(script: Dict[str, Any]) -> str:
+def script_text(script: dict[str, Any]) -> str:
     """Join the narration fields into one block."""
     parts = [str(script.get(f, "") or "").strip() for f in FIELDS]
     return " ".join(p for p in parts if p).strip()
 
 
-def split_into_scenes(script: Dict[str, Any], num_scenes: int = 3) -> List[str]:
+def split_into_scenes(script: dict[str, Any], num_scenes: int = 3) -> list[str]:
     """Split narration into at most ``num_scenes`` sentence groups.
 
     Bug fixed: when the script had fewer sentences than requested scenes, the
@@ -62,7 +62,7 @@ def get_scene_keywords(scene_text: str, max_words: int = 3) -> str:
         return ""
 
     # Longer words are usually the visually specific ones; keep a stable order.
-    seen: List[str] = []
+    seen: list[str] = []
     for w in sorted(candidates, key=len, reverse=True):
         if w.lower() not in {s.lower() for s in seen}:
             seen.append(w)

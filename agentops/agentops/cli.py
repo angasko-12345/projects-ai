@@ -12,11 +12,9 @@ from pathlib import Path
 from . import __version__
 from .agent_run import AgentRunStatus, GitRunMetadataCollector
 from .artifacts import ArtifactError, ArtifactStore
-from .tasks import TaskStatus
 from .config import AppConfig, _load_data, load_config
 from .finalize import (
-    WorktreeFinalization, finalize_for_outcome, finalize_worktree,
-    implementation_passed, record_worktree_provenance, retry_merge_for_worktree,
+    WorktreeFinalization, finalize_for_outcome, implementation_passed, record_worktree_provenance, retry_merge_for_worktree,
 )
 from .git import GitError, GitWorktreeManager
 from .registry import AgentRegistry

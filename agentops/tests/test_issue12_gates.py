@@ -257,7 +257,7 @@ class ReviewGateTests(unittest.TestCase):
         try:
             engine = WorkflowEngine(config, state, registry, runner, verifier)
             workflow_id = state.create_workflow("verdict event")
-            task = state.add_task(Task("Review the change", "review",
+            state.add_task(Task("Review the change", "review",
                                        workflow_id, max_attempts=1))
             asyncio.run(engine.execute(workflow_id, Path.cwd()))
             kinds = [event["kind"] for event in

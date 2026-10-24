@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from agentops.config import AgentConfig, AppConfig, load_config
+from agentops.config import AppConfig, load_config
 from agentops.registry import AgentRegistry
 
 

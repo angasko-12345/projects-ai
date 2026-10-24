@@ -29,7 +29,7 @@ import asyncio
 import json
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 from .config import (
     get_edge_tts_rate,
@@ -50,13 +50,13 @@ __all__ = [
 ]
 
 
-def check_setup() -> List[str]:
+def check_setup() -> list[str]:
     """Return human-readable setup problems, empty when this backend can run.
 
     Runs without touching the network, so ``--dry-run`` stays meaningful
     offline.
     """
-    problems: List[str] = []
+    problems: list[str] = []
     path = get_local_text_path()
     if not path.is_file():
         problems.append(
@@ -81,7 +81,7 @@ def check_setup() -> List[str]:
     return problems
 
 
-def _scripts_from(path: Path) -> List[Dict[str, Any]]:
+def _scripts_from(path: Path) -> list[dict[str, Any]]:
     """Load and validate the text provider file, with an actionable error."""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -117,7 +117,7 @@ def _scripts_from(path: Path) -> List[Dict[str, Any]]:
     return scripts
 
 
-def _scripts() -> List[Dict[str, Any]]:
+def _scripts() -> list[dict[str, Any]]:
     path = get_local_text_path()
     if not path.is_file():
         raise GeminiError(
@@ -128,7 +128,7 @@ def _scripts() -> List[Dict[str, Any]]:
     return _scripts_from(path)
 
 
-def generate_ideas(count: int = 10) -> List[str]:
+def generate_ideas(count: int = 10) -> list[str]:
     """Return ideas from the local file (repeating if fewer than ``count``)."""
     ideas = [str(s.get("idea", "")).strip() for s in _scripts()]
     ideas = [i for i in ideas if i]
@@ -144,11 +144,11 @@ def generate_ideas(count: int = 10) -> List[str]:
     return out
 
 
-def generate_script(idea: str) -> Dict[str, Any]:
+def generate_script(idea: str) -> dict[str, Any]:
     """Return the stored script matching ``idea`` (or the first one)."""
     scripts = _scripts()
     match = next((s for s in scripts if s.get("idea") == idea), None) or scripts[0]
-    out: Dict[str, Any] = {
+    out: dict[str, Any] = {
         field: str(match.get(field, "") or "").strip() for field in SCRIPT_FIELDS
     }
     out["title"] = str(match.get("title", "") or "").strip() or "Fictional story"
@@ -166,12 +166,12 @@ def generate_script(idea: str) -> Dict[str, Any]:
     return out
 
 
-def generate_caption(script: Dict[str, Any]) -> str:
+def generate_caption(script: dict[str, Any]) -> str:
     """The narration doubles as the on-post caption text (unchanged behaviour)."""
     return script_to_text(script)
 
 
-def generate_tts(script: Dict[str, Any]) -> AudioBlob:
+def generate_tts(script: dict[str, Any]) -> AudioBlob:
     """Synthesize narration with Edge TTS. Returns MP3 audio for the pipeline."""
     try:
         import edge_tts

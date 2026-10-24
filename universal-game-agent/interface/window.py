@@ -22,7 +22,7 @@ class WindowLostError(RuntimeError):
 
 def _user32():
     if os.name != "nt":
-        raise OSError("WindowManager needs Windows (os.name=%r)" % os.name)
+        raise OSError(f"WindowManager needs Windows (os.name={os.name!r})")
     return ctypes.windll.user32
 
 

@@ -5,9 +5,9 @@ slot-tagged observations, so any cross-slot mixing is obvious. No display,
 no window. Torch-gated like the other PPO tests.
 """
 try:
-    from . import _bootstrap
+    from . import _bootstrap  # noqa: F401 - imported for its sys.path bootstrap side effect
 except ImportError:  # run as script or discovered top-level: no package context
-    import _bootstrap
+    import _bootstrap  # noqa: F401 - imported for its sys.path bootstrap side effect
 
 import tempfile
 import unittest
@@ -20,7 +20,7 @@ try:
     from agent.model import ActorCritic
     from environment.vec import SyncVectorEnv
     from training import ppo as ppo_mod
-    from training.ppo import PPOConfig, PPOTrainer, compute_gae
+    from training.ppo import PPOConfig, PPOTrainer
 
     _HAS_TORCH = True
 except ImportError:
@@ -288,7 +288,7 @@ class TestMultiEnvGAE(unittest.TestCase):
         finally:
             ppo_mod.compute_gae = orig_gae
         self.assertEqual(len(seen), 2)  # one GAE pass per slot, never mixed
-        for rewards, values, terminated, next_value, adv, ret, next_values in seen:
+        for rewards, values, terminated, next_value, adv, _ret, next_values in seen:
             T = len(rewards)
             exp_adv = [0.0] * T
             last = 0.0

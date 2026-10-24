@@ -9,7 +9,7 @@ last. No fuzzy libraries, no state beyond the visible filtered list.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Sequence
+from collections.abc import Callable, Sequence
 
 from PySide6.QtCore import QEvent, QObject, Qt, Signal
 from PySide6.QtGui import QKeyEvent
@@ -61,7 +61,7 @@ def score_command(query: str, command: Command) -> float | None:
 class _PaletteInput(QLineEdit):
     """Input that hands navigation keys to the palette instead of itself."""
 
-    def __init__(self, palette: "CommandPalette"):
+    def __init__(self, palette: CommandPalette):
         super().__init__(palette)
         self._palette = palette
 

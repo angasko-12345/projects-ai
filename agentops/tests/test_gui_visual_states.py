@@ -493,19 +493,19 @@ class VisualStateTest(unittest.TestCase):
                 view = self.window._views[view_id]
                 calls: list[str] = []
                 setattr(self.controller, method, (
-                    lambda directory, item_id: calls.append(item_id)
+                    lambda directory, item_id, calls=calls: calls.append(item_id)
                     or {"id": item_id}))
                 self._activate(view_id)
                 self.assertTrue(
-                    wait_until(lambda: view._table.proxy.rowCount() == rows))
+                    wait_until(lambda v=view, n=rows: v._table.proxy.rowCount() == n))
                 view._table.select_row_index(0)
                 self.assertTrue(
-                    wait_until(lambda: view._delete_btn.isEnabled()))
+                    wait_until(lambda v=view: v._delete_btn.isEnabled()))
                 with patch(
                         "agentops.gui.views.listdetail.QMessageBox.question",
                         return_value=QMessageBox.StandardButton.Yes):
                     view._delete_btn.click()
-                self.assertTrue(wait_until(lambda: len(calls) == 1))
+                self.assertTrue(wait_until(lambda bucket=calls: len(bucket) == 1))
 
     def test_worktree_delete_and_managed_filter(self):
         from PySide6.QtWidgets import QMessageBox

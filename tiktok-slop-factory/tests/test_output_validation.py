@@ -10,15 +10,13 @@ Covers the quick-win requirements:
 Plus pipeline wiring: failure must not be reported as success and invalid
 file must be left on disk for diagnosis.
 """
-import math
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 
-from app import captions, pipeline, renderer, script
-from conftest import FFMPEG, FFPROBE, ffmpeg_required
+from app import pipeline, renderer
+from conftest import FFMPEG, ffmpeg_required
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -205,7 +203,7 @@ def test_validate_truncated_file_detected_by_integrity_check(tmp_path):
         b'\x00\x00\x00\x18moov'  # moov atom start (incomplete)
     )
     truncated.write_bytes(header + b'garbage_data_that_breaks_decode' * 50)
-    
+
     # ffprobe will fail to read this
     with pytest.raises(renderer.OutputValidationError, match="could not read|corrupt|no video|failed full decode"):
         renderer.validate_final_output(truncated, min_duration=4.0)

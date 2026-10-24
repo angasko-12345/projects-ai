@@ -185,7 +185,6 @@ class GitWorktreeTests(unittest.TestCase):
     def test_list_worktrees_parses_porcelain_edge_cases(self):
         manager = GitWorktreeManager()
         root = Path("C:/repo")
-        managed = root / ".agentops" / "worktrees"
         porcelain = (
             "worktree C:/repo\nHEAD abc123\nbranch refs/heads/main\n\n"
             "worktree C:/repo/.agentops/worktrees/agentops-demo-12345678\n"
@@ -240,7 +239,6 @@ class GitWorktreeTests(unittest.TestCase):
 class NoWindowSpawnTests(unittest.TestCase):
     def test_git_spawns_hide_consoles(self):
         import sys
-        from unittest.mock import MagicMock
         completed = subprocess.CompletedProcess(args=["git"], returncode=0, stdout="", stderr="")
         with patch("agentops.git.subprocess.run", return_value=completed) as run:
             GitWorktreeManager()._run(Path.cwd(), "status", "--porcelain")

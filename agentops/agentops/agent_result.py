@@ -24,6 +24,8 @@ from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 from typing import Any
 
+from .verdict import Verdict, parse_verdict, verdict_to_json
+
 
 RESULT_SCHEMA_VERSION = 1
 SUPPORTED_SCHEMA_VERSIONS = frozenset({1})
@@ -620,7 +622,6 @@ def evaluate_execution(
             merge_eligible=False,
             reasons=("outcome evaluation fallback",),
         )
-from .verdict import Verdict, parse_verdict, verdict_to_json
 
 
 __all__ = [

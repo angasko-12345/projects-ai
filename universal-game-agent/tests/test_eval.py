@@ -1,8 +1,8 @@
 """Tests for evaluation + experiment wiring (requires torch)."""
 try:
-    from . import _bootstrap
+    from . import _bootstrap  # noqa: F401 - imported for its sys.path bootstrap side effect
 except ImportError:  # run as script or discovered top-level: no package context
-    import _bootstrap
+    import _bootstrap  # noqa: F401 - imported for its sys.path bootstrap side effect
 
 import tempfile
 import unittest
@@ -215,7 +215,7 @@ class TestEvalCorrectness(unittest.TestCase):
         model = _tiny_model()
         before = [p.clone() for p in model.parameters()]
         evaluate_fn(model, ScriptedEvalEnv, episodes=2, seeds=[0, 1])
-        for a, b in zip(before, model.parameters()):
+        for a, b in zip(before, model.parameters(), strict=False):
             self.assertTrue(torch.equal(a, b))
             self.assertIsNone(b.grad)
 

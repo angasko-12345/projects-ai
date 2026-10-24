@@ -7,7 +7,6 @@ reads the collected values via :meth:`values` after a successful ``exec``.
 
 from __future__ import annotations
 
-from typing import Callable
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (

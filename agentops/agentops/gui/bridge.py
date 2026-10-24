@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from typing import Callable
+from collections.abc import Callable
 
 from PySide6.QtCore import QObject, Signal
 

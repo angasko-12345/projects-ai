@@ -1,8 +1,8 @@
 """PPO/GAE equation audits: hand-computed expectations through real code paths."""
 try:
-    from . import _bootstrap
+    from . import _bootstrap  # noqa: F401 - imported for its sys.path bootstrap side effect
 except ImportError:  # run as script or discovered top-level: no package context
-    import _bootstrap
+    import _bootstrap  # noqa: F401 - imported for its sys.path bootstrap side effect
 
 import unittest
 
@@ -12,8 +12,6 @@ try:
     from torch.distributions import Categorical
 
     from agent.model import ActorCritic
-    from environment.preprocessing import PreprocessingWrapper
-    from environment.toy_pong import ToyPongEnv
     from training.ppo import PPOConfig, PPOTrainer, compute_gae
 
     _HAS_TORCH = True
@@ -182,7 +180,7 @@ class TestOptimizationBehavior(unittest.TestCase):
         bb, _y, *_ = b.collect_rollout()
         a.update(ba)
         b.update(bb)
-        self.assertFalse(all(torch.equal(p, q) for p, q in zip(a.model.parameters(), b.model.parameters())))
+        self.assertFalse(all(torch.equal(p, q) for p, q in zip(a.model.parameters(), b.model.parameters(), strict=False)))
 
     def test_value_coef_moves_critic(self):
         def critic_delta(vc):
@@ -202,7 +200,7 @@ class TestOptimizationBehavior(unittest.TestCase):
             before = [p.clone() for p in tr.model.parameters()]
             buf, *_ = tr.collect_rollout()
             tr.update(buf)
-            return sum((a - b).abs().sum().item() for a, b in zip(before, tr.model.parameters()))
+            return sum((a - b).abs().sum().item() for a, b in zip(before, tr.model.parameters(), strict=False))
 
         self.assertLess(delta(1e-9), delta(1e9))
 

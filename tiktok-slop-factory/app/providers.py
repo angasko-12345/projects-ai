@@ -19,13 +19,12 @@ from __future__ import annotations
 
 import importlib
 from types import ModuleType
-from typing import Dict
 
 from .config import ConfigError, get_backend, normalize_backend
 
 # Imported lazily inside resolve_backend() so a missing optional dependency
 # (edge-tts, needed only by the local backend) cannot break the Gemini path.
-_BACKEND_MODULES: Dict[str, str] = {
+_BACKEND_MODULES: dict[str, str] = {
     "gemini": "app.gemini",
     "local": "app.local_text",
 }
