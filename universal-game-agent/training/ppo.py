@@ -88,17 +88,27 @@ class PPOConfig:
         return cls(**{k: v for k, v in data.items() if k in known})
 
 
-def compute_gae(rewards, values, terminated, next_value, gamma, gae_lambda):
+def compute_gae(rewards, values, terminated, next_value, gamma, gae_lambda,
+                next_values=None):
     """Discounted GAE. 1D float tensors length T; values length T; next_value scalar.
 
     Timeouts (truncations) are NOT terminals: pass terminated (not done) so
     bootstrapping continues across them. Returns (advantages, returns).
+
+    ``next_values`` (optional, length T) is the value of each step's next
+    observation, which is how a truncation bootstraps from its own final
+    pre-reset observation rather than from the fresh episode that follows
+    it in the same rollout. Omit it for the plain ``values[t + 1] ->
+    next_value`` chain. A terminated step ignores the entry either way.
     """
     advantages = torch.zeros_like(rewards)
     last_gae = 0.0
     for t in reversed(range(len(rewards))):
         nonterminal = 1.0 - terminated[t]
-        next_v = values[t + 1] if t + 1 < len(values) else next_value
+        if next_values is not None:
+            next_v = next_values[t]
+        else:
+            next_v = values[t + 1] if t + 1 < len(values) else next_value
         delta = rewards[t] + gamma * next_v * nonterminal - values[t]
         last_gae = delta + gamma * gae_lambda * nonterminal * last_gae
         advantages[t] = last_gae
@@ -296,17 +306,33 @@ class PPOTrainer:
         # Bootstrap semantics (see class docstring): terminated -> 0;
         # truncated -> V(final pre-reset obs, its hidden state); otherwise
         # the carried (obs, hidden), which equal next_obs[-1]/traj[-1].
+        # Every truncated step is valued, not just the last one: a
+        # mid-rollout time-limit cutoff is followed by a fresh episode whose
+        # stored value describes a different state.
+        truncation_values = torch.zeros(rollout_steps)
+        for t in range(rollout_steps):
+            if not bool(buf["truncated"][t]):
+                continue
+            bv_obs = buf["next_obs"][t].unsqueeze(0).to(self.device)
+            bv_h = hidden_traj[t].to(self.device)
+            truncation_values[t] = self.model(bv_obs, bv_h)[1].squeeze(0).cpu()
         if bool(buf["terminated"][-1]):
             buf["next_value"] = torch.zeros(())
         elif bool(buf["truncated"][-1]):
-            bv_obs = buf["next_obs"][-1].unsqueeze(0).to(self.device)
-            bv_h = hidden_traj[-1].to(self.device)
-            buf["next_value"] = self.model(bv_obs, bv_h)[1].squeeze(0).cpu()
+            buf["next_value"] = truncation_values[-1]
         else:
             buf["next_value"] = self.model(
                 torch.from_numpy(np.ascontiguousarray(obs, dtype=np.float32)).unsqueeze(0).to(self.device),
                 hidden,
             )[1].squeeze(0).cpu()
+        # GAE's next-observation value per step. After a truncation the next
+        # stored value belongs to the reset episode, so it cannot serve as
+        # the bootstrap; the pre-reset value computed above must.
+        next_values = torch.cat(
+            (buf["values"].reshape(-1)[1:], buf["next_value"].reshape(1)))
+        for t in torch.nonzero(buf["truncated"], as_tuple=False).flatten().tolist():
+            next_values[t] = truncation_values[t]
+        buf["next_values"] = next_values
         buf["int_raw_mean"] = float(int_raw.mean())
         buf["comp_sums"] = {k: float(v) for k, v in comp_sums.items()}
         buf["comp_steps"] = rollout_steps
@@ -415,19 +441,36 @@ class PPOTrainer:
                     ep_term.append(bool(buf["terminated"][t, e]))
                     acc_e[e], acc_i[e], acc_l[e] = 0.0, 0.0, 0
         self._vacc_e, self._vacc_i, self._vacc_l = acc_e, acc_i, acc_l
+        # Truncation bootstrap for every truncated (step, slot), not just the
+        # last step: see the single-env path.
+        truncation_values = torch.zeros(rollout_steps, slots)
+        for t in range(rollout_steps):
+            for e in range(slots):
+                if not bool(buf["truncated"][t, e]):
+                    continue
+                bv_obs = buf["next_obs"][t, e].unsqueeze(0).to(self.device)
+                bv_h = hidden_traj[t][:, e, :].unsqueeze(1).to(self.device)
+                truncation_values[t, e] = self.model(bv_obs, bv_h)[1].squeeze(0).cpu()
         next_value = torch.zeros(slots)
         for e in range(slots):
             if buf["terminated"][-1, e]:
                 continue  # bootstrap value stays zero
             if buf["truncated"][-1, e]:
-                bv_obs = buf["next_obs"][-1, e].unsqueeze(0).to(self.device)
-                bv_h = hidden_traj[-1][:, e, :].unsqueeze(1).to(self.device)
-            else:
-                bv_obs = torch.from_numpy(
-                    np.ascontiguousarray(obs_list[e], dtype=np.float32)).unsqueeze(0).to(self.device)
-                bv_h = hidden[:, e, :].unsqueeze(1).to(self.device)
+                next_value[e] = truncation_values[-1, e]
+                continue
+            bv_obs = torch.from_numpy(
+                np.ascontiguousarray(obs_list[e], dtype=np.float32)).unsqueeze(0).to(self.device)
+            bv_h = hidden[:, e, :].unsqueeze(1).to(self.device)
             next_value[e] = self.model(bv_obs, bv_h)[1].squeeze(0).cpu()
         buf["next_value"] = next_value
+        next_values = torch.empty(rollout_steps, slots)
+        next_values[:-1] = buf["values"][1:]
+        next_values[-1] = next_value
+        for t in range(rollout_steps):
+            for e in range(slots):
+                if buf["truncated"][t, e]:
+                    next_values[t, e] = truncation_values[t, e]
+        buf["next_values"] = next_values
         buf["int_raw_mean"] = float(int_raw.float().mean())
         # Component breakdowns are a single-env diagnostic (per-env
         # ``last_breakdown``); vector mode reports none rather than mixing.
@@ -444,7 +487,13 @@ class PPOTrainer:
         values = buf["values"].float().reshape(-1)
         rewards = buf["rewards"].float()
         terminated = buf["terminated"].float()
-        advantages, returns = compute_gae(rewards, values, terminated, buf["next_value"].float(), cfg.gamma, cfg.gae_lambda)
+        # Hand-built buffers predate the per-step bootstrap table; absent it,
+        # compute_gae keeps the values[t + 1] / next_value chain.
+        next_values = buf.get("next_values")
+        advantages, returns = compute_gae(
+            rewards, values, terminated, buf["next_value"].float(),
+            cfg.gamma, cfg.gae_lambda,
+            next_values=None if next_values is None else next_values.float())
         adv_std = advantages.std()
         if not torch.isfinite(adv_std):
             adv_std = torch.ones(())  # single-sample rollout: center only
@@ -528,7 +577,8 @@ class PPOTrainer:
             adv_e, ret_e = compute_gae(
                 buf["rewards"][:, e].float(), values[:, e],
                 buf["terminated"][:, e].float(),
-                buf["next_value"][e].float(), cfg.gamma, cfg.gae_lambda)
+                buf["next_value"][e].float(), cfg.gamma, cfg.gae_lambda,
+                next_values=buf["next_values"][:, e].float())
             advantages[:, e], returns[:, e] = adv_e, ret_e
         adv_std = advantages.std()
         if not torch.isfinite(adv_std):

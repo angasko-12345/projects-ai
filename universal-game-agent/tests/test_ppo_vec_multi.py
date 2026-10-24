@@ -220,6 +220,49 @@ class TestMultiEnvBootstrap(unittest.TestCase):
                 pre[:, 0, :].unsqueeze(1))[1]
         self.assertNotAlmostEqual(float(buf["next_value"][0]), float(reset_based), places=5)
 
+    def test_mid_rollout_truncation_bootstraps_pre_reset(self):
+        # Slot 0 truncates at t=1, then runs a fresh episode through t=3.
+        slot0 = SlotEnv([(0.0, False, False), (1.0, False, True),
+                         (0.0, False, False), (0.0, False, False)], 0)
+        slot1 = SlotEnv([(0.0, False, False)] * 4, 1)
+        trainer = _trainer([slot0, slot1], 4)
+        calls = []
+        orig = trainer.model.forward
+
+        def spy(obs, hidden):
+            logits, value, h_out = orig(obs, hidden)
+            calls.append((obs.clone(), h_out.clone()))
+            return logits, value, h_out
+
+        trainer.model.forward = spy
+        buf, *_ = _rollout(trainer)
+        trainer.model.forward = orig
+        self.assertTrue(bool(buf["truncated"][1, 0]))
+        with torch.no_grad():
+            pre = orig(buf["next_obs"][1, 0].unsqueeze(0),
+                       calls[1][1][:, 0, :].unsqueeze(1))[1]
+        post = float(buf["values"][2, 0])  # the fresh episode's first value
+        self.assertNotAlmostEqual(float(pre), post, places=5)
+        self.assertAlmostEqual(float(buf["next_values"][1, 0]), float(pre), places=5)
+        # Slot 1 never truncated: its chain is the plain values[t + 1].
+        self.assertAlmostEqual(float(buf["next_values"][1, 1]),
+                               float(buf["values"][2, 1]), places=5)
+
+        seen = []
+        orig_gae = ppo_mod.compute_gae
+
+        def spy_gae(rewards, values, terminated, next_value, gamma, lam, next_values=None):
+            seen.append((values.clone(), None if next_values is None else next_values.clone()))
+            return orig_gae(rewards, values, terminated, next_value, gamma, lam, next_values)
+
+        ppo_mod.compute_gae = spy_gae
+        try:
+            trainer.update(buf)
+        finally:
+            ppo_mod.compute_gae = orig_gae
+        self.assertEqual(len(seen), 2)
+        self.assertAlmostEqual(float(seen[0][1][1]), float(pre), places=5)
+
 
 @unittest.skipUnless(_HAS_TORCH, "torch not installed")
 class TestMultiEnvGAE(unittest.TestCase):
@@ -231,10 +274,12 @@ class TestMultiEnvGAE(unittest.TestCase):
         seen = []
         orig_gae = ppo_mod.compute_gae
 
-        def spy_gae(rewards, values, terminated, next_value, gamma, lam):
-            adv, ret = orig_gae(rewards, values, terminated, next_value, gamma, lam)
+        def spy_gae(rewards, values, terminated, next_value, gamma, lam, next_values=None):
+            adv, ret = orig_gae(rewards, values, terminated, next_value, gamma, lam,
+                                next_values)
             seen.append((rewards.clone(), values.clone(), terminated.clone(),
-                         next_value.clone(), adv.clone(), ret.clone()))
+                         next_value.clone(), adv.clone(), ret.clone(),
+                         None if next_values is None else next_values.clone()))
             return adv, ret
 
         ppo_mod.compute_gae = spy_gae
@@ -243,13 +288,14 @@ class TestMultiEnvGAE(unittest.TestCase):
         finally:
             ppo_mod.compute_gae = orig_gae
         self.assertEqual(len(seen), 2)  # one GAE pass per slot, never mixed
-        for rewards, values, terminated, next_value, adv, ret in seen:
+        for rewards, values, terminated, next_value, adv, ret, next_values in seen:
             T = len(rewards)
             exp_adv = [0.0] * T
             last = 0.0
             for t in reversed(range(T)):
                 nonterm = 1.0 - float(terminated[t])
-                nv = float(values[t + 1]) if t + 1 < T else float(next_value)
+                nv = (float(next_values[t]) if next_values is not None
+                      else float(values[t + 1]) if t + 1 < T else float(next_value))
                 delta = float(rewards[t]) + 0.99 * nv * nonterm - float(values[t])
                 last = delta + 0.99 * 0.95 * nonterm * last
                 exp_adv[t] = last

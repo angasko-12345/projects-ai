@@ -440,6 +440,114 @@ class TestBoundarySemantics(unittest.TestCase):
 
 
 @unittest.skipUnless(_HAS_TORCH, "torch not installed")
+class TestMidRolloutTruncationBootstrap(unittest.TestCase):
+    """A time-limit cutoff inside a rollout must bootstrap from its own
+    final pre-reset observation, not from the fresh episode that follows it.
+    """
+
+    # t=1 truncates; the rollout then collects the new episode at t=2..3.
+    SCRIPT = [(0.0, False, False), (1.0, False, True),
+              (0.0, False, False), (0.0, False, False)]
+
+    def _trainer(self, script, rollout_length=4):
+        torch.manual_seed(0)
+        env = ScriptedEnv(script)
+        model = ActorCritic(num_actions=2, in_channels=1, feature_dim=16, hidden_size=8)
+        config = PPOConfig(rollout_length=rollout_length, minibatch_size=rollout_length,
+                           update_epochs=1, total_timesteps=rollout_length,
+                           checkpoint_every_updates=100)
+        return PPOTrainer(env, model, config)
+
+    @staticmethod
+    def _gae(rewards, values, terminated, next_values, gamma, lam):
+        """Hand-computed GAE for an explicit next-observation value per step."""
+        adv = torch.zeros_like(rewards)
+        last = 0.0
+        for t in reversed(range(len(rewards))):
+            nonterminal = 1.0 - float(terminated[t])
+            delta = (float(rewards[t]) + gamma * float(next_values[t]) * nonterminal
+                     - float(values[t]))
+            last = delta + gamma * lam * nonterminal * last
+            adv[t] = last
+        return adv, adv + values
+
+    @staticmethod
+    def _captured_gae(trainer, buf):
+        import training.ppo as ppo_mod
+
+        captured = {}
+        original = ppo_mod.compute_gae
+
+        def spy(rewards, values, terminated, next_value, gamma, lam, next_values=None):
+            adv, ret = original(rewards, values, terminated, next_value, gamma, lam,
+                                next_values)
+            captured["adv"], captured["ret"] = adv.clone(), ret.clone()
+            return adv, ret
+
+        ppo_mod.compute_gae = spy
+        try:
+            trainer.update(buf)
+        finally:
+            ppo_mod.compute_gae = original
+        return captured
+
+    def test_mid_rollout_truncation_uses_pre_reset_bootstrap(self):
+        trainer = self._trainer(self.SCRIPT)
+        calls, original = [], trainer.model.forward
+
+        def spy(obs, hidden):
+            logits, value, h_out = original(obs, hidden)
+            calls.append((obs.clone(), h_out.clone()))
+            return logits, value, h_out
+
+        trainer.model.forward = spy
+        buf, *_ = trainer.collect_rollout()
+        trainer.model.forward = original
+
+        self.assertEqual([bool(x) for x in buf["truncated"]], [False, True, False, False])
+        self.assertFalse(bool(buf["terminated"][1]))
+        with torch.no_grad():
+            pre_reset = original(buf["next_obs"][1].unsqueeze(0), calls[1][1])[1].squeeze(0)
+        post_reset = buf["values"][2]  # first value of the fresh episode
+        self.assertNotAlmostEqual(float(pre_reset), float(post_reset), places=4)
+        self.assertAlmostEqual(float(buf["next_values"][1]), float(pre_reset), places=5)
+
+        values, rewards = buf["values"].float(), buf["rewards"].float()
+        terminated = buf["terminated"].float()
+        gamma, lam = trainer.config.gamma, trainer.config.gae_lambda
+        correct = [values[1], pre_reset, values[3], buf["next_value"]]
+        biased = [values[1], post_reset, values[3], buf["next_value"]]
+        expected_adv, expected_ret = self._gae(rewards, values, terminated, correct, gamma, lam)
+        biased_adv, _ = self._gae(rewards, values, terminated, biased, gamma, lam)
+        self.assertFalse(torch.allclose(biased_adv, expected_adv, atol=1e-5))
+
+        captured = self._captured_gae(trainer, buf)
+        self.assertTrue(torch.allclose(captured["adv"], expected_adv, atol=1e-5))
+        self.assertTrue(torch.allclose(captured["ret"], expected_ret, atol=1e-5))
+
+    def test_terminated_boundary_still_bootstraps_zero(self):
+        trainer = self._trainer([(0.0, False, False), (1.0, True, False),
+                                 (0.0, False, False), (0.0, False, False)])
+        buf, *_ = trainer.collect_rollout()
+        self.assertTrue(bool(buf["terminated"][1]))
+        self.assertFalse(bool(buf["truncated"][1]))
+
+        values, rewards = buf["values"].float(), buf["rewards"].float()
+        terminated = buf["terminated"].float()
+        gamma, lam = trainer.config.gamma, trainer.config.gae_lambda
+        zero = [values[1], torch.zeros(()), values[3], buf["next_value"]]
+        perturbed = [values[1], values[2] + 100.0, values[3], buf["next_value"]]
+        adv_zero, _ = self._gae(rewards, values, terminated, zero, gamma, lam)
+        adv_perturbed, _ = self._gae(rewards, values, terminated, perturbed, gamma, lam)
+        # The terminal mask makes the following value irrelevant.
+        self.assertTrue(torch.allclose(adv_zero, adv_perturbed, atol=1e-6))
+        self.assertAlmostEqual(float(adv_zero[1]), float(rewards[1] - values[1]), places=5)
+
+        captured = self._captured_gae(trainer, buf)
+        self.assertTrue(torch.allclose(captured["adv"], adv_zero, atol=1e-5))
+
+
+@unittest.skipUnless(_HAS_TORCH, "torch not installed")
 class TestMetricsEdgeCases(unittest.TestCase):
     def test_pixel_change_single_frame_is_zero_not_nan(self):
         env = PreprocessingWrapper(ToyPongEnv(max_steps=64))
