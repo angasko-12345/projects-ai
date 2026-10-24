@@ -325,18 +325,6 @@ def _structured_agent_status(result: object) -> AgentResultStatus | None:
     not agent-status signals and are skipped, so a pure verdict line can
     never masquerade as agent success or failure. Never raises.
     """
-def _structured_agent_status(result: object) -> AgentResultStatus | None:
-    """Authoritative agent-level outcome for a runner result, if any.
-
-    Prefers the runner-attached ``structured_result`` envelope (what the
-    runner parsed from stdout); falls back to parsing ``stdout`` directly
-    so runner doubles that skip the envelope are still honoured. Returns
-    ``None`` when no structured payload is available -- the legacy /
-    plaintext path -- so callers keep the historical exit-code behaviour.
-    Review-verdict objects (``{"verdict": ...}`` without a ``status``) are
-    not agent-status signals and are skipped, so a pure verdict line can
-    never masquerade as agent success or failure. Never raises.
-    """
     try:
         stdout_candidates = _stdout_candidate_dicts(getattr(result, "stdout", None))
         candidates = [item for item in stdout_candidates if not _is_verdict_only(item)]
