@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-10-24T09:42:57+00:00",
-  "commit": "0035507d7b8f8c12073dcbddeb3432ba56aaae8f",
+  "generated_at": "2026-10-24T09:53:56+00:00",
+  "commit": "0c8ce0602ac2317e89eded5a260f437207fcfa58",
   "python": "3.14.7",
   "platform": "Windows 11 (AMD64)",
-  "measured_in": "a clean clone of 0035507d7b8f",
+  "measured_in": "a clean clone of 0c8ce0602ac2",
   "clean_checkout": true,
   "command_note": "Every command runs from its own product directory with the interpreter that ran this script. There is no repository-wide test command and these products share no dependencies.",
   "excluded": {
@@ -38,7 +38,7 @@
     {
       "product": "universal-game-agent",
       "directory": "universal-game-agent",
-      "commit": "525d39750840c6e08f50cd909ab132fe364eb686",
+      "commit": "0c8ce0602ac2317e89eded5a260f437207fcfa58",
       "command": [
         "C:\\Python314\\python.exe",
         "-m",
@@ -48,13 +48,13 @@
         "tests"
       ],
       "dirty_paths": [],
-      "total": 498,
-      "duration_seconds": 27.292,
+      "total": 501,
+      "duration_seconds": 25.273,
       "skipped": 1,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 498 tests in 27.292s",
+        "Ran 501 tests in 25.273s",
         "OK (skipped=1)"
       ],
       "result": "pass"
