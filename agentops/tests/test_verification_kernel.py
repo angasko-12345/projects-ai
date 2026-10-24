@@ -133,6 +133,55 @@ class ProfileConfigTests(unittest.TestCase):
         finally:
             os.unlink(path)
 
+    def test_bundled_config_exposes_runnable_standard_profile(self):
+        config = load_config()
+        self.assertEqual(config.default_verification_profile, "standard")
+        profile = config.verification_profiles["standard"]
+        self.assertEqual(profile.default_timeout_seconds, 900)
+        self.assertEqual(len(profile.checks), 2)
+        check, optional = profile.checks
+        self.assertEqual(check.command, ("python", "-m", "unittest", "discover", "-s", "tests"))
+        self.assertEqual(check.working_directory, "agentops")
+        self.assertTrue(check.required)
+        self.assertEqual(check.timeout_seconds, 900)
+        self.assertFalse(optional.required)
+        self.assertEqual(optional.timeout_seconds, 60)
+
+    def test_bundled_profile_runs_checks_in_operation_worktree_without_shell(self):
+        config = load_config()
+        calls = []
+
+        async def factory(*command, **kwargs):
+            calls.append((command, kwargs))
+            return FakeProcess(b"ok", b"", 0)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "agentops" / "tests").mkdir(parents=True)
+            state, kernel = _harness(
+                root,
+                config.verification_profiles["standard"],
+                process_factory=factory,
+            )
+            try:
+                report = asyncio.run(kernel.run_verification(None, None, root))
+            finally:
+                state.close()
+
+        self.assertEqual(report.overall_status, VerificationReportStatus.PASSED)
+        self.assertEqual(
+            [command for command, _ in calls],
+            [
+                ("python", "-m", "unittest", "discover", "-s", "tests"),
+                ("python", "-m", "agentops", "--help"),
+            ],
+        )
+        self.assertTrue(all("shell" not in kwargs for _, kwargs in calls))
+        self.assertTrue(all(kwargs["cwd"] == str(root / "agentops") for _, kwargs in calls))
+        self.assertEqual(config.verification_commands, (
+            ("python", "-m", "unittest", "discover", "-s", "tests"),
+        ))
+
     def test_invalid_profiles_rejected(self):
         cases = [
             {"profiles": {"dup": {"checks": [

@@ -192,7 +192,47 @@
                 "-s",
                 "tests"
             ]
-        ]
+        ],
+        "default_profile": "standard",
+        "profiles": {
+            "standard": {
+                "mode": "continue_on_failure",
+                "concurrency": 1,
+                "default_timeout_seconds": 900,
+                "checks": [
+                    {
+                        "name": "agentops-tests",
+                        "class": "tests",
+                        "command": [
+                            "python",
+                            "-m",
+                            "unittest",
+                            "discover",
+                            "-s",
+                            "tests"
+                        ],
+                        "working_directory": "agentops",
+                        "timeout_seconds": 900,
+                        "required": true,
+                        "policy": "sequential"
+                    },
+                    {
+                        "name": "agentops-cli-help",
+                        "class": "custom",
+                        "command": [
+                            "python",
+                            "-m",
+                            "agentops",
+                            "--help"
+                        ],
+                        "working_directory": "agentops",
+                        "timeout_seconds": 60,
+                        "required": false,
+                        "policy": "sequential"
+                    }
+                ]
+            }
+        }
     },
     "runtime": {
         "max_attempts": 2,

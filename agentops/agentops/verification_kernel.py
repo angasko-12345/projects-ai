@@ -300,7 +300,8 @@ class VerificationKernel:
                     spec for spec in group
                     if not _inapplicable_reason(
                         spec.command,
-                        Path(spec.working_directory) if spec.working_directory else base,
+                        (base / spec.working_directory).resolve()
+                        if spec.working_directory else base,
                     )
                 ]
                 if len(applicable) != len(group):
