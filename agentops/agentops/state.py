@@ -208,6 +208,7 @@ class StateStore:
         self._migrate_typed_events()
         self._migrate_artifacts()
         self._migrate_worktree_refs()
+        self._migrate_hot_path_indexes()
         self.connection.commit()
 
     def _migrate_agent_runs(self) -> None:
@@ -1949,6 +1950,25 @@ class StateStore:
             self.connection.execute(
                 "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
                 (6, utc_now()),
+            )
+
+    def _migrate_hot_path_indexes(self) -> None:
+        """Index the task/workflow predicates used by the polling paths."""
+        self.connection.executescript(
+            """
+            CREATE INDEX IF NOT EXISTS idx_tasks_workflow_created
+                ON tasks(workflow_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_workflows_status
+                ON workflows(status);
+            """
+        )
+        migrated = self.connection.execute(
+            "SELECT 1 FROM schema_migrations WHERE version = 8"
+        ).fetchone()
+        if migrated is None:
+            self.connection.execute(
+                "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+                (8, utc_now()),
             )
 
     def record_worktree_ref(self, ref: WorktreeRef) -> WorktreeRef:

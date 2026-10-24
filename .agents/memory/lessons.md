@@ -425,6 +425,7 @@
 - **Solution:** Forward the id to all three passes.
 - **Remember:** "This function is scoped" is a claim about every call it makes, not about its own signature. When a method takes an optional scope, grep each call inside it. A correct sibling implementation is evidence the pattern exists - and here it also meant the fix was two words, because the bug was purely at the call site.
 
+
 ### 2026-10-01 — OpenBLAS thread over-allocation kills torch imports (omp session)
 
 - **Symptom:** `import torch` exits code 45 with `OpenBLAS error: Memory allocation still failed after 10 retries`, even though the same interpreter imported torch fine an hour earlier. All unittest runs die silently (no test output at all).

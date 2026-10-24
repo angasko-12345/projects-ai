@@ -585,7 +585,7 @@ class StructuredEvidenceTests(unittest.TestCase):
                     row[0] for row in state.connection.execute(
                         "SELECT version FROM schema_migrations ORDER BY version").fetchall()
                 ]
-                self.assertEqual(versions, [1, 2, 3, 4, 5, 6, 7])
+                self.assertEqual(versions, [1, 2, 3, 4, 5, 6, 7, 8])
             finally:
                 state.close()
 
