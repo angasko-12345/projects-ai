@@ -1,9 +1,13 @@
 import type { QrDraft, WifiFields } from '../types';
 
 export const MAX_CONTENT_LENGTH = 1000;
-export const MAX_SSID_LENGTH = 32;
+// The WIFI: URI scheme bounds the SSID at 32 UTF-8 BYTES, not 32 JS
+// characters, so "café" (4 characters) counts as 5.
+export const MAX_SSID_BYTES = 32;
 export const MIN_WIFI_PASSWORD_LENGTH = 8;
 export const MAX_WIFI_PASSWORD_LENGTH = 63;
+
+const textEncoder = new TextEncoder();
 
 export type ContentState =
   | { status: 'empty' }
@@ -48,6 +52,8 @@ function urlHost(url: string): string {
   return afterScheme.split(/[/?#]/)[0] ?? '';
 }
 
+// WIFI: reserves backslash and the four separators; they are escaped with a
+// backslash in both the SSID and the password.
 export function escapeWifiValue(value: string): string {
   return value.replace(/([\\;,:"])/g, '\\$1');
 }
@@ -139,8 +145,8 @@ function validateWifi(wifi: WifiFields): ContentState {
   if (!ssid) {
     return { status: 'empty' };
   }
-  if (ssid.length > MAX_SSID_LENGTH) {
-    return { status: 'error', message: `Network name must be ${MAX_SSID_LENGTH} characters or fewer.` };
+  if (textEncoder.encode(ssid).length > MAX_SSID_BYTES) {
+    return { status: 'error', message: `Network name must be ${MAX_SSID_BYTES} bytes or fewer.` };
   }
   if (wifi.security !== 'none') {
     if (!wifi.password) {

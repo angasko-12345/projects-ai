@@ -1,7 +1,7 @@
 import { EMPTY_DRAFT, type QrDraft, type WifiFields } from '../types';
 import {
   MAX_CONTENT_LENGTH,
-  MAX_SSID_LENGTH,
+  MAX_SSID_BYTES,
   buildWifiPayload,
   contentLabel,
   isHexColor,
@@ -166,11 +166,53 @@ describe('validateDraft: wifi', () => {
 
   it('rejects an over-long network name', () => {
     const result = validateDraft(
-      draft({ type: 'wifi', wifi: wifi({ ssid: 'n'.repeat(MAX_SSID_LENGTH + 1) }) }),
+      draft({ type: 'wifi', wifi: wifi({ ssid: 'n'.repeat(MAX_SSID_BYTES + 1) }) }),
     );
     expect(result).toEqual({
       status: 'error',
-      message: `Network name must be ${MAX_SSID_LENGTH} characters or fewer.`,
+      message: `Network name must be ${MAX_SSID_BYTES} bytes or fewer.`,
+    });
+  });
+
+  it('accepts an ASCII network name of exactly 32 bytes', () => {
+    const ssid = 'n'.repeat(MAX_SSID_BYTES);
+    expect(ssid).toHaveLength(32);
+    expect(
+      validateDraft(draft({ type: 'wifi', wifi: wifi({ ssid, password: 'secret123' }) })),
+    ).toEqual({ status: 'ok', payload: `WIFI:T:WPA;S:${ssid};P:secret123;;` });
+  });
+
+  it('rejects 32 characters that exceed 32 UTF-8 bytes', () => {
+    const ssid = 'é'.repeat(32);
+    expect(ssid).toHaveLength(32);
+    expect(new TextEncoder().encode(ssid)).toHaveLength(64);
+    expect(
+      validateDraft(draft({ type: 'wifi', wifi: wifi({ ssid, password: 'secret123' }) })),
+    ).toEqual({
+      status: 'error',
+      message: `Network name must be ${MAX_SSID_BYTES} bytes or fewer.`,
+    });
+  });
+
+  it('accepts a multibyte network name of exactly 32 UTF-8 bytes', () => {
+    const twoByte = 'é'.repeat(16); // 16 characters, 32 bytes
+    const fourByte = '😀'.repeat(8); // 8 characters, 32 bytes
+    for (const ssid of [twoByte, fourByte]) {
+      expect(new TextEncoder().encode(ssid)).toHaveLength(32);
+      expect(
+        validateDraft(draft({ type: 'wifi', wifi: wifi({ ssid, password: 'secret123' }) })),
+      ).toEqual({ status: 'ok', payload: `WIFI:T:WPA;S:${ssid};P:secret123;;` });
+    }
+  });
+
+  it('rejects one multibyte character past 32 bytes', () => {
+    expect(
+      validateDraft(
+        draft({ type: 'wifi', wifi: wifi({ ssid: '😀'.repeat(9), password: 'secret123' }) }),
+      ),
+    ).toEqual({
+      status: 'error',
+      message: `Network name must be ${MAX_SSID_BYTES} bytes or fewer.`,
     });
   });
 
@@ -199,6 +241,24 @@ describe('validateDraft: wifi', () => {
       status: 'ok',
       payload: 'WIFI:T:WPA;S:My \\"Net\\;X\\\\Y;P:secret123;;',
     });
+  });
+
+  it('escapes every reserved character in the SSID', () => {
+    expect(buildWifiPayload(wifi({ ssid: 'a\\b;c,d:e"f', password: 'secret123' }))).toBe(
+      'WIFI:T:WPA;S:a\\\\b\\;c\\,d\\:e\\"f;P:secret123;;',
+    );
+  });
+
+  it('escapes the same characters in the password', () => {
+    expect(buildWifiPayload(wifi({ ssid: 'HomeNet', password: 'p\\a;s,s:w"d' }))).toBe(
+      'WIFI:T:WPA;S:HomeNet;P:p\\\\a\\;s\\,s\\:w\\"d;;',
+    );
+  });
+
+  it('leaves ordinary characters untouched', () => {
+    expect(buildWifiPayload(wifi({ ssid: 'Café Ω', password: 'secret123' }))).toBe(
+      'WIFI:T:WPA;S:Café Ω;P:secret123;;',
+    );
   });
 
   it('omits the password for open networks', () => {
