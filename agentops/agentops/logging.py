@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from .secret_patterns import redact_secrets
 from .tasks import utc_now
 
 
@@ -15,13 +16,13 @@ def _safe_name(value: str) -> str:
 
 
 def redact_text(value: str) -> str:
-    """Redact secret-looking tokens from text (public API; ``_redact`` is an alias)."""
-    value = re.sub(r"(?i)((?:api[_-]?key|token|secret|password)\s*[=:]\s*)([^\s'\"]+)", r"\1[REDACTED]", value)
-    value = re.sub(r"\b(?:sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9]{20,})\b", "[REDACTED]", value)
-    value = re.sub(r"\bAKIA[0-9A-Z]{16}\b", "[REDACTED]", value)
-    # Bearer tokens are long by construction; the length floor avoids matching
-    # ordinary English ("bearer of bad news" must survive redaction).
-    return re.sub(r"(?i)\bBearer\s+[A-Za-z0-9_\-.~+/]{20,}={0,2}", "Bearer [REDACTED]", value)
+    """Redact secret-looking tokens from text (public API; ``_redact`` is an alias).
+
+    Uses the same pattern table as ``security.scan_text()`` so the redactor can
+    never be broader or narrower than the detector. The bearer length floor and
+    the assignment shapes both keep ordinary prose intact.
+    """
+    return redact_secrets(value)
 
 
 def _redact(value: str) -> str:

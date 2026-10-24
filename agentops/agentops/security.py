@@ -14,28 +14,15 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from .secret_patterns import SECRET_PATTERNS
 
-#: (pattern name, compiled regex). Every regex is deliberately narrow: a
-#: false positive blocks a merge, so generic words like "password" alone do
-#: not match -- only assignments and well-known token prefixes do.
-_SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("aws-access-key-id", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
-    ("aws-secret-access-key", re.compile(
-        r"(?i)\baws(.{0,20})?secret(.{0,20})?['\"]?\s*[:=]\s*['\"]?[A-Za-z0-9/+=]{32,}",
-    )),
-    ("github-token", re.compile(r"\b(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}\b")),
-    ("openai-api-key", re.compile(r"\bsk-[A-Za-z0-9]{16,}\b")),
-    ("slack-token", re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{8,}\b")),
-    ("private-key-header", re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----")),
-    ("credential-assignment", re.compile(
-        r"(?i)\b(password|passwd|pwd|api[_-]?key|secret|client[_-]?secret|"
-        r"auth[_-]?token|access[_-]?token|private[_-]?key)\b\s*[:=]\s*['\"]?"
-        r"\S{4,}",
-    )),
-    ("bearer-token", re.compile(r"(?i)\bbearer\s+[A-Za-z0-9\-._~+/]{12,}={0,2}\b")),
-    ("connection-string-secret", re.compile(
-        r"(?i)\b(password|pwd)=[^;\s]{4,}",
-    )),
+
+#: (pattern name, compiled regex), drawn from the shared table that also
+#: drives redaction. Every regex is deliberately narrow: a false positive
+#: blocks a merge, so generic words like "password" alone do not match --
+#: only assignments and well-known token prefixes do.
+_SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
+    (spec.name, spec.regex) for spec in SECRET_PATTERNS
 )
 
 #: Long opaque blobs carry enough entropy to be tokens even without a known
