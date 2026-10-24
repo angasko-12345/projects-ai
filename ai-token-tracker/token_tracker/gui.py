@@ -6,7 +6,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from PySide6.QtCore import QRectF, Qt, QSettings, QTimer
+from PySide6.QtCore import QRectF, Qt, QSettings, QThread, QTimer, Signal
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (
     QApplication,
@@ -282,6 +282,39 @@ def _number_item(value: int, align_right: bool = False) -> QTableWidgetItem:
     return item
 
 
+def run_sync(db_path: str) -> dict[str, dict]:
+    """Worker-thread body: sync through a connection this thread owns.
+
+    SQLite connections are thread-bound, so the GUI's own connection is never
+    used here. Collectors are read-only; the writes land in the same database
+    through its own connection.
+    """
+    worker_conn = db.connect(db_path)
+    try:
+        return collectors.sync_all(worker_conn)
+    finally:
+        worker_conn.close()
+
+
+class _SyncWorker(QThread):
+    """Runs one collector sync off the GUI thread and emits a single outcome."""
+
+    succeeded = Signal(object)  # results dict from collectors.sync_all
+    failed = Signal(str)
+
+    def __init__(self, runner) -> None:
+        super().__init__()
+        self._runner = runner
+
+    def run(self) -> None:
+        try:
+            results = self._runner()
+        except Exception as exc:  # a locked/moved source must not kill the app
+            self.failed.emit(str(exc))
+            return
+        self.succeeded.emit(results)
+
+
 class MainWindow(QMainWindow):
     def __init__(self, conn, *, dark: bool = False) -> None:
         super().__init__()
@@ -289,6 +322,8 @@ class MainWindow(QMainWindow):
         self._events = []
         self._dark = dark
         self._statuses: list[dict] = []
+        self._sync_thread: _SyncWorker | None = None
+        self._sync_ui_locked = False
         self.setWindowTitle("AI Token Tracker")
         self.resize(1180, 820)
 
@@ -715,20 +750,46 @@ class MainWindow(QMainWindow):
         )
 
     def sync_sources(self) -> None:
-        """Run every collector (read-only) and refresh the dashboard."""
+        """Start a collector sync in the background and refresh when it lands.
+
+        The window stays responsive: the worker never touches widgets, and
+        both outcomes come back here as queued signals on the GUI thread.
+        """
+        if self._sync_thread is not None and self._sync_thread.isRunning():
+            return  # a second click while syncing is ignored, not queued
+        self._begin_sync_ui()
+        db_path = db_path_label(self.conn)
+        thread = _SyncWorker(lambda: run_sync(db_path))
+        thread.succeeded.connect(self._sync_finished)
+        thread.failed.connect(self._sync_failed)
+        thread.finished.connect(self._sync_worker_done)
+        self._sync_thread = thread
+        thread.start()
+
+    def _begin_sync_ui(self) -> None:
+        self._sync_ui_locked = True
         self.import_button.setEnabled(False)
         self._set_sync("Syncing sources...")
-        QApplication.processEvents()  # show the busy state before the blocking read
         QApplication.setOverrideCursor(Qt.WaitCursor)
-        try:
-            results = collectors.sync_all(self.conn)
-        except Exception as exc:  # a locked/moved source must not kill the app
-            self._set_sync(f"Sync failed: {exc}", error=True)
-            self.status.showMessage(f"Sync failed: {exc}", 10000)
+
+    def _end_sync_ui(self) -> None:
+        if not self._sync_ui_locked:
             return
-        finally:
-            QApplication.restoreOverrideCursor()
-            self.import_button.setEnabled(True)
+        self._sync_ui_locked = False
+        QApplication.restoreOverrideCursor()
+        self.import_button.setEnabled(True)
+
+    def _sync_worker_done(self) -> None:
+        # Safety net for a worker that died without emitting an outcome.
+        self._end_sync_ui()
+
+    def _sync_failed(self, message: str) -> None:
+        self._end_sync_ui()
+        self._set_sync(f"Sync failed: {message}", error=True)
+        self.status.showMessage(f"Sync failed: {message}", 10000)
+
+    def _sync_finished(self, results: dict[str, dict]) -> None:
+        self._end_sync_ui()
         ok = [name for name, result in results.items() if result["status"] == "ok"]
         failed = [
             (name, result.get("error", ""))
@@ -746,6 +807,13 @@ class MainWindow(QMainWindow):
         detail = summary + (f" · failed: {', '.join(name for name, _ in failed)}" if failed else "")
         self.status.showMessage(detail, 12000)
         self.refresh()
+
+    def closeEvent(self, event) -> None:
+        """Let an in-flight sync finish before the window goes away."""
+        thread = self._sync_thread
+        if thread is not None and thread.isRunning():
+            thread.wait(5000)
+        super().closeEvent(event)
 
     def import_file(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "Import events file", "", "Data files (*.csv *.json)")
