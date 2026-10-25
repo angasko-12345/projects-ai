@@ -114,15 +114,19 @@ def _migrate(conn: sqlite3.Connection) -> None:
         "SELECT COUNT(*) FROM events WHERE dedup_key IS NULL OR tool IS NULL"
     ).fetchone()[0]:
         _backfill_identity(conn)
-    if conn.execute("PRAGMA user_version").fetchone()[0] < 1:
+    version = conn.execute("PRAGMA user_version").fetchone()[0]
+    if version < 1:
         _rekey_v1(conn)
+    if version < 2:
+        _rekey_v2(conn)
+    if version < SCHEMA_VERSION:
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     conn.commit()
 
 
 # PRAGMA user_version of a database whose rows match the current collectors'
 # event ids. 0 is every database created before the version was tracked.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def _rekey_v1(conn: sqlite3.Connection) -> None:
@@ -186,6 +190,45 @@ def _rekey_v1(conn: sqlite3.Connection) -> None:
             )
     if conn.execute("SELECT 1 FROM events WHERE source = 'copilot' LIMIT 1").fetchone():
         conn.execute("INSERT OR IGNORE INTO pending_resync (source) VALUES ('copilot')")
+
+
+def _rekey_v2(conn: sqlite3.Connection) -> None:
+    """Content-address Claude rows that were stored with a positional request id.
+
+    Claude records without a ``requestId`` used to be stored with
+    ``request_id = '__no_rid_<n>'``, where n is the record's position among
+    all request ids seen in the scan. Any earlier record or file (and, for a
+    pre-ad73f30 database, the <synthetic> rows that are no longer counted)
+    shifts n, so a resync stored the same record again. The collector now
+    stores such records with no request id; this re-keys existing rows the
+    same way. Idempotent; a row whose new id already exists is dropped.
+    """
+    for stored in conn.execute(
+        "SELECT * FROM events WHERE source = 'claude' AND substr(request_id, 1, 9) = '__no_rid_'"
+    ).fetchall():
+        row = dict(stored)
+        event = normalize_event(
+            timestamp=row["timestamp"],
+            provider=row["provider"],
+            source=row["source"],
+            input_tokens=row["input_tokens"],
+            output_tokens=row["output_tokens"],
+            cache_read_tokens=row["cache_read_tokens"],
+            cache_write_tokens=row["cache_write_tokens"],
+            reasoning_tokens=row["reasoning_tokens"],
+            cost=row["cost"],
+            agent=row["agent"],
+            model=row["model"],
+            project=row["project"],
+            request_id=None,
+        )
+        if conn.execute("SELECT 1 FROM events WHERE id = ?", (event.id,)).fetchone():
+            conn.execute("DELETE FROM events WHERE id = ?", (row["id"],))
+        else:
+            conn.execute(
+                "UPDATE events SET id = ?, request_id = NULL, dedup_key = ? WHERE id = ?",
+                (event.id, event.dedup_key, row["id"]),
+            )
 
 
 def _supersede_stale(conn: sqlite3.Connection, events: list[UsageEvent]) -> int:

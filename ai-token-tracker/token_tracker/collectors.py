@@ -174,6 +174,8 @@ def _parse_claude_model(model_str: str | None) -> tuple[str, str]:
 
 
 SYNTHETIC_MODEL = "<synthetic>"
+# by_rid key for a record that carries no requestId; never stored.
+NO_RID_PREFIX = "__no_rid_"
 
 
 def collect_claude(path: Path) -> list[UsageEvent]:
@@ -215,7 +217,7 @@ def collect_claude(path: Path) -> list[UsageEvent]:
             rid = obj.get("requestId")
             if not isinstance(rid, str) or not rid:
                 # No request id (synthetic): treat as separate event per record
-                rid = f"__no_rid_{len(by_rid)}"
+                rid = f"{NO_RID_PREFIX}{len(by_rid)}"
             by_rid.setdefault(rid, []).append(obj)
 
     for rid, records in by_rid.items():
@@ -264,7 +266,11 @@ def collect_claude(path: Path) -> list[UsageEvent]:
                     cost=cost if isinstance(cost, (int, float)) else None,
                     exact=True,
                     source="claude",
-                    request_id=rid,
+                    # A record without a requestId is keyed in by_rid by its
+                    # position, which shifts whenever an earlier record or
+                    # file appears (or, after ad73f30, a <synthetic> one is
+                    # skipped). Content-address it instead so its id is stable.
+                    request_id=None if rid.startswith(NO_RID_PREFIX) else rid,
                     raw_metadata={
                         "entrypoint": canonical.get("entrypoint"),
                         "version": canonical.get("version"),

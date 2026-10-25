@@ -1368,7 +1368,7 @@ class UpgradeRekeyTest(unittest.TestCase):
         self.assertEqual(self.rows(conn), self.fresh_rows())
         by_source = dict(conn.execute("SELECT source, COUNT(*) FROM events GROUP BY source"))
         self.assertEqual(by_source, {"claude": 2, "hermes": 4, "copilot": 2, "kilo": 2})
-        self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 1)
+        self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], db.SCHEMA_VERSION)
         self.assertEqual(conn.execute("SELECT COUNT(*) FROM pending_resync").fetchone()[0], 0)
         # A second sync changes nothing.
         before = self.rows(conn)
@@ -1399,7 +1399,7 @@ class UpgradeRekeyTest(unittest.TestCase):
         conn.close()
         conn = db.connect(self.root / "old.db")
         self.addCleanup(conn.close)
-        self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 1)
+        self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], db.SCHEMA_VERSION)
 
     def test_database_already_double_counted_by_a_resync_is_repaired(self):
         current = self.current()
@@ -1411,6 +1411,66 @@ class UpgradeRekeyTest(unittest.TestCase):
         self.addCleanup(conn.close)
         self.resync(conn)
         self.assertEqual(self.rows(conn), self.fresh_rows())
+
+
+class ClaudeNoRequestIdTest(unittest.TestCase):
+    """A Claude record without a requestId must keep one id across scans.
+
+    It used to be stored as request_id '__no_rid_<n>', its position among the
+    scan's request ids, so a <synthetic> record that pre-ad73f30 code counted
+    (or any new earlier record or file) shifted n and a resync stored the
+    same record a second time.
+    """
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        self.project = self.root / "claude" / "p1"
+        self.project.mkdir(parents=True)
+        self.synthetic = {"type": "assistant", "timestamp": "2026-10-20T10:00:00.000Z", "cwd": "/w",
+                          "message": {"model": "<synthetic>", "usage": {"input_tokens": 0, "output_tokens": 0}}}
+        self.no_rid = {"type": "assistant", "timestamp": "2026-10-20T10:01:00.000Z", "cwd": "/w",
+                       "message": {"model": "claude-sonnet-4-5", "usage": {"input_tokens": 300, "output_tokens": 30}}}
+
+    def write(self, name, records):
+        (self.project / name).write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
+
+    def stored(self, conn):
+        return conn.execute(
+            "SELECT COUNT(*), SUM(total_tokens) FROM events WHERE source = 'claude'"
+        ).fetchone()
+
+    def test_id_does_not_depend_on_earlier_records(self):
+        self.write("b.jsonl", [self.no_rid])
+        first = collectors.collect_claude(self.root / "claude")
+        self.write("a.jsonl", [{**self.no_rid, "requestId": "req_new", "timestamp": "2026-10-20T09:00:00.000Z"}])
+        second = collectors.collect_claude(self.root / "claude")
+        self.assertIn(first[0].id, {event.id for event in second})
+        self.assertIsNone(first[0].request_id)
+
+    def test_upgraded_row_with_positional_request_id_is_not_double_counted(self):
+        # Pre-ad73f30 code counted the <synthetic> record as by_rid entry 0,
+        # so the real record was stored as __no_rid_1.
+        self.write("s.jsonl", [self.synthetic, self.no_rid])
+        legacy = normalize_event(
+            timestamp=self.no_rid["timestamp"], provider="anthropic", source="claude",
+            tool="Claude Code", model="claude-sonnet-4-5", project="/w", input_tokens=300,
+            output_tokens=30, exact=True, request_id="__no_rid_1",
+        )
+        for version in (0, 1):
+            with self.subTest(user_version=version):
+                path = self.root / f"old{version}.db"
+                conn = db.connect(path)
+                db.insert_events(conn, [legacy])
+                conn.execute(f"PRAGMA user_version = {version}")
+                conn.commit()
+                conn.close()
+                conn = db.connect(path)
+                self.addCleanup(conn.close)
+                db.insert_events(conn, collectors.collect_claude(self.root / "claude"))
+                self.assertEqual(tuple(self.stored(conn)), (1, 330))
+                self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], db.SCHEMA_VERSION)
 
 
 # ----------------------------------------------------- legacy imports
