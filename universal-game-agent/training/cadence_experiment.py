@@ -295,8 +295,24 @@ def run_probe(make_env, episodes: int, seed: int) -> dict:
 
 
 # -- PPO matrix ------------------------------------------------------------
+def _reject_unsupported_curiosity(cfg: dict) -> None:
+    """The matrix trains plain PPO only: refuse a config that asks for curiosity.
+
+    Silently ignoring ``curiosity.enabled: true`` would label plain-PPO
+    results as curiosity results.
+    """
+    block = cfg.get("curiosity")
+    enabled = block if isinstance(block, bool) else bool((block or {}).get("enabled", False))
+    if enabled:
+        raise ValueError(
+            "curiosity.enabled is true, but the synthetic cadence matrix does not "
+            "support curiosity (run_cell trains plain PPO). Set curiosity.enabled: "
+            "false or remove the block.")
+
+
 def run_cell(cell: dict, cfg: dict, base_seed: int) -> dict:
     """Probe + PPO train + before/after eval for one cadence cell."""
+    _reject_unsupported_curiosity(cfg)
     import torch
 
     from agent.model import ActorCritic
@@ -387,6 +403,7 @@ def run_matrix(config_path) -> dict:
     cells = cfg.get("cells") or []
     if not cells:
         raise ValueError("config needs a non-empty 'cells' list")
+    _reject_unsupported_curiosity(cfg)  # before any cell spends time
     seed = int((cfg.get("ppo", {}) or {}).get("seed", 0))
     results = []
     for cell in cells:
