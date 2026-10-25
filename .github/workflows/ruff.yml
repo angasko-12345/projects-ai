@@ -2,6 +2,12 @@
 name: ruff-check
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '**/*.py'
+      - 'pyproject.toml'
+      - '.github/workflows/ruff.yml'
   pull_request:
     paths:
       - '**/*.py'
@@ -23,6 +29,8 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install ruff
-        run: pip install ruff
+        # Pinned: an unpinned ruff picks up new rules on release and turns CI
+        # red with no change in this repository.
+        run: pip install ruff==0.17.2
       - name: Run ruff check
         run: ruff check .
