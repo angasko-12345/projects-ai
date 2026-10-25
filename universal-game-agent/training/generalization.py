@@ -212,37 +212,53 @@ def plan_runs(seeds) -> list[tuple[str, int, str | None]]:
 # -- GIFs --------------------------------------------------------------------
 def record_gif(path: Path, game: str, seed: int, cfg: dict, model=None, policy: str = "random",
                max_frames: int = 240, scale: int = 3) -> dict:
-    """Play one episode (model greedy, or a baseline policy) and save an upscaled GIF."""
+    """Play one episode (model greedy, or a uniform-random policy) and save an upscaled GIF.
+
+    The policy acts through the same ``PreprocessingWrapper`` (frame skip,
+    stack, resize) as in training; every raw frame is recorded.
+    """
+    import gymnasium as gym
+    import torch
     from PIL import Image
 
-    from environment.preprocessing import FrameStack
+    from environment.preprocessing import PreprocessingWrapper
 
+    frames: list = []
+
+    class _Record(gym.Wrapper):
+        def reset(self, **kw):
+            obs, info = self.env.reset(**kw)
+            frames.append(obs)
+            return obs, info
+
+        def step(self, action):
+            out = self.env.step(action)
+            frames.append(out[0])
+            return out
+
+    e = cfg["env"]
+    env = PreprocessingWrapper(_Record(make_game(game, int(e["max_steps"]))), size=int(e["obs_size"]),
+                               num_stack=int(e["num_stack"]), skip=int(e.get("skip", 1)))
     rng = np.random.default_rng(seed)
-    env = make_game(game, int(cfg["env"]["max_steps"]))
-    frame, _ = env.reset(seed=eval_seeds(seed, 1)[0])
-    frames, total = [frame], 0.0
-    stack = FrameStack(int(cfg["env"]["num_stack"]), int(cfg["env"]["obs_size"]))
-    obs = stack.reset(frame)
+    obs, _ = env.reset(seed=eval_seeds(seed, 1)[0])
     hidden = model.initial_state(1) if model is not None else None
-    import torch
-
-    for _ in range(max_frames - 1):
+    total = 0.0
+    while len(frames) < max_frames:
         if model is not None:
             with torch.no_grad():
                 logits, _, hidden = model(torch.from_numpy(obs).unsqueeze(0), hidden)
             a = int(logits.argmax(-1).item())
         else:
             a = int(rng.integers(0, 3))
-        frame, r, term, trunc, _ = env.step(a)
-        obs = stack.push(frame)
-        frames.append(frame)
+        obs, r, term, trunc, _ = env.step(a)
         total += r
         if term or trunc:
             break
+    frames = frames[:max_frames]
     imgs = [Image.fromarray(f).resize((f.shape[1] * scale, f.shape[0] * scale), Image.NEAREST)
             for f in frames]
     path.parent.mkdir(parents=True, exist_ok=True)
-    imgs[0].save(path, save_all=True, append_images=imgs[1:], duration=50, loop=0, optimize=True)
+    imgs[0].save(path, save_all=True, append_images=imgs[1:], duration=40, loop=0, optimize=True)
     return {"path": str(path), "frames": len(frames), "reward": total, "bytes": path.stat().st_size}
 
 

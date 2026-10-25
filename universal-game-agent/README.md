@@ -12,6 +12,10 @@ goal is **not** implemented; see Limitations.
 - **Output:** abstract discrete actions (toy game) or OS input events (Windows interface).
 - Learning code **MUST NOT** depend on game-specific internal state
   (no RAM, no APIs, no score hooks on the learning path).
+- Reward and `terminated`/`truncated` come from the environment as training
+  feedback (toy Pong has always worked this way); they are never model input.
+  `tests/test_pixel_only.py` asserts the policy input is a pure function of
+  rendered frames and that `info` / hidden state never reach PPO.
 
 ## Current pipeline (implemented)
 
@@ -21,7 +25,7 @@ toy pixels -> grayscale/84x84/normalize -> frame stack (4,84,84)
   -> action -> toy game -> reward -> PPO update
 ```
 
-## Training environment: Toy Pong (the only integrated env)
+## Training environment: Toy Pong (the original integrated env)
 
 - `environment/toy_pong.py`: Pong-like paddle game, Gymnasium API
   (`reset(seed)` / `step` / `render` / `close`).
@@ -207,6 +211,29 @@ episodes, 500-step cap) by `python -m training.toy_oracle`, which writes
   learning) survives all 20 episodes to the 500-step cap with 12 hits each.
 - These numbers say nothing about arbitrary games, external-game
   training, or cross-game generalization.
+
+## Cross-game generalization pilot (`environment/arcade.py`, `training/generalization.py`)
+
+Five pure-numpy pixel minigames share toy Pong's contract (`Discrete(3)`
+NOOP/LEFT/RIGHT, 64x48 RGB, `info == {}`, terminated vs truncated) and draw a
+new palette, object sizes and speeds every episode: `pong` (toy Pong rules),
+`catch`, `breakout` (training set), `volley` (held out: gravity arcs, new
+shapes) and `dodge` (held out, opposite objective). One game-agnostic PPO
+agent trains on all three training games at once through a heterogeneous
+`SyncVectorEnv`; it never sees a game id. Baselines: random, constant,
+sticky random, per-game specialist PPO, and privileged per-game oracles
+(upper bounds only). Plan, budgets, numbers, failed runs and rerun commands:
+`experiments/generalization/PLAN.md` and `RESULTS.md`. It is a small
+CPU-budget pilot, not evidence of general-purpose gameplay. Pilot outcome
+(3 seeds, 40k/120k/30k-step budgets): the multi-game agent beats random on
+all three training games; zero-shot on `volley` it beats random weakly
+(-0.13 vs -0.72, carried by one seed); fine-tuning it on `volley` beats
+training from scratch at every budget point on 3/3 seeds (+0.42 vs -0.70 at
+30k steps); it transfers negatively to `dodge`.
+
+```bat
+python -m training.generalization all --artifacts D:\tmp\uga-generalization
+```
 
 ## Limitations (explicitly not implemented)
 

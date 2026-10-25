@@ -1,0 +1,18 @@
+{
+  "note": "Failed / diagnostic runs recorded honestly. Greedy eval, 20 episodes, eval seeds 10000+i (seed 0). Game 'catch' unless noted. Random policy on catch at skip 1 = -0.73 (3 seeds). Checkpoints not committed.",
+  "pilot_skip1": {
+    "config": "experiments/generalization/config.yaml as first committed (3289eac): env.skip 1, frame 48, repo-default PPO",
+    "runs": {
+      "multi_multi_s0 (119,808 steps, 213 sps)": {"pong": -0.65, "catch": -0.9, "breakout": 0.2, "volley": -0.9, "dodge": 0.75},
+      "specialist_catch_s0 (39,936 steps, 203 sps)": {"catch": -0.75},
+      "scratch_volley_s0 curve (steps, volley)": [[0, -0.6], [7680, -0.8], [15360, -0.8], [23040, -0.8], [30720, -0.55]],
+      "finetune_volley_s0 curve (steps, volley)": [[0, -0.9], [7680, -0.25], [15360, -0.6], [23040, -0.75], [30720, -0.4]]
+    },
+    "multi_multi_s1": "killed at ~20k steps when the config was switched to skip 4 (a sandbox restart had already restarted it once)",
+    "verdict": "no arm beat random by more than episode noise; training rolling reward stayed flat (catch -0.65..-0.83). Abandoned."
+  },
+  "diag_lr_1e-3_skip1": {"steps": 19968, "catch_eval": -0.85, "train_rolling_mean": -0.65, "sps": 187, "verdict": "no learning"},
+  "diag_long_skip1": {"curve_steps_catch": [[0, -0.75], [29952, -0.75], [59904, -0.75]], "verdict": "no learning by 60k steps; run (target 150k) was cut by a sandbox restart, resumed, then stopped to free CPU"},
+  "diag_skip4": {"curve_steps_catch": [[0, -0.75], [9984, -0.9], [19968, -0.6], [29952, -0.3], [39936, -0.15]], "train_rolling_mean_end": -0.24, "sps": 156, "verdict": "learning starts; adopted env.skip 4 for every arm"},
+  "diag_skip2": "started, stopped before its first eval point to free CPU for the main runs; not measured"
+}

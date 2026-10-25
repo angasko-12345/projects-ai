@@ -234,6 +234,29 @@ Observability shipped with this work: external results artifacts carry an
 `env.timing.reset_settle_poll_s` (default 0.05, behaviour unchanged) exposes the
 previously hard-coded reset-settle poll stride.
 
+## Cross-game generalization (arcade pilot, 2026-10-25)
+
+Pure numpy, no window, no SendInput. Read `experiments/generalization/PLAN.md` and
+`RESULTS.md` before changing anything here.
+
+- `environment/arcade.py` holds the common game contract (`ACTION_MEANINGS`, 64x48 uint8
+  frames, `info == {}`, terminated vs truncated, `check_game_env`), the `GAMES` registry and
+  `make_game_factory`. `pong` is a `ToyPongEnv` subclass; `ToyPongEnv` itself is unchanged
+  and must stay so (legacy toy runs and `tests/test_arcade.py::test_toy_pong_default_unchanged`).
+- Split is fixed: `TRAIN_GAMES = (pong, catch, breakout)`, held-out `volley`, far held-out
+  `dodge`. Never add a held-out game to the multi arm's slots (`tests/test_pixel_only.py`).
+- `training/arcade_baselines.py` oracles read env internals: upper bounds only, never on a
+  learning path (same rule as `training/toy_oracle.py`).
+- `SyncVectorEnv(..., check_spaces=True)` is the opt-in guard for heterogeneous slots; the
+  default stays unverified so `num_envs=1` / homogeneous callers are byte-identical.
+- Runner: `python -m training.generalization <run|all|baselines|gif|aggregate> --artifacts <dir>`.
+  `<dir>` must be outside git or under the gitignored `checkpoints/`; checkpoints are never
+  committed. `--scale N` multiplies every budget. Runs skip when `result.json` exists and
+  resume from the last chunk checkpoint (resume restarts episodes, so a resumed run is not
+  bit-identical to an uninterrupted one; `result.json` records `resumed_from`).
+- `env.skip: 4` in `experiments/generalization/config.yaml` is a measured decision: skip 1
+  did not learn within the pilot budget (`experiments/generalization/diagnostics.json`).
+
 ## Checkpoints
 
 - `checkpoints/` holds trained PPO weights and is **gitignored on purpose**. Never commit a
