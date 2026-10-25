@@ -341,6 +341,20 @@ class ConsistencyAndCacheTests(unittest.TestCase):
         self.assertIsNot(cached, refreshed)
         self.assertEqual(cached, refreshed)
 
+    def test_inspector_does_not_hold_its_lock_during_the_walk(self):
+        inspector = RepositoryInspector()
+        lock_states: list[bool] = []
+        real_inspect = inspect_repository
+
+        def spy_inspect(source, **kwargs):
+            lock_states.append(inspector._lock.locked())
+            return real_inspect(source, **kwargs)
+
+        with patch("agentops.repo_inspection.inspect_repository", spy_inspect):
+            first = inspector.characteristics(self.root)
+        self.assertEqual(lock_states, [False])
+        self.assertIs(inspector.characteristics(self.root), first)
+
     def test_inspector_never_raises_on_unresolvable_path(self):
         inspector = RepositoryInspector()
         with patch(
@@ -367,3 +381,68 @@ class ConsistencyAndCacheTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ManifestSymlinkSafetyTests(unittest.TestCase):
+    """Root manifests are read only when they are regular, non-symlinked files."""
+
+    def setUp(self):
+        self._tmp = TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.base = Path(self._tmp.name)
+        self.root = self.base / "repo"
+        self.root.mkdir()
+
+    def _symlink_or_skip(self, target: Path, link: Path) -> None:
+        try:
+            os.symlink(target, link)
+        except (OSError, NotImplementedError) as error:
+            self.skipTest(f"symlinks unavailable: {error}")
+
+    def _run_with_deadline(self, call, fifo: Path):
+        import threading
+
+        results: list[object] = []
+        worker = threading.Thread(target=lambda: results.append(call()), daemon=True)
+        worker.start()
+        worker.join(timeout=5)
+        if worker.is_alive():
+            # Unblock the hung reader so the daemon thread can finish.
+            with open(fifo, "wb"):
+                pass
+            self.fail("inspection blocked on a FIFO-backed manifest")
+        return results[0]
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "os.mkfifo unavailable (e.g. Windows)")
+    def test_manifest_symlink_to_fifo_returns_promptly(self):
+        fifo = self.base / "pipe"
+        os.mkfifo(fifo)
+        self._symlink_or_skip(fifo, self.root / "package.json")
+        result = self._run_with_deadline(
+            lambda: RepositoryInspector().characteristics(self.root), fifo,
+        )
+        self.assertEqual(result.manifests, ("package.json",))
+        self.assertIsNone(result.test_runner)
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "os.mkfifo unavailable (e.g. Windows)")
+    def test_plain_fifo_manifest_returns_promptly(self):
+        fifo = self.root / "pyproject.toml"
+        os.mkfifo(fifo)
+        result = self._run_with_deadline(lambda: inspect_repository(self.root), fifo)
+        self.assertIsNone(result.test_runner)
+
+    def test_manifest_symlink_to_outside_regular_file_is_not_read(self):
+        outside = self.base / "outside.json"
+        outside.write_text('{"scripts": {"test": "jest"}}\n', encoding="utf-8")
+        self._symlink_or_skip(outside, self.root / "package.json")
+        with patch("agentops.repo_inspection.open", create=True) as spy_open:
+            spy_open.side_effect = builtins.open
+            result = inspect_repository(self.root)
+        self.assertEqual(spy_open.call_count, 0)
+        self.assertIsNone(result.test_runner)
+
+    def test_regular_manifest_is_still_read(self):
+        (self.root / "package.json").write_text(
+            '{"scripts": {"test": "jest"}}\n', encoding="utf-8",
+        )
+        self.assertEqual(inspect_repository(self.root).test_runner, "npm test")

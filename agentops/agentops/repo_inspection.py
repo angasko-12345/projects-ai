@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import threading
 import tomllib
 from collections import OrderedDict, deque
@@ -109,8 +110,29 @@ def _is_skipped_directory(name: str) -> bool:
     return name.startswith(".") or name in _SKIP_DIRECTORIES
 
 
+# O_NOFOLLOW/O_NONBLOCK do not exist on Windows; there the lstat check below
+# is the guard (Windows has no FIFOs on ordinary filesystems).
+_SAFE_OPEN_FLAGS = getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+
+
+def _safe_opener(path: str, flags: int) -> int:
+    return os.open(path, flags | _SAFE_OPEN_FLAGS)
+
+
 def _read_capped(root: str, name: str, max_bytes: int) -> str:
-    with open(os.path.join(root, name), "rb") as handle:
+    """Read a root manifest only when it is a regular, non-symlinked file.
+
+    A symlink (possibly pointing outside the repository) or a FIFO/device
+    named like a manifest could otherwise be followed or block forever, so
+    both are refused with ``OSError`` and callers treat that as no signal.
+    The post-open ``fstat`` closes the lstat/open race on POSIX.
+    """
+    path = os.path.join(root, name)
+    if not stat.S_ISREG(os.lstat(path).st_mode):
+        raise OSError(f"not a regular file: {name}")
+    with open(path, "rb", opener=_safe_opener) as handle:
+        if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+            raise OSError(f"not a regular file: {name}")
         return handle.read(max_bytes).decode("utf-8")
 
 
@@ -366,12 +388,21 @@ class RepositoryInspector:
             if cached is not None:
                 self._cache.move_to_end(key)
                 return cached
-            value = inspect_repository(
-                source,
-                max_files=self._max_files,
-                max_depth=self._max_depth,
-                max_manifest_bytes=self._max_manifest_bytes,
-            )
+        # The filesystem walk runs outside the lock so one slow tree cannot
+        # stall every other caller.  Two concurrent misses on the same key may
+        # both scan; the first stored value wins so callers still share one
+        # object.
+        value = inspect_repository(
+            source,
+            max_files=self._max_files,
+            max_depth=self._max_depth,
+            max_manifest_bytes=self._max_manifest_bytes,
+        )
+        with self._lock:
+            cached = self._cache.get(key)
+            if cached is not None:
+                self._cache.move_to_end(key)
+                return cached
             self._cache[key] = value
             while len(self._cache) > self._cache_size:
                 self._cache.popitem(last=False)

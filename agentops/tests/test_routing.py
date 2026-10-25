@@ -453,6 +453,30 @@ class WorkflowRoutingTests(unittest.TestCase):
         self.assertEqual(payload["selected_agent"], "first")
         self.assertIn("reasons", payload)
 
+    @patch("agentops.registry.shutil.which")
+    @patch("agentops.registry.subprocess.run")
+    def test_workflow_inspects_repository_off_the_event_loop_thread(self, run, which):
+        import threading
+
+        which.side_effect = lambda command: f"/bin/{command}"
+        run.return_value = MagicMock(stdout="1.0.0\n", stderr="")
+        passed = MagicMock(succeeded=True, output="tests passed")
+        self.verifier.run = MagicMock(return_value=asyncio.sleep(0, result=[passed]))
+        engine = WorkflowEngine(self.config, self.state, self.registry, self.runner, self.verifier)
+        real_flags = engine.repo_inspector.routing_flags
+        threads: list[threading.Thread] = []
+
+        def recording_flags(source):
+            threads.append(threading.current_thread())
+            return real_flags(source)
+
+        engine.repo_inspector.routing_flags = recording_flags
+        loop_thread = threading.current_thread()
+        result = asyncio.run(engine.run_high_level("Add routing", Path.cwd()))
+        self.assertTrue(result.ready)
+        self.assertTrue(threads, "workflow selection must inspect the repository")
+        self.assertTrue(all(thread is not loop_thread for thread in threads), threads)
+
     def test_stale_registry_mapping_records_execution_fallback(self):
         workflow_id = self.state.create_workflow("stale mapping")
         task = self.state.add_task(Task("Implement", "implementation", workflow_id, max_attempts=1))
@@ -646,6 +670,17 @@ class WorkflowRepositoryCharacteristicTests(unittest.TestCase):
         engine, calls = self._engine()
         engine._select_agent(self._implementation_task(), set())
         self.assertEqual(calls[0]["repository_characteristics"], {})
+
+    def test_precomputed_characteristics_are_used_without_rescanning(self):
+        engine, calls = self._engine()
+        precomputed = {"requires_tests": True, "repository_exploration_required": False,
+                       "security_sensitive": False, "documentation_required": False}
+        with patch.object(
+            engine.repo_inspector, "routing_flags",
+            side_effect=AssertionError("must not rescan"),
+        ):
+            engine._select_agent(self._implementation_task(), set(), Path.cwd(), precomputed)
+        self.assertEqual(calls[0]["repository_characteristics"], precomputed)
 
     def test_inspection_failure_degrades_to_empty_characteristics(self):
         engine, calls = self._engine()
