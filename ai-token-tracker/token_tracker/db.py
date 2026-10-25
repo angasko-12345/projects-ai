@@ -13,6 +13,7 @@ from .model import (
     EVENT_COLUMNS,
     EventValidationError,
     UsageEvent,
+    canonical_provider,
     event_from_row,
     event_to_row,
     normalize_event,
@@ -41,6 +42,9 @@ CREATE TABLE IF NOT EXISTS events (
     raw_metadata TEXT NOT NULL DEFAULT '{}'
 );
 CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events (timestamp);
+CREATE TABLE IF NOT EXISTS pending_resync (
+    source TEXT PRIMARY KEY
+);
 CREATE TABLE IF NOT EXISTS collector_status (
     source TEXT PRIMARY KEY,
     tool TEXT,
@@ -110,6 +114,103 @@ def _migrate(conn: sqlite3.Connection) -> None:
         "SELECT COUNT(*) FROM events WHERE dedup_key IS NULL OR tool IS NULL"
     ).fetchone()[0]:
         _backfill_identity(conn)
+    if conn.execute("PRAGMA user_version").fetchone()[0] < 1:
+        _rekey_v1(conn)
+        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+    conn.commit()
+
+
+# PRAGMA user_version of a database whose rows match the current collectors'
+# event ids. 0 is every database created before the version was tracked.
+SCHEMA_VERSION = 1
+
+
+def _rekey_v1(conn: sqlite3.Connection) -> None:
+    """Bring rows stored by pre-ad73f30 collectors onto the current event ids.
+
+    Three collectors changed what feeds the content-addressed id, so a resync
+    of an older database inserted every such event a second time:
+
+    - claude: the provider segment is lowercased and ``open_router`` becomes
+      ``openrouter``; ``<synthetic>`` placeholder rows are no longer emitted.
+    - hermes: missing pricing is cost NULL instead of 0.0.
+    - copilot: input tokens come from the vendor's exclusive count.
+
+    Claude and hermes ids are a pure function of the stored row, so they are
+    recomputed in place: history survives even when its source logs are gone
+    (Claude Code prunes old transcripts by default). The old copilot input
+    value cannot be inverted (it was clamped at zero and could come from
+    either of two fields), so copilot is queued in ``pending_resync``: the
+    next copilot ingest replaces each stale row it re-observes and keeps any
+    row whose session file no longer exists. Other sources are untouched.
+    Every step is idempotent, so a database already written by the current
+    code (or already double-counted) comes out with one row per event.
+    """
+    conn.execute(
+        "DELETE FROM events WHERE source = 'claude' AND model = '<synthetic>'"
+    )
+    for stored in conn.execute(
+        "SELECT * FROM events WHERE source IN ('claude', 'hermes')"
+    ).fetchall():
+        row = dict(stored)
+        provider = row["provider"]
+        cost = row["cost"]
+        if row["source"] == "claude":
+            provider = canonical_provider(provider)
+        elif cost == 0.0:
+            cost = None
+        event = normalize_event(
+            timestamp=row["timestamp"],
+            provider=provider,
+            source=row["source"],
+            input_tokens=row["input_tokens"],
+            output_tokens=row["output_tokens"],
+            cache_read_tokens=row["cache_read_tokens"],
+            cache_write_tokens=row["cache_write_tokens"],
+            reasoning_tokens=row["reasoning_tokens"],
+            cost=cost,
+            agent=row["agent"],
+            model=row["model"],
+            project=row["project"],
+            request_id=row["request_id"],
+        )
+        if event.id == row["id"]:
+            continue
+        if conn.execute("SELECT 1 FROM events WHERE id = ?", (event.id,)).fetchone():
+            # A resync already stored this event under its new id.
+            conn.execute("DELETE FROM events WHERE id = ?", (row["id"],))
+        else:
+            conn.execute(
+                "UPDATE events SET id = ?, provider = ?, cost = ?, dedup_key = ? WHERE id = ?",
+                (event.id, provider, cost, event.dedup_key, row["id"]),
+            )
+    if conn.execute("SELECT 1 FROM events WHERE source = 'copilot' LIMIT 1").fetchone():
+        conn.execute("INSERT OR IGNORE INTO pending_resync (source) VALUES ('copilot')")
+
+
+def _supersede_stale(conn: sqlite3.Connection, events: list[UsageEvent]) -> int:
+    """Drop rows of a pending-resync source that ``events`` re-observe under a new id.
+
+    The natural key of a re-observed event is (source, provider, model,
+    timestamp): for copilot one session.shutdown per model. Returns the
+    number of rows dropped.
+    """
+    pending = {row[0] for row in conn.execute("SELECT source FROM pending_resync")}
+    dropped = 0
+    for event in events:
+        if event.source not in pending:
+            continue
+        dropped += conn.execute(
+            "DELETE FROM events WHERE source = ? AND provider = ? AND model IS ? "
+            "AND timestamp = ? AND id != ?",
+            (event.source, event.provider, event.model, event.timestamp, event.id),
+        ).rowcount
+    return dropped
+
+
+def clear_pending_resync(conn: sqlite3.Connection, source: str) -> None:
+    """Mark a source's one-time resync done after a full successful ingest."""
+    conn.execute("DELETE FROM pending_resync WHERE source = ?", (source,))
     conn.commit()
 
 
@@ -143,6 +244,7 @@ def insert_events(conn: sqlite3.Connection, events: list[UsageEvent]) -> tuple[i
     Returns (inserted, updated, unchanged).
     """
     inserted = updated = unchanged = 0
+    _supersede_stale(conn, events)
     dedup: dict[str, dict] = {
         row["dedup_key"]: {"id": row["id"], "tool": row["tool"], "agent": row["agent"], "source": row["source"]}
         for row in conn.execute(

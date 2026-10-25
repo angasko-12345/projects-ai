@@ -29,7 +29,7 @@ from pathlib import Path
 from collections.abc import Callable, Iterable
 
 from . import config, db, opencode
-from .model import EventValidationError, UsageEvent, normalize_event
+from .model import EventValidationError, UsageEvent, canonical_provider, normalize_event
 
 
 class CollectorError(Exception):
@@ -151,12 +151,11 @@ def _parse_claude_model(model_str: str | None) -> tuple[str, str]:
     live store); aliases map to the canonical names used by other sources so
     provider rollups merge and cross-source dedup keys align.
     """
-    provider_aliases = {"open_router": "openrouter"}
     if not model_str:
         return "anthropic", "unknown"
     parts = model_str.split("/")
     if len(parts) >= 3 and parts[0] in ("anthropic", "openai", "google", "bedrock", "vertex"):
-        provider = provider_aliases.get(parts[1].lower(), parts[1].lower())
+        provider = canonical_provider(parts[1])
         model = "/".join(parts[2:])
         return provider, model
     # Plain model like "claude-sonnet-4-5" or "<synthetic>"
@@ -954,6 +953,9 @@ def sync_all(conn: sqlite3.Connection) -> dict[str, dict]:
                 raise CollectorError("data source not found in known locations")
             events = collector.collect(path)
             inserted, updated, unchanged = db.insert_events(conn, events)
+            # A full scan re-observed everything this source still has, so its
+            # one-time post-upgrade resync (db._rekey_v1) is complete.
+            db.clear_pending_resync(conn, collector.source)
             stored = conn.execute(
                 "SELECT COUNT(*) FROM events WHERE source = ?", (collector.source,)
             ).fetchone()[0]

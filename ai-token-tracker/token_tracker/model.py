@@ -34,6 +34,19 @@ TOKEN_FIELDS = (
 _TS_FORMAT = "%Y-%m-%dT%H:%M:%S.%fZ"
 
 
+# Router-side provider spellings mapped to the canonical names other sources
+# use, so provider rollups merge and cross-source dedup keys align. Shared by
+# the Claude collector and the schema migration that re-keys rows stored
+# before the alias existed.
+PROVIDER_ALIASES = {"open_router": "openrouter"}
+
+
+def canonical_provider(name: str) -> str:
+    """Lowercase a router provider segment and apply PROVIDER_ALIASES."""
+    lowered = name.lower()
+    return PROVIDER_ALIASES.get(lowered, lowered)
+
+
 class EventValidationError(ValueError):
     """A raw record cannot be normalized into a UsageEvent."""
 

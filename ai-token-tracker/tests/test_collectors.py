@@ -1168,6 +1168,189 @@ class DataDirConfigurationTest(unittest.TestCase):
         self.assertIn(config.ENV_VAR, results["kilo"]["error"])
 
 
+# ------------------------------------------------- pre-ad73f30 upgrade
+
+
+def _renormalize(event, **changes):
+    """The event as a collector with different semantics would have built it."""
+    fields = {
+        "timestamp": event.timestamp, "provider": event.provider, "source": event.source,
+        "input_tokens": event.input_tokens, "output_tokens": event.output_tokens,
+        "cache_read_tokens": event.cache_read_tokens,
+        "cache_write_tokens": event.cache_write_tokens,
+        "reasoning_tokens": event.reasoning_tokens, "cost": event.cost,
+        "exact": event.exact, "agent": event.agent, "tool": event.tool,
+        "model": event.model, "project": event.project,
+        "request_id": event.request_id, "raw_metadata": event.raw_metadata,
+    }
+    fields.update(changes)
+    return normalize_event(**fields)
+
+
+class UpgradeRekeyTest(unittest.TestCase):
+    """A usage.db written before ad73f30 must not double-count on resync.
+
+    That commit changed the claude provider spelling, the hermes missing-cost
+    value and the copilot input source, all of which feed the event id.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        build_hermes_db(self.root / "state.db")
+        build_copilot_dir(self.root / "session-state")
+        project = self.root / "claude" / "p1"
+        project.mkdir(parents=True)
+        records = [
+            {"type": "assistant", "requestId": "req_A", "timestamp": "2026-10-20T10:00:00Z",
+             "cwd": "/w", "message": {"model": "anthropic/open_router/anthropic/claude-sonnet-4.5",
+                                      "usage": {"input_tokens": 100, "output_tokens": 50}}},
+            {"type": "assistant", "requestId": "req_B", "timestamp": "2026-10-20T10:01:00Z",
+             "cwd": "/w", "message": {"model": "anthropic/OpenRouter/openai/gpt-5",
+                                      "usage": {"input_tokens": 7, "output_tokens": 3}}},
+        ]
+        (project / "s.jsonl").write_text(
+            "".join(json.dumps(r) + "\n" for r in records), encoding="utf-8"
+        )
+        self.kilo_db = self.root / "kilo.db"
+        build_kilo_db(self.kilo_db)
+
+    def current(self):
+        return {
+            "claude": collectors.collect_claude(self.root / "claude"),
+            "hermes": collectors.collect_hermes(self.root / "state.db"),
+            "copilot": collectors.collect_copilot(self.root / "session-state"),
+            "kilo": collectors.collect_kilo(self.kilo_db),
+        }
+
+    def legacy(self):
+        """The same sources as the pre-ad73f30 collectors stored them."""
+        now = self.current()
+        old_claude = []
+        for event, raw in zip(now["claude"], ("open_router", "OpenRouter"), strict=True):
+            self.assertEqual(event.provider, "openrouter")
+            old_claude.append(_renormalize(event, provider=raw))
+        old_claude.append(normalize_event(
+            timestamp="2026-10-20T10:02:00Z", provider="anthropic", source="claude",
+            tool="Claude Code", model="<synthetic>", exact=True, request_id="req_S",
+        ))
+        old_hermes = [
+            _renormalize(e, cost=0.0 if e.cost is None else e.cost) for e in now["hermes"]
+        ]
+        # Old copilot input: (tokenDetails.input.tokenCount or inputTokens)
+        # minus cache, clamped at zero, recomputed from the fixture file.
+        old_input = {}
+        for line in (self.root / "session-state" / "uuid-fixture" / "events.jsonl").read_text(
+            encoding="utf-8"
+        ).splitlines():
+            try:
+                obj = json.loads(line)
+            except ValueError:
+                continue
+            for model, m in (obj.get("data") or {}).get("modelMetrics", {}).items():
+                u = m["usage"]
+                base = ((m.get("tokenDetails") or {}).get("input") or {}).get("tokenCount")
+                base = base or u["inputTokens"]
+                old_input[model] = max(base - u["cacheReadTokens"] - u["cacheWriteTokens"], 0)
+        old_copilot = []
+        for event in now["copilot"]:
+            meta = dict(event.raw_metadata)
+            meta.pop("input_total_reported")
+            old_copilot.append(
+                _renormalize(event, input_tokens=old_input[event.model], raw_metadata=meta)
+            )
+        self.assertNotEqual(
+            {e.id for e in old_copilot}, {e.id for e in now["copilot"]},
+            "fixture must exercise a copilot id change",
+        )
+        return {"claude": old_claude, "hermes": old_hermes,
+                "copilot": old_copilot, "kilo": now["kilo"]}
+
+    def write_legacy_db(self, path, *, extra=()):
+        conn = db.connect(path)
+        for events in self.legacy().values():
+            db.insert_events(conn, events)
+        for events in extra:
+            db.insert_events(conn, events)
+        conn.execute("PRAGMA user_version = 0")
+        conn.execute("DELETE FROM pending_resync")
+        conn.commit()
+        conn.close()
+
+    def resync(self, conn):
+        registry = [
+            collectors.Collector(src, src, "exact", "agent", lambda: Path("."),
+                                 lambda _p, e=events: e)
+            for src, events in self.current().items()
+        ]
+        with mock.patch.object(collectors, "REGISTRY", registry):
+            results = collectors.sync_all(conn)
+        self.assertTrue(all(r["status"] == "ok" for r in results.values()), results)
+
+    @staticmethod
+    def rows(conn):
+        return sorted(tuple(r) for r in conn.execute("SELECT * FROM events"))
+
+    def fresh_rows(self):
+        conn = db.connect(self.root / "fresh.db")
+        self.addCleanup(conn.close)
+        self.resync(conn)
+        return self.rows(conn)
+
+    def test_resync_after_upgrade_matches_a_fresh_database(self):
+        self.write_legacy_db(self.root / "old.db")
+        conn = db.connect(self.root / "old.db")
+        self.addCleanup(conn.close)
+        self.resync(conn)
+        self.assertEqual(self.rows(conn), self.fresh_rows())
+        by_source = dict(conn.execute("SELECT source, COUNT(*) FROM events GROUP BY source"))
+        self.assertEqual(by_source, {"claude": 2, "hermes": 4, "copilot": 2, "kilo": 2})
+        self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 1)
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM pending_resync").fetchone()[0], 0)
+        # A second sync changes nothing.
+        before = self.rows(conn)
+        self.resync(conn)
+        self.assertEqual(self.rows(conn), before)
+
+    def test_migration_keeps_history_whose_source_is_gone_and_skips_other_sources(self):
+        self.write_legacy_db(self.root / "old.db")
+        raw = sqlite3.connect(self.root / "old.db")
+        kilo_before = sorted(raw.execute("SELECT * FROM events WHERE source = 'kilo'"))
+        raw.close()
+        conn = db.connect(self.root / "old.db")
+        self.addCleanup(conn.close)
+        # No resync: claude/hermes are re-keyed in place, copilot rows wait
+        # for their source, kilo is byte-for-byte untouched.
+        current = self.current()
+        ids = {r[0] for r in conn.execute("SELECT id FROM events")}
+        for src in ("claude", "hermes"):
+            self.assertLessEqual({e.id for e in current[src]}, ids, src)
+        self.assertEqual(
+            sorted(tuple(r) for r in conn.execute("SELECT * FROM events WHERE source = 'kilo'")),
+            [tuple(r) for r in kilo_before],
+        )
+        self.assertEqual(
+            conn.execute("SELECT COUNT(*) FROM events WHERE source = 'copilot'").fetchone()[0], 2
+        )
+        # Reopening does not run the migration again.
+        conn.close()
+        conn = db.connect(self.root / "old.db")
+        self.addCleanup(conn.close)
+        self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 1)
+
+    def test_database_already_double_counted_by_a_resync_is_repaired(self):
+        current = self.current()
+        self.write_legacy_db(
+            self.root / "old.db",
+            extra=[current["claude"], current["hermes"], current["copilot"]],
+        )
+        conn = db.connect(self.root / "old.db")
+        self.addCleanup(conn.close)
+        self.resync(conn)
+        self.assertEqual(self.rows(conn), self.fresh_rows())
+
+
 # ----------------------------------------------------- legacy imports
 
 
