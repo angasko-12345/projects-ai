@@ -253,8 +253,9 @@ class FalsePositiveGuards(unittest.TestCase):
 class AssignmentValueThreshold(unittest.TestCase):
     """An assigned value must look like a credential before it is replaced.
 
-    Long values are almost never log noise, and punctuated values are shaped
-    like keys. Short alphanumerics are counts, versions, and model names.
+    Only the bare ``token`` key is ambiguous in ordinary logs, so only it
+    needs a credential-like value. A value assigned to a named credential key
+    (password, api_key, secret, ...) is a credential however short it is.
     """
 
     def test_long_values_are_redacted(self):
@@ -265,8 +266,34 @@ class AssignmentValueThreshold(unittest.TestCase):
         self.assertEqual("api_key=[REDACTED]", redact_text("api_key=abcd1234!"))
         self.assertIn(REDACTED, redact_text("token: a-b-c-d-e"))
 
-    def test_short_alphanumeric_values_are_left_alone(self):
-        for text in ("token: 4096", "token = GPT-4", "password: hunter2"):
+    def test_short_alphanumeric_token_values_are_left_alone(self):
+        for text in ("token: 4096", "token = GPT-4", "max_token=4096"):
+            with self.subTest(text=text):
+                self.assertEqual(text, redact_text(text))
+
+    def test_named_credential_keys_keep_the_low_floor(self):
+        # e4ef50b applied the token threshold to every key, so plain
+        # passwords and short keys under 12 characters slipped through the
+        # security gate. These must stay redacted and flagged.
+        cases = (
+            ("password: hunter2", "password: [REDACTED]"),
+            ("password: Summer2026", "password: [REDACTED]"),
+            ("API_KEY=abcd1234ef", "API_KEY=[REDACTED]"),
+            ('"secret": "Tr0ub4dor9"', '"secret": "[REDACTED]"'),
+            ("client_secret: 9f8e7d6c5b", "client_secret: [REDACTED]"),
+        )
+        for text, expected in cases:
+            with self.subTest(text=text):
+                self.assertEqual(expected, redact_text(text))
+                self.assertIn("credential-assignment", _patterns_found(text))
+
+    def test_prefixed_env_names_are_caught(self):
+        for text in ("DB_PASSWORD=letmein1", "OPENAI_API_KEY=sk-abc123xyz"):
+            with self.subTest(text=text):
+                self.assertIn(REDACTED, redact_text(text))
+
+    def test_words_containing_a_key_are_left_alone(self):
+        for text in ("secretary: Jane", "max_tokens: 8192"):
             with self.subTest(text=text):
                 self.assertEqual(text, redact_text(text))
 

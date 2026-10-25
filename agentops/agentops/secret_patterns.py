@@ -71,16 +71,26 @@ SECRET_PATTERNS: tuple[SecretPattern, ...] = (
     # The optional closing quote before the separator is what makes JSON
     # (`"api_key": "value"`) match as well as dotenv (`API_KEY=value`).
     #
-    # The value itself must look credential-like, or ordinary log lines lose
-    # their numbers and model names: a value is a candidate when it runs at
-    # least 12 characters (`FAKEvalue1234`) or at least 8 and carries a symbol
-    # (`sk-abc123`, `abcd1234!`). "token: 4096" and "token = GPT-4" stay
-    # readable; real keys are long or punctuated, counts and names are not.
+    # Named credential keys keep the original 4-character floor: a value
+    # assigned to `password`, `api_key` or `secret` is a credential however
+    # short or plain it is ("password: Summer2026" must never survive). Only
+    # the bare `token` key is ambiguous in ordinary logs ("token: 4096",
+    # "token = GPT-4"), so only it requires a credential-like value: at least
+    # 12 characters, or at least 8 with a symbol. The credential keys also
+    # match after an underscore so prefixed env names (`DB_PASSWORD=...`,
+    # `OPENAI_API_KEY=...`) are caught; `token` keeps a plain word boundary so
+    # `max_token=4096` stays readable.
     _pattern(
         "credential-assignment",
-        r"(?i)\b(password|passwd|pwd|api[_-]?key|secret|client[_-]?secret|"
-        r"auth[_-]?token|access[_-]?token|refresh[_-]?token|private[_-]?key|token)"
-        r"\b['\"]?\s*[:=]\s*['\"]?(?P<value>"
+        r"(?i)(?<![A-Za-z0-9])(password|passwd|pwd|api[_-]?key|secret|client[_-]?secret|"
+        r"auth[_-]?token|access[_-]?token|refresh[_-]?token|private[_-]?key)"
+        r"\b['\"]?\s*[:=]\s*['\"]?(?P<value>[^\s'\"]{4,})",
+        "value",
+    ),
+    # Same reported name as above: one family, two value rules.
+    _pattern(
+        "credential-assignment",
+        r"(?i)\btoken\b['\"]?\s*[:=]\s*['\"]?(?P<value>"
         r"(?=[^\s'\"]{8})"
         r"(?=[^\s'\"]{12,}|[^\s'\"]*[^A-Za-z0-9\s'\"])"
         r"[^\s'\"]{4,})",
