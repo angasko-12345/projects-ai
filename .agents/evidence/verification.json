@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-10-25T15:07:06+00:00",
-  "commit": "cac71b02bcbc4e69be61767e3e43b08b0b95d0d0",
+  "generated_at": "2026-10-25T17:46:25+00:00",
+  "commit": "5cd31d35bcd6f4f40b5df1365bd3c01f0690fb90",
   "python": "3.12.15",
   "platform": "Linux 6.12.110+ (aarch64)",
-  "measured_in": "a clean clone of cac71b02bcbc",
+  "measured_in": "a clean clone of 5cd31d35bcd6",
   "clean_checkout": true,
   "command_note": "Every command runs from its own product directory with the interpreter that ran this script. There is no repository-wide test command and these products share no dependencies.",
   "excluded": {
@@ -38,9 +38,9 @@
     {
       "product": "universal-game-agent",
       "directory": "universal-game-agent",
-      "commit": "3bb9bdc854daef3e54c51c3d8c07a69332887f36",
+      "commit": "5cd31d35bcd6f4f40b5df1365bd3c01f0690fb90",
       "command": [
-        "/workspace/work/regen-tmp/venv/bin/python",
+        "/workspace/work/venv/bin/python",
         "-m",
         "unittest",
         "discover",
@@ -48,13 +48,13 @@
         "tests"
       ],
       "dirty_paths": [],
-      "total": 506,
-      "duration_seconds": 279.878,
+      "total": 540,
+      "duration_seconds": 41.977,
       "skipped": 3,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 506 tests in 279.878s",
+        "Ran 540 tests in 41.977s",
         "OK (skipped=3)"
       ],
       "result": "pass"
