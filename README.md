@@ -3,7 +3,7 @@
 Local-first AI tools and experiments by [@angasko-12345](https://github.com/angasko-12345).
 Each folder is a self-contained project with its own README, dependencies and tests.
 
-Four of the products here are Python, evidence-tracked and continuously tested — AgentOps, Universal Game Agent, mini-llm and AI Token Tracker. The other folders (QR Generator, TikTok Slop Factory and the smaller utilities) are independent projects without that verification machinery.
+AgentOps, Universal Game Agent, mini-llm and AI Token Tracker are the four Python products measured in `.agents/evidence/verification.json`. Every product here has a CI test suite; TikTok Slop Factory is deliberately left out of the evidence file (its real FFmpeg renders make re-measuring expensive) and QR Generator is Node. The smaller utilities have no CI.
 
 Everything here runs on your own machine: no accounts, no hosted backend, and no telemetry unless a project says otherwise.
 
@@ -21,7 +21,7 @@ Everything here runs on your own machine: no accounts, no hosted backend, and no
 | Project | What it is |
 |---|---|
 | [mini-llm](small-projects/mini-llm/) | A small GPT-style language model written from scratch in PyTorch: tokenizer, training loop, sampling. |
-| [Privacy Audit Tool](small-projects/privacy_audit_tool/) | A read-only Windows tool that finds your forgotten online accounts from mail exports, browser history and usernames. It never deletes or submits anything. |
+| [Privacy Audit Tool](small-projects/privacy_audit_tool/) | A read-only Windows tool that finds your forgotten online accounts from mail exports, browser history and usernames. It deletes nothing and runs offline by default; its optional username checks contact external sites. |
 | [TikTok Slop Factory](tiktok-slop-factory/) | An experiment that turns short fictional scripts into vertical videos with one command. |
 | [quickscripts](small-projects/quickscripts/), [Cube Timer](small-projects/Cube%20Timer.html) | Small utilities. |
 
@@ -62,12 +62,12 @@ tasks/                  Active-task slot (or pointer) + after-task procedure; li
 .agents/memory/archive/ Completed task records, preserved verbatim and searchable
 AGENTS.md, pi_AGENTS.md Root instruction shims (canonical copies live in .agents/)
 acceptance_test.py      AgentOps acceptance tests from Issue #4
-.github/workflows/      Test CI for each Python product, plus an evidence checker (QR Generator has no CI)
+.github/workflows/      Nine CI workflows: a test suite for every product, plus repo-wide ruff and the evidence checker
 ```
 
 ## How work gets verified
 
-Changes are developed with coding agents, then checked before they're trusted. Test suites for the four Python products run in CI (QR Generator has none), and `tools/evidence/` records which commands ran and whether they passed in `.agents/evidence/verification.json`. A change isn't done until its tests pass and the evidence is regenerated. Test counts are not quoted in this README — they live in the evidence file.
+Changes are developed with coding agents, then checked before they're trusted. Test suites for every product run in CI — AgentOps, Universal Game Agent, mini-llm and AI Token Tracker on Python 3.11, plus TikTok Slop Factory, QR Generator and the Privacy Audit Tool in their own jobs — and `tools/evidence/` records which commands ran and whether they passed in `.agents/evidence/verification.json` for the four measured products. A change isn't done until its tests pass and the evidence is regenerated. Test counts are not quoted in this README — they live in the evidence file.
 
 ## Roadmap
 

@@ -56,8 +56,10 @@ from its own directory rather than from the repository root. Read the local
 | `tiktok-slop-factory/` | `cd tiktok-slop-factory` then `python -m pytest tests -q` (pytest, not unittest; real FFmpeg renders; fully keyless/offline — see `tiktok-slop-factory/AGENTS.md` before running) |
 
 Treat any new failure or skip as attributable to the current work until proven otherwise.
-An empty, interrupted, all-skipped, or unknown run is never a pass. Do not invent lint,
-formatter, type-check, or coverage commands; no product configures one.
+An empty, interrupted, all-skipped, or unknown run is never a pass. The repository's only
+lint is repo-wide `ruff check .` (root `pyproject.toml`, CI workflow
+`.github/workflows/ruff.yml`); no product configures a formatter, type-checker, or coverage
+command, so do not invent one.
 
 CLI entry points are also per-product and are documented in the local files.
 

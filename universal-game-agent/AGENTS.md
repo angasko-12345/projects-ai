@@ -10,8 +10,9 @@ correct.
 - A reinforcement-learning agent that plays Pong. The standard path is a Gymnasium toy
   environment; the experimental path plays a real external Pong window on Windows through
   screen capture and real keyboard input.
-- The repository root is a container. This package is one of four products here; see
-  `agentops/AGENTS.md`, `small-projects/mini-llm/AGENTS.md`, and `ai-token-tracker/AGENTS.md`
+- The repository root is a container. This package is one of five Python products here; see
+  `agentops/AGENTS.md`, `small-projects/mini-llm/AGENTS.md`, `ai-token-tracker/AGENTS.md`,
+  and `tiktok-slop-factory/AGENTS.md`
   for the others. No product is a subproject of another, and a change in one is not a change in another.
 - Runtime dependencies are not standard-library only: `requirements.txt` lists `torch`,
   `gymnasium`, `numpy`, `pyyaml`, and `mss`, all unpinned. This differs from the other
@@ -68,8 +69,9 @@ python -m unittest discover -s tests
   directory. Use the command above.
 - Torch-dependent test files gate on `try: import torch` and skip cleanly when torch is
   absent. An all-skipped suite is not a pass.
-- There is no configured lint, formatter, type-check, or coverage command. Do not invent
-  one.
+- There is no configured formatter, type-check, or coverage command. The repository's
+  only lint is repo-wide `ruff check .` (root `pyproject.toml`, CI workflow
+  `.github/workflows/ruff.yml`); do not invent an additional one.
 - Almost every test module resolves paths from `__file__` via `tests/_bootstrap.py`, so
   the suite is CWD-independent by construction; `tests/test_cwd_isolation.py` is the
   standing guard. The CWD-relative comparisons in `TestRunIsolation`
@@ -183,7 +185,7 @@ byte-identical to exp01/exp02; only two knobs vary, across four cells:
 
 Per cell: six probe policies (lookahead oracle, reactive oracle, random, constant left,
 constant right, no-op) for reward discrimination, then baseline eval → 16384-step PPO
-(5 updates, seed 0) → final eval, 10 episodes each.
+(128 updates, seed 0) → final eval, 10 episodes each.
 
 Findings, hypothesis by hypothesis (all read from the tracked results file):
 

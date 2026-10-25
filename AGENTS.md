@@ -8,9 +8,7 @@ Minimum rules while loading the canonical file:
 
 - Work only within the assigned task and repository scope.
 - Do not make uncoordinated edits to files another session owns; reviewers are read-only.
-- This repository has **four** products. Read `agentops/AGENTS.md`,
-  `universal-game-agent/AGENTS.md`, `small-projects/mini-llm/AGENTS.md`, or `ai-token-tracker/AGENTS.md`
-  for the one you are changing; each has its own test command and they are not interchangeable.
+- This repository has several independent products. Read the `AGENTS.md` of the one you are changing — `agentops/AGENTS.md`, `universal-game-agent/AGENTS.md`, `small-projects/mini-llm/AGENTS.md`, `ai-token-tracker/AGENTS.md`, `tiktok-slop-factory/AGENTS.md`, `small-projects/privacy_audit_tool/AGENTS.md`, or `qr-generator/AGENTS.md` — each has its own test command and they are not interchangeable.
 - Keep SQLite migrations additive and use explicit column names.
 - Do not persist prompts, secrets, credentials, tokens, or private keys.
 - Read `.agents/team.md`, `tasks/after-task.md`, and `.agents/pending_tasks.md` (the live task queue) before substantial work. `tasks/task.md` is the active-task slot; completed records are archived under `.agents/memory/archive/` and must not be re-executed.

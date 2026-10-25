@@ -66,8 +66,9 @@ test. A whole-suite deselect is no longer part of this product's workflow.
 
 Write regression tests before fixing defects, following the existing file
 conventions (`tests/test_*.py`, small docstrings recording the bug the test
-pins). There is no configured lint, formatter, type-check, or coverage command
-here; do not invent one.
+pins). There is no configured formatter, type-check, or coverage command here; the
+repository's only lint is repo-wide `ruff check .` (root `pyproject.toml`, CI workflow
+`.github/workflows/ruff.yml`). Do not invent an additional one.
 
 Verification evidence: this product is deliberately **excluded** from
 `.agents/evidence/verification.json`; the `excluded` block in that file and the

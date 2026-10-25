@@ -10,8 +10,9 @@ facts, this file is correct.
 - A small GPT-style causal language model built from scratch with PyTorch: BPE
   tokenizer (`tokenizers` package used only for BPE training), hand-written
   Transformer (`nn.Module`s, no Hugging Face), AdamW + warmup/cosine training loop.
-- The repository root is a container. This package is one of four products here; see
-  `agentops/AGENTS.md`, `universal-game-agent/AGENTS.md`, and `ai-token-tracker/AGENTS.md`
+- The repository root is a container. This package is one of five Python products here; see
+  `agentops/AGENTS.md`, `universal-game-agent/AGENTS.md`, `ai-token-tracker/AGENTS.md`, and
+  `tiktok-slop-factory/AGENTS.md`
   for the others. No product is a subproject of another, and a change in one is not a change in another.
 - Runtime dependencies: `torch`, `tokenizers`, `numpy` (see `requirements.txt`,
   unpinned). Training is CPU-capable; the expensive real-corpus runs target a cloud
@@ -48,8 +49,9 @@ python -m unittest discover -s tests
   `data/processed/*` byte for byte. It is present in the tree as of 2026-10-10
   (18,261 bytes); an earlier note in `docs/EXPERIMENT-tinystories.md` saying it is
   deleted is superseded.
-- There is no configured lint, formatter, type-check, or coverage command. Do not
-  invent one.
+- There is no configured formatter, type-check, or coverage command. The repository's
+  only lint is repo-wide `ruff check .` (root `pyproject.toml`, CI workflow
+  `.github/workflows/ruff.yml`); do not invent an additional one.
 - The shipped sample corpus (`data/raw/train.txt`, ~2.4 KB) needs
   `--context-length 32` for prepare/train commands; the default context 512 refuses
   to run on it and says so.

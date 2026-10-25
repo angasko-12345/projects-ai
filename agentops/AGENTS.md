@@ -10,8 +10,9 @@ this file and `.agents/AGENTS.md` disagree on AgentOps product facts, this file 
   verifies, reviews, persists, and merges work in isolated Git worktrees.
 - Runtime target: Python 3.11 or newer. Runtime dependencies are standard-library only;
   PyYAML and PyInstaller are optional extras (`.[yaml]`, `.[windows]`).
-- The repository root is a container. This package is one of four products here; see
-  `universal-game-agent/AGENTS.md`, `small-projects/mini-llm/AGENTS.md`, and `ai-token-tracker/AGENTS.md`
+- The repository root is a container. This package is one of five Python products here; see
+  `universal-game-agent/AGENTS.md`, `small-projects/mini-llm/AGENTS.md`, `ai-token-tracker/AGENTS.md`,
+  and `tiktok-slop-factory/AGENTS.md`
   for the others. No product is a subproject of another, and a change in one is not a change in another.
 
 ## Tests
@@ -44,8 +45,9 @@ python -m unittest discover -s tests
   and ROOT-033 (Windows termination classification)
   remains HELD pending an explicit platform decision — do not implement the high-bit
   heuristic. ROOT-015..025 and ROOT-028 are DISPROVEN — do not revive them.
-- There is no configured lint, formatter, type-check, or coverage command. Do not invent
-  one as part of normal validation.
+- There is no configured formatter, type-check, or coverage command. The repository's one
+  lint is repo-wide `ruff check .` (root `pyproject.toml`, CI workflow `.github/workflows/ruff.yml`);
+  do not invent an additional one as part of normal validation.
 - Tests use in-memory SQLite and `tempfile`; they do not write into `.agentops/`.
 
 ## CLI
@@ -58,17 +60,18 @@ Console scripts: `agentops` -> `agentops.cli:main`, `agentops-gui` -> `agentops.
 
 ## Persistence
 
-- `agentops/state.py` is the sole SQLite owner. Current additive schema is v7, including
-  the `structured_evidence` column on failures (`state.py:1615-1631`). Do not create a
-  second state owner.
+- `agentops/state.py` is the sole SQLite owner. Current additive schema is v8; v8 added
+  the hot-path indexes on `tasks` and `workflows`, and v7 the `structured_evidence`
+  column on failures (both in the additive migration chain of `agentops/state.py`). Do
+  not create a second state owner.
 - `StateStore` owns SQLite with WAL, a busy timeout, and its existing locking model.
 - The migration set covers workflows, tasks, agent runs, verification runs/checks/reports,
-  failures, events, artifacts, and worktree provenance.
+  failures, events, artifacts, worktree provenance, and the hot-path indexes.
 - Migrations are additive only: `CREATE TABLE IF NOT EXISTS`, explicit column names on
   every migrated-table insert, and `INSERT OR IGNORE` for migration versions. Never
   rewrite an existing table and never rely on positional inserts.
-- After touching migrations, update the hardcoded `[1..7]` migration-version assertions in
-  both `tests/test_events.py:276` and `tests/test_failure_kernel.py:588`. Adding a
+- After touching migrations, update the hardcoded `[1..8]` migration-version assertions in
+  both `tests/test_events.py:276` and `tests/test_failure_kernel.py:666`. Adding a
   migration means updating both.
 - `.agentops/` under this product's repository root is where runtime state and logs live.
   It is generated state, not a repository deliverable.
@@ -78,9 +81,10 @@ Console scripts: `agentops` -> `agentops.cli:main`, `agentops-gui` -> `agentops.
 
 ## Architecture map
 
-- Entry points: `agentops/cli.py`, `agentops/gui.py`, and threaded
+- Entry points: `agentops/cli.py`, the `agentops.gui` package (console script
+  `agentops-gui` -> `agentops.gui:main`, `main()` in `gui/__init__.py`), and threaded
   `agentops/gui_controller.py`. `agentops_gui.py` is the package-aware PyInstaller
-  launcher; freezing `agentops/gui.py` directly breaks relative imports.
+  launcher; freezing the `agentops.gui` package modules directly breaks relative imports.
 - Orchestration: `agentops/workflow.py` runs the standard plan -> implementation ->
   verification -> review flow and custom dependency-checked DAGs.
 - Agent selection: `agentops/registry.py` (PATH discovery, role preference),
@@ -147,11 +151,11 @@ a task verified. Empty, interrupted, unknown, or all-skipped work is never succe
 ## Windows and packaging
 
 - On Windows, subprocesses launched by the GUI or the frozen executable must use the shared
-  no-console-window helper: `agentops/runtime.py:102-112` (`spawn_options()`, with
-  `CREATE_NO_WINDOW` at `:106-110`). It is consumed by `runner.py` and
-  `verification_kernel.py:19,99,416`; `agent_run.py` and `registry.py` carry their own spawn
-  policy. `agentops/runner.py` contains no such helper — it delegates to `ProcessRuntime`
-  (`runner.py:24,88,199`). Do not add ad-hoc process flags.
+  no-console-window helper: `spawn_options()` in `agentops/runtime.py`, which applies
+  `CREATE_NO_WINDOW` there. `runner.py` and `verification_kernel.py` reach it through
+  `ProcessRuntime`; `agent_run.py` and `registry.py` carry their own spawn
+  policy. `agentops/runner.py` contains no such helper — it delegates to `ProcessRuntime`.
+  Do not add ad-hoc process flags.
 - Avoid raw Unicode writes that can fail in legacy console encodings.
 - Packaged executable: `agentops/dist/AgentOps.exe`. It is gitignored; ship it as a
   release asset and never commit it.

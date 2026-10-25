@@ -8,7 +8,5 @@ Minimum rules while loading the canonical file:
 
 - Pi is a lead implementer; coordinate before editing files another agent session owns.
 - Reviewers work read-only in `D:\tmp\agentops-review-*` snapshots. Antigravity may review while its quota has capacity; do not task it once its quota is used up. Never task Codex or Claude.
-- Each product has its own test command: `agentops/AGENTS.md` and
-  `universal-game-agent/AGENTS.md`. Read the one for the product you are changing.
-- Preserve additive SQLite migrations, redact persisted data, and keep GUI updates on the Tk thread.
+- Each product has its own test command; read the `AGENTS.md` for the product you are changing. Keep SQLite migrations additive, redact persisted data, and keep GUI updates on the Qt GUI thread.
 - Read `.agents/AGENTS.md`, `.agents/team.md`, `.agents/pending_tasks.md` (the live task queue), and `tasks/after-task.md` before substantial work. `tasks/task.md` is the active-task slot; completed records are archived under `.agents/memory/archive/`.

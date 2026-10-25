@@ -307,7 +307,9 @@ text); without it, each run samples differently.
 python -m unittest discover -s tests
 ```
 
-CPU only. **115 tests, 1 skip, OK** as of 2026-10-10.
+CPU only. The current measured result lives in `.agents/evidence/verification.json`
+(product `small-projects/mini-llm`); run `python tools/evidence/check.py` from the
+repository root to confirm it. Test counts are not quoted here.
 
 Covers tokenizer load/encode/decode, output shape, finite scalar
 loss, causal masking (future-token swap leaves past logits bit-identical),

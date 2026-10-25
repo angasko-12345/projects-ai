@@ -35,7 +35,7 @@ text and voice providers differ.
 
 | Requirement | Notes |
 |---|---|
-| Python 3.10+ | 3.11/3.12/3.13/3.14 all work |
+| Python 3.10+ | unpinned; CI runs 3.11 |
 | FFmpeg **and** ffprobe | Both ship together; both must be on `PATH` |
 | A Gemini API key | Only for `--backend gemini`. Free tier: <https://aistudio.google.com/apikey> |
 

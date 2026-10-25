@@ -20,7 +20,7 @@ Before substantial work:
 2. Read `.agents/team.md` and the relevant files under `.agents/memory/`, especially `project.md`, `architecture.md`, `roadmap.md`, `decisions.md`, and `lessons.md`.
 3. Inspect the current source, tests, `git status`, and current diff. Current code and tests outrank memory.
 4. Back up the dirty tree before substantial work, including untracked files that belong to the task.
-5. Identify which product the task touches, read that product's local `AGENTS.md` (`agentops/AGENTS.md`, `universal-game-agent/AGENTS.md`, or `small-projects/mini-llm/AGENTS.md`), and use its test command. There is no single repository-wide test command; the products differ.
+5. Identify which product the task touches, read that product's local `AGENTS.md` (e.g. `agentops/AGENTS.md`, `universal-game-agent/AGENTS.md`, `small-projects/mini-llm/AGENTS.md`, `ai-token-tracker/AGENTS.md`, `tiktok-slop-factory/AGENTS.md`, `small-projects/privacy_audit_tool/AGENTS.md`, or `qr-generator/AGENTS.md`), and use its test command. There is no single repository-wide test command; the products differ.
 6. If using Intercom, resolve the exact live session name with `intercom_list` before sending a message. Never assume a remembered display name is still live.
 
 ## 3. Implementation rules
@@ -32,21 +32,20 @@ Before substantial work:
 - Do not use an LLM for basic classification, parsing, verification, or success decisions. Agent-reported success is not verification evidence.
 - Do not persist raw prompts, secrets, credentials, tokens, private keys, or sensitive environment values. Reuse the existing redaction and prompt-hash mechanisms.
 - For SQLite changes, migrate additively: use `CREATE TABLE IF NOT EXISTS`, named columns on every migrated-table insert, and `INSERT OR IGNORE` for migration versions. Never rewrite an existing table or rely on positional inserts.
-- After touching migrations, update the hardcoded `[1..7]` migration-version assertions in both `tests/test_events.py:276` and `tests/test_failure_kernel.py:588`.
+- After touching migrations, update the hardcoded `[1..8]` migration-version assertions in both `tests/test_events.py:276` and `tests/test_failure_kernel.py:666`.
 - Add a regression test before fixing a bug, following `tests/test_review_regressions.py`.
 - Preserve legacy behavior and compatibility unless the request explicitly changes it. Keep public constructors and persisted fields backward-compatible where practical.
-- Keep GUI updates on the Tk thread through `root.after()` and keep long-running work on controller/background threads.
+- Keep GUI updates on the Qt GUI thread (see `agentops/AGENTS.md`). Do not use Tk APIs; AgentOps is PySide6.
 - On Windows, use the shared no-console-window helpers for subprocesses and avoid raw Unicode writes that can fail in legacy console encodings.
 - Normalize paths to `as_posix()` when crossing a UI or persistence boundary.
 - Do not reinstall or reconfigure Agent Intercom, and do not change its scope.
-- Do not invent lint, formatting, type-check, coverage, or packaging commands when the repository does not configure them.
+- The repository's only lint is repo-wide `ruff check .` (root `pyproject.toml`, CI workflow `.github/workflows/ruff.yml`). Do not invent additional lint, formatter, type-check, coverage, or packaging commands.
 
 ## 4. Verification
 
 There is no single repository-wide test command. Read the local `AGENTS.md` for the
-product you are changing and run the command it gives. Both products use the form below and
-both run from their own directory, never from the repository root. Run exactly one block,
-starting from the repository root.
+product you are changing and run the command it gives; every product runs from its own
+directory, never from the repository root. The blocks below are examples for two of them.
 
 `agentops/`:
 
