@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-10-25T14:00:19+00:00",
-  "commit": "ab6cabdb968cf73c8168d9c7ec679427dd2ca44c",
+  "generated_at": "2026-10-25T14:48:54+00:00",
+  "commit": "b104a7d19e0c1fbc9a68e6343a4e717800da15ed",
   "python": "3.12.15",
   "platform": "Linux 6.12.110+ (aarch64)",
-  "measured_in": "a clean clone of ab6cabdb968c",
+  "measured_in": "a clean clone of b104a7d19e0c",
   "clean_checkout": true,
   "command_note": "Every command runs from its own product directory with the interpreter that ran this script. There is no repository-wide test command and these products share no dependencies.",
   "excluded": {
@@ -86,9 +86,9 @@
     {
       "product": "ai-token-tracker",
       "directory": "ai-token-tracker",
-      "commit": "3bb9bdc854daef3e54c51c3d8c07a69332887f36",
+      "commit": "b104a7d19e0c1fbc9a68e6343a4e717800da15ed",
       "command": [
-        "/workspace/work/regen-tmp/venv/bin/python",
+        "/tmp/tt-venv-w1/bin/python",
         "-m",
         "unittest",
         "discover",
@@ -96,14 +96,14 @@
         "tests"
       ],
       "dirty_paths": [],
-      "total": 74,
-      "duration_seconds": 41.661,
-      "skipped": 0,
+      "total": 82,
+      "duration_seconds": 0.466,
+      "skipped": 7,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 74 tests in 41.661s",
-        "OK"
+        "Ran 82 tests in 0.466s",
+        "OK (skipped=7)"
       ],
       "result": "pass"
     }
