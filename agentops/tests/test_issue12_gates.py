@@ -336,6 +336,76 @@ class RepairRoundTests(unittest.TestCase):
             state.close()
 
 
+class RejectionIsNotReRolledTests(unittest.TestCase):
+    """A well-formed REJECT must be repaired, never re-rolled.
+
+    Live defect (found 2026-10-25): every task FAILED with attempts left is
+    retried, and a review REJECT marks the review FAILED. With the shipped
+    default ``runtime.max_attempts: 2`` the same reviewer was simply asked
+    again about the same unchanged code, so a stochastic reviewer that
+    rejected once and approved on the second roll reached READY with no
+    repair -- the rejection never reached ``_repair_failed_review``. The gate
+    tests above all used ``max_attempts=1`` and could not see it.
+    """
+
+    def _single_task(self, role, outputs, max_attempts=2):
+        config, state, registry, runner, verifier = _engine(
+            max_attempts=max_attempts)
+        runner.run_agent = _dispatch_runner(state, {role: outputs})
+        try:
+            engine = WorkflowEngine(config, state, registry, runner, verifier)
+            workflow_id = state.create_workflow("re-roll test")
+            task = state.add_task(Task("Review the change", role, workflow_id,
+                                       max_attempts=max_attempts))
+            asyncio.run(engine.execute(workflow_id, Path.cwd()))
+            return state.get_task(task.id)
+        finally:
+            state.close()
+
+    def test_review_reject_is_not_retried_by_the_same_reviewer(self):
+        task = self._single_task("review", [REJECT, APPROVE])
+        self.assertEqual(task.status, TaskStatus.FAILED)
+        self.assertEqual(task.attempts, 1)
+        self.assertIn("unsafe input", task.result or "")
+
+    def test_security_reject_is_not_retried(self):
+        task = self._single_task("security", [REJECT, APPROVE])
+        self.assertEqual(task.status, TaskStatus.FAILED)
+        self.assertEqual(task.attempts, 1)
+
+    def test_missing_verdict_is_still_retried(self):
+        # No verdict is a format failure, not a judgment: retrying is fine.
+        task = self._single_task("review", ["no verdict here", APPROVE])
+        self.assertEqual(task.status, TaskStatus.PASSED)
+        self.assertEqual(task.attempts, 2)
+
+    def test_default_attempts_rejection_goes_through_repair(self):
+        config, state, registry, runner, verifier = _engine(max_attempts=2)
+        calls = []
+        dispatch = _dispatch_runner(state, {"review": [REJECT, APPROVE]})
+
+        async def _recording(agent, prompt, directory, task_id,
+                             cancel_event=None, **kwargs):
+            calls.append(state.get_task(task_id).role)
+            return await dispatch(agent, prompt, directory, task_id,
+                                  cancel_event, **kwargs)
+
+        runner.run_agent = _recording
+        try:
+            engine = WorkflowEngine(config, state, registry, runner,
+                                    _ok_verifier(),
+                                    metadata_collector=_evidence_collector())
+            result = asyncio.run(
+                engine.run_high_level("Fix the thing", Path.cwd()))
+            self.assertTrue(result.ready, result.summary)
+            first = calls.index("review")
+            self.assertIn("debugging", calls[first + 1:],
+                          f"REJECT reached READY without a repair: {calls}")
+            self.assertEqual(calls.count("review"), 2)
+        finally:
+            state.close()
+
+
 class SecurityGateTests(unittest.TestCase):
     @staticmethod
     def _repo_with_secret():
