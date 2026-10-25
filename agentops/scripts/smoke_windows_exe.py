@@ -169,7 +169,7 @@ def smoke(exe: Path, timeout: float) -> int:
         print(f"Executable  {exe} ({exe.stat().st_size:,} bytes)")
         print(f"Working dir {workdir}")
         print(f"APPDATA     {appdata} (isolated from the developer's own settings)")
-        print(f"PATH        {len(os.pathsep.split(env['PATH']))} entries, none containing python.exe")
+        print(f"PATH        {len([e for e in env['PATH'].split(os.pathsep) if e])} entries, none containing python.exe")
 
         started = time.monotonic()
         process = subprocess.Popen([str(local_exe)], cwd=str(workdir), env=env)

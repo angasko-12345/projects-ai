@@ -1,7 +1,7 @@
 """Qt test support: offscreen QApplication for desktop-client tests.
 
-Mirrors ``tests/tk_display.py``: widget-level tests run only when the
-optional PySide6 dependency is installed, and always on the offscreen
+Widget-level tests (``@requires_qt``) run only when the optional PySide6
+dependency (the ``desktop`` extra) is installed, and always on the offscreen
 platform so headless CI and local runs behave identically. Controller-level
 logic stays display-free and never imports Qt.
 """
