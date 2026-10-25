@@ -34,7 +34,7 @@ model:
 
 # Nine invariant keys identical to experiments/exp_external_pong_0*.yaml.
 ppo:
-  total_timesteps: 16384
+  total_timesteps: 50000
   rollout_length: 128
   minibatch_size: 32
   update_epochs: 2
