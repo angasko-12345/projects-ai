@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Callable, Iterable
@@ -925,14 +926,20 @@ REGISTRY: list[Collector] = [
 ]
 
 
-def sync_all(conn: sqlite3.Connection) -> dict[str, dict]:
+def sync_all(
+    conn: sqlite3.Connection, cancel: threading.Event | None = None
+) -> dict[str, dict]:
     """Run every collector; one source's failure never stops the others.
 
     Returns {source: {"status": "ok"|"error"|"unavailable", ...}} with counts
     or the error message; every outcome is persisted to collector_status.
+    A set ``cancel`` event stops the run before the next collector; sources
+    not reached are left out of the result and keep their previous status.
     """
     results: dict[str, dict] = {}
     for collector in REGISTRY:
+        if cancel is not None and cancel.is_set():
+            break
         if collector.unavailable_reason is not None:
             db.record_sync(
                 conn,

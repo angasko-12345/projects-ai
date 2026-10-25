@@ -83,7 +83,7 @@ class SyncSourcesTest(unittest.TestCase):
         release = threading.Event()
         seen = {}
 
-        def slow_sync(conn):
+        def slow_sync(conn, cancel=None):
             seen["thread"] = threading.get_ident()
             seen["conn"] = conn
             started.set()
@@ -115,7 +115,7 @@ class SyncSourcesTest(unittest.TestCase):
         self.assertNotIn(PALETTE["amber"], self.window.sync_label.styleSheet())
 
     def test_failing_collector_reports_and_re_enables_the_button(self):
-        def broken_sync(conn):
+        def broken_sync(conn, cancel=None):
             raise RuntimeError("database is locked")
 
         with mock.patch("token_tracker.gui.collectors.sync_all", side_effect=broken_sync):
@@ -135,7 +135,7 @@ class SyncSourcesTest(unittest.TestCase):
         started = threading.Event()
         release = threading.Event()
 
-        def slow_sync(conn):
+        def slow_sync(conn, cancel=None):
             calls.append(1)
             started.set()
             release.wait(5)
@@ -152,6 +152,30 @@ class SyncSourcesTest(unittest.TestCase):
 
         self.assertEqual(len(calls), 1)
         self.assertTrue(self.window.import_button.isEnabled())
+
+    def test_close_during_sync_cancels_and_waits_for_the_worker(self):
+        started = threading.Event()
+        seen = {}
+
+        def slow_sync(conn, cancel=None):
+            started.set()
+            # The collector in flight is not interruptible: the close must
+            # outlast it instead of giving up after a fixed timeout.
+            cancel.wait(5)
+            seen["cancelled"] = cancel.is_set()
+            threading.Event().wait(0.3)
+            return {}
+
+        with mock.patch("token_tracker.gui.collectors.sync_all", side_effect=slow_sync):
+            self.window.sync_sources()
+            thread = self.window._sync_thread
+            self.assertTrue(started.wait(5))
+            self.window.close()
+            self.assertFalse(thread.isRunning(), "close returned with the sync still running")
+
+        self.assertTrue(seen["cancelled"])
+        self.assertTrue(self.window.isHidden())
+        self.assertIsNone(QApplication.overrideCursor())
 
 
 if __name__ == "__main__":

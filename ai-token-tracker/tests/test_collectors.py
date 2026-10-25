@@ -9,6 +9,7 @@ import json
 import os
 import sqlite3
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -1025,6 +1026,28 @@ class SyncAllTest(unittest.TestCase):
         self.assertNotEqual(statuses["ghost"]["capability"], "unavailable")
         # a failed collector leaves other collectors' data untouched
         self.assertEqual(db.totals(self.conn)["events"], 2)
+
+    def test_cancel_stops_before_the_next_collector(self):
+        cancel = threading.Event()
+        calls = []
+
+        def first(_path):
+            calls.append("first")
+            cancel.set()
+            return []
+
+        def second(_path):
+            calls.append("second")
+            return []
+
+        registry = [
+            collectors.Collector("one", "One", "exact", "agent", lambda: Path("."), first),
+            collectors.Collector("two", "Two", "exact", "agent", lambda: Path("."), second),
+        ]
+        with mock.patch.object(collectors, "REGISTRY", registry):
+            results = collectors.sync_all(self.conn, cancel=cancel)
+        self.assertEqual(calls, ["first"])
+        self.assertEqual(set(results), {"one"})
 
     def test_repeated_sync_is_idempotent(self):
         kilo_db = self.root / "kilo.db"
