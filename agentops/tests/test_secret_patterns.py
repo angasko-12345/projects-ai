@@ -113,6 +113,11 @@ JSON_FORMS = (
         '  "Authorization": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmYWtlIn0.FAKESIG12",',
         "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmYWtlIn0.FAKESIG12",
     ),
+    (
+        "json-token",
+        '{"token": "FAKEtokenVALUE123"}',
+        "FAKEtokenVALUE123",
+    ),
 )
 
 
@@ -210,6 +215,16 @@ class FalsePositiveGuards(unittest.TestCase):
         "sk-learn notebooks describe hyphenated experiments",
     )
 
+    #: Log lines that name a credential key but carry a count or a model name.
+    #: Redacting these hides the thing the log is reporting, and in the
+    #: security gate a false positive can block a benign diff.
+    BENIGN_ASSIGNMENTS = (
+        "token: 4096",
+        "token = GPT-4",
+        "max_tokens: 8192",
+        "token_count 1234",
+    )
+
     def test_prose_is_left_alone(self):
         for text in self.PROSE:
             with self.subTest(text=text):
@@ -220,9 +235,44 @@ class FalsePositiveGuards(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertEqual([], scan_text(text, "test"))
 
+    def test_benign_assignments_are_left_alone(self):
+        for text in self.BENIGN_ASSIGNMENTS:
+            with self.subTest(text=text):
+                self.assertEqual(text, redact_text(text))
+
+    def test_benign_assignments_are_not_flagged(self):
+        for text in self.BENIGN_ASSIGNMENTS:
+            with self.subTest(text=text):
+                self.assertEqual([], scan_text(text, "test"))
+
     def test_bearer_length_floor(self):
         self.assertEqual("Bearer short", redact_text("Bearer short"))
         self.assertIn(REDACTED, redact_text("Bearer FAKEbearerValue01234"))
+
+
+class AssignmentValueThreshold(unittest.TestCase):
+    """An assigned value must look like a credential before it is replaced.
+
+    Long values are almost never log noise, and punctuated values are shaped
+    like keys. Short alphanumerics are counts, versions, and model names.
+    """
+
+    def test_long_values_are_redacted(self):
+        self.assertEqual("token: [REDACTED]", redact_text("token: abcdefghijkl"))
+        self.assertEqual("API_KEY=[REDACTED]", redact_text("API_KEY=FAKEvalue1234"))
+
+    def test_short_values_with_a_symbol_are_redacted(self):
+        self.assertEqual("api_key=[REDACTED]", redact_text("api_key=abcd1234!"))
+        self.assertIn(REDACTED, redact_text("token: a-b-c-d-e"))
+
+    def test_short_alphanumeric_values_are_left_alone(self):
+        for text in ("token: 4096", "token = GPT-4", "password: hunter2"):
+            with self.subTest(text=text):
+                self.assertEqual(text, redact_text(text))
+
+    def test_assignment_family_is_still_reported(self):
+        found = _patterns_found('{"token": "FAKEtokenVALUE123"}')
+        self.assertIn("credential-assignment", found)
 
 
 if __name__ == "__main__":
