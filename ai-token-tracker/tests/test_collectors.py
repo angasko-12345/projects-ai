@@ -1177,6 +1177,30 @@ class DataDirConfigurationTest(unittest.TestCase):
             config.data_dir()
         self.assertIn("config.json", str(caught.exception))
 
+    def test_misconfigured_data_dir_does_not_hide_an_agent_in_its_home_location(self):
+        home = self.root / "home"
+        kilo_db = home / ".kilo" / "share" / "kilo.db"
+        kilo_db.parent.mkdir(parents=True)
+        build_kilo_db(kilo_db)
+        conn = db.connect(self.root / "test.db")
+        self.addCleanup(conn.close)
+        registry = [
+            collectors.Collector("kilo", "Kilo", "exact", "agent",
+                                 collectors.find_kilo, collectors.collect_kilo),
+            collectors.Collector("codex", "Codex", "exact", "agent",
+                                 collectors.find_codex, collectors.collect_codex),
+        ]
+        with mock.patch.dict(os.environ, {config.ENV_VAR: str(self.root / "typo")}), \
+                mock.patch.object(collectors, "_user_home", lambda: home), \
+                mock.patch.object(collectors, "REGISTRY", registry):
+            os.environ.pop("CODEX_SESSIONS", None)
+            results = collectors.sync_all(conn)
+        self.assertEqual(results["kilo"]["status"], "ok")
+        self.assertEqual(results["kilo"]["stored"], 2)
+        # A source found nowhere still names the bad setting.
+        self.assertEqual(results["codex"]["status"], "error")
+        self.assertIn(config.ENV_VAR, results["codex"]["error"])
+
     def test_misconfigured_data_dir_is_recorded_as_a_sync_error(self):
         conn = db.connect(self.root / "test.db")
         self.addCleanup(conn.close)

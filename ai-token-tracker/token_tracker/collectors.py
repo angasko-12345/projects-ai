@@ -41,8 +41,15 @@ def _open_ro(path: Path) -> sqlite3.Connection:
     return sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True, timeout=10)
 
 
-def _first_existing(candidates: Iterable[Path]) -> Path | None:
+def _first_existing(candidates: Iterable[Path | Callable[[], Path]]) -> Path | None:
+    """First candidate that exists, in order.
+
+    A callable candidate is resolved only when every earlier one is missing,
+    so a lazy candidate's errors cannot mask a source that is present.
+    """
     for candidate in candidates:
+        if callable(candidate):
+            candidate = candidate()
         try:
             if candidate.exists():
                 return candidate
@@ -55,15 +62,18 @@ def _user_home() -> Path:
     return Path.home()
 
 
-def _data_dir_candidate(*parts: str) -> Path:
-    """Candidate inside the configured per-agent data directory.
+def _data_dir_candidate(*parts: str) -> Callable[[], Path]:
+    """Lazy candidate inside the configured per-agent data directory.
 
     The directory comes from ``config.data_dir()`` (env var, config file, then
-    the user's home); a configured directory that is missing raises with the
-    setting named, so a typo is recorded as a sync error rather than a source
-    that quietly looks uninstalled.
+    the user's home). It is resolved only when the explicit and home-directory
+    candidates before it are all missing: a misconfigured data_dir must not
+    hide an agent installed in its default location. When it is reached, a
+    configured directory that is missing raises with the setting named, so a
+    typo is recorded as a sync error rather than a source that quietly looks
+    uninstalled.
     """
-    return config.data_dir().joinpath(*parts)
+    return lambda: config.data_dir().joinpath(*parts)
 
 
 # --------------------------------------------------------------- kilo
@@ -758,7 +768,7 @@ def collect_hermes(path: Path) -> list[UsageEvent]:
 
 def find_copilot() -> Path | None:
     appdata = os.environ.get("APPDATA")
-    candidates: list[Path] = []
+    candidates: list[Path | Callable[[], Path]] = []
     if appdata:
         base = Path(appdata)
         candidates += [
