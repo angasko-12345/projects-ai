@@ -1039,6 +1039,35 @@ class RequiredSkipInvariantTests(unittest.TestCase):
         self.assertEqual(counts["required_failures"], 0)
         self.assertGreaterEqual(counts["passed"], 1)
 
+    def test_required_skip_with_optional_pass_reports_unverified(self):
+        # Standard profile on a tree with agentops/ but no agentops/tests:
+        # the required test check is skipped as inapplicable and the optional
+        # CLI check passes. The kernel used to report PASSED (passed >= 1) with
+        # required_failures=1 and persist it, contradicting
+        # assert_report_consistent.
+        profile = load_config().verification_profiles["standard"]
+
+        async def factory(*command, **kwargs):
+            return FakeProcess(b"ok", b"", 0)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "agentops").mkdir()
+            state, kernel = _harness(root, profile, process_factory=factory)
+            try:
+                report = asyncio.run(kernel.run_verification(None, None, root))
+                rows = state.connection.execute(
+                    "select status, overall_status from verification_runs").fetchall()
+            finally:
+                state.close()
+        statuses = {check.name: check.status for check in report.checks}
+        self.assertEqual(statuses["agentops-tests"], VerificationCheckStatus.SKIPPED)
+        self.assertEqual(statuses["agentops-cli-help"], VerificationCheckStatus.PASSED)
+        self.assertEqual(report.required_failures, 1)
+        self.assertEqual(report.overall_status, VerificationReportStatus.UNVERIFIED)
+        assert_report_consistent(report)
+        self.assertEqual([tuple(row) for row in rows], [("completed", "unverified")])
+
     def test_unverified_status_exists(self):
         self.assertEqual(VerificationReportStatus.UNVERIFIED.value, "unverified")
 

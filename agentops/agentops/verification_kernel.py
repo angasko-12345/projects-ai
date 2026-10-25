@@ -370,6 +370,18 @@ class VerificationKernel:
         elif cancelled:
             overall = VerificationReportStatus.CANCELLED
             run_status = VerificationRunStatus.CANCELLED
+        elif counts["required_failures"] > 0:
+            # A required check was skipped (inapplicable to this working tree,
+            # or never reached under fail-fast). An unrelated passing check is
+            # not evidence that the requirement holds, so this is never PASSED
+            # -- the invariant assert_report_consistent enforces. A check that
+            # actually failed still makes it FAILED; otherwise UNVERIFIED.
+            if counts["failed"] > 0:
+                overall = VerificationReportStatus.FAILED
+                run_status = VerificationRunStatus.FAILED
+            else:
+                overall = VerificationReportStatus.UNVERIFIED
+                run_status = VerificationRunStatus.COMPLETED
         elif counts["passed"] >= 1:
             overall = VerificationReportStatus.PASSED
             run_status = VerificationRunStatus.COMPLETED
