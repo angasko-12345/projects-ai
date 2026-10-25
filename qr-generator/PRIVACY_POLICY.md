@@ -2,7 +2,7 @@
 
 Effective date: October 9, 2026
 
-QR Generator (package name `com.qrgenerator.app`) is a offline-first utility app.
+QR Generator (package name `com.qrgenerator.app`) is an offline-first utility app.
 This policy explains what the app does with your data. The short version: it does
 not collect any.
 
@@ -56,6 +56,9 @@ enabled in a build, the app sends RevenueCat only an anonymous app-user
 identifier together with the status of your purchases and entitlements. It
 never sends your QR code contents, saved codes, Wi-Fi credentials, settings,
 or images to RevenueCat or any other service.
+
+Purchase history is processed by RevenueCat. To have it deleted, email the
+support address under "Contact" below.
 
 In builds where Google Play Billing is not yet configured, the app shows an
 honest notice and does not process any purchases.

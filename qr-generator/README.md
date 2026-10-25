@@ -33,6 +33,9 @@ free tier never requires a purchase.
 - Saved codes, history, and settings stored locally (AsyncStorage): history is
   deduplicated by payload and capped at 100 entries; saved codes are neither
   deduplicated nor capped
+- In-app review prompt (expo-store-review) only after the 3rd successful
+  save/share/export, never in a session that showed an error, at most once per
+  90 days; "Send feedback" mailto link in the Library sheet
 - Accessible labels/roles on all controls, Android back closes sheets, works offline
 - Free beta mode (opt-in with `BETA_BUILD=1`): premium unlocked for testers,
   purchases switched off, built locally as an APK: see `BETA.md`
