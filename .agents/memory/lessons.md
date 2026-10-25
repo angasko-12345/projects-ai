@@ -1040,3 +1040,10 @@
 - **Root cause:** the queued claim was a historical 2026-10-04 observation copied forward; only its first half was re-verified when the row was written. Reproduction of each item is cheap here (seconds for the unit tests) and was skipped when the two failures were first cataloged together.
 - **Fix:** fixed only the reproducible test (seam-mock it hermetic), corrected the queue row to drop the non-reproducible failing test, and recorded the reproduction results in the task record instead of in the queue.
 - **Remember:** a failure list written from a run summary is a claim, not a fact; reproduce each item at the start of its fix task, and treat a row item that does not reproduce as a stale-claim cleanup, not as a fix target.
+
+### 2026-10-25 - An orchestrator must never hand its own stdin to a child
+
+- **Symptom:** in AgentOps E2E acceptance runs, opencode hung past the 900 s verification timeout with zero output while acting as an agent (`anomalyco/opencode#52938`: `opencode run "<prompt>"` reads stdin to EOF whenever stdin is not a TTY, even with a message argument).
+- **Root cause:** AgentOps `ProcessRuntime.spawn_process` never passed `stdin` to the spawn factory, so every child CLI inherited the orchestrator's stdin — which, under AgentOps, is never an interactive TTY. Any child that drains stdin before doing work had nothing to drain and would never get EOF.
+- **Fix:** default `stdin=asyncio.subprocess.DEVNULL` in `runtime.py` spawn/run, verified by a dup2-based fd-0 pipe-swap regression test (fails-before/passes-after).
+- **Remember:** an orchestrator must never hand its own stdin to a child: spawn children with stdin at a closed/EOS source (devnull), because any CLI that drains stdin before acting hangs with zero output under an agent's non-TTY stdin, and a caller-side timeout is the only thing that catches it.
