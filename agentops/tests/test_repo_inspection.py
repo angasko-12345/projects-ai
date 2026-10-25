@@ -283,6 +283,9 @@ class TestRunnerDetectionTests(unittest.TestCase):
             "unittest",
         )
 
+    def test_non_python_tests_directory_is_not_unittest(self):
+        self.assertIsNone(self._runner_for({"tests/a.test.js": "test('x', () => {})\n"}))
+
     def test_conftest_outranks_go_module(self):
         self.assertEqual(
             self._runner_for({"go.mod": "module example.com/x\n", "conftest.py": ""}),

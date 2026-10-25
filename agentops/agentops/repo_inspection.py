@@ -320,7 +320,11 @@ def _scan_tree(
             language = _SOURCE_LANGUAGE_BY_SUFFIX.get(os.path.splitext(name)[1].lower())
             if language is not None:
                 language_counts[language] = language_counts.get(language, 0) + 1
-                if depth > 1 and os.path.basename(directory).lower() in {"tests", "test"}:
+                if (
+                    language == "Python"
+                    and depth > 1
+                    and os.path.basename(directory).lower() in {"tests", "test"}
+                ):
                     python_test_dir_seen = True
         if truncated:
             break
