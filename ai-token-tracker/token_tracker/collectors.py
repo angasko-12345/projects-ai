@@ -753,7 +753,7 @@ def collect_codex(path: Path) -> list[UsageEvent]:
                 usage_t = _codex_usage_tuple(last)
                 if usage_t is None and total_t is not None:
                     base = prev_total or (0, 0, 0, 0, 0)
-                    usage_t = tuple(max(a - b, 0) for a, b in zip(total_t, base))  # type: ignore[assignment]
+                    usage_t = tuple(max(a - b, 0) for a, b in zip(total_t, base, strict=True))  # type: ignore[assignment]
                 if total_t is not None:
                     prev_total = total_t
                 if usage_t is None or not any(usage_t):
