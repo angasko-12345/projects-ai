@@ -506,3 +506,32 @@ class ManifestSymlinkSafetyTests(unittest.TestCase):
             '{"scripts": {"test": "jest"}}\n', encoding="utf-8",
         )
         self.assertEqual(inspect_repository(self.root).test_runner, "npm test")
+
+    @unittest.skipUnless(hasattr(os, "mkfifo") and hasattr(os, "O_NONBLOCK"), "POSIX FIFOs required")
+    def test_manifest_swapped_to_fifo_after_lstat_returns_promptly(self):
+        # TOCTOU: lstat sees a regular file, then it is replaced by a FIFO
+        # before open.  Only O_NONBLOCK on the open (plus the fstat re-check)
+        # keeps this from blocking forever; the lstat guard alone cannot.
+        import stat as stat_module
+        from agentops import repo_inspection
+
+        manifest = self.root / "package.json"
+        manifest.write_text('{"scripts": {"test": "x"}}', encoding="utf-8")
+        real_lstat = os.lstat
+
+        def swapping_lstat(path, *args, **kwargs):
+            result = real_lstat(path, *args, **kwargs)
+            if os.fspath(path) == os.fspath(manifest) and stat_module.S_ISREG(result.st_mode):
+                os.unlink(manifest)
+                os.mkfifo(manifest)
+            return result
+
+        class SwappingOs:
+            def __getattr__(self, name):
+                return getattr(os, name)
+
+        fake_os = SwappingOs()
+        fake_os.lstat = swapping_lstat
+        with patch.object(repo_inspection, "os", fake_os):
+            result = self._run_with_deadline(lambda: inspect_repository(self.root), manifest)
+        self.assertIsNone(result.test_runner)
