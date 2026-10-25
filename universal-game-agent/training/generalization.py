@@ -351,13 +351,15 @@ def main(argv=None) -> int:
         game = HELDOUT_GAME if a.arm in ("scratch", "finetune") and a.game is None else a.game
         train_run(cfg, a.arm, a.seed, art, game=game, scale=a.scale, threads=a.threads)
     elif a.command == "all":
-        res = run_all(int(cfg["eval"]["episodes"]), seeds, int(cfg["env"]["max_steps"]))
+        res = run_all(int(cfg["eval"]["episodes"]), seeds, int(cfg["env"]["max_steps"]),
+                      int(cfg["env"].get("skip", 1)))
         (art / "baselines.json").write_text(json.dumps(res, indent=2) + "\n", encoding="utf-8")
         for arm, s, g in plan_runs(seeds):
             train_run(cfg, arm, s, art, game=g, scale=a.scale, threads=a.threads)
         aggregate(art, Path(a.out_dir) if a.out_dir else art)
     elif a.command == "baselines":
-        res = run_all(int(cfg["eval"]["episodes"]), seeds, int(cfg["env"]["max_steps"]))
+        res = run_all(int(cfg["eval"]["episodes"]), seeds, int(cfg["env"]["max_steps"]),
+                      int(cfg["env"].get("skip", 1)))
         (art / "baselines.json").write_text(json.dumps(res, indent=2) + "\n", encoding="utf-8")
         print(f"baselines -> {art / 'baselines.json'} ({res['seconds']:.1f}s)")
     elif a.command == "aggregate":

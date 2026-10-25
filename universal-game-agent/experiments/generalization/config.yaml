@@ -6,7 +6,7 @@ seeds: [0, 1, 2]
 env:            # applied identically to every game
   obs_size: 48  # 48x48 instead of the legacy 84x84: ~2x throughput on this box
   num_stack: 4
-  skip: 1
+  skip: 4       # decision period (frames per action); skip 1 did not learn in budget, see RESULTS.md
   max_steps: 500
 
 model:          # identical for every arm; frame_size must equal env.obs_size

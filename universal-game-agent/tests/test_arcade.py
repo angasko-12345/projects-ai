@@ -191,6 +191,20 @@ class TestBaselines(unittest.TestCase):
                 for rep in res.values():
                     self.assertEqual(rep["episodes"], 4)
 
+    def test_skip_repeats_each_decision(self):
+        seeds = [100, 101, 102]
+        for game in GAMES:
+            with self.subTest(game=game):
+                one = run_policy(game, "const_left", seeds, max_steps=300, skip=1)
+                four = run_policy(game, "const_left", seeds, max_steps=300, skip=4)
+                # A constant policy plays the same frames; only decisions are counted.
+                self.assertEqual(one["episode_rewards"], four["episode_rewards"])
+                for a, b in zip(one["episode_lengths"], four["episode_lengths"], strict=True):
+                    self.assertEqual(b, -(-a // 4))
+                ora = run_policy(game, "oracle", seeds, max_steps=300, skip=4)
+                rnd = run_policy(game, "random", seeds, max_steps=300, skip=4)
+                self.assertGreater(ora["mean_reward"], rnd["mean_reward"])
+
     def test_baselines_deterministic(self):
         a = run_policy("dodge", "sticky_random", [5, 6], rng_seed=3)
         b = run_policy("dodge", "sticky_random", [5, 6], rng_seed=3)
