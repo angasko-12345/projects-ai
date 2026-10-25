@@ -160,7 +160,8 @@ stopping, so keep `final.pt` (and any `step_N.pt`) for every run.
 ## Scale notes
 
 - `data/processed/` holds the tiny shipped-sample prep: 736 train tokens,
-  184 val tokens, vocab 308, `context_length` 32. An earlier revision of this
+  184 val tokens, vocab 515 (308 before the 2026-10-25 full-byte-alphabet
+  tokenizer fix), `context_length` 32. An earlier revision of this
   document said `data/tokenizer.json` was "deleted from the tree (staged
   deletion, pre-existing)". **That is superseded**: it is a tracked artifact,
   was restored from git on 2026-10-04, and is present as of 2026-10-10
