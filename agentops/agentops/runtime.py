@@ -217,14 +217,26 @@ class ProcessRuntime:
     async def communicate_with_cancel(
         process: Any,
         cancel_event: threading.Event | None,
+        input_bytes: bytes | None = None,
     ) -> tuple[bytes, bytes]:
-        """Wait for process output while allowing a thread-owned cancel event."""
+        """Wait for process output while allowing a thread-owned cancel event.
+
+        ``input_bytes`` (prompt stdin transport) is written to the child's
+        stdin pipe, which ``communicate`` then closes so the child sees EOF.
+        It is only forwarded when given, so process doubles whose
+        ``communicate()`` takes no arguments keep working.
+        """
+        def _communicate() -> Any:
+            if input_bytes is None:
+                return process.communicate()
+            return process.communicate(input_bytes)
+
         if cancel_event is None:
-            stdout, stderr = await process.communicate()
+            stdout, stderr = await _communicate()
             return stdout, stderr
         if cancel_event.is_set():
             raise OperationCancelled
-        communicate = asyncio.create_task(process.communicate())
+        communicate = asyncio.create_task(_communicate())
         try:
             while True:
                 done, _ = await asyncio.wait(
@@ -300,8 +312,13 @@ class ProcessRuntime:
         stderr: object = asyncio.subprocess.PIPE,
         stdin: object = asyncio.subprocess.DEVNULL,
         on_running: Callable[[Any], None] | None = None,
+        input_bytes: bytes | None = None,
     ) -> ProcessResult:
         """Run one command with timeout, cooperative cancellation, and cleanup.
+
+        ``input_bytes`` switches stdin to a pipe that receives exactly those
+        bytes and is then closed (EOF), so a CLI reading its prompt from stdin
+        can never block on it.  Without it stdin stays ``DEVNULL`` (issue #4).
 
         Timeouts never raise: they are reported as ``timed_out`` results with
         a ``None`` exit code (the code is unknown by design — the tree was
@@ -313,6 +330,8 @@ class ProcessRuntime:
         if cancel_event is not None and cancel_event.is_set():
             return ProcessResult(argv, None, b"", b"", 0.0, False, True)
         owns_process_group = self.spawn is None
+        if input_bytes is not None:
+            stdin = asyncio.subprocess.PIPE
         process = await self.spawn_process(
             *argv, cwd=cwd, env=env, stdout=asyncio.subprocess.PIPE, stderr=stderr,
             stdin=stdin,
@@ -328,7 +347,7 @@ class ProcessRuntime:
         try:
             try:
                 stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                    self.communicate_with_cancel(process, cancel_event),
+                    self.communicate_with_cancel(process, cancel_event, input_bytes),
                     timeout=timeout,
                 )
             except TimeoutError:
