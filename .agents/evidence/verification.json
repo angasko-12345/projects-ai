@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-10-25T05:43:55+00:00",
-  "commit": "e564c8f7e1cee1f53507c059e28a521da45f06d1",
-  "python": "3.14.7",
-  "platform": "Windows 11 (AMD64)",
-  "measured_in": "a clean clone of e564c8f7e1ce",
+  "generated_at": "2026-10-25T09:06:46+00:00",
+  "commit": "db301126efabb68f70f4b233b6649101370c60a3",
+  "python": "3.12.15",
+  "platform": "Linux 6.12.110+ (aarch64)",
+  "measured_in": "a clean clone of db301126efab",
   "clean_checkout": true,
   "command_note": "Every command runs from its own product directory with the interpreter that ran this script. There is no repository-wide test command and these products share no dependencies.",
   "excluded": {
@@ -38,9 +38,9 @@
     {
       "product": "universal-game-agent",
       "directory": "universal-game-agent",
-      "commit": "e564c8f7e1cee1f53507c059e28a521da45f06d1",
+      "commit": "db301126efabb68f70f4b233b6649101370c60a3",
       "command": [
-        "C:\\Python314\\python.exe",
+        "/tmp/ugavenv/bin/python",
         "-m",
         "unittest",
         "discover",
@@ -49,13 +49,13 @@
       ],
       "dirty_paths": [],
       "total": 501,
-      "duration_seconds": 26.494,
-      "skipped": 1,
+      "duration_seconds": 28.967,
+      "skipped": 3,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 501 tests in 26.494s",
-        "OK (skipped=1)"
+        "Ran 501 tests in 28.967s",
+        "OK (skipped=3)"
       ],
       "result": "pass"
     },
