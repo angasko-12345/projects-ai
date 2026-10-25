@@ -48,6 +48,9 @@ on:
       - "ai-token-tracker/**"
       - ".github/workflows/evidence.yml"
 
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest
