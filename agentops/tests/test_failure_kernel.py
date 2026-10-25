@@ -9,7 +9,7 @@ import asyncio
 import threading
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from agentops.agent_run import AgentRunContext, AgentRunStatus
 from agentops.config import AppConfig
@@ -434,13 +434,92 @@ class WorkflowIntegrationTests(unittest.TestCase):
             state.close()
 
     def test_cancellation_bounded(self):
-        policy = RetryPolicy(max_attempts=3)
-        cancelled = _failure(FailureCategory.CANCELLATION)
-        self.assertTrue(policy.should_retry_attempt(1, cancelled))
-        cancel_event = threading.Event()
-        cancel_event.set()
-        # A set cancel event must stop the retry chain before any sleep.
-        self.assertTrue(cancel_event.is_set())
+        # DBG-12 regression: the previous version of this test asserted
+        # should_retry_attempt on a policy object plus is_set() on an event it
+        # had just set itself, so it could not fail for the reason its name
+        # claims. This exercises the engine's real cancellation consumption
+        # path: a failed agent run leaves the task budget for one more
+        # attempt, but the set cancel event must stop the retry chain before
+        # any backoff sleep and before a second agent invocation.
+        from agentops.runner import OperationCancelled, RunResult
+
+        state = StateStore(":memory:")
+        try:
+            workflow_id = state.create_workflow("wf")
+            task = state.add_task(
+                Task("implement", "implementation", workflow_id, max_attempts=2))
+            agent = MagicMock()
+            agent.config.name = "opencode"
+            registry = MagicMock()
+            registry.select.return_value = agent
+            runner = MagicMock()
+            runner.build_command.return_value = ("opencode",)
+            failure = RunResult("opencode", ("opencode",), 1, "out", "boom",
+                                0.01, False, Path("fake.log"))
+            cancel_event = threading.Event()
+            calls = []
+
+            async def fake_run(*args, **kwargs):
+                calls.append(1)
+                if len(calls) == 1:
+                    cancel_event.set()
+                return failure
+
+            runner.run_agent.side_effect = fake_run
+            engine = WorkflowEngine(
+                _config(backoff_base_seconds=0.0), state, registry, runner, MagicMock())
+            with patch("agentops.failure.RetryPolicy.asleep",
+                       new_callable=AsyncMock) as asleep:
+                with self.assertRaises(OperationCancelled):
+                    asyncio.run(
+                        engine._execute_task(task, Path("/tmp"), cancel_event))
+            # No retry despite remaining budget, and no backoff sleep.
+            self.assertEqual(calls, [1])
+            self.assertEqual(asleep.await_count, 0)
+            finished = state.get_task(task.id)
+            self.assertEqual(finished.status, TaskStatus.FAILED)
+            self.assertIsNotNone(finished.finished_at)
+            self.assertEqual(finished.attempts, 1)
+            self.assertEqual(len(state.list_failures(workflow_id, task.id)), 1)
+        finally:
+            state.close()
+
+    def test_cancellation_unset_lets_budget_retry_proceed(self):
+        # Contrast for test_cancellation_bounded: the same single failing
+        # agent and a full attempt budget DO retry when no cancel event is
+        # set, so the cancellation path above stops the chain, not the budget.
+        from agentops.runner import RunResult
+
+        state = StateStore(":memory:")
+        try:
+            workflow_id = state.create_workflow("wf")
+            task = state.add_task(
+                Task("implement", "implementation", workflow_id, max_attempts=2))
+            agent = MagicMock()
+            agent.config.name = "opencode"
+            registry = MagicMock()
+            registry.select.return_value = agent
+            runner = MagicMock()
+            runner.build_command.return_value = ("opencode",)
+            failure = RunResult("opencode", ("opencode",), 1, "out", "boom",
+                                0.01, False, Path("fake.log"))
+            calls = []
+
+            async def fake_run(*args, **kwargs):
+                calls.append(1)
+                return failure
+
+            runner.run_agent.side_effect = fake_run
+            engine = WorkflowEngine(
+                _config(backoff_base_seconds=0.0), state, registry, runner, MagicMock())
+            asyncio.run(engine.execute(workflow_id, Path("/tmp")))
+            self.assertEqual(len(calls), 2)
+            finished = state.get_task(task.id)
+            self.assertEqual(finished.status, TaskStatus.FAILED)
+            self.assertEqual(finished.attempts, 2)
+            self.assertEqual(len(state.list_failures(workflow_id, task.id)), 2)
+        finally:
+            state.close()
 
     def test_review_rejection_repairable(self):
         policy = RetryPolicy(max_repair_cycles=1)
