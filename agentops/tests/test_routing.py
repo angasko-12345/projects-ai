@@ -477,6 +477,21 @@ class WorkflowRoutingTests(unittest.TestCase):
         self.assertTrue(threads, "workflow selection must inspect the repository")
         self.assertTrue(all(thread is not loop_thread for thread in threads), threads)
 
+    @patch("agentops.registry.shutil.which")
+    @patch("agentops.registry.subprocess.run")
+    def test_workflow_routes_when_repository_characteristics_raises(self, run, which):
+        # Before inspection moved to asyncio.to_thread, a raising
+        # _repository_characteristics was caught by _select_agent's router
+        # guard; it must still never fail the task.
+        which.side_effect = lambda command: f"/bin/{command}"
+        run.return_value = MagicMock(stdout="1.0.0\n", stderr="")
+        passed = MagicMock(succeeded=True, output="tests passed")
+        self.verifier.run = MagicMock(side_effect=lambda *a, **k: asyncio.sleep(0, result=[passed]))
+        engine = WorkflowEngine(self.config, self.state, self.registry, self.runner, self.verifier)
+        engine._repository_characteristics = MagicMock(side_effect=RuntimeError("inspection exploded"))
+        result = asyncio.run(engine.run_high_level("Add routing", Path.cwd()))
+        self.assertTrue(result.ready)
+
     def test_stale_registry_mapping_records_execution_fallback(self):
         workflow_id = self.state.create_workflow("stale mapping")
         task = self.state.add_task(Task("Implement", "implementation", workflow_id, max_attempts=1))

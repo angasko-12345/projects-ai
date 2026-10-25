@@ -980,9 +980,16 @@ class WorkflowEngine:
                 if getattr(self, "router", None) is not None:
                     # The bounded filesystem walk runs in a worker thread so a
                     # slow or hostile tree cannot block the event loop.
-                    repository_characteristics = await asyncio.to_thread(
-                        self._repository_characteristics, working_directory,
-                    )
+                    # Inspection is scoring input only: a failure here (an
+                    # override that raises, a shut-down executor) degrades to
+                    # empty hints so selection still routes, as it did when
+                    # the call sat inside _select_agent's router guard.
+                    try:
+                        repository_characteristics = await asyncio.to_thread(
+                            self._repository_characteristics, working_directory,
+                        )
+                    except Exception:
+                        repository_characteristics = {}
                 agent = self._select_agent(
                     task, excluded, working_directory, repository_characteristics,
                 )
