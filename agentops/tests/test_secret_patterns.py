@@ -10,6 +10,7 @@ Every value below is an obvious placeholder. Never put a realistic credential
 in a fixture.
 """
 
+import time
 import unittest
 
 from agentops.logging import redact_text
@@ -300,6 +301,34 @@ class AssignmentValueThreshold(unittest.TestCase):
     def test_assignment_family_is_still_reported(self):
         found = _patterns_found('{"token": "FAKEtokenVALUE123"}')
         self.assertIn("credential-assignment", found)
+
+
+class JwtPatternIsLinear(unittest.TestCase):
+    """A run of `eyJ-eyJ-...` must not make the JWT regex quadratic.
+
+    With a `\\b` anchor every `eyJ` inside the run was a match start, and each
+    rescanned the remainder: 100KB took seconds in both the redactor and the
+    detector (ReDoS on any untrusted log or diff).
+    """
+
+    ADVERSARIAL = "eyJ-" * 25_000  # 100KB
+
+    def test_adversarial_run_is_redacted_quickly(self):
+        started = time.monotonic()
+        redact_secrets(self.ADVERSARIAL)
+        self.assertLess(time.monotonic() - started, 0.5)
+
+    def test_adversarial_run_is_scanned_quickly(self):
+        started = time.monotonic()
+        scan_text(self.ADVERSARIAL)
+        self.assertLess(time.monotonic() - started, 0.5)
+
+    def test_real_jwts_still_redact(self):
+        token = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmYWtlIn0.FAKESIGNATUREfake0123456789"
+        for text in (token, f"x.{token}", f"jwt={token}", f'"{token}"'):
+            with self.subTest(text=text):
+                self.assertNotIn(token, redact_text(text))
+                self.assertIn("jwt", _patterns_found(text))
 
 
 if __name__ == "__main__":

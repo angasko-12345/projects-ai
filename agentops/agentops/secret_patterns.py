@@ -61,9 +61,12 @@ SECRET_PATTERNS: tuple[SecretPattern, ...] = (
     ),
     _pattern("stripe-key", r"\b(?:sk|rk|pk)_live_[A-Za-z0-9]{16,}\b"),
     _pattern("google-api-key", r"\bAIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-])"),
+    # The lookbehind (not `\b`) anchors a JWT at the start of a token-ish
+    # run: `\b` matched before every `eyJ` inside `eyJ-eyJ-...`, and each
+    # start rescanned the rest of the run, which was quadratic (ReDoS).
     _pattern(
         "jwt",
-        r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"
+        r"(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"
         r"(?![A-Za-z0-9_-])",
     ),
     _pattern("slack-token", r"\bxox[baprs]-[A-Za-z0-9-]{8,}\b"),
