@@ -158,6 +158,63 @@ class InspectRepositoryTests(unittest.TestCase):
         self.assertIs(capped.size, RepositorySize.LARGE)
         self.assertTrue(capped.routing_flags()["repository_exploration_required"])
 
+    def _count_scandir_entries(self, root: Path, **kwargs):
+        real_scandir = os.scandir
+        counts = {"entries": 0, "listings": 0}
+
+        class CountingScandir:
+            def __init__(self, path):
+                self._inner = real_scandir(path)
+                counts["listings"] += 1
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                self._inner.close()
+                return False
+
+            def __iter__(self):
+                for entry in self._inner:
+                    counts["entries"] += 1
+                    yield entry
+
+        with patch("agentops.repo_inspection.os.scandir", CountingScandir):
+            result = inspect_repository(root, **kwargs)
+        return result, counts
+
+    def test_entry_budget_bounds_many_empty_directories(self):
+        root = self._tree("many-dirs")
+        for index in range(300):
+            (root / f"d{index:03d}").mkdir()
+        result, counts = self._count_scandir_entries(root, max_entries=50)
+        self.assertTrue(result.truncated)
+        self.assertIs(result.size, RepositorySize.LARGE)
+        self.assertEqual(result.source_file_count, 0)
+        # The budget plus at most one peeked entry per listing.
+        self.assertLessEqual(counts["entries"], 50 + counts["listings"])
+        self.assertLessEqual(counts["listings"], 51)
+
+    def test_entry_budget_stops_reading_a_huge_subdirectory(self):
+        root = self._tree("huge-subdir")
+        _build_tree(root, {"a.py": "x"})
+        huge = root / "huge"
+        huge.mkdir()
+        for index in range(2000):
+            (huge / f"f{index}.txt").touch()
+        result, counts = self._count_scandir_entries(root, max_entries=100)
+        self.assertTrue(result.truncated)
+        self.assertLessEqual(result.source_file_count, 100)
+        self.assertLessEqual(counts["entries"], 100 + counts["listings"])
+
+    def test_walk_within_entry_budget_is_untruncated_and_deterministic(self):
+        root = self._tree("within-budget")
+        _build_tree(root, {"src/a.py": "x", "src/b.ts": "x", "tests/test_a.py": "x"})
+        bounded = inspect_repository(root, max_entries=5)
+        self.assertFalse(bounded.truncated)
+        self.assertEqual(bounded, inspect_repository(root))
+        self.assertTrue(inspect_repository(root, max_entries=4).truncated)
+
     def test_size_boundaries_without_truncation(self):
         root = self._tree("boundary")
         _build_tree(root, {f"s{index}.py": "x" for index in range(101)})
