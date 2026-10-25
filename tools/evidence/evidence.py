@@ -199,7 +199,13 @@ def _dirty_paths(directory: str, repo_root: Path) -> list[str]:
         paths.append(entry[3:])
         # A rename/copy entry is followed by its source path as its own field.
         index += 2 if set(entry[:2]) & {"R", "C"} else 1
-    return sorted(paths)
+    # `git status` trusts the assume-unchanged and skip-worktree index bits and
+    # never reports an edit behind them, so an entry carrying either one is
+    # listed as unverifiable: `ls-files -v` tags it lowercase or `S`.
+    for entry in _git_paths("ls-files", "-v", "-z", "--", directory, cwd=repo_root):
+        if entry[:1] == "S" or entry[:1].islower():
+            paths.append(entry[2:])
+    return sorted(set(paths))
 
 
 def check_schema(document: object) -> list[str]:
