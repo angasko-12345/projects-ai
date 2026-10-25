@@ -32,15 +32,24 @@ runs, with the cache keyed on `qr-generator/package-lock.json`.
 
 ## Headless GUI policy (agentops)
 
-The AgentOps job runs headless, so it has no `$DISPLAY`. AgentOps GUI tests
-that construct a real Tk root window are skipped rather than faked: they are
-marked `@requires_display` (`agentops/tests/tk_display.py`), which detects
-display availability and skips with an explicit reason.
+The AgentOps desktop client is PySide6, an optional dependency (the
+`desktop` extra). Widget-level tests are marked `@requires_qt`
+(`agentops/tests/qt_display.py`) and always run on Qt's `offscreen`
+platform, so no `$DISPLAY` is needed.
+
+`agentops.yml` runs two jobs:
+
+- `tests`: the stdlib-only suite with no PySide6, so every `@requires_qt`
+  test is skipped with an explicit reason. This is the configuration the
+  evidence file measures.
+- `gui-tests`: installs PySide6 (plus the Qt runtime libraries it needs on
+  Ubuntu), checks that a `QApplication` starts offscreen, and runs the whole
+  suite with the GUI tests enabled. A broken Qt install fails that check
+  instead of silently skipping the GUI tests again.
 
 This is a testing-only policy. Production GUI code is unchanged and still
-fails loudly when no display exists — AgentOps never fabricates a GUI
-success condition. Controller and workflow logic that the GUI depends on is
-covered by non-Tk test classes, which run in CI.
+fails loudly when it cannot start; AgentOps never fabricates a GUI success
+condition.
 
 ## FFmpeg requirements and runtime (tiktok-slop-factory)
 
