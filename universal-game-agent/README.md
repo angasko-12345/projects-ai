@@ -235,6 +235,44 @@ training from scratch at every budget point on 3/3 seeds (+0.42 vs -0.70 at
 python -m training.generalization all --artifacts D:\tmp\uga-generalization
 ```
 
+## Real games: Atari through the same interface (Stage 1, `environment/atari_env.py`)
+
+Optional extra: `pip install -r requirements-atari.txt` (`ale-py>=0.9`).
+Nothing else in the package imports `ale_py`; without it every ALE test skips.
+
+- **Contract.** `AtariGame` returns the raw 210x160 RGB screen only, `info ==
+  {}` always (lives, frame counters and RAM never leave the adapter),
+  `terminated` = game over vs `truncated` = frame cap, raw score delta as
+  reward. It never autoresets: a `step()` after the episode ended raises, the
+  caller resets (same rule as `environment/vec.py`). ALE's own autoresetting
+  `AtariVectorEnv` is available behind `env.vector_backend: ale` and is
+  adapted to that contract (`SameStep` mode, terminal obs passed through,
+  `reset_env` hands back ALE's eager reset).
+- **Preprocessing** is UGA's own `PreprocessingWrapper`: 4-frame action repeat
+  with 2-frame max-pool, gray, 84x84 bilinear, stack 4. Sticky actions 0.25
+  (ALE v5 default), 30 no-op resets, 108000-frame cap; `reward_transform:
+  sign` clips rewards for training only, evaluation reports raw game score.
+- **Universal action space.** `environment/universal_actions.py`: the UGA pad
+  is Atari's full 18-action joystick set; each adapter's declared legal action
+  *names* (ALE minimal set, arcade `NOOP/LEFT/RIGHT`) are mapped onto it by a
+  game-agnostic component projection. One `Discrete(18)` head drives arcade
+  and Atari games. Opt-in (`env.action_space: universal`); checkpoints of pad
+  envs carry `action_space: "uga-pad18-v1"` and refuse to load into a
+  differently-declared env; legacy checkpoints are unchanged and still load.
+- **Configs.** `configs/atari_pong.yaml` (correctness anchor vs CleanRL
+  `ppo_atari.py` Pong, 20.36 +/- 0.20 at 10M steps; deviations listed in the
+  file) and `experiments/stage1/atari_pilot.yaml` (train Pong / Breakout /
+  SpaceInvaders, near held-out DemonAttack, far held-out Freeway) for
+  `python -m training.generalization ... --config experiments/stage1/atari_pilot.yaml`.
+  Plan, measured numbers, throughput and the commands for a full run:
+  `experiments/stage1/PLAN.md`, `RESULTS.md`, `throughput.json`.
+- **Licensing.** `ale-py` is GPL-2.0-only and its PyPI wheels have bundled the
+  Atari 2600 ROMs since 0.9 ("Atari roms are packaged within the pip package",
+  https://pypi.org/project/ale-py/). This repository neither vendors the ROMs
+  nor imports ALE code into the default install; it only uses the optional
+  package at runtime. Check the ROM terms yourself before redistributing
+  anything that bundles them.
+
 ## Limitations (explicitly not implemented)
 
 - The Windows interface is infrastructure: no generic external-game
@@ -246,7 +284,8 @@ python -m training.generalization all --artifacts D:\tmp\uga-generalization
   by `num_envs`; the per-update reward component breakdown is unavailable in
   vector mode; only the toy path gains vectorization, an external-window run
   steps a single env. Modest CPU budgets remain the rule.
-- Checkpoints embed config dicts without a schema version.
+- Checkpoints embed config dicts without a general schema version; only the
+  action space is versioned (`action_space` key, present for UGA-pad envs).
 
 ## Setup (Python 3.11+)
 
@@ -309,4 +348,4 @@ alone. `train`/`evaluate`/`smoke-test` select the env through `--config`.
 
 ## Dependencies
 
-torch, gymnasium, numpy, pyyaml, mss (screen capture only).
+torch, gymnasium, numpy, pyyaml, mss (screen capture only). Optional: ale-py (`requirements-atari.txt`, Atari games only).

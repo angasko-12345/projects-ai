@@ -1,0 +1,826 @@
+{
+  "episodes": 10,
+  "seeds": [
+    0
+  ],
+  "max_decisions": 6750,
+  "env": {
+    "obs_size": 84,
+    "num_stack": 4,
+    "skip": 4,
+    "sticky": 0.25,
+    "max_episode_frames": 27000,
+    "noop_max": 30,
+    "reward_transform": "none",
+    "action_space": "universal"
+  },
+  "policies": [
+    "random",
+    "const_noop"
+  ],
+  "note": "raw game score; random = uniform over the env's action space (universal); episode seeds 10000 + 1000*seed + i",
+  "platform": "Linux-6.12.110+-aarch64-with-glibc2.41",
+  "results": {
+    "pong": {
+      "random": {
+        "mean_over_seeds": -19.8,
+        "std_over_seeds": 0.0,
+        "mean_length": 960.4,
+        "survival_rate": 0.0,
+        "per_seed": [
+          {
+            "episodes": 10,
+            "seeds": [
+              10000,
+              10001,
+              10002,
+              10003,
+              10004,
+              10005,
+              10006,
+              10007,
+              10008,
+              10009
+            ],
+            "mean_reward": -19.8,
+            "std_reward": 0.8717797887081347,
+            "min_reward": -21.0,
+            "max_reward": -18.0,
+            "mean_length": 960.4,
+            "survival_rate": 0.0,
+            "episode_rewards": [
+              -19.0,
+              -21.0,
+              -20.0,
+              -20.0,
+              -19.0,
+              -20.0,
+              -21.0,
+              -18.0,
+              -20.0,
+              -20.0
+            ],
+            "episode_lengths": [
+              970,
+              1031,
+              841,
+              980,
+              988,
+              1006,
+              762,
+              1088,
+              1002,
+              936
+            ],
+            "episode_terminated": [
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true
+            ],
+            "episode_truncated": [
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false
+            ],
+            "seconds": 23.338040231999912,
+            "decisions_per_second": 411.5169870532442
+          }
+        ]
+      },
+      "const_noop": {
+        "mean_over_seeds": -21.0,
+        "std_over_seeds": 0.0,
+        "mean_length": 760.9,
+        "survival_rate": 0.0,
+        "per_seed": [
+          {
+            "episodes": 10,
+            "seeds": [
+              10000,
+              10001,
+              10002,
+              10003,
+              10004,
+              10005,
+              10006,
+              10007,
+              10008,
+              10009
+            ],
+            "mean_reward": -21.0,
+            "std_reward": 0.0,
+            "min_reward": -21.0,
+            "max_reward": -21.0,
+            "mean_length": 760.9,
+            "survival_rate": 0.0,
+            "episode_rewards": [
+              -21.0,
+              -21.0,
+              -21.0,
+              -21.0,
+              -21.0,
+              -21.0,
+              -21.0,
+              -21.0,
+              -21.0,
+              -21.0
+            ],
+            "episode_lengths": [
+              763,
+              760,
+              763,
+              762,
+              759,
+              761,
+              762,
+              758,
+              760,
+              761
+            ],
+            "episode_terminated": [
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true
+            ],
+            "episode_truncated": [
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false
+            ],
+            "seconds": 19.742354490000253,
+            "decisions_per_second": 385.4150225017007
+          }
+        ]
+      }
+    },
+    "breakout": {
+      "random": {
+        "mean_over_seeds": 1.8,
+        "std_over_seeds": 0.0,
+        "mean_length": 223.5,
+        "survival_rate": 0.0,
+        "per_seed": [
+          {
+            "episodes": 10,
+            "seeds": [
+              10000,
+              10001,
+              10002,
+              10003,
+              10004,
+              10005,
+              10006,
+              10007,
+              10008,
+              10009
+            ],
+            "mean_reward": 1.8,
+            "std_reward": 2.039607805437114,
+            "min_reward": 0.0,
+            "max_reward": 6.0,
+            "mean_length": 223.5,
+            "survival_rate": 0.0,
+            "episode_rewards": [
+              1.0,
+              0.0,
+              0.0,
+              1.0,
+              6.0,
+              1.0,
+              1.0,
+              5.0,
+              0.0,
+              3.0
+            ],
+            "episode_lengths": [
+              186,
+              143,
+              132,
+              188,
+              424,
+              180,
+              223,
+              360,
+              159,
+              240
+            ],
+            "episode_terminated": [
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true
+            ],
+            "episode_truncated": [
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false
+            ],
+            "seconds": 8.334513923000031,
+            "decisions_per_second": 268.16200928434057
+          }
+        ]
+      },
+      "const_noop": {
+        "mean_over_seeds": 0.0,
+        "std_over_seeds": 0.0,
+        "mean_length": 6746.9,
+        "survival_rate": 1.0,
+        "per_seed": [
+          {
+            "episodes": 10,
+            "seeds": [
+              10000,
+              10001,
+              10002,
+              10003,
+              10004,
+              10005,
+              10006,
+              10007,
+              10008,
+              10009
+            ],
+            "mean_reward": 0.0,
+            "std_reward": 0.0,
+            "min_reward": 0.0,
+            "max_reward": 0.0,
+            "mean_length": 6746.9,
+            "survival_rate": 1.0,
+            "episode_rewards": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "episode_lengths": [
+              6749,
+              6746,
+              6749,
+              6748,
+              6745,
+              6747,
+              6748,
+              6744,
+              6746,
+              6747
+            ],
+            "episode_terminated": [
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false
+            ],
+            "episode_truncated": [
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true
+            ],
+            "seconds": 166.76317762500003,
+            "decisions_per_second": 404.57972173999576
+          }
+        ]
+      }
+    },
+    "space_invaders": {
+      "random": {
+        "mean_over_seeds": 122.0,
+        "std_over_seeds": 0.0,
+        "mean_length": 414.1,
+        "survival_rate": 0.0,
+        "per_seed": [
+          {
+            "episodes": 10,
+            "seeds": [
+              10000,
+              10001,
+              10002,
+              10003,
+              10004,
+              10005,
+              10006,
+              10007,
+              10008,
+              10009
+            ],
+            "mean_reward": 122.0,
+            "std_reward": 85.70880934886448,
+            "min_reward": 30.0,
+            "max_reward": 320.0,
+            "mean_length": 414.1,
+            "survival_rate": 0.0,
+            "episode_rewards": [
+              320.0,
+              30.0,
+              85.0,
+              30.0,
+              210.0,
+              75.0,
+              105.0,
+              155.0,
+              60.0,
+              150.0
+            ],
+            "episode_lengths": [
+              591,
+              290,
+              290,
+              350,
+              496,
+              378,
+              375,
+              495,
+              405,
+              471
+            ],
+            "episode_terminated": [
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true
+            ],
+            "episode_truncated": [
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false
+            ],
+            "seconds": 15.180767531999663,
+            "decisions_per_second": 272.7793565951888
+          }
+        ]
+      },
+      "const_noop": {
+        "mean_over_seeds": 0.0,
+        "std_over_seeds": 0.0,
+        "mean_length": 689.1,
+        "survival_rate": 0.0,
+        "per_seed": [
+          {
+            "episodes": 10,
+            "seeds": [
+              10000,
+              10001,
+              10002,
+              10003,
+              10004,
+              10005,
+              10006,
+              10007,
+              10008,
+              10009
+            ],
+            "mean_reward": 0.0,
+            "std_reward": 0.0,
+            "min_reward": 0.0,
+            "max_reward": 0.0,
+            "mean_length": 689.1,
+            "survival_rate": 0.0,
+            "episode_rewards": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "episode_lengths": [
+              691,
+              689,
+              692,
+              690,
+              687,
+              689,
+              690,
+              686,
+              688,
+              689
+            ],
+            "episode_terminated": [
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true
+            ],
+            "episode_truncated": [
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false
+            ],
+            "seconds": 21.932999412999834,
+            "decisions_per_second": 314.18411455004457
+          }
+        ]
+      }
+    },
+    "demon_attack": {
+      "random": {
+        "mean_over_seeds": 140.5,
+        "std_over_seeds": 0.0,
+        "mean_length": 1047.6,
+        "survival_rate": 0.0,
+        "per_seed": [
+          {
+            "episodes": 10,
+            "seeds": [
+              10000,
+              10001,
+              10002,
+              10003,
+              10004,
+              10005,
+              10006,
+              10007,
+              10008,
+              10009
+            ],
+            "mean_reward": 140.5,
+            "std_reward": 69.51438700010236,
+            "min_reward": 40.0,
+            "max_reward": 250.0,
+            "mean_length": 1047.6,
+            "survival_rate": 0.0,
+            "episode_rewards": [
+              60.0,
+              190.0,
+              70.0,
+              150.0,
+              40.0,
+              160.0,
+              235.0,
+              160.0,
+              250.0,
+              90.0
+            ],
+            "episode_lengths": [
+              291,
+              1118,
+              575,
+              1135,
+              230,
+              1422,
+              1693,
+              1999,
+              1103,
+              910
+            ],
+            "episode_terminated": [
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true
+            ],
+            "episode_truncated": [
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false
+            ],
+            "seconds": 32.2814922980001,
+            "decisions_per_second": 324.5203134753782
+          }
+        ]
+      },
+      "const_noop": {
+        "mean_over_seeds": 0.0,
+        "std_over_seeds": 0.0,
+        "mean_length": 3139.9,
+        "survival_rate": 0.0,
+        "per_seed": [
+          {
+            "episodes": 10,
+            "seeds": [
+              10000,
+              10001,
+              10002,
+              10003,
+              10004,
+              10005,
+              10006,
+              10007,
+              10008,
+              10009
+            ],
+            "mean_reward": 0.0,
+            "std_reward": 0.0,
+            "min_reward": 0.0,
+            "max_reward": 0.0,
+            "mean_length": 3139.9,
+            "survival_rate": 0.0,
+            "episode_rewards": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "episode_lengths": [
+              3142,
+              3139,
+              3142,
+              3141,
+              3138,
+              3140,
+              3141,
+              3137,
+              3139,
+              3140
+            ],
+            "episode_terminated": [
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true
+            ],
+            "episode_truncated": [
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false
+            ],
+            "seconds": 71.61164707800026,
+            "decisions_per_second": 438.4621954833665
+          }
+        ]
+      }
+    },
+    "freeway": {
+      "random": {
+        "mean_over_seeds": 0.0,
+        "std_over_seeds": 0.0,
+        "mean_length": 2044.9,
+        "survival_rate": 0.0,
+        "per_seed": [
+          {
+            "episodes": 10,
+            "seeds": [
+              10000,
+              10001,
+              10002,
+              10003,
+              10004,
+              10005,
+              10006,
+              10007,
+              10008,
+              10009
+            ],
+            "mean_reward": 0.0,
+            "std_reward": 0.0,
+            "min_reward": 0.0,
+            "max_reward": 0.0,
+            "mean_length": 2044.9,
+            "survival_rate": 0.0,
+            "episode_rewards": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "episode_lengths": [
+              2047,
+              2044,
+              2047,
+              2046,
+              2043,
+              2045,
+              2046,
+              2042,
+              2044,
+              2045
+            ],
+            "episode_terminated": [
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true
+            ],
+            "episode_truncated": [
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false
+            ],
+            "seconds": 53.23387117499988,
+            "decisions_per_second": 384.13512954518
+          }
+        ]
+      },
+      "const_noop": {
+        "mean_over_seeds": 0.0,
+        "std_over_seeds": 0.0,
+        "mean_length": 2044.9,
+        "survival_rate": 0.0,
+        "per_seed": [
+          {
+            "episodes": 10,
+            "seeds": [
+              10000,
+              10001,
+              10002,
+              10003,
+              10004,
+              10005,
+              10006,
+              10007,
+              10008,
+              10009
+            ],
+            "mean_reward": 0.0,
+            "std_reward": 0.0,
+            "min_reward": 0.0,
+            "max_reward": 0.0,
+            "mean_length": 2044.9,
+            "survival_rate": 0.0,
+            "episode_rewards": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "episode_lengths": [
+              2047,
+              2044,
+              2047,
+              2046,
+              2043,
+              2045,
+              2046,
+              2042,
+              2044,
+              2045
+            ],
+            "episode_terminated": [
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true
+            ],
+            "episode_truncated": [
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false
+            ],
+            "seconds": 79.04028902799973,
+            "decisions_per_second": 258.7161592078189
+          }
+        ]
+      }
+    }
+  },
+  "seconds": 491.7030212730001
+}

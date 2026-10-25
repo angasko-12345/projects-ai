@@ -37,14 +37,22 @@ def load_experiment(path: str | Path) -> dict:
 _ENV_KEYS = {"type", "width", "height", "max_steps", "obs_size", "num_stack", "skip",
              "capture", "window", "lifecycle", "actions", "timing", "reward",
              "termination", "allow_live_capture"}
-def make_env_from_config(env_cfg: dict):
-    """Toy Pong by default; ``type: external`` delegates to the external factory."""
+def make_env_from_config(env_cfg: dict, *, train: bool = True):
+    """Toy Pong by default; ``type: external`` / ``type: atari`` delegate to their factories.
+
+    ``train=False`` (evaluation) only matters for ``atari``: it drops the
+    training-only ``reward_transform`` so evaluation reports raw game score.
+    """
     import warnings
 
     if (env_cfg or {}).get("type", "toy") == "external":
         from environment.external_game import make_external_env_from_config
 
         return make_external_env_from_config(env_cfg)
+    if (env_cfg or {}).get("type", "toy") == "atari":
+        from environment.atari_env import make_atari_env_from_config
+
+        return make_atari_env_from_config(env_cfg, train=train)
     for key in (env_cfg or {}):
         if key not in _ENV_KEYS:
             warnings.warn(f"env: ignoring unknown config key {key!r}", UserWarning, stacklevel=3)
@@ -78,6 +86,11 @@ def make_env_for_training(make_env, num_envs: int):
 
     if num_envs <= 1:
         return make_env()
+    # Opt-in native vector backends (``env.vector_backend: ale``) attach a
+    # ``make_vector(n)`` to their factory; plain factories never have one.
+    make_vector = getattr(make_env, "make_vector", None)
+    if make_vector is not None:
+        return make_vector(num_envs)
     return SyncVectorEnv([make_env] * num_envs)
 
 

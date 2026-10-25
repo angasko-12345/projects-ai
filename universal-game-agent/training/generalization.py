@@ -14,6 +14,14 @@ seed, disjoint from training resets) and writes ``result.json`` under
 ``<artifacts>/runs/<run_id>/``. Checkpoints stay under ``<artifacts>``, which
 must be outside the git tree (or in the gitignored ``checkpoints/``).
 
+Suites: the default ``suite`` is the in-repo arcade set (``environment/arcade.py``).
+A config may declare ``suite: {kind: atari, train: [...], heldout: g, far_heldout: g}``
+to run the same arms on ALE games (``environment/atari_env.py``, optional
+``ale-py``); then ``env:`` holds the Atari knobs and ``env.action_space`` picks
+the UGA pad (``universal``) or the native set. Arcade games can use the pad too
+(``env.action_space: universal``). Evaluation never applies the training-only
+``env.reward_transform``.
+
 Usage (no window, no SendInput):
     python -m training.generalization run --arm multi --seed 0 --artifacts <dir>
     python -m training.generalization all --artifacts <dir> [--seeds 0 1 2] [--scale 1.0]
@@ -29,6 +37,7 @@ import json
 import os
 import platform
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -58,16 +67,76 @@ def load_config(path=DEFAULT_CONFIG) -> dict:
     return cfg
 
 
-def _factory(cfg: dict, game: str):
+@dataclass(frozen=True)
+class Suite:
+    """Which games a config runs on and how the split is drawn."""
+
+    kind: str
+    games: tuple
+    train: tuple
+    heldout: str
+    far_heldout: str
+
+    def metric_name(self, game: str) -> str:
+        # summarize_episodes special-cases the *arcade* breakout (clear rate).
+        return game if self.kind == "arcade" else f"{self.kind}/{game}"
+
+
+ARCADE_SUITE = Suite("arcade", tuple(GAMES), TRAIN_GAMES, HELDOUT_GAME, FAR_HELDOUT_GAME)
+
+
+def suite_of(cfg: dict | None) -> Suite:
+    s = (cfg or {}).get("suite") or {}
+    kind = s.get("kind", "arcade")
+    if kind == "arcade" and not s:
+        return ARCADE_SUITE
+    if kind not in ("arcade", "atari"):
+        raise ValueError(f"suite.kind must be 'arcade' or 'atari', got {kind!r}")
+    train = tuple(s.get("train") or (TRAIN_GAMES if kind == "arcade" else ()))
+    heldout = s.get("heldout", HELDOUT_GAME if kind == "arcade" else None)
+    far = s.get("far_heldout", FAR_HELDOUT_GAME if kind == "arcade" else None)
+    if not train or heldout is None or far is None:
+        raise ValueError("suite needs train, heldout and far_heldout")
+    games = tuple(dict.fromkeys([*train, heldout, far]))
+    if heldout in train or far in train:
+        raise ValueError("held-out games must not be in the training set")
+    return Suite(kind, games, train, heldout, far)
+
+
+def _wrap_pad(cfg: dict, make):
+    if cfg["env"].get("action_space", "native") != "universal":
+        return make
+
+    def wrapped():
+        from environment.universal_actions import UniversalActionWrapper
+
+        return UniversalActionWrapper(make())
+    return wrapped
+
+
+def _factory(cfg: dict, game: str, train: bool = True):
     e = cfg["env"]
-    return make_game_factory(game, obs_size=int(e["obs_size"]), num_stack=int(e["num_stack"]),
-                             skip=int(e.get("skip", 1)), max_steps=int(e["max_steps"]))
+    if suite_of(cfg).kind == "atari":
+        from environment.atari_env import atari_kwargs, make_atari_factory
+
+        return make_atari_factory(game, **atari_kwargs(e, train=train))
+    return _wrap_pad(cfg, make_game_factory(game, obs_size=int(e["obs_size"]),
+                                            num_stack=int(e["num_stack"]),
+                                            skip=int(e.get("skip", 1)), max_steps=int(e["max_steps"])))
 
 
-def slot_games(arm: str, game: str | None, num_envs: int) -> list[str]:
+def _num_actions(cfg: dict, game: str) -> int:
+    probe = _factory(cfg, game)()
+    try:
+        return int(probe.action_space.n)
+    finally:
+        probe.close()
+
+
+def slot_games(arm: str, game: str | None, num_envs: int, train=TRAIN_GAMES) -> list[str]:
     """Game played by each vector slot: round-robin for ``multi``."""
     if arm == "multi":
-        return [TRAIN_GAMES[i % len(TRAIN_GAMES)] for i in range(num_envs)]
+        return [train[i % len(train)] for i in range(num_envs)]
     if game is None:
         raise ValueError(f"arm {arm!r} needs a game")
     return [game] * num_envs
@@ -96,12 +165,14 @@ def eval_model(model, cfg: dict, seed: int, games=None) -> dict:
     from training.evaluate import evaluate
 
     n = int(cfg["eval"]["episodes"])
+    suite = suite_of(cfg)
     out = {}
-    for g in games or list(GAMES):
-        rep = evaluate(model, _factory(cfg, g), episodes=n, seeds=eval_seeds(seed, n), greedy=True)
+    for g in games or list(suite.games):
+        rep = evaluate(model, _factory(cfg, g, train=False), episodes=n, seeds=eval_seeds(seed, n),
+                       greedy=True)
         out[g] = summarize_episodes(rep["episode_rewards"], rep["episode_lengths"],
                                     rep["episode_terminated"], rep["episode_negative_reward_steps"],
-                                    g, int(cfg["env"]["max_steps"]))
+                                    suite.metric_name(g), int(cfg["env"].get("max_steps", 0)))
         out[g]["action_counts"] = rep["action_counts"]
     return out
 
@@ -132,13 +203,21 @@ def train_run(cfg: dict, arm: str, seed: int, artifacts: Path, game: str | None 
         if curve_every else [0, total]
     if points[-1] != total:
         points.append(total)
-    games = slot_games(arm, game, num_envs)
+    curve_points = set(points)
+    # Optional ``budgets.chunk_every``: extra checkpoint-only stops (no eval) so a
+    # long run resumes from its last chunk instead of from zero. Absent = legacy.
+    chunk_every = cfg["budgets"].get("chunk_every")
+    if chunk_every:
+        step = max(unit, int(round(chunk_every * scale / unit)) * unit)
+        points = sorted(curve_points | set(range(0, total + 1, step)))
+    suite = suite_of(cfg)
+    games = slot_games(arm, game, num_envs, suite.train)
     env = SyncVectorEnv([_factory(cfg, g) for g in games], check_spaces=True)
     ckpt_dir = run_dir / "ckpt"
     progress_path = run_dir / "progress.json"
     torch.manual_seed(seed)
     np.random.seed(seed)
-    model = ActorCritic(num_actions=3, **cfg["model"])
+    model = ActorCritic(num_actions=_num_actions(cfg, games[0]), **cfg["model"])
     init_from = None
     if arm == "finetune":
         init_from = artifacts / "runs" / run_id("multi", seed, None) / "ckpt" / "ppo_final.pt"
@@ -169,8 +248,8 @@ def train_run(cfg: dict, arm: str, seed: int, artifacts: Path, game: str | None 
             t0 = time.perf_counter()
             histories.append(trainer.train())
             progress["train_seconds"] += time.perf_counter() - t0
-        if curve_every or target == total:
-            ev_games = [game] if (curve_every and target != total) else list(GAMES)
+        if (curve_every and target in curve_points) or target == total:
+            ev_games = [game] if (curve_every and target != total) else list(suite.games)
             progress["curve"].append({"steps": target, "eval": eval_model(model, cfg, seed, ev_games)})
         progress_path.write_text(json.dumps(progress) + "\n", encoding="utf-8")
     final = progress["curve"][-1]["eval"]
@@ -184,7 +263,8 @@ def train_run(cfg: dict, arm: str, seed: int, artifacts: Path, game: str | None 
         "resumed_from": progress.get("resumed_from"),
         "final_eval": final, "curve": progress["curve"],
         "last_chunk_train_summary": {k: v for k, v in summary.items() if not isinstance(v, dict)},
-        "config": {"env": cfg["env"], "model": cfg["model"], "ppo": {**ppo, "seed": 1000 * seed + 17}},
+        "config": {"env": cfg["env"], "model": cfg["model"], "ppo": {**ppo, "seed": 1000 * seed + 17},
+                   **({"suite": cfg["suite"]} if cfg.get("suite") else {})},
         "eval_seeds": eval_seeds(seed, int(cfg["eval"]["episodes"])),
         "hardware": hardware(), "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "checkpoint": str(ckpt_dir / "ppo_final.pt"),
@@ -196,16 +276,16 @@ def train_run(cfg: dict, arm: str, seed: int, artifacts: Path, game: str | None 
     return result
 
 
-def plan_runs(seeds) -> list[tuple[str, int, str | None]]:
+def plan_runs(seeds, suite: Suite = ARCADE_SUITE) -> list[tuple[str, int, str | None]]:
     runs: list[tuple[str, int, str | None]] = []
     for s in seeds:
         runs.append(("multi", s, None))
     for s in seeds:
-        for g in TRAIN_GAMES:
+        for g in suite.train:
             runs.append(("specialist", s, g))
     for s in seeds:
-        runs.append(("scratch", s, HELDOUT_GAME))
-        runs.append(("finetune", s, HELDOUT_GAME))
+        runs.append(("scratch", s, suite.heldout))
+        runs.append(("finetune", s, suite.heldout))
     return runs
 
 
@@ -237,8 +317,20 @@ def record_gif(path: Path, game: str, seed: int, cfg: dict, model=None, policy: 
             return out
 
     e = cfg["env"]
-    env = PreprocessingWrapper(_Record(make_game(game, int(e["max_steps"]))), size=int(e["obs_size"]),
+    if suite_of(cfg).kind == "atari":
+        from environment.atari_env import AtariGame, atari_kwargs
+
+        k = atari_kwargs(e, train=False)
+        raw = AtariGame(game, sticky=k["sticky"], max_episode_frames=k["max_episode_frames"],
+                        noop_max=k["noop_max"])
+    else:
+        raw = make_game(game, int(e["max_steps"]))
+    env = PreprocessingWrapper(_Record(raw), size=int(e["obs_size"]),
                                num_stack=int(e["num_stack"]), skip=int(e.get("skip", 1)))
+    if e.get("action_space", "native") == "universal":
+        from environment.universal_actions import UniversalActionWrapper
+
+        env = UniversalActionWrapper(env)
     rng = np.random.default_rng(seed)
     obs, _ = env.reset(seed=eval_seeds(seed, 1)[0])
     hidden = model.initial_state(1) if model is not None else None
@@ -249,7 +341,7 @@ def record_gif(path: Path, game: str, seed: int, cfg: dict, model=None, policy: 
                 logits, _, hidden = model(torch.from_numpy(obs).unsqueeze(0), hidden)
             a = int(logits.argmax(-1).item())
         else:
-            a = int(rng.integers(0, 3))
+            a = int(rng.integers(0, env.action_space.n))
         obs, r, term, trunc, _ = env.step(a)
         total += r
         if term or trunc:
@@ -263,11 +355,14 @@ def record_gif(path: Path, game: str, seed: int, cfg: dict, model=None, policy: 
 
 
 # -- aggregation -------------------------------------------------------------
-def aggregate(artifacts: Path, out_dir: Path) -> dict:
+def aggregate(artifacts: Path, out_dir: Path, cfg: dict | None = None) -> dict:
     runs = {}
     for p in sorted((artifacts / "runs").glob("*/result.json")):
         r = json.loads(p.read_text(encoding="utf-8"))
         runs[r["run_id"]] = r
+    if cfg is None and runs:
+        cfg = next(iter(runs.values())).get("config")
+    suite = suite_of(cfg)
     base_path = artifacts / "baselines.json"
     base = json.loads(base_path.read_text(encoding="utf-8")) if base_path.exists() else None
 
@@ -276,10 +371,10 @@ def aggregate(artifacts: Path, out_dir: Path) -> dict:
                 "per_seed": [float(v) for v in vals]}
 
     table: dict = {}
-    for g in GAMES:
+    for g in suite.games:
         row: dict = {}
         if base:
-            for pol, v in base["results"][g].items():
+            for pol, v in base["results"].get(g, {}).items():
                 row[pol] = {"mean": v["mean_over_seeds"], "std": v["std_over_seeds"],
                             "n": len(v["per_seed"]), "survival_rate": v["survival_rate"],
                             **({"clear_rate": v["clear_rate"]} if "clear_rate" in v else {})}
@@ -300,8 +395,8 @@ def aggregate(artifacts: Path, out_dir: Path) -> dict:
                          "survival_rate": float(np.mean([e["survival_rate"] for e in ev])),
                          "mean_length": float(np.mean([e["mean_length"] for e in ev])),
                          **({"clear_rate": float(np.mean([e["clear_rate"] for e in ev]))}
-                            if g == "breakout" else {})}
-        for tg in TRAIN_GAMES:  # zero-shot of each specialist on this game
+                            if suite.kind == "arcade" and g == "breakout" else {})}
+        for tg in suite.train:  # zero-shot of each specialist on this game
             rs = [r for r in runs.values() if r["arm"] == "specialist" and r["train_games"] == [tg]]
             if rs and tg != g:
                 row[f"specialist_{tg}_zero_shot"] = stat([r["final_eval"][g]["mean_reward"] for r in rs])
@@ -312,15 +407,15 @@ def aggregate(artifacts: Path, out_dir: Path) -> dict:
         if not rs:
             continue
         steps = [c["steps"] for c in rs[0]["curve"]]
-        per = [[c["eval"][HELDOUT_GAME]["mean_reward"] for c in r["curve"]] for r in rs]
+        per = [[c["eval"][suite.heldout]["mean_reward"] for c in r["curve"]] for r in rs]
         curves[arm] = {"steps": steps, "seeds": [r["seed"] for r in rs], "per_seed": per,
                        "mean": [float(np.mean(col)) for col in zip(*per, strict=True)],
                        "std": [float(np.std(col)) for col in zip(*per, strict=True)],
                        "auc_mean_per_seed": [float(np.mean(p)) for p in per]}
     timing = {rid: {"steps": r["total_timesteps"], "train_seconds": r["train_seconds"],
                     "steps_per_second": r["steps_per_second"]} for rid, r in runs.items()}
-    out = {"generated_utc": datetime.now(timezone.utc).isoformat(), "train_games": list(TRAIN_GAMES),
-           "heldout_game": HELDOUT_GAME, "far_heldout_game": FAR_HELDOUT_GAME,
+    out = {"generated_utc": datetime.now(timezone.utc).isoformat(), "train_games": list(suite.train),
+           "heldout_game": suite.heldout, "far_heldout_game": suite.far_heldout,
            "per_game": table, "heldout_curves": curves, "timing": timing,
            "hardware": next(iter(runs.values()))["hardware"] if runs else None,
            "config": next(iter(runs.values()))["config"] if runs else None}
@@ -336,11 +431,11 @@ def aggregate(artifacts: Path, out_dir: Path) -> dict:
     with open(out_dir / "runs.csv", "w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
         w.writerow(["run_id", "arm", "seed", "steps", "train_seconds", "steps_per_second",
-                    *[f"eval_{g}" for g in GAMES]])
+                    *[f"eval_{g}" for g in suite.games]])
         for rid, r in sorted(runs.items()):
             w.writerow([rid, r["arm"], r["seed"], r["total_timesteps"], f"{r['train_seconds']:.1f}",
                         f"{r['steps_per_second']:.1f}" if r["steps_per_second"] else "",
-                        *[f"{r['final_eval'][g]['mean_reward']:.3f}" for g in GAMES]])
+                        *[f"{r['final_eval'][g]['mean_reward']:.3f}" for g in suite.games]])
     return out
 
 
@@ -361,25 +456,33 @@ def main(argv=None) -> int:
     art = Path(a.artifacts)
     art.mkdir(parents=True, exist_ok=True)
     seeds = a.seeds if a.seeds is not None else list(cfg.get("seeds", [0, 1, 2]))
+    suite = suite_of(cfg)
+
+    def baselines() -> dict:
+        if suite.kind == "atari":
+            from training.atari_baselines import run_all_atari
+
+            return run_all_atari(cfg, int(cfg["eval"]["episodes"]), seeds,
+                                 cfg["eval"].get("baseline_max_decisions"))
+        return run_all(int(cfg["eval"]["episodes"]), seeds, int(cfg["env"]["max_steps"]),
+                       int(cfg["env"].get("skip", 1)))
     if a.command == "run":
         if a.arm is None:
             p.error("run needs --arm")
-        game = HELDOUT_GAME if a.arm in ("scratch", "finetune") and a.game is None else a.game
+        game = suite.heldout if a.arm in ("scratch", "finetune") and a.game is None else a.game
         train_run(cfg, a.arm, a.seed, art, game=game, scale=a.scale, threads=a.threads)
     elif a.command == "all":
-        res = run_all(int(cfg["eval"]["episodes"]), seeds, int(cfg["env"]["max_steps"]),
-                      int(cfg["env"].get("skip", 1)))
+        res = baselines()
         (art / "baselines.json").write_text(json.dumps(res, indent=2) + "\n", encoding="utf-8")
-        for arm, s, g in plan_runs(seeds):
+        for arm, s, g in plan_runs(seeds, suite):
             train_run(cfg, arm, s, art, game=g, scale=a.scale, threads=a.threads)
-        aggregate(art, Path(a.out_dir) if a.out_dir else art)
+        aggregate(art, Path(a.out_dir) if a.out_dir else art, cfg)
     elif a.command == "baselines":
-        res = run_all(int(cfg["eval"]["episodes"]), seeds, int(cfg["env"]["max_steps"]),
-                      int(cfg["env"].get("skip", 1)))
+        res = baselines()
         (art / "baselines.json").write_text(json.dumps(res, indent=2) + "\n", encoding="utf-8")
         print(f"baselines -> {art / 'baselines.json'} ({res['seconds']:.1f}s)")
     elif a.command == "aggregate":
-        aggregate(art, Path(a.out_dir) if a.out_dir else art)
+        aggregate(art, Path(a.out_dir) if a.out_dir else art, cfg)
     elif a.command == "gif":
         import torch
 
@@ -388,18 +491,19 @@ def main(argv=None) -> int:
         out = Path(a.out_dir) if a.out_dir else art / "gifs"
         made = []
         ck = art / "runs" / run_id("multi", a.seed, None) / "ckpt" / "ppo_final.pt"
-        multi = ActorCritic(num_actions=3, **cfg["model"])
+        n_actions = _num_actions(cfg, suite.train[0])
+        multi = ActorCritic(num_actions=n_actions, **cfg["model"])
         multi.load_state_dict(torch.load(ck, map_location="cpu", weights_only=True)["model"])
         multi.eval()
-        for g in GAMES:
+        for g in suite.games:
             made.append(record_gif(out / f"multi_s{a.seed}_{g}.gif", g, a.seed, cfg, model=multi))
-        made.append(record_gif(out / f"random_{HELDOUT_GAME}.gif", HELDOUT_GAME, a.seed, cfg))
-        ft = art / "runs" / run_id("finetune", a.seed, HELDOUT_GAME) / "ckpt" / "ppo_final.pt"
+        made.append(record_gif(out / f"random_{suite.heldout}.gif", suite.heldout, a.seed, cfg))
+        ft = art / "runs" / run_id("finetune", a.seed, suite.heldout) / "ckpt" / "ppo_final.pt"
         if ft.exists():
-            m = ActorCritic(num_actions=3, **cfg["model"])
+            m = ActorCritic(num_actions=n_actions, **cfg["model"])
             m.load_state_dict(torch.load(ft, map_location="cpu", weights_only=True)["model"])
             m.eval()
-            made.append(record_gif(out / f"finetune_s{a.seed}_{HELDOUT_GAME}.gif", HELDOUT_GAME, a.seed,
+            made.append(record_gif(out / f"finetune_s{a.seed}_{suite.heldout}.gif", suite.heldout, a.seed,
                                    cfg, model=m))
         print(json.dumps(made, indent=2))
     return 0

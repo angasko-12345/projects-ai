@@ -12,7 +12,7 @@ from that product's directory. There is no repository-wide test command.
 | Workflow | Directory | Command | Extra setup |
 |---|---|---|---|
 | `agentops.yml` | `agentops/` | `python -m unittest discover -s tests`, then `python acceptance_test.py` from the repository root (the Issue #4 end-to-end scenarios) | none (stdlib only) |
-| `universal-game-agent.yml` | `universal-game-agent/` | `python -m unittest discover -s tests` | `pip install -r requirements.txt` |
+| `universal-game-agent.yml` | `universal-game-agent/` | `python -m unittest discover -s tests` (two jobs: `tests` without ale-py, where every ALE test skips; `tests-atari` with the optional `requirements-atari.txt`, where they run) | `pip install -r requirements.txt` (+ `-r requirements-atari.txt` in `tests-atari`); no Pillow in either |
 | `mini-llm.yml` | `small-projects/mini-llm/` | `python -m unittest discover -s tests` | `pip install -r requirements.txt` |
 | `ai-token-tracker.yml` | `ai-token-tracker/` | `python -m unittest discover -s tests -v` | none (stdlib only) |
 | `privacy-audit.yml` | `small-projects/privacy_audit_tool/` | `python -m unittest discover -s tests` | none (stdlib only; `maigret` is optional, online-scan-only, and deliberately not installed) |

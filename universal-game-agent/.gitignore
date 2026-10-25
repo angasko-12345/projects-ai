@@ -16,6 +16,10 @@ experiments/*/
 !experiments/generalization/
 experiments/generalization/**/*.pt
 experiments/generalization/**/*.zip
+# Stage 1 (ALE) evidence is tracked the same way; checkpoints never are.
+!experiments/stage1/
+experiments/stage1/**/*.pt
+experiments/stage1/**/*.zip
 logs/*.log
 # OS / editors
 .DS_Store

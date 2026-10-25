@@ -1,0 +1,58 @@
+# Stage 1 Atari generalization pilot (training/generalization.py, suite: atari). Pixels only.
+# Same arms as the arcade pilot: specialist, multi, zero-shot, scratch vs finetune on a held-out
+# game. Run on the user's PC (see experiments/stage1/RESULTS.md for commands and timings);
+# NOT run in the 2-vCPU sandbox beyond smoke tests. Needs requirements-atari.txt.
+seeds: [0, 1, 2]
+
+suite:
+  kind: atari
+  # Train set: horizontal mover +- fire (minimal sets within NOOP/FIRE/LEFT/RIGHT/xFIRE),
+  # three different objectives (rally, brick clearing, shooting).
+  train: [pong, breakout, space_invaders]
+  heldout: demon_attack     # near transfer: same minimal set as space_invaders, new visuals/enemies
+  far_heldout: freeway      # far transfer: vertical-only controls never used in training
+
+env:                        # applied identically to every game
+  obs_size: 84
+  num_stack: 4
+  skip: 4
+  sticky: 0.25              # ALE v5 default (Machado et al. 2018)
+  max_episode_frames: 27000 # 7.5 min of play: caps degenerate greedy evals (e.g. never FIRE)
+  noop_max: 30
+  reward_transform: sign    # per-game normalisation for training (scores differ by 1000x
+                            # across games); evaluation always reports raw game score
+  action_space: universal   # one 18-action head for every game
+
+model:                      # identical for every arm; frame_size must equal env.obs_size
+  in_channels: 4
+  frame_size: 84
+  feature_dim: 512
+  hidden_size: 128
+  num_layers: 1
+
+ppo:
+  rollout_length: 128
+  minibatch_size: 32
+  update_epochs: 4
+  learning_rate: 0.00025
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.1
+  entropy_coef: 0.01
+  value_coef: 0.5
+  max_grad_norm: 0.5
+  num_envs: 6               # multi arm: 2 slots per training game (round-robin)
+
+budgets:                    # agent steps; multiples of num_envs * rollout_length (768)
+  specialist: 2000640       # ~2M per game
+  multi: 6001920            # = 3 x specialist: same per-game sample count
+  scratch: 1000704          # held-out game from a fresh network
+  finetune: 1000704         # held-out game from the multi checkpoint of the same seed
+  chunk_every: 200448       # checkpoint-only stops: an interrupted run resumes from here
+  curve_every:
+    scratch: 200448
+    finetune: 200448
+
+eval:
+  episodes: 10              # greedy, seeds 10000 + 1000*seed + i
+  baseline_max_decisions: 6750   # = 27000 frames / skip 4

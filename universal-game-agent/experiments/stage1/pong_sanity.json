@@ -1,0 +1,270 @@
+{
+  "generated_utc": "2026-10-25T22:34:23.913586+00:00",
+  "config": "/workspace/work/stage1/pong_sanity.yaml",
+  "checkpoint_steps": 150528,
+  "checkpoint_updates": 147,
+  "action_space": "uga-pad18-v1",
+  "env": {
+    "type": "atari",
+    "game": "pong",
+    "obs_size": 84,
+    "num_stack": 4,
+    "skip": 4,
+    "sticky": 0.0,
+    "max_episode_frames": 108000,
+    "noop_max": 30,
+    "reward_transform": "sign",
+    "action_space": "universal",
+    "vector_backend": "sync"
+  },
+  "seeds": [
+    10000,
+    10001,
+    10002,
+    10003,
+    10004,
+    10005,
+    10006,
+    10007,
+    10008,
+    10009
+  ],
+  "note": "150,528-step sanity run, seed 1, configs/atari_pong.yaml hyperparameters, resumed once at 20,480 steps after a sandbox reboot",
+  "eval": {
+    "ppo_greedy": {
+      "mean_reward": -21.0,
+      "std_reward": 0.0,
+      "min_reward": -21.0,
+      "max_reward": -21.0,
+      "mean_length": 760.9,
+      "episode_rewards": [
+        -21.0,
+        -21.0,
+        -21.0,
+        -21.0,
+        -21.0,
+        -21.0,
+        -21.0,
+        -21.0,
+        -21.0,
+        -21.0
+      ],
+      "action_counts": {
+        "17": 7609
+      }
+    },
+    "ppo_sampled": {
+      "mean_reward": -20.7,
+      "std_reward": 0.6403124237432849,
+      "min_reward": -21.0,
+      "max_reward": -19.0,
+      "mean_length": 830.4,
+      "episode_rewards": [
+        -21.0,
+        -21.0,
+        -21.0,
+        -21.0,
+        -21.0,
+        -20.0,
+        -21.0,
+        -21.0,
+        -19.0,
+        -21.0
+      ],
+      "action_counts": {
+        "17": 1258,
+        "15": 461,
+        "11": 240,
+        "4": 220,
+        "2": 381,
+        "3": 258,
+        "16": 815,
+        "0": 1199,
+        "6": 371,
+        "12": 1043,
+        "5": 234,
+        "10": 202,
+        "14": 222,
+        "8": 204,
+        "9": 644,
+        "7": 324,
+        "1": 150,
+        "13": 78
+      }
+    },
+    "random": {
+      "mean_reward": -20.4,
+      "std_reward": 0.66332495807108,
+      "min_reward": -21.0,
+      "max_reward": -19.0,
+      "mean_length": 915.3,
+      "episode_rewards": [
+        -20.0,
+        -21.0,
+        -21.0,
+        -21.0,
+        -21.0,
+        -20.0,
+        -20.0,
+        -20.0,
+        -19.0,
+        -21.0
+      ]
+    },
+    "const_noop": {
+      "mean_reward": -21.0,
+      "std_reward": 0.0,
+      "min_reward": -21.0,
+      "max_reward": -21.0,
+      "mean_length": 760.9,
+      "episode_rewards": [
+        -21.0,
+        -21.0,
+        -21.0,
+        -21.0,
+        -21.0,
+        -21.0,
+        -21.0,
+        -21.0,
+        -21.0,
+        -21.0
+      ]
+    }
+  },
+  "training_curve": [
+    {
+      "steps": 10240,
+      "rolling100_train_return": -19.75,
+      "episodes_seen": 8,
+      "entropy": 2.886250153183937,
+      "upd_mean_return": 0.0,
+      "upd_episodes": 0
+    },
+    {
+      "steps": 20480,
+      "rolling100_train_return": -20.11764705882353,
+      "episodes_seen": 17,
+      "entropy": 2.8441344648599625,
+      "upd_mean_return": -21.0,
+      "upd_episodes": 1
+    },
+    {
+      "steps": 30720,
+      "rolling100_train_return": -20.125,
+      "episodes_seen": 8,
+      "entropy": 2.8563066571950912,
+      "upd_mean_return": 0.0,
+      "upd_episodes": 0
+    },
+    {
+      "steps": 40960,
+      "rolling100_train_return": -20.11764705882353,
+      "episodes_seen": 17,
+      "entropy": 2.861146330833435,
+      "upd_mean_return": -20.0,
+      "upd_episodes": 1
+    },
+    {
+      "steps": 51200,
+      "rolling100_train_return": -20.4,
+      "episodes_seen": 30,
+      "entropy": 2.8263179510831833,
+      "upd_mean_return": -21.0,
+      "upd_episodes": 1
+    },
+    {
+      "steps": 61440,
+      "rolling100_train_return": -20.35,
+      "episodes_seen": 40,
+      "entropy": 2.7915536612272263,
+      "upd_mean_return": 0.0,
+      "upd_episodes": 0
+    },
+    {
+      "steps": 71680,
+      "rolling100_train_return": -20.392857142857142,
+      "episodes_seen": 56,
+      "entropy": 2.818045973777771,
+      "upd_mean_return": -20.4,
+      "upd_episodes": 5
+    },
+    {
+      "steps": 81920,
+      "rolling100_train_return": -20.359375,
+      "episodes_seen": 64,
+      "entropy": 2.8081657141447067,
+      "upd_mean_return": 0.0,
+      "upd_episodes": 0
+    },
+    {
+      "steps": 92160,
+      "rolling100_train_return": -20.346666666666668,
+      "episodes_seen": 75,
+      "entropy": 2.801575094461441,
+      "upd_mean_return": -21.0,
+      "upd_episodes": 1
+    },
+    {
+      "steps": 102400,
+      "rolling100_train_return": -20.375,
+      "episodes_seen": 88,
+      "entropy": 2.8330558836460114,
+      "upd_mean_return": -20.5,
+      "upd_episodes": 2
+    },
+    {
+      "steps": 112640,
+      "rolling100_train_return": -20.34375,
+      "episodes_seen": 96,
+      "entropy": 2.804879605770111,
+      "upd_mean_return": 0.0,
+      "upd_episodes": 0
+    },
+    {
+      "steps": 122880,
+      "rolling100_train_return": -20.35,
+      "episodes_seen": 110,
+      "entropy": 2.7031104117631912,
+      "upd_mean_return": -20.0,
+      "upd_episodes": 1
+    },
+    {
+      "steps": 133120,
+      "rolling100_train_return": -20.36,
+      "episodes_seen": 121,
+      "entropy": 2.734981745481491,
+      "upd_mean_return": -21.0,
+      "upd_episodes": 1
+    },
+    {
+      "steps": 143360,
+      "rolling100_train_return": -20.33,
+      "episodes_seen": 134,
+      "entropy": 2.587831988930702,
+      "upd_mean_return": -21.0,
+      "upd_episodes": 1
+    },
+    {
+      "steps": 150528,
+      "rolling100_train_return": -20.35,
+      "episodes_seen": 143,
+      "entropy": 2.623837798833847,
+      "upd_mean_return": -20.5,
+      "upd_episodes": 2
+    }
+  ],
+  "gifs": [
+    {
+      "path": "experiments/stage1/gifs/pong_random.gif",
+      "frames": 480,
+      "reward": -2.0,
+      "bytes": 61789
+    },
+    {
+      "path": "experiments/stage1/gifs/pong_ppo.gif",
+      "frames": 480,
+      "reward": -2.0,
+      "bytes": 42426
+    }
+  ]
+}
