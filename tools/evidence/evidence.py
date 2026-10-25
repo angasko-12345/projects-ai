@@ -293,8 +293,14 @@ def check_schema(document: object) -> list[str]:
         # catches a hand-edited number: the fields and the summary lines the
         # runner actually printed have to agree.
         recorded = record.get("summary")
-        if isinstance(recorded, list) and all(isinstance(entry, str)
-                                               for entry in recorded):
+        if not (isinstance(recorded, list) and recorded
+                and all(isinstance(entry, str) for entry in recorded)):
+            # Without this, a non-list summary skipped the re-derivation
+            # entirely and any hand-edited count passed unchallenged.
+            problems.append(
+                f"{label}: summary must be a non-empty list of the runner's "
+                f"summary lines, got {recorded!r}")
+        else:
             derived = parse_unittest_summary("\n".join(recorded))
             if not derived:
                 problems.append(

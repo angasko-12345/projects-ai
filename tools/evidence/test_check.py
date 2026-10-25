@@ -110,6 +110,18 @@ class SchemaTests(unittest.TestCase):
             "Ran 999 tests in 1.0s", "OK (skipped=1)"]
         self.assertEqual(check_schema(document), [])
 
+    def test_a_summary_that_is_not_a_list_of_strings_is_rejected(self):
+        # Regression: a string (or empty/odd) summary skipped re-derivation, so
+        # `total: 99999, summary: "forged"` passed the checker.
+        for bad in ("forged", [], None, [1, 2], ["Ran 100 tests in 1.0s", 3]):
+            with self.subTest(summary=bad):
+                document = good_document()
+                document["products"][0]["total"] = 99999
+                document["products"][0]["summary"] = bad
+                problems = check_schema(document)
+                self.assertTrue(any("summary must be a non-empty list" in p
+                                    for p in problems), problems)
+
     def test_a_skipped_count_beyond_the_total_is_rejected(self):
         document = good_document()
         document["products"][0]["skipped"] = document["products"][0]["total"] + 1
