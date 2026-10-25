@@ -69,7 +69,7 @@ CLI entry points are also per-product and are documented in the local files.
 
 ### Verification evidence: the only place a test count lives
 
-The current, measured result for each product is recorded in
+The current, measured result for each measured product is recorded in
 `.agents/evidence/verification.json` — product, command, test count, skipped
 count, failures and errors, pass or fail, the UTC time of the run, the commit
 that was measured, the interpreter and platform, and whether the working tree
