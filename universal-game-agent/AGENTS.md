@@ -50,7 +50,8 @@ python -m unittest discover -s tests
   metric), ROOT-027 (attach-failure cleanup and results artifact), ROOT-037 (phase-2 leak on
   failure or Ctrl-C), and ROOT-038 (episode-boundary session loss not relaunchable) are
   FIXED; the UGA
-  share of ROOT-034 remains PARTIALLY FIXED; ROOT-011 is CONTRACT GAP / DOCUMENTED and
+  share of ROOT-034 is fully FIXED as well (the shared cancellation-bounded
+  debt, DBG-12, was closed 2026-10-25 in `2a57b0d`); ROOT-011 is CONTRACT GAP / DOCUMENTED and
   ROOT-026 is CONTRACT GAP / ACCEPTED DEBT, neither of which is a defect to fix on sight.
   ROOT-033 is an AgentOps-only root and does not belong in this product's bug list.
   ROOT-015..018 and ROOT-028 are DISPROVEN — do not revive the PPO entropy/GAE/GRU/curiosity
@@ -257,8 +258,10 @@ product. ROOT-014 (finished-checkpoint resume), ROOT-036 (the declared reward-se
 hit/miss contract), ROOT-027 (attach-failure cleanup plus the `status: failed`
 results artifact), ROOT-037 (phase-2 env/process leak on a non-session failure or Ctrl-C),
 and ROOT-038 (episode-boundary session loss not relaunchable) are fixed and covered by
-tests; the only unfinished canonical root is
-ROOT-034 (PARTIALLY FIXED). ROOT-011 is CONTRACT GAP / DOCUMENTED and ROOT-026 is
+tests; no canonical root is unfinished anymore —
+ROOT-034 (the fixture-quality cluster) is fully FIXED since the shared
+cancellation-bounded debt (DBG-12) was
+closed 2026-10-25 (`2a57b0d`). ROOT-011 is CONTRACT GAP / DOCUMENTED and ROOT-026 is
 CONTRACT GAP / ACCEPTED DEBT — both are recorded debt, not bugs to fix on sight. The
 entries below are design and maintainability hazards that predate the audit and are not
 tracked as canonical roots.

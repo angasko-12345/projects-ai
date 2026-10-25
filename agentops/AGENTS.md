@@ -39,9 +39,9 @@ python -m unittest discover -s tests
 - **Bug state: no ACTIVE canonical roots.** The authoritative per-root status list is
   `.agents/memory/opencode/bugfinding/master-bug-synthesis.md` §0 — read a root's status
   there before acting on any bug, and take unfinished work from `.agents/pending_tasks.md`.
-  For AgentOps specifically: every previously-open root is now FIXED; the AgentOps share
-  of ROOT-034 remains PARTIALLY FIXED (remaining test-quality gaps in the DBG-06..15
-  cluster, not a generic bug hunt); and ROOT-033 (Windows termination classification)
+  For AgentOps specifically: every previously-open root is now FIXED, including the
+  full ROOT-034 fixture-quality cluster (DBG-12 closed 2026-10-25 as `2a57b0d`);
+  and ROOT-033 (Windows termination classification)
   remains HELD pending an explicit platform decision — do not implement the high-bit
   heuristic. ROOT-015..025 and ROOT-028 are DISPROVEN — do not revive them.
 - There is no configured lint, formatter, type-check, or coverage command. Do not invent

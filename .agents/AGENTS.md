@@ -145,8 +145,10 @@ After substantial work, update the relevant `.agents/memory/` files with concise
 
 - The live bug ledger is `.agents/memory/opencode/bugfinding/master-bug-synthesis.md` §0.
   Read a root's status there before acting on any bug; §9 of that file is SUPERSEDED.
-  Current state (2026-10-03): **zero ACTIVE roots** across all 38 canonical roots — 22
-  FIXED, 1 PARTIALLY FIXED (ROOT-034), 2 CONTRACT GAP / ACCEPTED DEBT (ROOT-011,
+  Current state (2026-10-25): **zero ACTIVE and zero PARTIALLY FIXED roots** across all
+  38 canonical roots — 23
+  FIXED (including ROOT-034, closed with the DBG-12 cancellation-test fix `2a57b0d`),
+  2 CONTRACT GAP / ACCEPTED DEBT (ROOT-011,
   ROOT-026), 1 HELD (ROOT-033), 12 DISPROVEN. This file deliberately does not restate
   per-root statuses; the ledger is the only place that list lives. Do not treat ROOT-015
   through ROOT-025 or ROOT-028 as bugs — they are DISPROVEN and must not be revived.

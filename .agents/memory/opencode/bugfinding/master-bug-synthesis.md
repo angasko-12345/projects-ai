@@ -9,9 +9,11 @@
 
 ## 0. Current Status
 
-**Per-root statuses last verified 2026-10-23 against the current working tree.** The
+**Per-root statuses last verified 2026-10-25 against the current working tree.** The
 database migration-test debt noted under ROOT-034/DBG-15 was closed by the additive
-schema-v8 index migration and regression coverage. Test results are not recorded
+schema-v8 index migration and regression coverage, and the cancellation-bounded
+test debt (DBG-12) was closed on 2026-10-25 (`2a57b0d`); every named ROOT-034
+defect is now resolved. Test results are not recorded
 here at all — see `.agents/evidence/verification.json`.
 
 This section is the **live bug ledger**. Everything from §1 onward is the historical
@@ -67,7 +69,7 @@ added, since the committed tokenizer had no coverage at all.
 | ROOT-031 | Provenance-write bypass | AgentOps | **FIXED** | Provenance writes are centralized: `gui_controller.py:20` imports `record_worktree_provenance` with a single call site at `:396`; no second unguarded write remains |
 | ROOT-032 | UnicodeDecodeError on non-ASCII | AgentOps | **FIXED** | `git.py` `_run` passes `encoding="utf-8", errors="replace"` to `subprocess.run`; non-ASCII bytes covered in `tests/test_git.py` (`Utf8DecodingTests`) (2026-10-02) |
 | ROOT-033 | Windows termination classification | AgentOps | **HELD** | Deliberately held. No Windows termination contract is defined; do not implement the high-bit heuristic |
-| ROOT-034 | Test-quality defects (cluster) | Both | **PARTIALLY FIXED** | UGA: DBG-06 and DBG-07 CLOSED 2026-10-03 (`59f5a1b`; guard `tests/test_cwd_isolation.py`), DBG-13 FIXED for routing with only residual fixture quality, DBG-14 DISPROVEN, DBG-12 residual test debt. AgentOps: DBG-08 CLOSED 2026-10-03 (real Windows parent→child→grandchild integration test `test_real_parent_terminate_process_kills_descendant_tree` in `tests/test_runtime.py`), DBG-15 CLOSED 2026-10-23 by schema-v8 index migration coverage across clean, upgrade, repeated, and unchanged-result paths. ROOT-034 stays PARTIALLY FIXED because DBG-12 remains test debt, not a production bug. |
+| ROOT-034 | Test-quality defects (cluster) | Both | **FIXED** | UGA: DBG-06 and DBG-07 CLOSED 2026-10-03 (`59f5a1b`; guard `tests/test_cwd_isolation.py`), DBG-13 FIXED for routing with only residual fixture quality, DBG-14 DISPROVEN. AgentOps: DBG-08 CLOSED 2026-10-03 (real Windows parent→child→grandchild integration test `test_real_parent_terminate_process_kills_descendant_tree` in `tests/test_runtime.py`), DBG-15 CLOSED 2026-10-23 by schema-v8 index migration coverage, and DBG-12 CLOSED 2026-10-25 (`2a57b0d`): the old `tests/test_failure_kernel.py::test_cancellation_bounded` asserted only `should_retry_attempt` plus `is_set()` on an event it set itself and could not fail for the reason its name claimed; it is replaced by two engine-level tests pinning the real cancellation path (cancel stops the retry chain before any backoff sleep and before a second agent invocation despite remaining budget, with a completion-path contrast proving budget, not cancellation, drives retries). Mutation-proven: disabling the post-run cancellation check fails the test on the sleep guard. No named DBG-06..15 defect remains open. |
 | ROOT-035 | GUI `_root_cache` shared mutable state | AgentOps | **FIXED** | `_operation_root` runs under `_root_cache_lock` (single-flight: one Git lookup for concurrent misses); GitError results stay uncached (2026-10-02) |
 | ROOT-036 | Eval metric contract | UGA | **FIXED (contract)** | Reward semantics are now declared, not inferred: `environment/reward.py` defines `SIGN_SEMANTICS`/`GENERIC_SEMANTICS` and `reward_semantics_of` (fail-closed, warns on an unknown value); only `ToyPongEnv` and `ExternPongReward` declare `sign`. `evaluate()` reports `episode_hits`/`mean_hits` only for `sign` and otherwise omits those keys entirely (absence, not `0.0`), keeping the counts under `episode_positive_reward_steps`/`mean_negative_reward_steps`; `PreprocessingWrapper` downgrades to `generic` when `skip > 1` because reward summing breaks one-event-per-decision-step. No reward semantics or PPO math changed; tracked `experiments/*_results.json` untouched (2026-10-02) |
 | ROOT-037 | Phase-2 relaunch loop leaks env + game process on failure or Ctrl-C | UGA | **FIXED** | `train_with_window_relaunch` released the env and the launched process only on a session loss or on success. A non-session exception and a `KeyboardInterrupt` skip both arms, so the run left `trainer.env` open and the Pong process running — a real window left up, still taking `SendInput`. Added an `except BaseException` arm plus `_close_quietly` (2026-10-03). Mutation-proven: reverting it fails 4 tests in `tests/test_external_experiment_orchestration.py` |
@@ -77,9 +79,9 @@ added, since the committed tokenizer had no coverage at all.
 
 | Classification | Count | Roots |
 |---|---|---|
-| FIXED | 22 | ROOT-001, 002, 003, 004, 005, 006, 007, 008, 009, 010, 012, 013, 014, 027, 029, 030, 031, 032, 035, 036, 037, 038 |
+| FIXED | 23 | ROOT-001, 002, 003, 004, 005, 006, 007, 008, 009, 010, 012, 013, 014, 027, 029, 030, 031, 032, 034, 035, 036, 037, 038 |
 | ACTIVE | 0 | none |
-| PARTIALLY FIXED | 1 | ROOT-034 |
+| PARTIALLY FIXED | 0 | none |
 | CONTRACT GAP / ACCEPTED DEBT | 2 | ROOT-011, ROOT-026 |
 | HELD | 1 | ROOT-033 |
 | DISPROVEN | 12 | ROOT-015..025, ROOT-028 |
