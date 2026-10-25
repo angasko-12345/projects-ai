@@ -154,17 +154,28 @@ class TestResetSettleInSynthetic(unittest.TestCase):
 class TestCuriosityRejected(unittest.TestCase):
     """The matrix trains plain PPO; an enabled curiosity block must fail loudly."""
 
-    def test_run_cell_rejects_enabled_curiosity(self):
+    def _isolated_config(self):
+        # Point checkpoints at a temp dir: if the guard ever regresses, run_cell
+        # trains for real and must not write into the repo's checkpoints/.
+        tmp = tempfile.TemporaryDirectory(prefix="uga-cadence-")
+        self.addCleanup(tmp.cleanup)
         cfg = _tiny_config()
+        cfg["ppo"]["checkpoint_dir"] = str(Path(tmp.name) / "ckpt")
+        return cfg, Path(tmp.name) / "ckpt"
+
+    def test_run_cell_rejects_enabled_curiosity(self):
+        cfg, ckpt = self._isolated_config()
         cfg["curiosity"] = {"enabled": True}
         with self.assertRaisesRegex(ValueError, "curiosity"):
             ce.run_cell(cfg["cells"][0], cfg, 0)
+        self.assertFalse(ckpt.exists())  # rejected before any training
 
     def test_run_cell_rejects_bare_true_block(self):
-        cfg = _tiny_config()
+        cfg, ckpt = self._isolated_config()
         cfg["curiosity"] = True
         with self.assertRaisesRegex(ValueError, "curiosity"):
             ce.run_cell(cfg["cells"][0], cfg, 0)
+        self.assertFalse(ckpt.exists())  # rejected before any training
 
     def test_run_matrix_rejects_before_writing_results(self):
         tmp = tempfile.TemporaryDirectory(prefix="uga-cadence-")
