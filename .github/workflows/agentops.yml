@@ -85,3 +85,7 @@ jobs:
           python-version: "3.11"
       - name: Run prompt transport tests on Windows
         run: python -m unittest -v tests.test_prompt_transport tests.test_prompt_transport_windows tests.test_stdin_spawn_policy
+      - name: Run init/doctor tests on Windows
+        # U2: scratch-repo init + doctor on a real Windows host (real git,
+        # real PATH lookup of .cmd shims, real python -m module probe).
+        run: python -m unittest -v tests.test_init_doctor

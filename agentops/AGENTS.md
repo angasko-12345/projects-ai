@@ -86,6 +86,13 @@ Console scripts: `agentops` -> `agentops.cli:main`, `agentops-gui` -> `agentops.
   `agentops-gui` -> `agentops.gui:main`, `main()` in `gui/__init__.py`), and threaded
   `agentops/gui_controller.py`. `agentops_gui.py` is the package-aware PyInstaller
   launcher; freezing the `agentops.gui` package modules directly breaks relative imports.
+- Onboarding: `agentops/init_config.py` (`agentops init`: evidence-only stack detection,
+  writes `<repo>/.agentops/config.yaml`, never overwrites without `--force`) and
+  `agentops/doctor.py` (`agentops doctor`: read-only readiness report through injectable
+  `which`/`run`/`platform` seams, `--json` schema `agentops.doctor/v1`). Config precedence
+  (`config.resolve_config_source`): `--config` > repo config > user config > bundled. The
+  bundled `agents.yaml` is repository-neutral; the personal fleet lives in
+  `examples/hacir-fleet.yaml`.
 - Orchestration: `agentops/workflow.py` runs the standard plan -> implementation ->
   verification -> review flow and custom dependency-checked DAGs.
 - Agent selection: `agentops/registry.py` (PATH discovery, role preference),

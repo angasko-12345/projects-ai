@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from agentops.config import AppConfig, load_config
@@ -87,8 +88,12 @@ class ConfigAndRegistryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             load_config()
 
-    def test_bundled_config_opts_into_systemd_isolation(self):
-        self.assertTrue(load_config().systemd_run_enabled)
+    def test_bundled_config_is_neutral_about_systemd_isolation(self):
+        # U2: the bundled defaults must run on any host (containers, WSL, CI,
+        # Windows). systemd isolation is opt-in; Hacir's fleet file opts in.
+        self.assertFalse(load_config().systemd_run_enabled)
+        fleet = Path(__file__).resolve().parents[1] / "examples" / "hacir-fleet.yaml"
+        self.assertTrue(load_config(fleet).systemd_run_enabled)
 
     @patch("agentops.config._load_data")
     def test_systemd_isolation_defaults_off_when_key_missing(self, load_data):
