@@ -40,6 +40,12 @@ class AgentConfig:
     timeout_support: bool | None = None
     interactive_support: bool | None = None
     noninteractive_support: bool | None = None
+    # U1: how the prompt reaches the child ("auto" | "argv" | "stdin" |
+    # "file"; see agentops/prompt_transport.py).  `stdin_args` replaces
+    # `args` when the prompt goes on stdin and, when set, declares that the
+    # CLI reads its prompt from stdin.  Only set it for a CLI verified to do so.
+    prompt_transport: str = "auto"
+    stdin_args: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -187,7 +193,30 @@ def load_config(path: str | Path | None = None) -> AppConfig:
         args = raw.get("args", ["{prompt}"])
         if not isinstance(args, list) or not args or not all(isinstance(item, str) for item in args):
             raise ValueError(f"agents.{name}.args must be a non-empty list of strings.")
-        if not any("{prompt}" in item for item in args):
+        prompt_transport = raw.get("prompt_transport", "auto")
+        from .prompt_transport import PROMPT_TRANSPORTS
+        if not isinstance(prompt_transport, str) or prompt_transport not in PROMPT_TRANSPORTS:
+            raise ValueError(
+                f"agents.{name}.prompt_transport must be one of: {', '.join(sorted(PROMPT_TRANSPORTS))}.")
+        stdin_args = raw.get("stdin_args")
+        if stdin_args is not None:
+            if not isinstance(stdin_args, list) or not all(isinstance(item, str) for item in stdin_args):
+                raise ValueError(f"agents.{name}.stdin_args must be a list of strings.")
+            if any("{prompt}" in item or "{prompt_file}" in item for item in stdin_args):
+                raise ValueError(f"agents.{name}.stdin_args must not contain a prompt placeholder.")
+            stdin_args = tuple(stdin_args)
+        has_prompt = any("{prompt}" in item for item in args)
+        has_prompt_file = any("{prompt_file}" in item for item in args)
+        if prompt_transport == "file" and not has_prompt_file:
+            raise ValueError(f"agents.{name}.prompt_transport 'file' requires a '{{prompt_file}}' placeholder in args.")
+        if prompt_transport == "file" and has_prompt:
+            raise ValueError(f"agents.{name}.prompt_transport 'file' must not also pass '{{prompt}}' in args.")
+        if prompt_transport == "stdin" and stdin_args is None and (has_prompt or has_prompt_file):
+            raise ValueError(
+                f"agents.{name}.prompt_transport 'stdin' needs stdin_args (args carries a prompt placeholder).")
+        if prompt_transport == "argv" and not has_prompt:
+            raise ValueError(f"agents.{name}.prompt_transport 'argv' requires a '{{prompt}}' placeholder in args.")
+        if not has_prompt and not has_prompt_file and prompt_transport != "stdin":
             warnings.warn(f"agents.{name}.args does not include '{{prompt}}'; the prompt will not be passed.", stacklevel=2)
         roles = raw.get("roles", [])
         if not isinstance(roles, list) or not all(isinstance(item, str) for item in roles):
@@ -245,6 +274,7 @@ def load_config(path: str | Path | None = None) -> AppConfig:
             boolean_fields["structured_output"], boolean_fields["cancellation_support"],
             boolean_fields["timeout_support"], boolean_fields["interactive_support"],
             boolean_fields["noninteractive_support"],
+            prompt_transport, stdin_args,
         )
     roles_raw = data.get("role_preferences", {})
     if not isinstance(roles_raw, dict):

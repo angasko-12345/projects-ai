@@ -29,6 +29,17 @@ python -m agentops logs
 
 Unattended Codex runs use `codex exec --sandbox workspace-write`, so they cannot escalate: tasks that need network access or writes outside the workspace fail rather than prompting. To allow that for your own setup, add `--approve-for-me` to the Codex `args` in your `agents.yaml`; it routes approval requests through automatic review.
 
+### Prompt transport (Windows `.cmd` shims)
+
+Prompts are multi-line. On Windows, `shutil.which()` often resolves an npm-installed CLI (OpenCode, Codex, Copilot, Kilo) to a `.cmd` shim, and cmd.exe ends the forwarded command line at the first newline and re-parses `" & | < > ^ %`, so a prompt passed as an argument would silently arrive truncated. Each agent therefore has `prompt_transport`: `auto` (default), `argv`, `stdin`, or `file`.
+
+- `auto` on POSIX, or for a native `.exe`: the prompt is one argv element, exactly as before.
+- `auto` on Windows for a `.cmd`/`.bat`: AgentOps first bypasses the shim (the native `opencode.exe` npm bundles next to `opencode.cmd`, or the `node.exe` + entry script a standard npm shim forwards to). If that fails it passes the prompt through the shim only when it contains no newline and no cmd metacharacter; otherwise it uses stdin if the agent declares `stdin_args`, or a prompt file if `args` has a `{prompt_file}` placeholder. If none apply, the run is **refused** with an environment failure naming the agent, the resolved path, and the fix. Prompts are never truncated silently and never go through `shell=True`.
+- `stdin`: the prompt is written to the child's stdin as UTF-8, then stdin is closed (EOF). `stdin_args` replace `args` for that run (for example `["exec", "-"]`). Setting `stdin_args` also declares that the CLI reads stdin, so set it only for a CLI you have checked. Children using argv or file transport still get `stdin=DEVNULL` (the issue #4 no-hang fix).
+- `file`: the prompt is written to a private file under `.agentops/logs/prompts/`, its path replaces `{prompt_file}`, and the file is deleted after the run.
+
+The chosen transport, executable kind (`exe`/`cmd`/`script`), and how the executable was resolved are recorded in the AgentRun's `command_metadata`; the prompt itself is not persisted. The Windows behaviour is covered by simulated tests on Linux and a `windows-latest` CI job using a fake `.cmd` agent; it has not yet been confirmed against real npm-installed CLIs.
+
 Only command templates configured in this file are executed. Agent output is treated as captured text, never as shell input. Verification commands are likewise explicitly configured under `verification.commands` (or named `verification.profiles`) and run without a shell. The runner passes a reduced process environment to avoid forwarding common secret variables.
 
 Verification profiles declare named checks with a class (`tests`, `lint`, `formatting`, `type_checking`, `build`, or `custom`), command, optional working directory inside the operation directory, per-check timeout, required/optional flag, and sequential/parallel policy. Profiles also declare fail-fast or continue-on-failure behavior, check concurrency, and a default timeout. An agent reporting success never marks a task verified; only a passed verification report does.
