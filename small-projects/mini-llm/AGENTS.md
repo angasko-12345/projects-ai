@@ -74,9 +74,13 @@ python -m unittest discover -s tests
   `--val-bin`, and `--tokenizer` together; `config_for_data()` fills the latter two
   from `meta.json`, so `--train-bin` alone is enough when the set was prepared by
   the current `prepare_data.py`.
-- The shipped `data/processed/` prep is the tiny sample: vocab 308, 736 train
-  tokens, 184 val tokens, `context_length` 32. It needs `--context-length 32`
-  for both prepare and train.
+- The shipped `data/processed/` prep is the tiny sample: vocab 515 (full
+  256-byte alphabet + 4 specials + 255 merges), 736 train tokens, 184 val
+  tokens, `context_length` 32. Reproduce it with `python prepare_data.py
+  --context-length 32 --val-frac 0.2`; train with `--context-length 32`.
+- The BPE trainer is seeded with `initial_alphabet=ByteLevel.alphabet()`
+  (2026-10-25), so unseen characters never become `<unk>`. `--vocab-size` and
+  `train_bpe_tokenizer` refuse anything below 260 (256 bytes + 4 specials).
 
 ## Checkpoint provenance and resume safety (added 2026-10-10)
 

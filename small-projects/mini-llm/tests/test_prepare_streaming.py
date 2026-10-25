@@ -46,7 +46,7 @@ def run_prepare(tmp: str, corpus_text: str = BIG_CORPUS,
         "--tokenizer-out", os.path.join(tmp, "tokenizer.json"),
         "--train-out", os.path.join(tmp, "train.bin"),
         "--val-out", os.path.join(tmp, "val.bin"),
-        "--vocab-size", "64",
+        "--vocab-size", "512",
         "--min-frequency", "1",
         "--val-frac", str(val_frac),
         "--context-length", str(context_length),
@@ -185,7 +185,7 @@ class TestStreamingParity(unittest.TestCase):
         with open(tiny, "w", encoding="utf-8") as f:
             f.write("abc def " * 20)
         tok_path = os.path.join(self.tmp.name, "tok.json")
-        train_bpe_tokenizer([tiny], tok_path, vocab_size=64, min_frequency=1)
+        train_bpe_tokenizer([tiny], tok_path, vocab_size=512, min_frequency=1)
         blank = os.path.join(self.tmp.name, "blank.txt")
         with open(blank, "w", encoding="utf-8") as f:
             f.write("  \n  \n")

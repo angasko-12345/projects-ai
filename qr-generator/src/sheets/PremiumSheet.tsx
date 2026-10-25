@@ -4,7 +4,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 
 import type { PurchaseKind, PurchaseOption, PurchaseOutcome } from '../billing/types';
 import { BETA_ACTIVE_MESSAGE, BETA_FOOTNOTE, BETA_INTRO } from '../premium/beta';
-import { PREMIUM_FEATURES } from '../premium/entitlements';
+import { FREE_TIER_PROMISE, PREMIUM_FEATURES } from '../premium/entitlements';
 import { usePremium } from '../premium/PremiumContext';
 import { useTheme } from '../theme/ThemeContext';
 import { MIN_TAP_SIZE, RADIUS, SPACING, TYPE } from '../theme/tokens';
@@ -245,6 +245,8 @@ export function PremiumSheet({ visible, onClose, notify }: PremiumSheetProps) {
           ))}
         </View>
 
+        <Text style={[styles.promise, { color: colors.textMuted }]}>{FREE_TIER_PROMISE}</Text>
+
         {beta ? (
           <View style={[styles.infoBox, { backgroundColor: colors.accentSoft }]}>
             <Ionicons name="star" size={18} color={colors.accent} />
@@ -328,6 +330,10 @@ const styles = StyleSheet.create({
   intro: {
     fontSize: TYPE.label,
     lineHeight: 20,
+  },
+  promise: {
+    fontSize: TYPE.caption,
+    lineHeight: 18,
   },
   featureList: {
     gap: SPACING.md,

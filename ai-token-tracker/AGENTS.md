@@ -30,6 +30,7 @@ ai-token-tracker/
   tests/
     test_opencode.py   -> OpenCode collector and idempotency
     test_collectors.py -> all other collectors, cross-source dedup, sync_all, legacy import
+    test_codex_collector.py -> Codex record-type selection (token_count-only, dual-write) and archived_sessions
     test_db.py         -> storage, totals, breakdown, export/import round-trips
     test_format.py     -> human formatters
 ```

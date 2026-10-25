@@ -37,7 +37,8 @@ d_ff 1536 → **13,982,976 unique parameters (~14M)** at vocab 8192. The
 vocabulary is not a design constant: `prepare_data.py` records the size the
 tokenizer actually reached in `data/processed/meta.json`, and training adopts
 it (or fails) rather than building rows the data can never produce. The
-shipped sample corpus yields vocab 308.
+shipped sample corpus yields vocab 515: the full 256-symbol byte alphabet,
+4 special tokens, and 255 merges.
 
 ## Project structure
 
@@ -93,10 +94,10 @@ pip install -r requirements.txt
 ```bash
 # Train BPE (special tokens <pad> <unk> <bos> <eos>) + build .bin files
 python prepare_data.py                    # for a corpus of >= ~1M tokens
-python prepare_data.py --context-length 32   # for the tiny shipped sample
+python prepare_data.py --context-length 32 --val-frac 0.2   # reproduces the shipped sample
 
-# Options
-python prepare_data.py --vocab-size 256 --min-frequency 1 --val-frac 0.2
+# Options (--vocab-size must be at least 260: 256 byte symbols + 4 specials)
+python prepare_data.py --vocab-size 512 --min-frequency 1 --val-frac 0.2
 python prepare_data.py --skip-training   # reuse existing tokenizer.json
 ```
 
@@ -333,12 +334,20 @@ tokenizer/data/val mismatch.
 - Fixed context window (512); longer prompts are truncated, not summarized.
 - Byte-level BPE with no whole-word guarantees; small corpora underfill the
   requested vocabulary, so the model is built for the size the tokenizer
-  actually reached (308 on the shipped sample), not the 8192 target.
+  actually reached (515 on the shipped sample), not the 8192 target.
+- The tokenizer is trained with the full 256-symbol byte alphabet
+  (`initial_alphabet=ByteLevel.alphabet()`), so any text, including characters
+  the corpus never contained (accents, emoji, tabs), encodes without `<unk>` and
+  decodes back exactly. Tokenizers prepared before this change only hold the
+  bytes their corpus contained; re-run `prepare_data.py` to get the fix. That
+  changes the tokenizer and `.bin` digests, so checkpoints trained on the old
+  artifacts are refused on `--resume` and by `generate.py --tokenizer`; this is
+  the provenance check working as intended. Retrain on the new artifacts.
 - Training does not stop on its own: there is no validation-based early
   stopping. An interrupted run continues correctly via `--resume`, but a run
   that is restarted from scratch begins a new schedule at step 1.
 - Byte-level BPE is sensitive to the corpus's line endings: the shipped
-  sample yields vocab 308 with LF and 310 with CRLF. `.gitattributes` marks
+  sample yields vocab 515 with LF and 516 with CRLF. `.gitattributes` marks
   `data/` as `-text` so no checkout can rewrite it, and
   `tests/test_pipeline.py::TestShippedData` fails if the corpus and
   `meta.json` ever disagree.

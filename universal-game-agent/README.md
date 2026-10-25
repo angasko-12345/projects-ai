@@ -181,11 +181,30 @@ keep training (new episode started; counters preserved). Via CLI:
 
 ## Toy results (toy environment only)
 
-- Seed 0, 30k steps, no curiosity: eval mean −0.40 → −0.10
-  (miss rate 40% → 10%, 20 fixed-seed greedy episodes).
-- A/B, seed 1, 30k steps each: no-curiosity −0.45 → −0.35 (9/20 misses);
-  curiosity −0.45 → −0.05 (1/20 misses). One run per arm — suggestive,
-  not proof that curiosity always helps.
+Reward is +1 per paddle hit and −1 on the miss that ends the episode, so an
+episode of 16 steps with reward −1 missed the first ball and an episode of
+~58 steps with reward 0 hit the first ball, then missed its return. Every
+number below is derived from the `baseline_eval`/`final_eval` episode
+rewards and lengths in the named results JSON (20 fixed-seed greedy
+episodes, 500-step cap) by `python -m training.toy_oracle`, which writes
+`experiments/toy_oracle_results.json`.
+
+- **Every eval episode in every saved toy run ends in a miss** (miss rate
+  100%, 0/20 reach the 500-step cap, before and after training). No trained
+  policy sustains a rally. Today's honest headline is "learns to hit the
+  first ball", not "learns Pong".
+- Seed 0, 30k steps, no curiosity (`exp_toy_ppo_01_results.json`):
+  first-ball hit rate 60% → 90%; no episode hits a second ball. (The eval
+  mean −0.40 → −0.10 is this change; an earlier README line read it as
+  "miss rate 40% → 10%", which was wrong.)
+- A/B, seed 1, 30k steps each: no-curiosity
+  (`exp_toy_ppo_02_nocur_results.json`) first-ball hit rate 55% → 55%
+  (one final episode reached 3 hits); curiosity
+  (`exp_toy_ppo_03_cur_results.json`) 55% → 95%. One run per arm,
+  suggestive only.
+- **Upper bound:** a scripted oracle that reads the env's hidden ball and
+  paddle positions (`training/toy_oracle.py`, privileged, never used for
+  learning) survives all 20 episodes to the 500-step cap with 12 hits each.
 - These numbers say nothing about arbitrary games, external-game
   training, or cross-game generalization.
 
@@ -226,6 +245,7 @@ python -m unittest discover -s tests -v
 | External-window experiment (real keystrokes — ask first) | `python -m training.external_experiment --config experiments/exp_external_pong_02.yaml` |
 | Synthetic cadence matrix (no window) | `python -m training.cadence_experiment --config experiments/exp_cadence_synthetic.yaml` |
 | Full test suite | `python -m unittest discover -s tests` |
+| Toy oracle bound + rally metrics of saved toy runs (privileged, no torch) | `python -m training.toy_oracle --out experiments/toy_oracle_results.json` |
 | Toy env demo (pixels-only policy) | `python -m environment.toy_pong --episodes 5 --seed 0` |
 | Vision pipeline demo | `python -m environment.preprocessing --episodes 3 --seed 0 --skip 2` |
 | Random-obs forward pass (torch) | `python -m agent.model --batch-size 4 --steps 3` |

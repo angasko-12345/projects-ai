@@ -19,7 +19,7 @@ import time
 import numpy as np
 
 from src.config import file_sha256, meta_path_for
-from src.tokenizer import encode, load_tokenizer, train_bpe_tokenizer
+from src.tokenizer import MIN_VOCAB_SIZE, encode, load_tokenizer, train_bpe_tokenizer
 
 DTYPE = np.uint16
 MAX_VOCAB = 65536  # DTYPE capacity; ids above this would wrap silently
@@ -240,8 +240,11 @@ def main() -> None:
                         help="reuse existing tokenizer instead of training")
     args = parser.parse_args()
 
-    if args.vocab_size <= 0 or args.vocab_size > MAX_VOCAB:
-        raise SystemExit(f"--vocab-size must be in 1..{MAX_VOCAB} (DTYPE is {DTYPE.__name__})")
+    if args.vocab_size < MIN_VOCAB_SIZE or args.vocab_size > MAX_VOCAB:
+        raise SystemExit(
+            f"--vocab-size must be in {MIN_VOCAB_SIZE}..{MAX_VOCAB} (256 byte symbols + "
+            f"4 special tokens minimum; DTYPE is {DTYPE.__name__})"
+        )
 
     if args.skip_training:
         tok = load_tokenizer(args.tokenizer_out)

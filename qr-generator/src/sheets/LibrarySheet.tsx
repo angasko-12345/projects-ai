@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import React, { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { LockedSection } from '../components/LockedSection';
 import { FREE_SAVED_CODE_LIMIT } from '../premium/entitlements';
@@ -8,6 +9,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { MIN_TAP_SIZE, RADIUS, SPACING, TYPE } from '../theme/tokens';
 import type { HistoryEntry, SavedCode } from '../types';
 import { Sheet } from '../ui/Sheet';
+import { SUPPORT_EMAIL, buildFeedbackMailto } from '../util/feedback';
 
 interface LibrarySheetProps {
   visible: boolean;
@@ -54,6 +56,12 @@ export function LibrarySheet({
   } else if (isPremium) {
     saveHint = `${saved.length} saved`;
   }
+
+  const sendFeedback = () => {
+    Linking.openURL(buildFeedbackMailto(Constants.expoConfig?.version)).catch(() => {
+      Alert.alert('No email app found', `Send your feedback to ${SUPPORT_EMAIL}.`);
+    });
+  };
 
   const confirmClearHistory = () => {
     Alert.alert('Clear history?', 'This removes every history entry on this device.', [
@@ -232,11 +240,34 @@ export function LibrarySheet({
         </Pressable>
       </View>
       {tab === 'saved' ? savedTab : historyTab}
+      <Pressable
+        onPress={sendFeedback}
+        accessibilityRole="link"
+        accessibilityLabel="Send feedback"
+        accessibilityHint={`Opens your email app addressed to ${SUPPORT_EMAIL}`}
+        style={({ pressed }) => [styles.feedbackLink, { opacity: pressed ? 0.6 : 1 }]}
+      >
+        <Ionicons name="mail-outline" size={16} color={colors.textMuted} />
+        <Text style={[styles.feedbackText, { color: colors.textMuted }]}>Send feedback</Text>
+      </Pressable>
     </Sheet>
   );
 }
 
 const styles = StyleSheet.create({
+  feedbackLink: {
+    minHeight: MIN_TAP_SIZE,
+    marginTop: SPACING.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+  },
+  feedbackText: {
+    fontSize: TYPE.caption,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
+  },
   tabBar: {
     flexDirection: 'row',
     gap: SPACING.sm,
