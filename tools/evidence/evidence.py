@@ -70,6 +70,7 @@ BASELINE_FILES = (
     "universal-game-agent/AGENTS.md",
     "small-projects/mini-llm/AGENTS.md",
     "ai-token-tracker/AGENTS.md",
+    "README.md",
     ".agents/memory/roadmap.md",
     ".agents/memory/opencode/bugfinding/master-bug-synthesis.md",
 )
@@ -83,6 +84,7 @@ COUNT_FREE_FILES = (
     "universal-game-agent/AGENTS.md",
     "small-projects/mini-llm/AGENTS.md",
     "ai-token-tracker/AGENTS.md",
+    "README.md",
 )
 
 COUNT_CLAIM = re.compile(r"\b\d{1,4}\s+(?:tests?\b|run\b|skips?\b)", re.IGNORECASE)

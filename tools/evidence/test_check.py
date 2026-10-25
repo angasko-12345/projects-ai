@@ -354,6 +354,26 @@ class DocumentClaimTests(unittest.TestCase):
             self.assertTrue(any("states a measured count" in p for p in problems),
                             problems)
 
+    def test_a_count_claim_in_readme_is_rejected(self):
+        """README.md is in COUNT_FREE_FILES — a measured count there fails the checker.
+
+        Regression guard for the 2026-10-21 truth-fix debt: a stale '700+ tests'
+        chip survived because the root README was not audited by check_documents.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for relative in COUNT_FREE_FILES:
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(f"{EVIDENCE_REFERENCE}\n", encoding="utf-8")
+            (root / "README.md").write_text(
+                f"measured in `{EVIDENCE_REFERENCE}`.\n"
+                f"- 512 tests, 4 skipped, OK\n",
+                encoding="utf-8")
+            problems = check_documents(good_document(), root)
+            self.assertTrue(any("states a measured count" in p for p in problems),
+                            problems)
+
     def test_a_missing_reference_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

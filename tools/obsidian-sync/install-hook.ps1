@@ -13,6 +13,12 @@ $lines = @(
   "exit 0"
 )
 New-Item -ItemType Directory -Force -Path $HookDir | Out-Null
-Set-Content -Path $HookPath -Value $lines -Encoding UTF8
+# utf8NoBOM — not UTF8: the latter writes a BOM (EF BB BF) on Windows, which
+# Git rejects with "Exec format error" (the hook's shebang line becomes garbage).
+$lines | Set-Content -Path $HookPath -Encoding utf8NoBOM
+# Git Bash / WSL need the executable bit (0755), which Set-Content does not set.
+if (Get-Command bash -ErrorAction SilentlyContinue) {
+    & bash -c "chmod +x '$HookPath'" 2>$null
+}
 Write-Host "Installed post-commit hook: $HookPath"
 Write-Host "Vault path source: git config --local obsidian.vaultPath"
