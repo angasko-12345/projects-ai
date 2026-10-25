@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-10-25T14:48:54+00:00",
-  "commit": "b104a7d19e0c1fbc9a68e6343a4e717800da15ed",
+  "generated_at": "2026-10-25T15:07:06+00:00",
+  "commit": "cac71b02bcbc4e69be61767e3e43b08b0b95d0d0",
   "python": "3.12.15",
   "platform": "Linux 6.12.110+ (aarch64)",
-  "measured_in": "a clean clone of b104a7d19e0c",
+  "measured_in": "a clean clone of cac71b02bcbc",
   "clean_checkout": true,
   "command_note": "Every command runs from its own product directory with the interpreter that ran this script. There is no repository-wide test command and these products share no dependencies.",
   "excluded": {
@@ -62,9 +62,9 @@
     {
       "product": "small-projects/mini-llm",
       "directory": "small-projects/mini-llm",
-      "commit": "e564c8f7e1cee1f53507c059e28a521da45f06d1",
+      "commit": "cac71b02bcbc4e69be61767e3e43b08b0b95d0d0",
       "command": [
-        "C:\\Python314\\python.exe",
+        "/workspace/work/venv/bin/python",
         "-m",
         "unittest",
         "discover",
@@ -72,13 +72,13 @@
         "tests"
       ],
       "dirty_paths": [],
-      "total": 252,
-      "duration_seconds": 53.721,
+      "total": 259,
+      "duration_seconds": 39.683,
       "skipped": 1,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 252 tests in 53.721s",
+        "Ran 259 tests in 39.683s",
         "OK (skipped=1)"
       ],
       "result": "pass"
@@ -86,9 +86,9 @@
     {
       "product": "ai-token-tracker",
       "directory": "ai-token-tracker",
-      "commit": "b104a7d19e0c1fbc9a68e6343a4e717800da15ed",
+      "commit": "3bb9bdc854daef3e54c51c3d8c07a69332887f36",
       "command": [
-        "/tmp/tt-venv-w1/bin/python",
+        "/workspace/work/regen-tmp/venv/bin/python",
         "-m",
         "unittest",
         "discover",
@@ -96,14 +96,14 @@
         "tests"
       ],
       "dirty_paths": [],
-      "total": 82,
-      "duration_seconds": 0.466,
-      "skipped": 7,
+      "total": 74,
+      "duration_seconds": 41.661,
+      "skipped": 0,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 82 tests in 0.466s",
-        "OK (skipped=7)"
+        "Ran 74 tests in 41.661s",
+        "OK"
       ],
       "result": "pass"
     }

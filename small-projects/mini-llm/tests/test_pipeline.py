@@ -155,6 +155,16 @@ class TestPrepareData(unittest.TestCase):
         finally:
             sys.argv = argv
 
+    def test_vocab_size_below_byte_alphabet_is_rejected(self):
+        argv = sys.argv
+        sys.argv = ["prepare_data.py", "--vocab-size", "259"]
+        try:
+            with self.assertRaises(SystemExit) as ctx:
+                prepare_data.main()
+        finally:
+            sys.argv = argv
+        self.assertIn("260", str(ctx.exception))
+
     def test_vocab_size_above_uint16_is_rejected(self):
         argv = sys.argv
         sys.argv = ["prepare_data.py", "--vocab-size", "70000"]
@@ -1098,7 +1108,7 @@ class TestGenerateArgs(unittest.TestCase):
 class TestShippedData(unittest.TestCase):
     """The committed corpus and the committed artifacts must stay in agreement.
 
-    Byte-level BPE is line-ending sensitive (LF -> vocab 308, CRLF -> vocab 310),
+    Byte-level BPE is line-ending sensitive (LF -> vocab 515, CRLF -> vocab 516),
     so a checkout that rewrites data/raw/train.txt would silently disagree with
     data/processed/meta.json. .gitattributes pins the bytes; this catches a
     regression in either.
@@ -1135,6 +1145,24 @@ class TestShippedData(unittest.TestCase):
         self.assertEqual(tok.get_vocab_size(), meta["vocab_size"])
         for special in ("<pad>", "<unk>", "<bos>", "<eos>"):
             self.assertIsNotNone(tok.token_to_id(special), f"missing {special}")
+
+    def test_shipped_tokenizer_encodes_unseen_characters(self):
+        # The committed tokenizer must carry the full byte alphabet: text outside
+        # the sample corpus encodes without <unk> and decodes back exactly.
+        tok = load_tokenizer(os.path.join(ROOT, "data", "tokenizer.json"))
+        text = "caf\u00e9 \u00fcn\u00efcode \U0001F680 3.14\tdon't\n\nx"
+        ids = tok.encode(text).ids
+        self.assertNotIn(tok.token_to_id("<unk>"), ids)
+        self.assertEqual(tok.decode(ids), text)
+
+    def test_shipped_artifacts_match_the_committed_digests(self):
+        meta = load_data_meta(os.path.join(ROOT, "data", "processed", "train.bin"))
+        self.assertEqual(file_sha256(os.path.join(ROOT, "data", "tokenizer.json")),
+                         meta["tokenizer_sha256"])
+        for name in ("train", "val"):
+            self.assertEqual(
+                file_sha256(os.path.join(ROOT, "data", "processed", f"{name}.bin")),
+                meta[f"{name}_sha256"])
 
 
 class TestConfigDataAgreement(unittest.TestCase):
@@ -1180,7 +1208,7 @@ class TestDataProvenance(unittest.TestCase):
         # own corpus and vocabulary, so every artifact differs by content; setUp
         # asserts that rather than trusting the inputs to differ.
         self.a = build_data_set(os.path.join(self.tmp.name, "set_a"))
-        self.b = build_data_set(os.path.join(self.tmp.name, "set_b"), vocab_size=256,
+        self.b = build_data_set(os.path.join(self.tmp.name, "set_b"), vocab_size=300,
                                 corpus_text=OTHER_CORPUS)
         self.ckpt_dir = os.path.join(self.tmp.name, "ckpts")
         self.assertNotEqual(file_sha256(self.a["train_bin"]),
