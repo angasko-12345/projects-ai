@@ -186,17 +186,25 @@ export function validateDraft(draft: QrDraft): ContentState {
   }
 }
 
+export const LABEL_MAX_CODE_POINTS = 48;
+
+// Truncate by code points so an astral character (emoji, etc.) is never
+// split into a lone surrogate.
+function truncateLabel(value: string): string {
+  return Array.from(value).slice(0, LABEL_MAX_CODE_POINTS).join('');
+}
+
 export function contentLabel(draft: QrDraft): string {
   switch (draft.type) {
     case 'text':
-      return draft.text.trim().replace(/\s+/g, ' ').slice(0, 48);
+      return truncateLabel(draft.text.trim().replace(/\s+/g, ' '));
     case 'url':
-      return normalizeUrl(draft.url).slice(0, 48);
+      return truncateLabel(normalizeUrl(draft.url));
     case 'email':
-      return draft.email.trim().slice(0, 48);
+      return truncateLabel(draft.email.trim());
     case 'phone':
-      return draft.phone.trim().slice(0, 48);
+      return truncateLabel(draft.phone.trim());
     case 'wifi':
-      return draft.wifi.ssid.trim().slice(0, 48) || 'Wi-Fi';
+      return truncateLabel(draft.wifi.ssid.trim()) || 'Wi-Fi';
   }
 }

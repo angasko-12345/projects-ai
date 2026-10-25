@@ -320,6 +320,23 @@ describe('helpers', () => {
     );
   });
 
+  it('never splits a surrogate pair when truncating labels', () => {
+    const loneSurrogate = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+    const text = `${'a'.repeat(47)}😀b`;
+    const textLabel = contentLabel(draft({ type: 'text', text }));
+    expect(textLabel).toBe(`${'a'.repeat(47)}😀`);
+    expect(loneSurrogate.test(textLabel)).toBe(false);
+
+    const ssidLabel = contentLabel(draft({ type: 'wifi', wifi: wifi({ ssid: '😀'.repeat(60) }) }));
+    expect(Array.from(ssidLabel)).toHaveLength(48);
+    expect(ssidLabel).toBe('😀'.repeat(48));
+    expect(loneSurrogate.test(ssidLabel)).toBe(false);
+  });
+
+  it('truncates ASCII labels at 48 characters', () => {
+    expect(contentLabel(draft({ type: 'text', text: 'x'.repeat(60) }))).toBe('x'.repeat(48));
+  });
+
   it('labels content for lists', () => {
     expect(contentLabel(draft({ type: 'text', text: '  spaced \n  out  ' }))).toBe(
       'spaced out',
