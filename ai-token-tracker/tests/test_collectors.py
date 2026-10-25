@@ -1126,6 +1126,7 @@ class DataDirConfigurationTest(unittest.TestCase):
             if key in os.environ
         }
         self.addCleanup(lambda: os.environ.update(saved))
+        self.real_config_file = config.config_file
         patcher = mock.patch.object(config, "config_file", lambda: self.root / "config.json")
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -1170,6 +1171,20 @@ class DataDirConfigurationTest(unittest.TestCase):
         message = str(caught.exception)
         self.assertIn(config.ENV_VAR, message)
         self.assertIn("gone", message)
+
+    def test_config_file_prefers_appdata_over_xdg_on_windows(self):
+        env = {"APPDATA": str(self.root / "roaming"), "XDG_CONFIG_HOME": str(self.root / "xdg")}
+        with mock.patch.dict(os.environ, env):
+            with mock.patch.object(config, "_is_windows", lambda: True):
+                self.assertEqual(
+                    self.real_config_file(),
+                    self.root / "roaming" / "ai-token-tracker" / "config.json",
+                )
+            with mock.patch.object(config, "_is_windows", lambda: False):
+                self.assertEqual(
+                    self.real_config_file(),
+                    self.root / "xdg" / "ai-token-tracker" / "config.json",
+                )
 
     def test_malformed_config_file_is_reported(self):
         (self.root / "config.json").write_text("{not json", encoding="utf-8")
