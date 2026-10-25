@@ -19,6 +19,13 @@ try:
 except ImportError:
     _HAS_TORCH = False
 
+try:
+    import PIL  # noqa: F401 - optional: only GIF footage needs Pillow
+
+    _HAS_PIL = True
+except ImportError:
+    _HAS_PIL = False
+
 
 def _tiny_cfg():
     from training.generalization import load_config
@@ -75,8 +82,9 @@ class TestTinyPipeline(unittest.TestCase):
             self.assertTrue((art / "summary" / "summary.csv").exists())
             rows = json.loads((art / "summary" / "summary.json").read_text())["per_game"]
             self.assertIn("multi", rows["volley"])
-            gif = record_gif(art / "g.gif", "volley", 0, cfg, max_frames=10)
-            self.assertLess(gif["bytes"], 1_000_000)
+            if _HAS_PIL:  # GIF footage is optional; Pillow is not a runtime dependency
+                gif = record_gif(art / "g.gif", "volley", 0, cfg, max_frames=10)
+                self.assertLess(gif["bytes"], 1_000_000)
             self.assertNotIn(".pt", "".join(p.suffix for p in (art / "summary").iterdir()))
 
     def test_finetune_requires_multi_checkpoint(self):
