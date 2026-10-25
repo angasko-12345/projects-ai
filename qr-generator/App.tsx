@@ -410,7 +410,7 @@ function MainScreen() {
           </View>
 
           <Text style={[styles.footnote, { color: colors.textMuted }]}>
-            Everything stays on your device. No account, no tracking.
+            Your QR codes and history stay on this device. The app itself runs no analytics or telemetry; purchase validation is handled by RevenueCat, which receives an anonymous app user ID and your entitlement status. Details in the privacy policy.
           </Text>
         </ScrollView>
       </View>
