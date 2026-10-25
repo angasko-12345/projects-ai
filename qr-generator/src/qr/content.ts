@@ -58,9 +58,11 @@ export function escapeWifiValue(value: string): string {
   return value.replace(/([\\;,:"])/g, '\\$1');
 }
 
+// The SSID is used verbatim: leading/trailing spaces are part of a network
+// name, so trimming them would point the code at a different network.
 export function buildWifiPayload(wifi: WifiFields): string {
   const security = wifi.security === 'none' ? 'nopass' : wifi.security === 'wep' ? 'WEP' : 'WPA';
-  const ssid = escapeWifiValue(wifi.ssid.trim());
+  const ssid = escapeWifiValue(wifi.ssid);
   let payload = `WIFI:T:${security};S:${ssid};`;
   if (wifi.security !== 'none' && wifi.password.length > 0) {
     payload += `P:${escapeWifiValue(wifi.password)};`;
@@ -141,11 +143,12 @@ function validatePhone(value: string): ContentState {
 }
 
 function validateWifi(wifi: WifiFields): ContentState {
-  const ssid = wifi.ssid.trim();
-  if (!ssid) {
+  // Whitespace-only still counts as nothing typed; otherwise the byte limit
+  // applies to the SSID exactly as it goes into the payload.
+  if (!wifi.ssid.trim()) {
     return { status: 'empty' };
   }
-  if (textEncoder.encode(ssid).length > MAX_SSID_BYTES) {
+  if (textEncoder.encode(wifi.ssid).length > MAX_SSID_BYTES) {
     return { status: 'error', message: `Network name must be ${MAX_SSID_BYTES} bytes or fewer.` };
   }
   if (wifi.security !== 'none') {

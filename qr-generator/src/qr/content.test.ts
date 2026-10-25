@@ -288,6 +288,38 @@ describe('helpers', () => {
     expect(isHexColor('#GGHHII')).toBe(false);
   });
 
+  it('keeps SSID whitespace in the payload so it targets the right network', () => {
+    expect(buildWifiPayload(wifi({ ssid: '  Home  ', password: 'secret123' }))).toBe(
+      'WIFI:T:WPA;S:  Home  ;P:secret123;;',
+    );
+    expect(
+      validateDraft(draft({ type: 'wifi', wifi: wifi({ ssid: '  Home  ', password: 'secret123' }) })),
+    ).toEqual({ status: 'ok', payload: 'WIFI:T:WPA;S:  Home  ;P:secret123;;' });
+  });
+
+  it('still treats a whitespace-only SSID as empty', () => {
+    expect(
+      validateDraft(draft({ type: 'wifi', wifi: wifi({ ssid: '   ', password: 'secret123' }) })),
+    ).toEqual({ status: 'empty' });
+  });
+
+  it('counts SSID whitespace toward the 32-byte limit', () => {
+    expect(
+      validateDraft(
+        draft({ type: 'wifi', wifi: wifi({ ssid: ` ${'a'.repeat(32)}`, password: 'secret123' }) }),
+      ),
+    ).toEqual({
+      status: 'error',
+      message: `Network name must be ${MAX_SSID_BYTES} bytes or fewer.`,
+    });
+  });
+
+  it('keeps password whitespace verbatim', () => {
+    expect(buildWifiPayload(wifi({ ssid: 'HomeNet', password: ' secret123 ' }))).toBe(
+      'WIFI:T:WPA;S:HomeNet;P: secret123 ;;',
+    );
+  });
+
   it('labels content for lists', () => {
     expect(contentLabel(draft({ type: 'text', text: '  spaced \n  out  ' }))).toBe(
       'spaced out',
