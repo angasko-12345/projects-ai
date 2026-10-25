@@ -178,5 +178,54 @@ class SyncSourcesTest(unittest.TestCase):
         self.assertIsNone(QApplication.overrideCursor())
 
 
+@unittest.skipUnless(_HAS_QT, "PySide6 is not installed")
+class WindowLifetimeTest(unittest.TestCase):
+    """Dropping the last reference must destroy the window right away.
+
+    A window kept alive by a slot cycle is destroyed during interpreter
+    shutdown after QApplication, which segfaults at exit.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_window_is_not_kept_alive_by_its_own_slots(self):
+        import gc
+        import weakref
+
+        with tempfile.TemporaryDirectory() as directory:
+            conn = db.connect(Path(directory) / "usage.db")
+            try:
+                window = MainWindow(conn)
+                ref = weakref.ref(window)
+                gc.disable()  # only plain refcounting, as at interpreter exit
+                try:
+                    del window
+                    self.assertIsNone(ref(), "MainWindow survived its last reference")
+                finally:
+                    gc.enable()
+            finally:
+                conn.close()
+
+    def test_filters_and_breakdown_selectors_still_repopulate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            conn = db.connect(Path(directory) / "usage.db")
+            try:
+                window = MainWindow(conn)
+                combo, table = window.breakdown_panes[0]
+                combo.setCurrentText("Project")
+                self.assertEqual(table.horizontalHeaderItem(0).text(), "Project")
+                with mock.patch.object(window, "_populate_events_table") as populate:
+                    window.filter_kind.setCurrentText("Exact only")
+                    populate.assert_called_once()
+                window.filter_search.setText("x")
+                self.assertTrue(window._filter_timer.isActive())
+                window.close()
+                del window
+            finally:
+                conn.close()
+
+
 if __name__ == "__main__":
     unittest.main()

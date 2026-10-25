@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import threading
+import weakref
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -483,11 +484,19 @@ class MainWindow(QMainWindow):
         combo.addItems(["Tool", "Provider", "Model", "Project", "Agent"])
         combo.setCurrentText(default_column)
         table = self._breakdown_table(default_column, "Tokens", "Requests")
+        # A slot closure that held ``self`` would be a reference cycle through
+        # C++ (window -> combo -> slot -> window): the window would outlive
+        # every Python reference and be torn down after QApplication at exit,
+        # which crashes. Slots reach the window weakly or as bound methods.
+        window_ref = weakref.ref(self)
 
         def repopulate(text: str) -> None:
+            window = window_ref()
+            if window is None:
+                return
             heading.setText(f"By {text.lower()}")
             table.setHorizontalHeaderLabels([text, "Tokens", "Requests"])
-            self._fill_table(table, db.breakdown(self.conn, text.lower()))
+            window._fill_table(table, db.breakdown(window.conn, text.lower()))
 
         combo.currentTextChanged.connect(repopulate)
 
@@ -553,10 +562,17 @@ class MainWindow(QMainWindow):
         self._filter_timer.setSingleShot(True)
         self._filter_timer.setInterval(200)
         self._filter_timer.timeout.connect(self._populate_events_table)
-        self.filter_search.textChanged.connect(lambda _text: self._filter_timer.start())
-        self.filter_provider.currentTextChanged.connect(lambda _text: self._populate_events_table())
-        self.filter_kind.currentTextChanged.connect(lambda _text: self._populate_events_table())
+        # Bound methods, not lambdas over self: see _breakdown_pane.
+        self.filter_search.textChanged.connect(self._schedule_filter)
+        self.filter_provider.currentTextChanged.connect(self._filters_changed)
+        self.filter_kind.currentTextChanged.connect(self._filters_changed)
         return page
+
+    def _schedule_filter(self, _text: str = "") -> None:
+        self._filter_timer.start()
+
+    def _filters_changed(self, _text: str = "") -> None:
+        self._populate_events_table()
 
     def _breakdown_table(self, *headers: str) -> QTableWidget:
         table = QTableWidget(0, len(headers))
