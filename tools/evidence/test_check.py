@@ -330,6 +330,38 @@ class StalenessTests(unittest.TestCase):
                                 and "agentops/café.py" in p for p in problems),
                             problems)
 
+    def test_uncommitted_changes_in_the_product_are_stale(self):
+        # Regression: evidence at HEAD read as current while a tracked file
+        # under the product was edited (or a new one added) but not committed.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run, measured = self._scratch_repo(root)
+            document = self._document_at(measured)
+            self.assertEqual(
+                [p for p in check_staleness(document, repo_root=root)
+                 if p.startswith("agentops:")], [])
+
+            (root / "agentops" / "module.py").write_text(
+                "raise SystemExit(1)\n", encoding="utf-8")
+            problems = check_staleness(document, repo_root=root)
+            self.assertTrue(any(p.startswith("agentops:") and "uncommitted" in p
+                                and "agentops/module.py" in p for p in problems),
+                            problems)
+
+            run("checkout", "--", "agentops/module.py")
+            (root / "agentops" / "new.py").write_text("y = 1\n", encoding="utf-8")
+            problems = check_staleness(document, repo_root=root)
+            self.assertTrue(any(p.startswith("agentops:") and "uncommitted" in p
+                                and "agentops/new.py" in p for p in problems),
+                            problems)
+
+            # A dirty file outside every product dir is not this check's business.
+            (root / "agentops" / "new.py").unlink()
+            (root / "notes.md").write_text("scratch\n", encoding="utf-8")
+            self.assertEqual(
+                [p for p in check_staleness(document, repo_root=root)
+                 if "uncommitted" in p], [])
+
     def test_an_excluded_product_is_never_named_as_stale(self):
         """tiktok-slop-factory is excluded from measurement, so its changes can
         neither invalidate measured evidence nor appear in a staleness report.

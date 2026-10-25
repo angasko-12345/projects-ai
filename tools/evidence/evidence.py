@@ -188,6 +188,20 @@ def _git_paths(*args: str, cwd: Path | None = None) -> list[str]:
     return [path for path in completed.stdout.split("\0") if path]
 
 
+def _dirty_paths(directory: str, repo_root: Path) -> list[str]:
+    """Paths under `directory` that differ from HEAD in the working tree."""
+    entries = _git_paths("status", "--porcelain", "-z", "--untracked-files=all",
+                         "--", directory, cwd=repo_root)
+    paths: list[str] = []
+    index = 0
+    while index < len(entries):
+        entry = entries[index]
+        paths.append(entry[3:])
+        # A rename/copy entry is followed by its source path as its own field.
+        index += 2 if set(entry[:2]) & {"R", "C"} else 1
+    return sorted(paths)
+
+
 def check_schema(document: object) -> list[str]:
     """Shape and internal arithmetic of the evidence file itself."""
     problems: list[str] = []
@@ -322,6 +336,24 @@ def check_staleness(document: dict, repo_root: Path = REPO_ROOT) -> list[str]:
     for record in document["products"]:
         label = record["product"]
         commit = record["commit"]
+        # The record describes committed code. Uncommitted edits (or untracked,
+        # non-ignored files) under the product dir mean the tree in front of us
+        # is not what was measured. A CI checkout is clean, so this only ever
+        # fires locally; generate.py does not call it (it measures in a clean
+        # clone and records its own `dirty_paths`).
+        try:
+            dirty = _dirty_paths(record["directory"], repo_root)
+        except RuntimeError as error:
+            problems.append(f"{label}: cannot read working-tree status: {error}")
+            dirty = []
+        if dirty:
+            shown = ", ".join(dirty[:5])
+            more = f" (+{len(dirty) - 5} more)" if len(dirty) > 5 else ""
+            problems.append(
+                f"{label}: evidence is stale: {len(dirty)} uncommitted change(s) "
+                f"under {record['directory']}/ ({shown}{more}). Commit or discard "
+                f"them, then regenerate with `python tools/evidence/generate.py "
+                f"{label}`.")
         try:
             git("cat-file", "-e", f"{commit}^{{commit}}", cwd=repo_root)
         except RuntimeError as error:
