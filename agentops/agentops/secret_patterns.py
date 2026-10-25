@@ -81,8 +81,9 @@ SECRET_PATTERNS: tuple[SecretPattern, ...] = (
     # "token = GPT-4"), so only it requires a credential-like value: at least
     # 12 characters, or at least 8 with a symbol. The credential keys also
     # match after an underscore so prefixed env names (`DB_PASSWORD=...`,
-    # `OPENAI_API_KEY=...`) are caught; `token` keeps a plain word boundary so
-    # `max_token=4096` stays readable.
+    # `OPENAI_API_KEY=...`) are caught. `token` matches after an underscore
+    # too (`GITHUB_TOKEN=...`, `"hf_token": ...`); its value floor, not the
+    # key boundary, is what keeps `max_token=4096` readable.
     _pattern(
         "credential-assignment",
         r"(?i)(?<![A-Za-z0-9])(password|passwd|pwd|api[_-]?key|secret|client[_-]?secret|"
@@ -93,7 +94,7 @@ SECRET_PATTERNS: tuple[SecretPattern, ...] = (
     # Same reported name as above: one family, two value rules.
     _pattern(
         "credential-assignment",
-        r"(?i)\btoken\b['\"]?\s*[:=]\s*['\"]?(?P<value>"
+        r"(?i)(?<![A-Za-z0-9])token\b['\"]?\s*[:=]\s*['\"]?(?P<value>"
         r"(?=[^\s'\"]{8})"
         r"(?=[^\s'\"]{12,}|[^\s'\"]*[^A-Za-z0-9\s'\"])"
         r"[^\s'\"]{4,})",

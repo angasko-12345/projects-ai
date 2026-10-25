@@ -293,6 +293,26 @@ class AssignmentValueThreshold(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertIn(REDACTED, redact_text(text))
 
+    def test_prefixed_token_env_names_are_caught(self):
+        # `\btoken\b` never matched after an underscore, so the most common
+        # token variables in CI logs and .env files escaped redaction.
+        cases = (
+            ("GITHUB_TOKEN=abcdEFGH1234", "abcdEFGH1234"),
+            ("HF_TOKEN=hf_FAKEfakeFAKEfake0123456789", "hf_FAKEfakeFAKEfake0123456789"),
+            ("SLACK_BOT_TOKEN=FAKEfake123456789x", "FAKEfake123456789x"),
+            ('"github_token": "FAKEfake1234zz"', "FAKEfake1234zz"),
+        )
+        for text, value in cases:
+            with self.subTest(text=text):
+                self.assertNotIn(value, redact_text(text))
+                self.assertIn("credential-assignment", _patterns_found(text))
+
+    def test_prefixed_token_keys_keep_the_value_floor(self):
+        for text in ("MAX_TOKEN=4096", "max_token: 8192", "num_token = GPT-4"):
+            with self.subTest(text=text):
+                self.assertEqual(text, redact_text(text))
+                self.assertNotIn("credential-assignment", _patterns_found(text))
+
     def test_words_containing_a_key_are_left_alone(self):
         for text in ("secretary: Jane", "max_tokens: 8192"):
             with self.subTest(text=text):
