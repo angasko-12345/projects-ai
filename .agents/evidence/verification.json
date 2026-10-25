@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-10-25T11:25:04+00:00",
-  "commit": "8a232926982288e02256d80b160a3b677b44584d",
+  "generated_at": "2026-10-25T13:45:58+00:00",
+  "commit": "3bb9bdc854daef3e54c51c3d8c07a69332887f36",
   "python": "3.12.15",
   "platform": "Linux 6.12.110+ (aarch64)",
-  "measured_in": "a clean clone of 8a2329269822",
+  "measured_in": "a clean clone of 3bb9bdc854da",
   "clean_checkout": true,
   "command_note": "Every command runs from its own product directory with the interpreter that ran this script. There is no repository-wide test command and these products share no dependencies.",
   "excluded": {
@@ -14,9 +14,9 @@
     {
       "product": "agentops",
       "directory": "agentops",
-      "commit": "8a232926982288e02256d80b160a3b677b44584d",
+      "commit": "3bb9bdc854daef3e54c51c3d8c07a69332887f36",
       "command": [
-        "/usr/local/bin/python3",
+        "/workspace/work/regen-tmp/venv/bin/python",
         "-m",
         "unittest",
         "discover",
@@ -24,23 +24,23 @@
         "tests"
       ],
       "dirty_paths": [],
-      "total": 929,
-      "duration_seconds": 101.254,
-      "skipped": 77,
+      "total": 934,
+      "duration_seconds": 549.34,
+      "skipped": 3,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 929 tests in 101.254s",
-        "OK (skipped=77)"
+        "Ran 934 tests in 549.340s",
+        "OK (skipped=3)"
       ],
       "result": "pass"
     },
     {
       "product": "universal-game-agent",
       "directory": "universal-game-agent",
-      "commit": "8a232926982288e02256d80b160a3b677b44584d",
+      "commit": "3bb9bdc854daef3e54c51c3d8c07a69332887f36",
       "command": [
-        "/tmp/ugavenv/bin/python",
+        "/workspace/work/regen-tmp/venv/bin/python",
         "-m",
         "unittest",
         "discover",
@@ -49,12 +49,12 @@
       ],
       "dirty_paths": [],
       "total": 506,
-      "duration_seconds": 19.331,
+      "duration_seconds": 279.878,
       "skipped": 3,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 506 tests in 19.331s",
+        "Ran 506 tests in 279.878s",
         "OK (skipped=3)"
       ],
       "result": "pass"
@@ -86,9 +86,9 @@
     {
       "product": "ai-token-tracker",
       "directory": "ai-token-tracker",
-      "commit": "8a232926982288e02256d80b160a3b677b44584d",
+      "commit": "3bb9bdc854daef3e54c51c3d8c07a69332887f36",
       "command": [
-        "/tmp/vtracker/bin/python",
+        "/workspace/work/regen-tmp/venv/bin/python",
         "-m",
         "unittest",
         "discover",
@@ -96,13 +96,13 @@
         "tests"
       ],
       "dirty_paths": [],
-      "total": 72,
-      "duration_seconds": 8.515,
+      "total": 74,
+      "duration_seconds": 41.661,
       "skipped": 0,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 72 tests in 8.515s",
+        "Ran 74 tests in 41.661s",
         "OK"
       ],
       "result": "pass"
