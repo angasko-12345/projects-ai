@@ -44,6 +44,10 @@ def _porcelain(directory: str, cwd: Path) -> list[str]:
     return [line for line in completed.stdout.splitlines() if line.strip()]
 
 
+class RunTimedOut(Exception):
+    """A product suite exceeded --timeout; the run produced no measurement."""
+
+
 def make_clean_clone(commit: str) -> Path:
     """A clone at `commit`, so the run cannot see uncommitted files."""
     target = Path(tempfile.mkdtemp(prefix="evidence-clone-"))
@@ -66,15 +70,13 @@ def run_product(entry: dict, root: Path, commit: str, timeout: int) -> dict:
         completed = subprocess.run(
             argv, cwd=str(directory), capture_output=True, text=True,
             check=False, timeout=timeout)
-    except subprocess.TimeoutExpired:
-        return {
-            "product": entry["product"], "directory": entry["directory"],
-            "commit": commit,
-            "command": argv, "total": 0, "skipped": 0, "failures": 0, "errors": 0,
-            "result": "fail", "duration_seconds": None,
-            "note": f"the run exceeded {timeout}s and was killed; an interrupted run "
-                    "is never a pass",
-        }
+    except subprocess.TimeoutExpired as error:
+        # An interrupted run measured nothing, so there is no record to write.
+        # (The old partial record also lacked `dirty_paths`, which crashed
+        # build_document with a KeyError.)
+        raise RunTimedOut(
+            f"{entry['product']}: the run exceeded {timeout}s and was killed; an "
+            "interrupted run is never a pass. No evidence was written.") from error
 
     output = completed.stdout + completed.stderr
     record = {
@@ -156,7 +158,11 @@ def main(argv: list[str] | None = None) -> int:
         for entry in selected:
             print(f"running {entry['product']} ({entry['directory']}) in {root_kind} ...",
                   flush=True)
-            record = run_product(entry, root, commit, args.timeout)
+            try:
+                record = run_product(entry, root, commit, args.timeout)
+            except RunTimedOut as error:
+                print(f"FAIL: {error}", file=sys.stderr)
+                return 1
             records.append(record)
             print(f"  {record['result']}: {record['total']} tests, "
                   f"{record['skipped']} skipped, {record['failures']} failures, "
