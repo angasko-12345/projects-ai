@@ -267,19 +267,69 @@ class TestMultiEnvBootstrap(unittest.TestCase):
 @unittest.skipUnless(_HAS_TORCH, "torch not installed")
 class TestMultiEnvGAE(unittest.TestCase):
     def test_per_slot_gae_matches_hand_computation(self):
-        slot0 = SlotEnv([(1.0, True, False), (0.0, False, False)], 0)
-        slot1 = SlotEnv([(0.0, False, False)] * 4, 1)
-        trainer = _trainer([slot0, slot1], 4)
-        buf, *_ = _rollout(trainer)
+        # slot0 terminates at t=1 and at the last step t=3; slot1 truncates
+        # at t=1 and at t=3; slot2 never finishes, so its final step
+        # bootstraps from the carried observation and hidden state.
+        slot0 = SlotEnv([(0.0, False, False), (1.0, True, False)], 0)
+        slot1 = SlotEnv([(0.0, False, False), (0.5, False, True)], 1)
+        slot2 = SlotEnv([(0.0, False, False)] * 8, 2)
+        trainer = _trainer([slot0, slot1, slot2], 4)
+        calls, orig_forward = [], trainer.model.forward
+
+        def spy_forward(obs, hidden):
+            logits, value, h_out = orig_forward(obs, hidden)
+            calls.append(h_out.clone())  # rollout zeroes finished slices in place
+            return logits, value, h_out
+
+        trainer.model.forward = spy_forward
+        try:
+            buf, *_ = _rollout(trainer)
+        finally:
+            trainer.model.forward = orig_forward
+        T, N = buf["rewards"].shape
+        self.assertEqual((T, N), (4, 3))
+        self.assertEqual(buf["terminated"][:, 0].tolist(), [False, True, False, True])
+        self.assertEqual(buf["truncated"][:, 1].tolist(), [False, True, False, True])
+        self.assertFalse(bool(buf["dones"][:, 2].any()))
+
+        def v(obs, h):
+            with torch.no_grad():
+                return float(orig_forward(obs.unsqueeze(0), h.unsqueeze(1))[1].reshape(()))
+
+        # Expected bootstrap table, built without reading buf["next_values"]
+        # or buf["next_value"].
+        expected_nv = torch.zeros(T, N)
+        for e in range(N):
+            for t in range(T):
+                if buf["terminated"][t, e]:
+                    expected_nv[t, e] = 0.0
+                elif buf["truncated"][t, e]:
+                    # Own pre-reset frame with the post-step hidden state.
+                    expected_nv[t, e] = v(buf["next_obs"][t, e], calls[t][:, e, :])
+                elif t + 1 < T:
+                    expected_nv[t, e] = float(buf["values"][t + 1, e])
+                else:
+                    carry = torch.from_numpy(np.ascontiguousarray(
+                        trainer._carry_obs[e], dtype=np.float32))
+                    expected_nv[t, e] = v(carry, trainer._carry_hidden[:, e, :])
+
+        # The final row of the per-step table is the rollout bootstrap.
+        self.assertTrue(torch.equal(buf["next_values"][-1], buf["next_value"]))
+        for e in range(N):
+            self.assertAlmostEqual(float(buf["next_value"][e]), float(expected_nv[-1, e]),
+                                   places=5)
+        self.assertNotEqual(float(expected_nv[-1, 2]), 0.0)
+        # Non-terminal entries must match; terminated entries are masked.
+        live = ~buf["terminated"]
+        self.assertTrue(torch.allclose(buf["next_values"][live], expected_nv[live], atol=1e-5))
+
         seen = []
         orig_gae = ppo_mod.compute_gae
 
         def spy_gae(rewards, values, terminated, next_value, gamma, lam, next_values=None):
             adv, ret = orig_gae(rewards, values, terminated, next_value, gamma, lam,
                                 next_values)
-            seen.append((rewards.clone(), values.clone(), terminated.clone(),
-                         next_value.clone(), adv.clone(), ret.clone(),
-                         None if next_values is None else next_values.clone()))
+            seen.append(adv.clone())
             return adv, ret
 
         ppo_mod.compute_gae = spy_gae
@@ -287,23 +337,22 @@ class TestMultiEnvGAE(unittest.TestCase):
             stats = trainer.update(buf)
         finally:
             ppo_mod.compute_gae = orig_gae
-        self.assertEqual(len(seen), 2)  # one GAE pass per slot, never mixed
-        for rewards, values, terminated, next_value, adv, _ret, next_values in seen:
-            T = len(rewards)
+        self.assertEqual(len(seen), N)  # one GAE pass per slot, never mixed
+        gamma, lam = trainer.config.gamma, trainer.config.gae_lambda
+        for e, adv in enumerate(seen):
             exp_adv = [0.0] * T
             last = 0.0
             for t in reversed(range(T)):
-                nonterm = 1.0 - float(terminated[t])
-                nv = (float(next_values[t]) if next_values is not None
-                      else float(values[t + 1]) if t + 1 < T else float(next_value))
-                delta = float(rewards[t]) + 0.99 * nv * nonterm - float(values[t])
-                last = delta + 0.99 * 0.95 * nonterm * last
+                nonterm = 1.0 - float(buf["terminated"][t, e])
+                delta = (float(buf["rewards"][t, e]) + gamma * float(expected_nv[t, e]) * nonterm
+                         - float(buf["values"][t, e]))
+                last = delta + gamma * lam * nonterm * last
                 exp_adv[t] = last
             self.assertTrue(torch.allclose(
-                adv, torch.tensor(exp_adv, dtype=adv.dtype), atol=1e-5))
-            for key in ("policy_loss", "value_loss", "entropy"):
-                self.assertTrue(abs(stats[key]) != float("inf"))
-                self.assertEqual(stats[key], stats[key])  # no NaN
+                adv, torch.tensor(exp_adv, dtype=adv.dtype), atol=1e-5), f"slot {e}")
+        for key in ("policy_loss", "value_loss", "entropy"):
+            self.assertTrue(abs(stats[key]) != float("inf"))
+            self.assertEqual(stats[key], stats[key])  # no NaN
 
     def test_curiosity_boundary_masking_per_slot(self):
         from training.curiosity import CuriosityConfig, CuriosityModule
