@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import threading
 import tomllib
 from collections import OrderedDict, deque
@@ -87,6 +88,10 @@ _SIZE_MEDIUM_MAX = 1000
 
 DEFAULT_MAX_FILES = 2000
 DEFAULT_MAX_DEPTH = 6
+#: Shared budget for every directory entry the walk reads (files, directories,
+#: and skipped names alike), so huge or deeply fanned-out trees stay bounded
+#: even when they contain few files.
+DEFAULT_MAX_ENTRIES = 20000
 DEFAULT_MANIFEST_BYTES = 65536
 DEFAULT_CACHE_SIZE = 8
 
@@ -109,8 +114,29 @@ def _is_skipped_directory(name: str) -> bool:
     return name.startswith(".") or name in _SKIP_DIRECTORIES
 
 
+# O_NOFOLLOW/O_NONBLOCK do not exist on Windows; there the lstat check below
+# is the guard (Windows has no FIFOs on ordinary filesystems).
+_SAFE_OPEN_FLAGS = getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+
+
+def _safe_opener(path: str, flags: int) -> int:
+    return os.open(path, flags | _SAFE_OPEN_FLAGS)
+
+
 def _read_capped(root: str, name: str, max_bytes: int) -> str:
-    with open(os.path.join(root, name), "rb") as handle:
+    """Read a root manifest only when it is a regular, non-symlinked file.
+
+    A symlink (possibly pointing outside the repository) or a FIFO/device
+    named like a manifest could otherwise be followed or block forever, so
+    both are refused with ``OSError`` and callers treat that as no signal.
+    The post-open ``fstat`` closes the lstat/open race on POSIX.
+    """
+    path = os.path.join(root, name)
+    if not stat.S_ISREG(os.lstat(path).st_mode):
+        raise OSError(f"not a regular file: {name}")
+    with open(path, "rb", opener=_safe_opener) as handle:
+        if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+            raise OSError(f"not a regular file: {name}")
         return handle.read(max_bytes).decode("utf-8")
 
 
@@ -229,9 +255,33 @@ class RepoCharacteristics:
         )
 
 
-def _list_sorted(directory: str | os.PathLike[str]) -> tuple[os.DirEntry, ...]:
+class _EntryBudget:
+    def __init__(self, limit: int):
+        self.remaining = max(0, int(limit))
+        self.exhausted = False
+
+
+def _list_sorted(
+    directory: str | os.PathLike[str], budget: _EntryBudget
+) -> tuple[os.DirEntry, ...]:
+    """List at most ``budget.remaining`` entries, then sort them by name.
+
+    Iteration stops as soon as the budget is spent, so a 200k-entry directory
+    costs no more than the budget.  Tradeoff: when a directory is cut short,
+    *which* entries were read follows the OS's scandir order, so a truncated
+    result is bounded but not guaranteed identical across filesystems; an
+    untruncated walk reads every entry and stays fully deterministic.
+    """
+    entries: list[os.DirEntry] = []
     with os.scandir(directory) as iterator:
-        return tuple(sorted(iterator, key=lambda entry: entry.name))
+        for entry in iterator:
+            if budget.remaining <= 0:
+                budget.exhausted = True
+                break
+            budget.remaining -= 1
+            entries.append(entry)
+    entries.sort(key=lambda entry: entry.name)
+    return tuple(entries)
 
 
 def inspect_repository(
@@ -240,19 +290,22 @@ def inspect_repository(
     max_files: int = DEFAULT_MAX_FILES,
     max_depth: int = DEFAULT_MAX_DEPTH,
     max_manifest_bytes: int = DEFAULT_MANIFEST_BYTES,
+    max_entries: int = DEFAULT_MAX_ENTRIES,
 ) -> RepoCharacteristics:
     """Inspect one directory tree; never raises.
 
     The walk is breadth-first over name-sorted entries, stops at
-    ``max_depth`` directory levels and ``max_files`` files, and skips hidden
-    and vendor directories entirely.
+    ``max_depth`` directory levels, ``max_files`` files, and ``max_entries``
+    directory entries read in total, and skips hidden and vendor directories
+    entirely.  Hitting either cap marks the result truncated.
     """
     try:
         root = Path(str(source))
+        budget = _EntryBudget(max_entries)
         queue: deque[tuple[str, tuple[os.DirEntry, ...]]] = deque()
-        queue.append((str(root), _list_sorted(root)))
+        queue.append((str(root), _list_sorted(root, budget)))
         return _scan_tree(
-            root, queue, max_files=max_files, max_depth=max_depth,
+            root, queue, budget, max_files=max_files, max_depth=max_depth,
             max_manifest_bytes=max_manifest_bytes,
         )
     except Exception:
@@ -262,6 +315,7 @@ def inspect_repository(
 def _scan_tree(
     root: Path,
     queue: deque[tuple[str, tuple[os.DirEntry, ...]]],
+    budget: _EntryBudget,
     *,
     max_files: int,
     max_depth: int,
@@ -298,17 +352,26 @@ def _scan_tree(
             language = _SOURCE_LANGUAGE_BY_SUFFIX.get(os.path.splitext(name)[1].lower())
             if language is not None:
                 language_counts[language] = language_counts.get(language, 0) + 1
-                if depth > 1 and os.path.basename(directory).lower() in {"tests", "test"}:
+                if (
+                    language == "Python"
+                    and depth > 1
+                    and os.path.basename(directory).lower() in {"tests", "test"}
+                ):
                     python_test_dir_seen = True
         if truncated:
             break
         for child in child_dirs:
+            if budget.exhausted:
+                break
             try:
                 depth_of[child] = depth + 1
-                queue.append((child, _list_sorted(child)))
+                queue.append((child, _list_sorted(child, budget)))
             except OSError:
                 # A directory that cannot be listed just contributes nothing.
                 continue
+
+    # Entries already read are still classified; the walk just lists no more.
+    truncated = truncated or budget.exhausted
 
     manifest_test_runner: str | None = None
     if manifests:
@@ -347,9 +410,11 @@ class RepositoryInspector:
         max_files: int = DEFAULT_MAX_FILES,
         max_depth: int = DEFAULT_MAX_DEPTH,
         max_manifest_bytes: int = DEFAULT_MANIFEST_BYTES,
+        max_entries: int = DEFAULT_MAX_ENTRIES,
         cache_size: int = DEFAULT_CACHE_SIZE,
     ):
         self._max_files = max_files
+        self._max_entries = max_entries
         self._max_depth = max_depth
         self._max_manifest_bytes = max_manifest_bytes
         self._cache_size = max(1, int(cache_size))
@@ -366,12 +431,22 @@ class RepositoryInspector:
             if cached is not None:
                 self._cache.move_to_end(key)
                 return cached
-            value = inspect_repository(
-                source,
-                max_files=self._max_files,
-                max_depth=self._max_depth,
-                max_manifest_bytes=self._max_manifest_bytes,
-            )
+        # The filesystem walk runs outside the lock so one slow tree cannot
+        # stall every other caller.  Two concurrent misses on the same key may
+        # both scan; the first stored value wins so callers still share one
+        # object.
+        value = inspect_repository(
+            source,
+            max_files=self._max_files,
+            max_depth=self._max_depth,
+            max_manifest_bytes=self._max_manifest_bytes,
+            max_entries=self._max_entries,
+        )
+        with self._lock:
+            cached = self._cache.get(key)
+            if cached is not None:
+                self._cache.move_to_end(key)
+                return cached
             self._cache[key] = value
             while len(self._cache) > self._cache_size:
                 self._cache.popitem(last=False)

@@ -10,6 +10,7 @@ Every value below is an obvious placeholder. Never put a realistic credential
 in a fixture.
 """
 
+import time
 import unittest
 
 from agentops.logging import redact_text
@@ -253,8 +254,9 @@ class FalsePositiveGuards(unittest.TestCase):
 class AssignmentValueThreshold(unittest.TestCase):
     """An assigned value must look like a credential before it is replaced.
 
-    Long values are almost never log noise, and punctuated values are shaped
-    like keys. Short alphanumerics are counts, versions, and model names.
+    Only the bare ``token`` key is ambiguous in ordinary logs, so only it
+    needs a credential-like value. A value assigned to a named credential key
+    (password, api_key, secret, ...) is a credential however short it is.
     """
 
     def test_long_values_are_redacted(self):
@@ -265,14 +267,121 @@ class AssignmentValueThreshold(unittest.TestCase):
         self.assertEqual("api_key=[REDACTED]", redact_text("api_key=abcd1234!"))
         self.assertIn(REDACTED, redact_text("token: a-b-c-d-e"))
 
-    def test_short_alphanumeric_values_are_left_alone(self):
-        for text in ("token: 4096", "token = GPT-4", "password: hunter2"):
+    def test_short_alphanumeric_token_values_are_left_alone(self):
+        for text in ("token: 4096", "token = GPT-4", "max_token=4096"):
+            with self.subTest(text=text):
+                self.assertEqual(text, redact_text(text))
+
+    def test_named_credential_keys_keep_the_low_floor(self):
+        # e4ef50b applied the token threshold to every key, so plain
+        # passwords and short keys under 12 characters slipped through the
+        # security gate. These must stay redacted and flagged.
+        cases = (
+            ("password: hunter2", "password: [REDACTED]"),
+            ("password: Summer2026", "password: [REDACTED]"),
+            ("API_KEY=abcd1234ef", "API_KEY=[REDACTED]"),
+            ('"secret": "Tr0ub4dor9"', '"secret": "[REDACTED]"'),
+            ("client_secret: 9f8e7d6c5b", "client_secret: [REDACTED]"),
+        )
+        for text, expected in cases:
+            with self.subTest(text=text):
+                self.assertEqual(expected, redact_text(text))
+                self.assertIn("credential-assignment", _patterns_found(text))
+
+    def test_prefixed_env_names_are_caught(self):
+        for text in ("DB_PASSWORD=letmein1", "OPENAI_API_KEY=sk-abc123xyz"):
+            with self.subTest(text=text):
+                self.assertIn(REDACTED, redact_text(text))
+
+    def test_prefixed_token_env_names_are_caught(self):
+        # `\btoken\b` never matched after an underscore, so the most common
+        # token variables in CI logs and .env files escaped redaction.
+        cases = (
+            ("GITHUB_TOKEN=abcdEFGH1234", "abcdEFGH1234"),
+            ("HF_TOKEN=hf_FAKEfakeFAKEfake0123456789", "hf_FAKEfakeFAKEfake0123456789"),
+            ("SLACK_BOT_TOKEN=FAKEfake123456789x", "FAKEfake123456789x"),
+            ('"github_token": "FAKEfake1234zz"', "FAKEfake1234zz"),
+        )
+        for text, value in cases:
+            with self.subTest(text=text):
+                self.assertNotIn(value, redact_text(text))
+                self.assertIn("credential-assignment", _patterns_found(text))
+
+    def test_prefixed_token_keys_keep_the_value_floor(self):
+        for text in ("MAX_TOKEN=4096", "max_token: 8192", "num_token = GPT-4"):
+            with self.subTest(text=text):
+                self.assertEqual(text, redact_text(text))
+                self.assertNotIn("credential-assignment", _patterns_found(text))
+
+    def test_words_containing_a_key_are_left_alone(self):
+        for text in ("secretary: Jane", "max_tokens: 8192"):
             with self.subTest(text=text):
                 self.assertEqual(text, redact_text(text))
 
     def test_assignment_family_is_still_reported(self):
         found = _patterns_found('{"token": "FAKEtokenVALUE123"}')
         self.assertIn("credential-assignment", found)
+
+
+class JwtPatternIsLinear(unittest.TestCase):
+    """A run of `eyJ-eyJ-...` must not make the JWT regex quadratic.
+
+    With a `\\b` anchor every `eyJ` inside the run was a match start, and each
+    rescanned the remainder: 100KB took seconds in both the redactor and the
+    detector (ReDoS on any untrusted log or diff).
+    """
+
+    ADVERSARIAL = "eyJ-" * 25_000  # 100KB
+
+    def test_adversarial_run_is_redacted_quickly(self):
+        started = time.monotonic()
+        redact_secrets(self.ADVERSARIAL)
+        self.assertLess(time.monotonic() - started, 0.5)
+
+    def test_adversarial_run_is_scanned_quickly(self):
+        started = time.monotonic()
+        scan_text(self.ADVERSARIAL)
+        self.assertLess(time.monotonic() - started, 0.5)
+
+    def test_real_jwts_still_redact(self):
+        token = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmYWtlIn0.FAKESIGNATUREfake0123456789"
+        for text in (token, f"x.{token}", f"jwt={token}", f'"{token}"'):
+            with self.subTest(text=text):
+                self.assertNotIn(token, redact_text(text))
+                self.assertIn("jwt", _patterns_found(text))
+
+
+class ScanTextIsLinearInFindings(unittest.TestCase):
+    """Locating each finding must not rescan the blob from the start.
+
+    _fingerprint_path counted newlines from offset 0 for every match, so a
+    diff of ~20k repeated credential shapes (one line or many) took seconds
+    and 1 MB took ~20 s, although every regex itself is linear.
+    """
+
+    ONE_LINE = ("AKIA" + "FAKEFAKEFAKEFAKE" + " ") * 20_000  # ~420KB, one line
+    MANY_LINES = ("AKIA" + "FAKEFAKEFAKEFAKE" + "\n") * 20_000
+
+    def test_many_matches_on_one_line_scan_quickly(self):
+        started = time.monotonic()
+        findings = scan_text(self.ONE_LINE)
+        self.assertLess(time.monotonic() - started, 1.0)
+        self.assertEqual([finding.location for finding in findings], ["diff:1"])
+
+    def test_many_matching_lines_scan_quickly(self):
+        started = time.monotonic()
+        findings = scan_text(self.MANY_LINES)
+        self.assertLess(time.monotonic() - started, 1.0)
+        self.assertEqual(len(findings), 20_000)
+        self.assertEqual(findings[-1].location, "diff:20000")
+
+    def test_line_numbers_are_unchanged(self):
+        key = "AKIA" + "FAKEFAKEFAKEFAKE"
+        text = f"first\n\nthird {key}\nfourth\n{key}"
+        self.assertEqual(
+            [finding.location for finding in scan_text(text, "patch")],
+            ["patch:3", "patch:5"],
+        )
 
 
 if __name__ == "__main__":

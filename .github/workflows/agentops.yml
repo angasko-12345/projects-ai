@@ -13,6 +13,9 @@ on:
       - ".github/workflows/agentops.yml"
       - ".github/CI.md"
 
+permissions:
+  contents: read
+
 jobs:
   tests:
     runs-on: ubuntu-latest

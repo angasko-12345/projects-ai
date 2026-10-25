@@ -58,9 +58,11 @@ export function escapeWifiValue(value: string): string {
   return value.replace(/([\\;,:"])/g, '\\$1');
 }
 
+// The SSID is used verbatim: leading/trailing spaces are part of a network
+// name, so trimming them would point the code at a different network.
 export function buildWifiPayload(wifi: WifiFields): string {
   const security = wifi.security === 'none' ? 'nopass' : wifi.security === 'wep' ? 'WEP' : 'WPA';
-  const ssid = escapeWifiValue(wifi.ssid.trim());
+  const ssid = escapeWifiValue(wifi.ssid);
   let payload = `WIFI:T:${security};S:${ssid};`;
   if (wifi.security !== 'none' && wifi.password.length > 0) {
     payload += `P:${escapeWifiValue(wifi.password)};`;
@@ -141,11 +143,12 @@ function validatePhone(value: string): ContentState {
 }
 
 function validateWifi(wifi: WifiFields): ContentState {
-  const ssid = wifi.ssid.trim();
-  if (!ssid) {
+  // Whitespace-only still counts as nothing typed; otherwise the byte limit
+  // applies to the SSID exactly as it goes into the payload.
+  if (!wifi.ssid.trim()) {
     return { status: 'empty' };
   }
-  if (textEncoder.encode(ssid).length > MAX_SSID_BYTES) {
+  if (textEncoder.encode(wifi.ssid).length > MAX_SSID_BYTES) {
     return { status: 'error', message: `Network name must be ${MAX_SSID_BYTES} bytes or fewer.` };
   }
   if (wifi.security !== 'none') {
@@ -183,17 +186,25 @@ export function validateDraft(draft: QrDraft): ContentState {
   }
 }
 
+export const LABEL_MAX_CODE_POINTS = 48;
+
+// Truncate by code points so an astral character (emoji, etc.) is never
+// split into a lone surrogate.
+function truncateLabel(value: string): string {
+  return Array.from(value).slice(0, LABEL_MAX_CODE_POINTS).join('');
+}
+
 export function contentLabel(draft: QrDraft): string {
   switch (draft.type) {
     case 'text':
-      return draft.text.trim().replace(/\s+/g, ' ').slice(0, 48);
+      return truncateLabel(draft.text.trim().replace(/\s+/g, ' '));
     case 'url':
-      return normalizeUrl(draft.url).slice(0, 48);
+      return truncateLabel(normalizeUrl(draft.url));
     case 'email':
-      return draft.email.trim().slice(0, 48);
+      return truncateLabel(draft.email.trim());
     case 'phone':
-      return draft.phone.trim().slice(0, 48);
+      return truncateLabel(draft.phone.trim());
     case 'wifi':
-      return draft.wifi.ssid.trim().slice(0, 48) || 'Wi-Fi';
+      return truncateLabel(draft.wifi.ssid.trim()) || 'Wi-Fi';
   }
 }

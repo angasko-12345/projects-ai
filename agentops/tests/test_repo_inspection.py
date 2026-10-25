@@ -158,6 +158,63 @@ class InspectRepositoryTests(unittest.TestCase):
         self.assertIs(capped.size, RepositorySize.LARGE)
         self.assertTrue(capped.routing_flags()["repository_exploration_required"])
 
+    def _count_scandir_entries(self, root: Path, **kwargs):
+        real_scandir = os.scandir
+        counts = {"entries": 0, "listings": 0}
+
+        class CountingScandir:
+            def __init__(self, path):
+                self._inner = real_scandir(path)
+                counts["listings"] += 1
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                self._inner.close()
+                return False
+
+            def __iter__(self):
+                for entry in self._inner:
+                    counts["entries"] += 1
+                    yield entry
+
+        with patch("agentops.repo_inspection.os.scandir", CountingScandir):
+            result = inspect_repository(root, **kwargs)
+        return result, counts
+
+    def test_entry_budget_bounds_many_empty_directories(self):
+        root = self._tree("many-dirs")
+        for index in range(300):
+            (root / f"d{index:03d}").mkdir()
+        result, counts = self._count_scandir_entries(root, max_entries=50)
+        self.assertTrue(result.truncated)
+        self.assertIs(result.size, RepositorySize.LARGE)
+        self.assertEqual(result.source_file_count, 0)
+        # The budget plus at most one peeked entry per listing.
+        self.assertLessEqual(counts["entries"], 50 + counts["listings"])
+        self.assertLessEqual(counts["listings"], 51)
+
+    def test_entry_budget_stops_reading_a_huge_subdirectory(self):
+        root = self._tree("huge-subdir")
+        _build_tree(root, {"a.py": "x"})
+        huge = root / "huge"
+        huge.mkdir()
+        for index in range(2000):
+            (huge / f"f{index}.txt").touch()
+        result, counts = self._count_scandir_entries(root, max_entries=100)
+        self.assertTrue(result.truncated)
+        self.assertLessEqual(result.source_file_count, 100)
+        self.assertLessEqual(counts["entries"], 100 + counts["listings"])
+
+    def test_walk_within_entry_budget_is_untruncated_and_deterministic(self):
+        root = self._tree("within-budget")
+        _build_tree(root, {"src/a.py": "x", "src/b.ts": "x", "tests/test_a.py": "x"})
+        bounded = inspect_repository(root, max_entries=5)
+        self.assertFalse(bounded.truncated)
+        self.assertEqual(bounded, inspect_repository(root))
+        self.assertTrue(inspect_repository(root, max_entries=4).truncated)
+
     def test_size_boundaries_without_truncation(self):
         root = self._tree("boundary")
         _build_tree(root, {f"s{index}.py": "x" for index in range(101)})
@@ -283,6 +340,9 @@ class TestRunnerDetectionTests(unittest.TestCase):
             "unittest",
         )
 
+    def test_non_python_tests_directory_is_not_unittest(self):
+        self.assertIsNone(self._runner_for({"tests/a.test.js": "test('x', () => {})\n"}))
+
     def test_conftest_outranks_go_module(self):
         self.assertEqual(
             self._runner_for({"go.mod": "module example.com/x\n", "conftest.py": ""}),
@@ -341,6 +401,20 @@ class ConsistencyAndCacheTests(unittest.TestCase):
         self.assertIsNot(cached, refreshed)
         self.assertEqual(cached, refreshed)
 
+    def test_inspector_does_not_hold_its_lock_during_the_walk(self):
+        inspector = RepositoryInspector()
+        lock_states: list[bool] = []
+        real_inspect = inspect_repository
+
+        def spy_inspect(source, **kwargs):
+            lock_states.append(inspector._lock.locked())
+            return real_inspect(source, **kwargs)
+
+        with patch("agentops.repo_inspection.inspect_repository", spy_inspect):
+            first = inspector.characteristics(self.root)
+        self.assertEqual(lock_states, [False])
+        self.assertIs(inspector.characteristics(self.root), first)
+
     def test_inspector_never_raises_on_unresolvable_path(self):
         inspector = RepositoryInspector()
         with patch(
@@ -367,3 +441,97 @@ class ConsistencyAndCacheTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ManifestSymlinkSafetyTests(unittest.TestCase):
+    """Root manifests are read only when they are regular, non-symlinked files."""
+
+    def setUp(self):
+        self._tmp = TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.base = Path(self._tmp.name)
+        self.root = self.base / "repo"
+        self.root.mkdir()
+
+    def _symlink_or_skip(self, target: Path, link: Path) -> None:
+        try:
+            os.symlink(target, link)
+        except (OSError, NotImplementedError) as error:
+            self.skipTest(f"symlinks unavailable: {error}")
+
+    def _run_with_deadline(self, call, fifo: Path):
+        import threading
+
+        results: list[object] = []
+        worker = threading.Thread(target=lambda: results.append(call()), daemon=True)
+        worker.start()
+        worker.join(timeout=5)
+        if worker.is_alive():
+            # Unblock the hung reader so the daemon thread can finish.
+            with open(fifo, "wb"):
+                pass
+            self.fail("inspection blocked on a FIFO-backed manifest")
+        return results[0]
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "os.mkfifo unavailable (e.g. Windows)")
+    def test_manifest_symlink_to_fifo_returns_promptly(self):
+        fifo = self.base / "pipe"
+        os.mkfifo(fifo)
+        self._symlink_or_skip(fifo, self.root / "package.json")
+        result = self._run_with_deadline(
+            lambda: RepositoryInspector().characteristics(self.root), fifo,
+        )
+        self.assertEqual(result.manifests, ("package.json",))
+        self.assertIsNone(result.test_runner)
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "os.mkfifo unavailable (e.g. Windows)")
+    def test_plain_fifo_manifest_returns_promptly(self):
+        fifo = self.root / "pyproject.toml"
+        os.mkfifo(fifo)
+        result = self._run_with_deadline(lambda: inspect_repository(self.root), fifo)
+        self.assertIsNone(result.test_runner)
+
+    def test_manifest_symlink_to_outside_regular_file_is_not_read(self):
+        outside = self.base / "outside.json"
+        outside.write_text('{"scripts": {"test": "jest"}}\n', encoding="utf-8")
+        self._symlink_or_skip(outside, self.root / "package.json")
+        with patch("agentops.repo_inspection.open", create=True) as spy_open:
+            spy_open.side_effect = builtins.open
+            result = inspect_repository(self.root)
+        self.assertEqual(spy_open.call_count, 0)
+        self.assertIsNone(result.test_runner)
+
+    def test_regular_manifest_is_still_read(self):
+        (self.root / "package.json").write_text(
+            '{"scripts": {"test": "jest"}}\n', encoding="utf-8",
+        )
+        self.assertEqual(inspect_repository(self.root).test_runner, "npm test")
+
+    @unittest.skipUnless(hasattr(os, "mkfifo") and hasattr(os, "O_NONBLOCK"), "POSIX FIFOs required")
+    def test_manifest_swapped_to_fifo_after_lstat_returns_promptly(self):
+        # TOCTOU: lstat sees a regular file, then it is replaced by a FIFO
+        # before open.  Only O_NONBLOCK on the open (plus the fstat re-check)
+        # keeps this from blocking forever; the lstat guard alone cannot.
+        import stat as stat_module
+        from agentops import repo_inspection
+
+        manifest = self.root / "package.json"
+        manifest.write_text('{"scripts": {"test": "x"}}', encoding="utf-8")
+        real_lstat = os.lstat
+
+        def swapping_lstat(path, *args, **kwargs):
+            result = real_lstat(path, *args, **kwargs)
+            if os.fspath(path) == os.fspath(manifest) and stat_module.S_ISREG(result.st_mode):
+                os.unlink(manifest)
+                os.mkfifo(manifest)
+            return result
+
+        class SwappingOs:
+            def __getattr__(self, name):
+                return getattr(os, name)
+
+        fake_os = SwappingOs()
+        fake_os.lstat = swapping_lstat
+        with patch.object(repo_inspection, "os", fake_os):
+            result = self._run_with_deadline(lambda: inspect_repository(self.root), manifest)
+        self.assertIsNone(result.test_runner)

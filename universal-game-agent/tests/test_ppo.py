@@ -535,12 +535,28 @@ class TestMidRolloutTruncationBootstrap(unittest.TestCase):
         terminated = buf["terminated"].float()
         gamma, lam = trainer.config.gamma, trainer.config.gae_lambda
         zero = [values[1], torch.zeros(()), values[3], buf["next_value"]]
-        perturbed = [values[1], values[2] + 100.0, values[3], buf["next_value"]]
         adv_zero, _ = self._gae(rewards, values, terminated, zero, gamma, lam)
-        adv_perturbed, _ = self._gae(rewards, values, terminated, perturbed, gamma, lam)
-        # The terminal mask makes the following value irrelevant.
-        self.assertTrue(torch.allclose(adv_zero, adv_perturbed, atol=1e-6))
         self.assertAlmostEqual(float(adv_zero[1]), float(rewards[1] - values[1]), places=5)
+
+        # The terminal mask must make the production GAE ignore the entry
+        # after a terminated step: perturb the code's own bootstrap table.
+        import training.ppo as ppo_mod
+        next_value = buf["next_value"].float()
+        real = buf["next_values"].float()
+        perturbed = real.clone()
+        perturbed[1] += 100.0
+        adv_real, _ = ppo_mod.compute_gae(rewards, values, terminated, next_value,
+                                          gamma, lam, next_values=real)
+        adv_pert, _ = ppo_mod.compute_gae(rewards, values, terminated, next_value,
+                                          gamma, lam, next_values=perturbed)
+        self.assertTrue(torch.allclose(adv_real, adv_pert, atol=1e-6))
+        self.assertTrue(torch.allclose(adv_real, adv_zero, atol=1e-5))
+        # Control: the same perturbation on a non-terminal step does move it.
+        control = real.clone()
+        control[2] += 100.0
+        adv_ctrl, _ = ppo_mod.compute_gae(rewards, values, terminated, next_value,
+                                          gamma, lam, next_values=control)
+        self.assertFalse(torch.allclose(adv_real, adv_ctrl, atol=1e-3))
 
         captured = self._captured_gae(trainer, buf)
         self.assertTrue(torch.allclose(captured["adv"], adv_zero, atol=1e-5))

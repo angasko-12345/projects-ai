@@ -27,9 +27,20 @@ class ConfigError(Exception):
     """A configured data location is unusable."""
 
 
+def _is_windows() -> bool:
+    return os.name == "nt"
+
+
 def config_file() -> Path:
-    """The user's config file: ``%APPDATA%`` on Windows, XDG elsewhere."""
-    base = os.environ.get("XDG_CONFIG_HOME") or os.environ.get("APPDATA")
+    """The user's config file: ``%APPDATA%`` on Windows, XDG elsewhere.
+
+    On Windows APPDATA wins even when XDG_CONFIG_HOME is set (MSYS2, Git
+    Bash and some dev tools export it), so the file is where the README says.
+    """
+    if _is_windows():
+        base = os.environ.get("APPDATA") or os.environ.get("XDG_CONFIG_HOME")
+    else:
+        base = os.environ.get("XDG_CONFIG_HOME") or os.environ.get("APPDATA")
     root = Path(base) if base else Path.home() / ".config"
     return root / "ai-token-tracker" / "config.json"
 

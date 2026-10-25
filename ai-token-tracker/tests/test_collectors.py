@@ -9,6 +9,7 @@ import json
 import os
 import sqlite3
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -1026,6 +1027,28 @@ class SyncAllTest(unittest.TestCase):
         # a failed collector leaves other collectors' data untouched
         self.assertEqual(db.totals(self.conn)["events"], 2)
 
+    def test_cancel_stops_before_the_next_collector(self):
+        cancel = threading.Event()
+        calls = []
+
+        def first(_path):
+            calls.append("first")
+            cancel.set()
+            return []
+
+        def second(_path):
+            calls.append("second")
+            return []
+
+        registry = [
+            collectors.Collector("one", "One", "exact", "agent", lambda: Path("."), first),
+            collectors.Collector("two", "Two", "exact", "agent", lambda: Path("."), second),
+        ]
+        with mock.patch.object(collectors, "REGISTRY", registry):
+            results = collectors.sync_all(self.conn, cancel=cancel)
+        self.assertEqual(calls, ["first"])
+        self.assertEqual(set(results), {"one"})
+
     def test_repeated_sync_is_idempotent(self):
         kilo_db = self.root / "kilo.db"
         build_kilo_db(kilo_db)
@@ -1103,6 +1126,7 @@ class DataDirConfigurationTest(unittest.TestCase):
             if key in os.environ
         }
         self.addCleanup(lambda: os.environ.update(saved))
+        self.real_config_file = config.config_file
         patcher = mock.patch.object(config, "config_file", lambda: self.root / "config.json")
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -1148,11 +1172,49 @@ class DataDirConfigurationTest(unittest.TestCase):
         self.assertIn(config.ENV_VAR, message)
         self.assertIn("gone", message)
 
+    def test_config_file_prefers_appdata_over_xdg_on_windows(self):
+        env = {"APPDATA": str(self.root / "roaming"), "XDG_CONFIG_HOME": str(self.root / "xdg")}
+        with mock.patch.dict(os.environ, env):
+            with mock.patch.object(config, "_is_windows", lambda: True):
+                self.assertEqual(
+                    self.real_config_file(),
+                    self.root / "roaming" / "ai-token-tracker" / "config.json",
+                )
+            with mock.patch.object(config, "_is_windows", lambda: False):
+                self.assertEqual(
+                    self.real_config_file(),
+                    self.root / "xdg" / "ai-token-tracker" / "config.json",
+                )
+
     def test_malformed_config_file_is_reported(self):
         (self.root / "config.json").write_text("{not json", encoding="utf-8")
         with self.assertRaises(config.ConfigError) as caught:
             config.data_dir()
         self.assertIn("config.json", str(caught.exception))
+
+    def test_misconfigured_data_dir_does_not_hide_an_agent_in_its_home_location(self):
+        home = self.root / "home"
+        kilo_db = home / ".kilo" / "share" / "kilo.db"
+        kilo_db.parent.mkdir(parents=True)
+        build_kilo_db(kilo_db)
+        conn = db.connect(self.root / "test.db")
+        self.addCleanup(conn.close)
+        registry = [
+            collectors.Collector("kilo", "Kilo", "exact", "agent",
+                                 collectors.find_kilo, collectors.collect_kilo),
+            collectors.Collector("codex", "Codex", "exact", "agent",
+                                 collectors.find_codex, collectors.collect_codex),
+        ]
+        with mock.patch.dict(os.environ, {config.ENV_VAR: str(self.root / "typo")}), \
+                mock.patch.object(collectors, "_user_home", lambda: home), \
+                mock.patch.object(collectors, "REGISTRY", registry):
+            os.environ.pop("CODEX_SESSIONS", None)
+            results = collectors.sync_all(conn)
+        self.assertEqual(results["kilo"]["status"], "ok")
+        self.assertEqual(results["kilo"]["stored"], 2)
+        # A source found nowhere still names the bad setting.
+        self.assertEqual(results["codex"]["status"], "error")
+        self.assertIn(config.ENV_VAR, results["codex"]["error"])
 
     def test_misconfigured_data_dir_is_recorded_as_a_sync_error(self):
         conn = db.connect(self.root / "test.db")
@@ -1166,6 +1228,249 @@ class DataDirConfigurationTest(unittest.TestCase):
                 results = collectors.sync_all(conn)
         self.assertEqual(results["kilo"]["status"], "error")
         self.assertIn(config.ENV_VAR, results["kilo"]["error"])
+
+
+# ------------------------------------------------- pre-ad73f30 upgrade
+
+
+def _renormalize(event, **changes):
+    """The event as a collector with different semantics would have built it."""
+    fields = {
+        "timestamp": event.timestamp, "provider": event.provider, "source": event.source,
+        "input_tokens": event.input_tokens, "output_tokens": event.output_tokens,
+        "cache_read_tokens": event.cache_read_tokens,
+        "cache_write_tokens": event.cache_write_tokens,
+        "reasoning_tokens": event.reasoning_tokens, "cost": event.cost,
+        "exact": event.exact, "agent": event.agent, "tool": event.tool,
+        "model": event.model, "project": event.project,
+        "request_id": event.request_id, "raw_metadata": event.raw_metadata,
+    }
+    fields.update(changes)
+    return normalize_event(**fields)
+
+
+class UpgradeRekeyTest(unittest.TestCase):
+    """A usage.db written before ad73f30 must not double-count on resync.
+
+    That commit changed the claude provider spelling, the hermes missing-cost
+    value and the copilot input source, all of which feed the event id.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        build_hermes_db(self.root / "state.db")
+        build_copilot_dir(self.root / "session-state")
+        project = self.root / "claude" / "p1"
+        project.mkdir(parents=True)
+        records = [
+            {"type": "assistant", "requestId": "req_A", "timestamp": "2026-10-20T10:00:00Z",
+             "cwd": "/w", "message": {"model": "anthropic/open_router/anthropic/claude-sonnet-4.5",
+                                      "usage": {"input_tokens": 100, "output_tokens": 50}}},
+            {"type": "assistant", "requestId": "req_B", "timestamp": "2026-10-20T10:01:00Z",
+             "cwd": "/w", "message": {"model": "anthropic/OpenRouter/openai/gpt-5",
+                                      "usage": {"input_tokens": 7, "output_tokens": 3}}},
+        ]
+        (project / "s.jsonl").write_text(
+            "".join(json.dumps(r) + "\n" for r in records), encoding="utf-8"
+        )
+        self.kilo_db = self.root / "kilo.db"
+        build_kilo_db(self.kilo_db)
+
+    def current(self):
+        return {
+            "claude": collectors.collect_claude(self.root / "claude"),
+            "hermes": collectors.collect_hermes(self.root / "state.db"),
+            "copilot": collectors.collect_copilot(self.root / "session-state"),
+            "kilo": collectors.collect_kilo(self.kilo_db),
+        }
+
+    def legacy(self):
+        """The same sources as the pre-ad73f30 collectors stored them."""
+        now = self.current()
+        old_claude = []
+        for event, raw in zip(now["claude"], ("open_router", "OpenRouter"), strict=True):
+            self.assertEqual(event.provider, "openrouter")
+            old_claude.append(_renormalize(event, provider=raw))
+        old_claude.append(normalize_event(
+            timestamp="2026-10-20T10:02:00Z", provider="anthropic", source="claude",
+            tool="Claude Code", model="<synthetic>", exact=True, request_id="req_S",
+        ))
+        old_hermes = [
+            _renormalize(e, cost=0.0 if e.cost is None else e.cost) for e in now["hermes"]
+        ]
+        # Old copilot input: (tokenDetails.input.tokenCount or inputTokens)
+        # minus cache, clamped at zero, recomputed from the fixture file.
+        old_input = {}
+        for line in (self.root / "session-state" / "uuid-fixture" / "events.jsonl").read_text(
+            encoding="utf-8"
+        ).splitlines():
+            try:
+                obj = json.loads(line)
+            except ValueError:
+                continue
+            for model, m in (obj.get("data") or {}).get("modelMetrics", {}).items():
+                u = m["usage"]
+                base = ((m.get("tokenDetails") or {}).get("input") or {}).get("tokenCount")
+                base = base or u["inputTokens"]
+                old_input[model] = max(base - u["cacheReadTokens"] - u["cacheWriteTokens"], 0)
+        old_copilot = []
+        for event in now["copilot"]:
+            meta = dict(event.raw_metadata)
+            meta.pop("input_total_reported")
+            old_copilot.append(
+                _renormalize(event, input_tokens=old_input[event.model], raw_metadata=meta)
+            )
+        self.assertNotEqual(
+            {e.id for e in old_copilot}, {e.id for e in now["copilot"]},
+            "fixture must exercise a copilot id change",
+        )
+        return {"claude": old_claude, "hermes": old_hermes,
+                "copilot": old_copilot, "kilo": now["kilo"]}
+
+    def write_legacy_db(self, path, *, extra=()):
+        conn = db.connect(path)
+        for events in self.legacy().values():
+            db.insert_events(conn, events)
+        for events in extra:
+            db.insert_events(conn, events)
+        conn.execute("PRAGMA user_version = 0")
+        conn.execute("DELETE FROM pending_resync")
+        conn.commit()
+        conn.close()
+
+    def resync(self, conn):
+        registry = [
+            collectors.Collector(src, src, "exact", "agent", lambda: Path("."),
+                                 lambda _p, e=events: e)
+            for src, events in self.current().items()
+        ]
+        with mock.patch.object(collectors, "REGISTRY", registry):
+            results = collectors.sync_all(conn)
+        self.assertTrue(all(r["status"] == "ok" for r in results.values()), results)
+
+    @staticmethod
+    def rows(conn):
+        return sorted(tuple(r) for r in conn.execute("SELECT * FROM events"))
+
+    def fresh_rows(self):
+        conn = db.connect(self.root / "fresh.db")
+        self.addCleanup(conn.close)
+        self.resync(conn)
+        return self.rows(conn)
+
+    def test_resync_after_upgrade_matches_a_fresh_database(self):
+        self.write_legacy_db(self.root / "old.db")
+        conn = db.connect(self.root / "old.db")
+        self.addCleanup(conn.close)
+        self.resync(conn)
+        self.assertEqual(self.rows(conn), self.fresh_rows())
+        by_source = dict(conn.execute("SELECT source, COUNT(*) FROM events GROUP BY source"))
+        self.assertEqual(by_source, {"claude": 2, "hermes": 4, "copilot": 2, "kilo": 2})
+        self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], db.SCHEMA_VERSION)
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM pending_resync").fetchone()[0], 0)
+        # A second sync changes nothing.
+        before = self.rows(conn)
+        self.resync(conn)
+        self.assertEqual(self.rows(conn), before)
+
+    def test_migration_keeps_history_whose_source_is_gone_and_skips_other_sources(self):
+        self.write_legacy_db(self.root / "old.db")
+        raw = sqlite3.connect(self.root / "old.db")
+        kilo_before = sorted(raw.execute("SELECT * FROM events WHERE source = 'kilo'"))
+        raw.close()
+        conn = db.connect(self.root / "old.db")
+        self.addCleanup(conn.close)
+        # No resync: claude/hermes are re-keyed in place, copilot rows wait
+        # for their source, kilo is byte-for-byte untouched.
+        current = self.current()
+        ids = {r[0] for r in conn.execute("SELECT id FROM events")}
+        for src in ("claude", "hermes"):
+            self.assertLessEqual({e.id for e in current[src]}, ids, src)
+        self.assertEqual(
+            sorted(tuple(r) for r in conn.execute("SELECT * FROM events WHERE source = 'kilo'")),
+            [tuple(r) for r in kilo_before],
+        )
+        self.assertEqual(
+            conn.execute("SELECT COUNT(*) FROM events WHERE source = 'copilot'").fetchone()[0], 2
+        )
+        # Reopening does not run the migration again.
+        conn.close()
+        conn = db.connect(self.root / "old.db")
+        self.addCleanup(conn.close)
+        self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], db.SCHEMA_VERSION)
+
+    def test_database_already_double_counted_by_a_resync_is_repaired(self):
+        current = self.current()
+        self.write_legacy_db(
+            self.root / "old.db",
+            extra=[current["claude"], current["hermes"], current["copilot"]],
+        )
+        conn = db.connect(self.root / "old.db")
+        self.addCleanup(conn.close)
+        self.resync(conn)
+        self.assertEqual(self.rows(conn), self.fresh_rows())
+
+
+class ClaudeNoRequestIdTest(unittest.TestCase):
+    """A Claude record without a requestId must keep one id across scans.
+
+    It used to be stored as request_id '__no_rid_<n>', its position among the
+    scan's request ids, so a <synthetic> record that pre-ad73f30 code counted
+    (or any new earlier record or file) shifted n and a resync stored the
+    same record a second time.
+    """
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        self.project = self.root / "claude" / "p1"
+        self.project.mkdir(parents=True)
+        self.synthetic = {"type": "assistant", "timestamp": "2026-10-20T10:00:00.000Z", "cwd": "/w",
+                          "message": {"model": "<synthetic>", "usage": {"input_tokens": 0, "output_tokens": 0}}}
+        self.no_rid = {"type": "assistant", "timestamp": "2026-10-20T10:01:00.000Z", "cwd": "/w",
+                       "message": {"model": "claude-sonnet-4-5", "usage": {"input_tokens": 300, "output_tokens": 30}}}
+
+    def write(self, name, records):
+        (self.project / name).write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
+
+    def stored(self, conn):
+        return conn.execute(
+            "SELECT COUNT(*), SUM(total_tokens) FROM events WHERE source = 'claude'"
+        ).fetchone()
+
+    def test_id_does_not_depend_on_earlier_records(self):
+        self.write("b.jsonl", [self.no_rid])
+        first = collectors.collect_claude(self.root / "claude")
+        self.write("a.jsonl", [{**self.no_rid, "requestId": "req_new", "timestamp": "2026-10-20T09:00:00.000Z"}])
+        second = collectors.collect_claude(self.root / "claude")
+        self.assertIn(first[0].id, {event.id for event in second})
+        self.assertIsNone(first[0].request_id)
+
+    def test_upgraded_row_with_positional_request_id_is_not_double_counted(self):
+        # Pre-ad73f30 code counted the <synthetic> record as by_rid entry 0,
+        # so the real record was stored as __no_rid_1.
+        self.write("s.jsonl", [self.synthetic, self.no_rid])
+        legacy = normalize_event(
+            timestamp=self.no_rid["timestamp"], provider="anthropic", source="claude",
+            tool="Claude Code", model="claude-sonnet-4-5", project="/w", input_tokens=300,
+            output_tokens=30, exact=True, request_id="__no_rid_1",
+        )
+        for version in (0, 1):
+            with self.subTest(user_version=version):
+                path = self.root / f"old{version}.db"
+                conn = db.connect(path)
+                db.insert_events(conn, [legacy])
+                conn.execute(f"PRAGMA user_version = {version}")
+                conn.commit()
+                conn.close()
+                conn = db.connect(path)
+                self.addCleanup(conn.close)
+                db.insert_events(conn, collectors.collect_claude(self.root / "claude"))
+                self.assertEqual(tuple(self.stored(conn)), (1, 330))
+                self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], db.SCHEMA_VERSION)
 
 
 # ----------------------------------------------------- legacy imports

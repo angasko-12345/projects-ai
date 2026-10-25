@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import sys
+import threading
+import weakref
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -282,16 +284,16 @@ def _number_item(value: int, align_right: bool = False) -> QTableWidgetItem:
     return item
 
 
-def run_sync(db_path: str) -> dict[str, dict]:
+def run_sync(db_path: str, cancel: threading.Event | None = None) -> dict[str, dict]:
     """Worker-thread body: sync through a connection this thread owns.
 
     SQLite connections are thread-bound, so the GUI's own connection is never
     used here. Collectors are read-only; the writes land in the same database
-    through its own connection.
+    through its own connection. ``cancel`` stops the sync between collectors.
     """
     worker_conn = db.connect(db_path)
     try:
-        return collectors.sync_all(worker_conn)
+        return collectors.sync_all(worker_conn, cancel=cancel)
     finally:
         worker_conn.close()
 
@@ -323,6 +325,7 @@ class MainWindow(QMainWindow):
         self._dark = dark
         self._statuses: list[dict] = []
         self._sync_thread: _SyncWorker | None = None
+        self._sync_cancel = threading.Event()
         self._sync_ui_locked = False
         self.setWindowTitle("AI Token Tracker")
         self.resize(1180, 820)
@@ -481,11 +484,19 @@ class MainWindow(QMainWindow):
         combo.addItems(["Tool", "Provider", "Model", "Project", "Agent"])
         combo.setCurrentText(default_column)
         table = self._breakdown_table(default_column, "Tokens", "Requests")
+        # A slot closure that held ``self`` would be a reference cycle through
+        # C++ (window -> combo -> slot -> window): the window would outlive
+        # every Python reference and be torn down after QApplication at exit,
+        # which crashes. Slots reach the window weakly or as bound methods.
+        window_ref = weakref.ref(self)
 
         def repopulate(text: str) -> None:
+            window = window_ref()
+            if window is None:
+                return
             heading.setText(f"By {text.lower()}")
             table.setHorizontalHeaderLabels([text, "Tokens", "Requests"])
-            self._fill_table(table, db.breakdown(self.conn, text.lower()))
+            window._fill_table(table, db.breakdown(window.conn, text.lower()))
 
         combo.currentTextChanged.connect(repopulate)
 
@@ -551,10 +562,17 @@ class MainWindow(QMainWindow):
         self._filter_timer.setSingleShot(True)
         self._filter_timer.setInterval(200)
         self._filter_timer.timeout.connect(self._populate_events_table)
-        self.filter_search.textChanged.connect(lambda _text: self._filter_timer.start())
-        self.filter_provider.currentTextChanged.connect(lambda _text: self._populate_events_table())
-        self.filter_kind.currentTextChanged.connect(lambda _text: self._populate_events_table())
+        # Bound methods, not lambdas over self: see _breakdown_pane.
+        self.filter_search.textChanged.connect(self._schedule_filter)
+        self.filter_provider.currentTextChanged.connect(self._filters_changed)
+        self.filter_kind.currentTextChanged.connect(self._filters_changed)
         return page
+
+    def _schedule_filter(self, _text: str = "") -> None:
+        self._filter_timer.start()
+
+    def _filters_changed(self, _text: str = "") -> None:
+        self._populate_events_table()
 
     def _breakdown_table(self, *headers: str) -> QTableWidget:
         table = QTableWidget(0, len(headers))
@@ -759,7 +777,8 @@ class MainWindow(QMainWindow):
             return  # a second click while syncing is ignored, not queued
         self._begin_sync_ui()
         db_path = db_path_label(self.conn)
-        thread = _SyncWorker(lambda: run_sync(db_path))
+        cancel = self._sync_cancel = threading.Event()
+        thread = _SyncWorker(lambda: run_sync(db_path, cancel))
         thread.succeeded.connect(self._sync_finished)
         thread.failed.connect(self._sync_failed)
         thread.finished.connect(self._sync_worker_done)
@@ -809,10 +828,23 @@ class MainWindow(QMainWindow):
         self.refresh()
 
     def closeEvent(self, event) -> None:
-        """Let an in-flight sync finish before the window goes away."""
+        """Stop an in-flight sync and wait for it before the window goes away.
+
+        Destroying a QThread that is still running aborts the process, so the
+        close blocks until the worker has returned; a timed wait would let the
+        window (and the thread it owns) go while a slow collector still runs.
+        The sync is asked to stop at the next collector boundary and the
+        window is hidden meanwhile. Its outcome is dropped: nothing is left
+        to show it on.
+        """
         thread = self._sync_thread
         if thread is not None and thread.isRunning():
-            thread.wait(5000)
+            self._sync_cancel.set()
+            self.hide()
+            thread.succeeded.disconnect(self._sync_finished)
+            thread.failed.disconnect(self._sync_failed)
+            thread.wait()
+            self._end_sync_ui()
         super().closeEvent(event)
 
     def import_file(self) -> None:

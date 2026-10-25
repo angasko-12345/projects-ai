@@ -110,6 +110,18 @@ class SchemaTests(unittest.TestCase):
             "Ran 999 tests in 1.0s", "OK (skipped=1)"]
         self.assertEqual(check_schema(document), [])
 
+    def test_a_summary_that_is_not_a_list_of_strings_is_rejected(self):
+        # Regression: a string (or empty/odd) summary skipped re-derivation, so
+        # `total: 99999, summary: "forged"` passed the checker.
+        for bad in ("forged", [], None, [1, 2], ["Ran 100 tests in 1.0s", 3]):
+            with self.subTest(summary=bad):
+                document = good_document()
+                document["products"][0]["total"] = 99999
+                document["products"][0]["summary"] = bad
+                problems = check_schema(document)
+                self.assertTrue(any("summary must be a non-empty list" in p
+                                    for p in problems), problems)
+
     def test_a_skipped_count_beyond_the_total_is_rejected(self):
         document = good_document()
         document["products"][0]["skipped"] = document["products"][0]["total"] + 1
@@ -277,6 +289,106 @@ class StalenessTests(unittest.TestCase):
             problems = check_staleness(self._document_at(measured), repo_root=root)
             self.assertTrue(any(p.startswith("agentops:") and "stale" in p
                                 for p in problems), problems)
+
+    @staticmethod
+    def _scratch_repo(root: Path):
+        """A throwaway repository with one committed agentops/ file.
+
+        Returns ``(run, measured)``: a git runner bound to ``root`` and the SHA
+        a record would have been measured at. core.quotePath is pinned on so a
+        non-ASCII path is C-quoted whatever the caller's global config says.
+        """
+        def run(*args: str) -> str:
+            return subprocess.run(
+                ["git", "-c", "user.name=t", "-c", "user.email=t@example.com",
+                 "-c", "commit.gpgsign=false", *args],
+                cwd=str(root), capture_output=True, text=True,
+                check=True).stdout.strip()
+
+        run("init", "-q")
+        run("config", "core.quotePath", "true")
+        (root / "agentops").mkdir()
+        (root / "agentops" / "module.py").write_text("x = 1\n", encoding="utf-8")
+        run("add", "-A")
+        run("commit", "-q", "-m", "product")
+        return run, run("rev-parse", "HEAD")
+
+    def test_a_rename_out_of_the_product_is_stale(self):
+        # Regression: `git diff --name-only` with rename detection lists only
+        # the destination, so moving a file out of agentops/ named nothing
+        # under agentops/ and the evidence read as current.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run, measured = self._scratch_repo(root)
+            run("mv", "agentops/module.py", "moved_out.py")
+            run("commit", "-q", "-m", "rename out")
+            problems = check_staleness(self._document_at(measured), repo_root=root)
+            self.assertTrue(any(p.startswith("agentops:") and "stale" in p
+                                and "agentops/module.py" in p for p in problems),
+                            problems)
+
+    def test_a_non_ascii_path_in_the_product_is_stale(self):
+        # Regression: git C-quotes non-ASCII paths ("agentops/caf\\303\\251.py"),
+        # so the prefix match missed them and the change went unnoticed.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run, measured = self._scratch_repo(root)
+            (root / "agentops" / "café.py").write_text(
+                "raise SystemExit(1)\n", encoding="utf-8")
+            run("add", "-A")
+            run("commit", "-q", "-m", "non-ascii")
+            problems = check_staleness(self._document_at(measured), repo_root=root)
+            self.assertTrue(any(p.startswith("agentops:") and "stale" in p
+                                and "agentops/café.py" in p for p in problems),
+                            problems)
+
+    def test_uncommitted_changes_in_the_product_are_stale(self):
+        # Regression: evidence at HEAD read as current while a tracked file
+        # under the product was edited (or a new one added) but not committed.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run, measured = self._scratch_repo(root)
+            document = self._document_at(measured)
+            self.assertEqual(
+                [p for p in check_staleness(document, repo_root=root)
+                 if p.startswith("agentops:")], [])
+
+            (root / "agentops" / "module.py").write_text(
+                "raise SystemExit(1)\n", encoding="utf-8")
+            problems = check_staleness(document, repo_root=root)
+            self.assertTrue(any(p.startswith("agentops:") and "uncommitted" in p
+                                and "agentops/module.py" in p for p in problems),
+                            problems)
+
+            run("checkout", "--", "agentops/module.py")
+            (root / "agentops" / "new.py").write_text("y = 1\n", encoding="utf-8")
+            problems = check_staleness(document, repo_root=root)
+            self.assertTrue(any(p.startswith("agentops:") and "uncommitted" in p
+                                and "agentops/new.py" in p for p in problems),
+                            problems)
+
+            # A dirty file outside every product dir is not this check's business.
+            (root / "agentops" / "new.py").unlink()
+            (root / "notes.md").write_text("scratch\n", encoding="utf-8")
+            self.assertEqual(
+                [p for p in check_staleness(document, repo_root=root)
+                 if "uncommitted" in p], [])
+
+    def test_index_flags_cannot_hide_uncommitted_changes(self):
+        # Regression: `git status` honours assume-unchanged / skip-worktree, so
+        # an edit behind either bit read as a clean product directory.
+        for flag in ("--assume-unchanged", "--skip-worktree"):
+            with self.subTest(flag=flag), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                run, measured = self._scratch_repo(root)
+                document = self._document_at(measured)
+                run("update-index", flag, "agentops/module.py")
+                (root / "agentops" / "module.py").write_text(
+                    "raise SystemExit(1)\n", encoding="utf-8")
+                problems = check_staleness(document, repo_root=root)
+                self.assertTrue(any(p.startswith("agentops:") and "uncommitted" in p
+                                    and "agentops/module.py" in p for p in problems),
+                                problems)
 
     def test_an_excluded_product_is_never_named_as_stale(self):
         """tiktok-slop-factory is excluded from measurement, so its changes can

@@ -151,6 +151,61 @@ class TestResetSettleInSynthetic(unittest.TestCase):
 
 
 @unittest.skipUnless(_HAS_DEPS, "cadence experiment deps missing")
+class TestCuriosityRejected(unittest.TestCase):
+    """The matrix trains plain PPO; an enabled curiosity block must fail loudly."""
+
+    def _isolated_config(self):
+        # Point checkpoints at a temp dir: if the guard ever regresses, run_cell
+        # trains for real and must not write into the repo's checkpoints/.
+        tmp = tempfile.TemporaryDirectory(prefix="uga-cadence-")
+        self.addCleanup(tmp.cleanup)
+        cfg = _tiny_config()
+        cfg["ppo"]["checkpoint_dir"] = str(Path(tmp.name) / "ckpt")
+        return cfg, Path(tmp.name) / "ckpt"
+
+    def test_run_cell_rejects_enabled_curiosity(self):
+        cfg, ckpt = self._isolated_config()
+        cfg["curiosity"] = {"enabled": True}
+        with self.assertRaisesRegex(ValueError, "curiosity"):
+            ce.run_cell(cfg["cells"][0], cfg, 0)
+        self.assertFalse(ckpt.exists())  # rejected before any training
+
+    def test_run_cell_rejects_bare_true_block(self):
+        cfg, ckpt = self._isolated_config()
+        cfg["curiosity"] = True
+        with self.assertRaisesRegex(ValueError, "curiosity"):
+            ce.run_cell(cfg["cells"][0], cfg, 0)
+        self.assertFalse(ckpt.exists())  # rejected before any training
+
+    def test_run_matrix_rejects_before_writing_results(self):
+        tmp = tempfile.TemporaryDirectory(prefix="uga-cadence-")
+        self.addCleanup(tmp.cleanup)
+        cfg = _tiny_config()
+        cfg["curiosity"] = {"enabled": True}
+        cfg["ppo"]["checkpoint_dir"] = str(Path(tmp.name) / "ckpt")
+        config_path = Path(tmp.name) / "exp_cur.yaml"
+        config_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "curiosity"):
+            ce.run_matrix(config_path)
+        self.assertFalse((Path(tmp.name) / "exp_cur_results.json").exists())
+        self.assertFalse((Path(tmp.name) / "ckpt").exists())
+
+    def test_disabled_or_absent_curiosity_is_accepted(self):
+        for block in ({"enabled": False}, None, False, {}):
+            cfg = _tiny_config()
+            if block is None:
+                cfg.pop("curiosity")
+            else:
+                cfg["curiosity"] = block
+            ce._reject_unsupported_curiosity(cfg)  # no raise
+
+    def test_committed_config_keeps_curiosity_disabled(self):
+        path = Path(__file__).resolve().parents[1] / "experiments" / "exp_cadence_synthetic.yaml"
+        cfg = yaml.safe_load(path.read_text(encoding="utf-8"))
+        ce._reject_unsupported_curiosity(cfg)
+
+
+@unittest.skipUnless(_HAS_DEPS, "cadence experiment deps missing")
 class TestMatrixSmoke(unittest.TestCase):
     def test_matrix_writes_results_and_checkpoints_outside_the_cwd(self):
         try:

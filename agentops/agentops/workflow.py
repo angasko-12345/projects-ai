@@ -816,8 +816,18 @@ class WorkflowEngine:
         except Exception:
             return {}
 
-    def _select_agent(self, task: Task, excluded: set[str], working_directory: object = None) -> DetectedAgent | None:
-        """Select through the router when available, otherwise use legacy selection."""
+    def _select_agent(
+        self,
+        task: Task,
+        excluded: set[str],
+        working_directory: object = None,
+        repository_characteristics: dict[str, object] | None = None,
+    ) -> DetectedAgent | None:
+        """Select through the router when available, otherwise use legacy selection.
+
+        ``repository_characteristics`` lets async callers pass flags computed
+        off the event loop; when omitted they are computed here.
+        """
         router = getattr(self, "router", None)
         if router is not None:
             try:
@@ -829,7 +839,11 @@ class WorkflowEngine:
                     decision = router.route(
                         role=task.role,
                         task_description=task.description,
-                        repository_characteristics=self._repository_characteristics(working_directory),
+                        repository_characteristics=(
+                            repository_characteristics
+                            if repository_characteristics is not None
+                            else self._repository_characteristics(working_directory)
+                        ),
                         # No hard capability filter here: the router still scores
                         # role/task fit, while role gates, availability, explicit
                         # user preferences, and exclusions preserve the legacy path.
@@ -962,7 +976,23 @@ class WorkflowEngine:
                         self.state.update_task(task)
                         return
                 excluded = {task.assigned_agent} if task.assigned_agent and task.attempts > 1 else set()
-                agent = self._select_agent(task, excluded, working_directory)
+                repository_characteristics = None
+                if getattr(self, "router", None) is not None:
+                    # The bounded filesystem walk runs in a worker thread so a
+                    # slow or hostile tree cannot block the event loop.
+                    # Inspection is scoring input only: a failure here (an
+                    # override that raises, a shut-down executor) degrades to
+                    # empty hints so selection still routes, as it did when
+                    # the call sat inside _select_agent's router guard.
+                    try:
+                        repository_characteristics = await asyncio.to_thread(
+                            self._repository_characteristics, working_directory,
+                        )
+                    except Exception:
+                        repository_characteristics = {}
+                agent = self._select_agent(
+                    task, excluded, working_directory, repository_characteristics,
+                )
                 if agent is None:
                     task.status = TaskStatus.FAILED
                     if excluded:

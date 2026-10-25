@@ -1,4 +1,6 @@
 import os
+import subprocess
+import sys
 import tempfile
 import threading
 import unittest
@@ -14,16 +16,21 @@ from token_tracker.db import default_db_path
 # headless machine and on a desktop alike. Must be set before PySide6 loads.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+# Only the optional dependency is guarded. An ImportError raised by
+# token_tracker.gui itself (a bad import, a renamed name) must fail the
+# suite, not quietly skip every GUI test.
 try:
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QApplication
 
-    from token_tracker import db
-    from token_tracker.gui import PALETTE, MainWindow
-
     _HAS_QT = True
 except ImportError:  # PySide6 is optional: the GUI is the only consumer
     _HAS_QT = False
+
+from token_tracker import db  # Qt-free
+
+if _HAS_QT:
+    from token_tracker.gui import PALETTE, MainWindow
 
 
 class DatabasePathTest(unittest.TestCase):
@@ -83,7 +90,7 @@ class SyncSourcesTest(unittest.TestCase):
         release = threading.Event()
         seen = {}
 
-        def slow_sync(conn):
+        def slow_sync(conn, cancel=None):
             seen["thread"] = threading.get_ident()
             seen["conn"] = conn
             started.set()
@@ -115,7 +122,7 @@ class SyncSourcesTest(unittest.TestCase):
         self.assertNotIn(PALETTE["amber"], self.window.sync_label.styleSheet())
 
     def test_failing_collector_reports_and_re_enables_the_button(self):
-        def broken_sync(conn):
+        def broken_sync(conn, cancel=None):
             raise RuntimeError("database is locked")
 
         with mock.patch("token_tracker.gui.collectors.sync_all", side_effect=broken_sync):
@@ -135,7 +142,7 @@ class SyncSourcesTest(unittest.TestCase):
         started = threading.Event()
         release = threading.Event()
 
-        def slow_sync(conn):
+        def slow_sync(conn, cancel=None):
             calls.append(1)
             started.set()
             release.wait(5)
@@ -152,6 +159,106 @@ class SyncSourcesTest(unittest.TestCase):
 
         self.assertEqual(len(calls), 1)
         self.assertTrue(self.window.import_button.isEnabled())
+
+    def test_close_during_sync_cancels_and_waits_for_the_worker(self):
+        started = threading.Event()
+        seen = {}
+
+        def slow_sync(conn, cancel=None):
+            started.set()
+            # The collector in flight is not interruptible: the close must
+            # outlast it instead of giving up after a fixed timeout.
+            cancel.wait(5)
+            seen["cancelled"] = cancel.is_set()
+            threading.Event().wait(0.3)
+            return {}
+
+        with mock.patch("token_tracker.gui.collectors.sync_all", side_effect=slow_sync):
+            self.window.sync_sources()
+            thread = self.window._sync_thread
+            self.assertTrue(started.wait(5))
+            self.window.close()
+            self.assertFalse(thread.isRunning(), "close returned with the sync still running")
+
+        self.assertTrue(seen["cancelled"])
+        self.assertTrue(self.window.isHidden())
+        self.assertIsNone(QApplication.overrideCursor())
+
+
+@unittest.skipUnless(_HAS_QT, "PySide6 is not installed")
+class WindowLifetimeTest(unittest.TestCase):
+    """Dropping the last reference must destroy the window right away.
+
+    A window kept alive by a slot cycle is destroyed during interpreter
+    shutdown after QApplication, which segfaults at exit.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_window_is_not_kept_alive_by_its_own_slots(self):
+        import gc
+        import weakref
+
+        with tempfile.TemporaryDirectory() as directory:
+            conn = db.connect(Path(directory) / "usage.db")
+            try:
+                window = MainWindow(conn)
+                ref = weakref.ref(window)
+                gc.disable()  # only plain refcounting, as at interpreter exit
+                try:
+                    del window
+                    self.assertIsNone(ref(), "MainWindow survived its last reference")
+                finally:
+                    gc.enable()
+            finally:
+                conn.close()
+
+    def test_filters_and_breakdown_selectors_still_repopulate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            conn = db.connect(Path(directory) / "usage.db")
+            try:
+                window = MainWindow(conn)
+                combo, table = window.breakdown_panes[0]
+                combo.setCurrentText("Project")
+                self.assertEqual(table.horizontalHeaderItem(0).text(), "Project")
+                with mock.patch.object(window, "_populate_events_table") as populate:
+                    window.filter_kind.setCurrentText("Exact only")
+                    populate.assert_called_once()
+                window.filter_search.setText("x")
+                self.assertTrue(window._filter_timer.isActive())
+                window.close()
+                del window
+            finally:
+                conn.close()
+
+
+@unittest.skipUnless(_HAS_QT, "PySide6 is not installed")
+class ImportGuardTest(unittest.TestCase):
+    def test_broken_gui_module_fails_the_import_instead_of_skipping(self):
+        tests_dir = Path(__file__).resolve().parent
+        script = (
+            "import sys, importlib.abc\n"
+            "class Broken(importlib.abc.MetaPathFinder):\n"
+            "    def find_spec(self, name, path=None, target=None):\n"
+            "        if name == 'token_tracker.gui':\n"
+            "            raise ImportError('gui.py is broken')\n"
+            "sys.meta_path.insert(0, Broken())\n"
+            "import test_gui\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=tests_dir,
+            env={**os.environ, "PYTHONPATH": os.pathsep.join(
+                [str(tests_dir.parent), os.environ.get("PYTHONPATH", "")]
+            )},
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        self.assertNotEqual(result.returncode, 0, "a broken gui.py was swallowed as a skip")
+        self.assertIn("gui.py is broken", result.stderr)
 
 
 if __name__ == "__main__":

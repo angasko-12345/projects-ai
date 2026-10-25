@@ -13,10 +13,12 @@ $lines = @(
   "exit 0"
 )
 New-Item -ItemType Directory -Force -Path $HookDir | Out-Null
-# utf8NoBOM — not UTF8: the latter writes a BOM (EF BB BF) on Windows, which
-# Git rejects with "Exec format error" (the hook's shebang line becomes garbage).
-$lines | Set-Content -Path $HookPath -Encoding utf8NoBOM
-# Git Bash / WSL need the executable bit (0755), which Set-Content does not set.
+# UTF-8 without a BOM and LF line endings: a BOM (EF BB BF) or a CR after the
+# shebang makes Git fail the hook with "Exec format error". Written via .NET
+# because Set-Content's utf8NoBOM encoding exists only in PowerShell 6+, and
+# Windows PowerShell 5.1 (the default powershell.exe) rejects it.
+[IO.File]::WriteAllText($HookPath, ($lines -join "`n") + "`n", [Text.UTF8Encoding]::new($false))
+# Git Bash / WSL need the executable bit (0755), which WriteAllText does not set.
 if (Get-Command bash -ErrorAction SilentlyContinue) {
     & bash -c "chmod +x '$HookPath'" 2>$null
 }

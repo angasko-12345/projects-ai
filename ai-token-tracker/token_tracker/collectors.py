@@ -24,12 +24,13 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Callable, Iterable
 
 from . import config, db, opencode
-from .model import EventValidationError, UsageEvent, normalize_event
+from .model import EventValidationError, UsageEvent, canonical_provider, normalize_event
 
 
 class CollectorError(Exception):
@@ -40,8 +41,15 @@ def _open_ro(path: Path) -> sqlite3.Connection:
     return sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True, timeout=10)
 
 
-def _first_existing(candidates: Iterable[Path]) -> Path | None:
+def _first_existing(candidates: Iterable[Path | Callable[[], Path]]) -> Path | None:
+    """First candidate that exists, in order.
+
+    A callable candidate is resolved only when every earlier one is missing,
+    so a lazy candidate's errors cannot mask a source that is present.
+    """
     for candidate in candidates:
+        if callable(candidate):
+            candidate = candidate()
         try:
             if candidate.exists():
                 return candidate
@@ -54,15 +62,18 @@ def _user_home() -> Path:
     return Path.home()
 
 
-def _data_dir_candidate(*parts: str) -> Path:
-    """Candidate inside the configured per-agent data directory.
+def _data_dir_candidate(*parts: str) -> Callable[[], Path]:
+    """Lazy candidate inside the configured per-agent data directory.
 
     The directory comes from ``config.data_dir()`` (env var, config file, then
-    the user's home); a configured directory that is missing raises with the
-    setting named, so a typo is recorded as a sync error rather than a source
-    that quietly looks uninstalled.
+    the user's home). It is resolved only when the explicit and home-directory
+    candidates before it are all missing: a misconfigured data_dir must not
+    hide an agent installed in its default location. When it is reached, a
+    configured directory that is missing raises with the setting named, so a
+    typo is recorded as a sync error rather than a source that quietly looks
+    uninstalled.
     """
-    return config.data_dir().joinpath(*parts)
+    return lambda: config.data_dir().joinpath(*parts)
 
 
 # --------------------------------------------------------------- kilo
@@ -151,12 +162,11 @@ def _parse_claude_model(model_str: str | None) -> tuple[str, str]:
     live store); aliases map to the canonical names used by other sources so
     provider rollups merge and cross-source dedup keys align.
     """
-    provider_aliases = {"open_router": "openrouter"}
     if not model_str:
         return "anthropic", "unknown"
     parts = model_str.split("/")
     if len(parts) >= 3 and parts[0] in ("anthropic", "openai", "google", "bedrock", "vertex"):
-        provider = provider_aliases.get(parts[1].lower(), parts[1].lower())
+        provider = canonical_provider(parts[1])
         model = "/".join(parts[2:])
         return provider, model
     # Plain model like "claude-sonnet-4-5" or "<synthetic>"
@@ -164,6 +174,8 @@ def _parse_claude_model(model_str: str | None) -> tuple[str, str]:
 
 
 SYNTHETIC_MODEL = "<synthetic>"
+# by_rid key for a record that carries no requestId; never stored.
+NO_RID_PREFIX = "__no_rid_"
 
 
 def collect_claude(path: Path) -> list[UsageEvent]:
@@ -205,7 +217,7 @@ def collect_claude(path: Path) -> list[UsageEvent]:
             rid = obj.get("requestId")
             if not isinstance(rid, str) or not rid:
                 # No request id (synthetic): treat as separate event per record
-                rid = f"__no_rid_{len(by_rid)}"
+                rid = f"{NO_RID_PREFIX}{len(by_rid)}"
             by_rid.setdefault(rid, []).append(obj)
 
     for rid, records in by_rid.items():
@@ -254,7 +266,11 @@ def collect_claude(path: Path) -> list[UsageEvent]:
                     cost=cost if isinstance(cost, (int, float)) else None,
                     exact=True,
                     source="claude",
-                    request_id=rid,
+                    # A record without a requestId is keyed in by_rid by its
+                    # position, which shifts whenever an earlier record or
+                    # file appears (or, after ad73f30, a <synthetic> one is
+                    # skipped). Content-address it instead so its id is stable.
+                    request_id=None if rid.startswith(NO_RID_PREFIX) else rid,
                     raw_metadata={
                         "entrypoint": canonical.get("entrypoint"),
                         "version": canonical.get("version"),
@@ -758,7 +774,7 @@ def collect_hermes(path: Path) -> list[UsageEvent]:
 
 def find_copilot() -> Path | None:
     appdata = os.environ.get("APPDATA")
-    candidates: list[Path] = []
+    candidates: list[Path | Callable[[], Path]] = []
     if appdata:
         base = Path(appdata)
         candidates += [
@@ -926,14 +942,20 @@ REGISTRY: list[Collector] = [
 ]
 
 
-def sync_all(conn: sqlite3.Connection) -> dict[str, dict]:
+def sync_all(
+    conn: sqlite3.Connection, cancel: threading.Event | None = None
+) -> dict[str, dict]:
     """Run every collector; one source's failure never stops the others.
 
     Returns {source: {"status": "ok"|"error"|"unavailable", ...}} with counts
     or the error message; every outcome is persisted to collector_status.
+    A set ``cancel`` event stops the run before the next collector; sources
+    not reached are left out of the result and keep their previous status.
     """
     results: dict[str, dict] = {}
     for collector in REGISTRY:
+        if cancel is not None and cancel.is_set():
+            break
         if collector.unavailable_reason is not None:
             db.record_sync(
                 conn,
@@ -954,6 +976,9 @@ def sync_all(conn: sqlite3.Connection) -> dict[str, dict]:
                 raise CollectorError("data source not found in known locations")
             events = collector.collect(path)
             inserted, updated, unchanged = db.insert_events(conn, events)
+            # A full scan re-observed everything this source still has, so its
+            # one-time post-upgrade resync (db._rekey_v1) is complete.
+            db.clear_pending_resync(conn, collector.source)
             stored = conn.execute(
                 "SELECT COUNT(*) FROM events WHERE source = ?", (collector.source,)
             ).fetchone()[0]

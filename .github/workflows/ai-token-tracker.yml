@@ -18,6 +18,9 @@ on:
       - "ai-token-tracker/**"
       - ".github/workflows/ai-token-tracker.yml"
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
