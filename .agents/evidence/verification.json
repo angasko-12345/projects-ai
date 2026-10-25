@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-10-25T02:07:28+00:00",
-  "commit": "e2f24bb8a2f6893e2c057552f4eb99856380a022",
+  "generated_at": "2026-10-25T02:59:31+00:00",
+  "commit": "16b469fddf902554334f9f0bac6d5e11fccaf169",
   "python": "3.14.7",
   "platform": "Windows 11 (AMD64)",
-  "measured_in": "a clean clone of e2f24bb8a2f6",
+  "measured_in": "a clean clone of 16b469fddf90",
   "clean_checkout": true,
   "command_note": "Every command runs from its own product directory with the interpreter that ran this script. There is no repository-wide test command and these products share no dependencies.",
   "excluded": {
@@ -14,7 +14,7 @@
     {
       "product": "agentops",
       "directory": "agentops",
-      "commit": "e2f24bb8a2f6893e2c057552f4eb99856380a022",
+      "commit": "16b469fddf902554334f9f0bac6d5e11fccaf169",
       "command": [
         "C:\\Python314\\python.exe",
         "-m",
@@ -24,13 +24,13 @@
         "tests"
       ],
       "dirty_paths": [],
-      "total": 902,
-      "duration_seconds": 203.231,
+      "total": 903,
+      "duration_seconds": 197.499,
       "skipped": 4,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 902 tests in 203.231s",
+        "Ran 903 tests in 197.499s",
         "OK (skipped=4)"
       ],
       "result": "pass"
@@ -38,7 +38,7 @@
     {
       "product": "universal-game-agent",
       "directory": "universal-game-agent",
-      "commit": "73bfd20b7a17cef89dfabc4ef004042f482972bc",
+      "commit": "16b469fddf902554334f9f0bac6d5e11fccaf169",
       "command": [
         "C:\\Python314\\python.exe",
         "-m",
@@ -49,12 +49,12 @@
       ],
       "dirty_paths": [],
       "total": 501,
-      "duration_seconds": 24.503,
+      "duration_seconds": 44.057,
       "skipped": 1,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 501 tests in 24.503s",
+        "Ran 501 tests in 44.057s",
         "OK (skipped=1)"
       ],
       "result": "pass"
