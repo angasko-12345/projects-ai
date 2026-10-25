@@ -351,5 +351,38 @@ class JwtPatternIsLinear(unittest.TestCase):
                 self.assertIn("jwt", _patterns_found(text))
 
 
+class ScanTextIsLinearInFindings(unittest.TestCase):
+    """Locating each finding must not rescan the blob from the start.
+
+    _fingerprint_path counted newlines from offset 0 for every match, so a
+    diff of ~20k repeated credential shapes (one line or many) took seconds
+    and 1 MB took ~20 s, although every regex itself is linear.
+    """
+
+    ONE_LINE = ("AKIA" + "FAKEFAKEFAKEFAKE" + " ") * 20_000  # ~420KB, one line
+    MANY_LINES = ("AKIA" + "FAKEFAKEFAKEFAKE" + "\n") * 20_000
+
+    def test_many_matches_on_one_line_scan_quickly(self):
+        started = time.monotonic()
+        findings = scan_text(self.ONE_LINE)
+        self.assertLess(time.monotonic() - started, 1.0)
+        self.assertEqual([finding.location for finding in findings], ["diff:1"])
+
+    def test_many_matching_lines_scan_quickly(self):
+        started = time.monotonic()
+        findings = scan_text(self.MANY_LINES)
+        self.assertLess(time.monotonic() - started, 1.0)
+        self.assertEqual(len(findings), 20_000)
+        self.assertEqual(findings[-1].location, "diff:20000")
+
+    def test_line_numbers_are_unchanged(self):
+        key = "AKIA" + "FAKEFAKEFAKEFAKE"
+        text = f"first\n\nthird {key}\nfourth\n{key}"
+        self.assertEqual(
+            [finding.location for finding in scan_text(text, "patch")],
+            ["patch:3", "patch:5"],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

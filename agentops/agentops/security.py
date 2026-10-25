@@ -10,6 +10,7 @@ is safe to embed in prompts, logs, artifacts, and persistent memory.
 from __future__ import annotations
 
 import math
+from bisect import bisect_left
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -66,18 +67,21 @@ def _shannon_entropy(text: str) -> float:
         return 0.0
 
 
-def _fingerprint_path(location: str, match_start: int, text: str) -> str:
-    """Describe the neighbourhood of a match without quoting the match."""
+def _fingerprint_path(
+    location: str, match_start: int, text: str, newlines: list[int] | None = None,
+) -> str:
+    """Describe where a match sits (``location:line``) without quoting it.
+
+    ``newlines`` is the sorted list of newline offsets in ``text``. scan_text
+    builds it once per blob: counting newlines from the start of the text for
+    every match was O(len(text)) per match, so a 1 MB blob of repeated
+    credential shapes took ~20 s (quadratic in the number of matches).
+    """
     try:
-        line_start = text.rfind("\n", 0, match_start) + 1
-        line_end = text.find("\n", match_start)
-        if line_end < 0:
-            line_end = len(text)
-        line = text[line_start:line_end]
-        stripped = line.strip()
-        if len(stripped) > _FINGERPRINT_CHARS:
-            stripped = stripped[:_FINGERPRINT_CHARS].rstrip() + "…"
-        line_number = text.count("\n", 0, match_start) + 1
+        if newlines is None:
+            line_number = text.count("\n", 0, match_start) + 1
+        else:
+            line_number = bisect_left(newlines, match_start) + 1
         return f"{location}:{line_number}"
     except Exception:
         return location
@@ -90,10 +94,11 @@ def scan_text(text: str | None, location: str = "diff") -> list[SecretFinding]:
         if not text or not isinstance(text, str):
             return []
         seen: set[tuple[str, str]] = set()
+        newlines = [newline.start() for newline in re.finditer("\n", text)]
         for name, pattern in _SECRET_PATTERNS:
             try:
                 for match in pattern.finditer(text):
-                    where = _fingerprint_path(location, match.start(), text)
+                    where = _fingerprint_path(location, match.start(), text, newlines)
                     key = (name, where)
                     if key in seen:
                         continue
@@ -111,7 +116,7 @@ def scan_text(text: str | None, location: str = "diff") -> list[SecretFinding]:
                     continue
                 if _shannon_entropy(candidate) < _ENTROPY_THRESHOLD_BITS_PER_CHAR:
                     continue
-                where = _fingerprint_path(location, match.start(), text)
+                where = _fingerprint_path(location, match.start(), text, newlines)
                 key = ("high-entropy-token", where)
                 if key in seen:
                     continue
