@@ -174,6 +174,20 @@ def git(*args: str, cwd: Path | None = None) -> str:
     return completed.stdout.strip()
 
 
+def _git_paths(*args: str, cwd: Path | None = None) -> list[str]:
+    """Run a `-z` git command and return its NUL-separated paths, unstripped."""
+    completed = subprocess.run(
+        ["git", *args], cwd=str(cwd or REPO_ROOT), capture_output=True,
+        text=True, encoding="utf-8", errors="surrogateescape", check=False,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"git {' '.join(args)} failed in {cwd or REPO_ROOT}: "
+            f"{completed.stderr.strip() or completed.stdout.strip()}"
+        )
+    return [path for path in completed.stdout.split("\0") if path]
+
+
 def check_schema(document: object) -> list[str]:
     """Shape and internal arithmetic of the evidence file itself."""
     problems: list[str] = []
@@ -324,10 +338,16 @@ def check_staleness(document: dict, repo_root: Path = REPO_ROOT) -> list[str]:
                 f"ancestor of HEAD {head[:12]}; the history it described is gone")
             continue
         directory = record["directory"]
-        changed = git("diff", "--name-only", f"{commit}..{head}", cwd=repo_root)
+        # -z: paths come back raw and NUL-separated; without it git C-quotes a
+        # non-ASCII path (core.quotePath), the leading '"' defeats the prefix
+        # match below, and a change to agentops/café.py goes unnoticed.
+        # --no-renames: a rename out of the directory is listed as a deletion
+        # of the old path, not only as an addition of the new one elsewhere.
+        changed = _git_paths("diff", "--name-only", "--no-renames", "-z",
+                             f"{commit}..{head}", cwd=repo_root)
         touched = sorted(
-            line for line in changed.splitlines()
-            if line == directory or line.startswith(directory + "/")
+            path for path in changed
+            if path == directory or path.startswith(directory + "/")
         )
         if touched:
             shown = ", ".join(touched[:5])

@@ -278,6 +278,58 @@ class StalenessTests(unittest.TestCase):
             self.assertTrue(any(p.startswith("agentops:") and "stale" in p
                                 for p in problems), problems)
 
+    @staticmethod
+    def _scratch_repo(root: Path):
+        """A throwaway repository with one committed agentops/ file.
+
+        Returns ``(run, measured)``: a git runner bound to ``root`` and the SHA
+        a record would have been measured at. core.quotePath is pinned on so a
+        non-ASCII path is C-quoted whatever the caller's global config says.
+        """
+        def run(*args: str) -> str:
+            return subprocess.run(
+                ["git", "-c", "user.name=t", "-c", "user.email=t@example.com",
+                 "-c", "commit.gpgsign=false", *args],
+                cwd=str(root), capture_output=True, text=True,
+                check=True).stdout.strip()
+
+        run("init", "-q")
+        run("config", "core.quotePath", "true")
+        (root / "agentops").mkdir()
+        (root / "agentops" / "module.py").write_text("x = 1\n", encoding="utf-8")
+        run("add", "-A")
+        run("commit", "-q", "-m", "product")
+        return run, run("rev-parse", "HEAD")
+
+    def test_a_rename_out_of_the_product_is_stale(self):
+        # Regression: `git diff --name-only` with rename detection lists only
+        # the destination, so moving a file out of agentops/ named nothing
+        # under agentops/ and the evidence read as current.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run, measured = self._scratch_repo(root)
+            run("mv", "agentops/module.py", "moved_out.py")
+            run("commit", "-q", "-m", "rename out")
+            problems = check_staleness(self._document_at(measured), repo_root=root)
+            self.assertTrue(any(p.startswith("agentops:") and "stale" in p
+                                and "agentops/module.py" in p for p in problems),
+                            problems)
+
+    def test_a_non_ascii_path_in_the_product_is_stale(self):
+        # Regression: git C-quotes non-ASCII paths ("agentops/caf\\303\\251.py"),
+        # so the prefix match missed them and the change went unnoticed.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run, measured = self._scratch_repo(root)
+            (root / "agentops" / "café.py").write_text(
+                "raise SystemExit(1)\n", encoding="utf-8")
+            run("add", "-A")
+            run("commit", "-q", "-m", "non-ascii")
+            problems = check_staleness(self._document_at(measured), repo_root=root)
+            self.assertTrue(any(p.startswith("agentops:") and "stale" in p
+                                and "agentops/café.py" in p for p in problems),
+                            problems)
+
     def test_an_excluded_product_is_never_named_as_stale(self):
         """tiktok-slop-factory is excluded from measurement, so its changes can
         neither invalidate measured evidence nor appear in a staleness report.
