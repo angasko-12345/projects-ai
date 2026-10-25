@@ -170,6 +170,11 @@ The dependency direction is deliberate. Preserve it.
 Run it: `python -m training.cadence_experiment --config experiments/exp_cadence_synthetic.yaml`.
 Tracked evidence: `experiments/exp_cadence_synthetic_results.json`.
 
+Budget mismatch: the config now sets `ppo.total_timesteps: 50000` (bumped in `db30112`),
+but the committed results JSON and the findings below are from the earlier 16384-step run
+(128 updates). The 50000-step results are pending regeneration; until the JSON is
+regenerated from the current config, do not read the findings as 50000-step evidence.
+
 Controls: a synthetic Pong session on a 60 fps virtual clock mirrors the external game's
 timing model (per-decision key hold then release, red-ball hit latch, 1.0 s MISS banner,
 auto re-serve) and is driven through the REAL `ExternalGameEnv`, `ExternPongReward`, and
@@ -185,8 +190,9 @@ byte-identical to exp01/exp02; only two knobs vary, across four cells:
 | medium | 33.333 ms | 16.667 ms |
 
 Per cell: six probe policies (lookahead oracle, reactive oracle, random, constant left,
-constant right, no-op) for reward discrimination, then baseline eval → 16384-step PPO
-(128 updates, seed 0) → final eval, 10 episodes each.
+constant right, no-op) for reward discrimination, then baseline eval → PPO (seed 0) →
+final eval, 10 episodes each. PPO budget: the config is 50000 steps; the committed
+results come from the earlier 16384-step run (128 updates), pending regeneration.
 
 Findings, hypothesis by hypothesis (all read from the tracked results file):
 
@@ -214,7 +220,8 @@ Findings, hypothesis by hypothesis (all read from the tracked results file):
   so collapse happens — it just is not what exp01/exp02 exhibited. ROOT-015..018 and
   ROOT-028 remain DISPROVEN; nothing here revives them.
 - **Convergence — no claim.** Final rolling reward was −0.47..−0.52 in every cell against
-  the oracle's +0.1; 16384 steps is a pilot budget, not a convergence result.
+  the oracle's +0.1 in the committed 16384-step run; that is a pilot budget, not a
+  convergence result (the 50000-step config has not been re-run yet).
 
 Still requires a real external run: live confirmation of the 15-20 px per-decision
 paddle displacement, and the STEP-3 exp02 re-run — both tracked in
