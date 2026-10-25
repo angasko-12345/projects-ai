@@ -7,11 +7,13 @@ on:
       - "agentops/**"
       - ".github/workflows/agentops.yml"
       - ".github/CI.md"
+      - "acceptance_test.py"
   pull_request:
     paths:
       - "agentops/**"
       - ".github/workflows/agentops.yml"
       - ".github/CI.md"
+      - "acceptance_test.py"
 
 permissions:
   contents: read
@@ -29,3 +31,9 @@ jobs:
           python-version: "3.11"
       - name: Run agentops test suite
         run: python -m unittest discover -s tests
+      - name: Run Issue #4 acceptance scenarios
+        # End-to-end WorkflowEngine runs with scripted agents: clean success,
+        # verification repair, review-rejection repair, persistent rejection,
+        # cancellation. Exits non-zero if any scenario fails.
+        working-directory: .
+        run: python acceptance_test.py

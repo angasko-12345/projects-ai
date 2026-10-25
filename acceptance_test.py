@@ -1,222 +1,233 @@
 #!/usr/bin/env python
-"""Acceptance tests for AgentOps as described in Issue #4."""
+"""Acceptance tests for AgentOps as described in Issue #4.
+
+Drives the real ``WorkflowEngine.run_high_level`` end to end with a scripted
+agent runner and verifier, and checks the four Issue #4 behaviours:
+
+1. clean success reaches READY with every task PASSED;
+2. a failing verification is repaired and re-verified before READY;
+3. a review that REJECTS the change is repaired and re-reviewed before READY;
+4. a cancelled agent run never reaches READY.
+
+The scripted agents speak the current output contract (a structured
+AgentResult JSON object, and a structured verdict line for review), because
+the engine fails closed on anything else since the Issue #12 gates. Every
+scenario runs in its own throwaway git repository, never the caller's
+checkout. Exit status is 0 only when every scenario passes.
+"""
 import asyncio
+import json
 import os
+import shutil
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'agentops'))
-from agentops.config import AppConfig, AgentConfig
-from agentops.registry import DetectedAgent
-from agentops.runner import RunResult
-from agentops.state import StateStore
-from agentops.tasks import TaskStatus
-from agentops.workflow import WorkflowEngine
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "agentops"))
+from agentops.agent_result import AgentResult, AgentResultStatus  # noqa: E402
+from agentops.config import AgentConfig, AppConfig  # noqa: E402
+from agentops.agent_run import AgentRunMetadata  # noqa: E402
+from agentops.registry import DetectedAgent  # noqa: E402
+from agentops.runner import RunResult  # noqa: E402
+from agentops.state import StateStore  # noqa: E402
+from agentops.tasks import TaskStatus  # noqa: E402
+from agentops.workflow import WorkflowEngine  # noqa: E402
+
+ROLES = ("architecture", "implementation", "review", "debugging")
+
+APPROVE = json.dumps({
+    "schema_version": 1, "verdict": "approve", "blocking": [],
+    "non_blocking": [], "confidence": 0.99,
+})
+REJECT = json.dumps({
+    "schema_version": 1, "verdict": "reject",
+    "blocking": ["multiply() ignores negative operands"],
+    "non_blocking": [], "confidence": 0.9,
+})
 
 
 def create_test_config():
-    fa = AgentConfig(
-        "fallback",
-        "fake",
-        ("{prompt}",),
-        roles=("architecture", "implementation", "review", "debugging"),
-        enabled=True,
-    )
+    agent = AgentConfig("fallback", "fake", ("{prompt}",), roles=ROLES, enabled=True)
     return AppConfig(
-        {"fallback": fa},
-        {
-            role: ("fallback",)
-            for role in ("architecture", "implementation", "review", "debugging")
-        },
+        {"fallback": agent},
+        {role: ("fallback",) for role in ROLES},
         (("test",),),
         max_attempts=2,
         concurrency=1,
         max_repair_cycles=1,
-        systemd_run_enabled=True,
     )
 
 
-def create_mock_runner(exit_code=0, timed_out=False, succeeded=True, cancelled=False, terminated=False):
-    async def mock_run_agent(agent, prompt, directory, task_id, cancel_event=None):
+def success_payload(summary="done"):
+    return json.dumps(AgentResult(status=AgentResultStatus.SUCCESS, summary=summary).to_dict())
+
+
+def create_scripted_runner(state, review_verdicts=(), cancelled=False):
+    """Agent double. Review tasks emit the next scripted verdict (then APPROVE);
+    every other role emits a structured SUCCESS result. Records each call."""
+    verdicts = list(review_verdicts)
+    calls = []
+
+    async def run_agent(agent, prompt, directory, task_id, cancel_event=None):
+        role = state.get_task(task_id).role
+        calls.append(role)
+        if cancelled:
+            stdout = "interrupted"
+        elif role == "review":
+            stdout = verdicts.pop(0) if verdicts else APPROVE
+        else:
+            stdout = success_payload(f"{role} done")
         return RunResult(
-            agent.config.name,
-            ("fake",),
-            exit_code,
-            "done" if succeeded else "error",
-            "",
-            0.01,
-            timed_out,
-            Path(f"{task_id}.log"),
-            cancelled=cancelled,
-            terminated=terminated,
+            agent.config.name, ("fake",), 0, stdout, "", 0.01, False,
+            Path(f"{task_id}.log"), cancelled=cancelled,
         )
 
-    return mock_run_agent
+    return run_agent, calls
 
 
-def create_mock_verifier(should_pass=True):
-    pc = MagicMock()
-    pc.succeeded = True
-    pc.output = "tests passed"
-    pc.exit_code = 0
-    fc = MagicMock()
-    fc.succeeded = False
-    fc.output = "one test failed"
-    fc.exit_code = 1
-    if should_pass:
-        vm = MagicMock()
-        vm.run = MagicMock(return_value=asyncio.sleep(0, result=[pc]))
-    else:
-        vm = MagicMock()
-        vm.run = MagicMock(
-            side_effect=[asyncio.sleep(0, result=[fc]), asyncio.sleep(0, result=[pc])]
-        )
-    return vm
+def create_scripted_verifier(outcomes):
+    """Verifier double: one outcome per call (True = pass); the last repeats.
+    Builds a fresh coroutine per call, so it survives repeated verification."""
+    script = list(outcomes)
+    calls = []
+
+    async def run(*_args, **_kwargs):
+        ok = script.pop(0) if len(script) > 1 else script[0]
+        calls.append(ok)
+        return [MagicMock(succeeded=ok, exit_code=0 if ok else 1,
+                          output="tests passed" if ok else "one test failed")]
+
+    verifier = MagicMock()
+    verifier.run = run
+    return verifier, calls
 
 
-def run_workflow_test(description, config, mock_runner=None, mock_verifier=None):
+def make_git_repo():
+    directory = Path(tempfile.mkdtemp(prefix="agentops-acceptance-"))
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    for cmd in (["git", "init", "-q"],
+                ["git", "config", "user.email", "acceptance@agentops.invalid"],
+                ["git", "config", "user.name", "AgentOps Acceptance"]):
+        subprocess.run(cmd, cwd=directory, check=True, env=env)
+    (directory / "calc.py").write_text("def add(a, b):\n    return a + b\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=directory, check=True, env=env)
+    subprocess.run(["git", "commit", "-qm", "base"], cwd=directory, check=True, env=env)
+    return directory
+
+
+def run_scenario(description, review_verdicts=(), verifications=(True,), cancelled=False):
+    config = create_test_config()
     state = StateStore(":memory:")
     registry = MagicMock()
-    if mock_runner:
-        registry.select.return_value = DetectedAgent(config.agents["fallback"], True, "fake")
+    registry.select.return_value = DetectedAgent(config.agents["fallback"], True, "fake")
     runner = MagicMock()
-    if mock_runner:
-        runner.run_agent = mock_runner
-    verifier = mock_verifier if mock_verifier else create_mock_verifier(should_pass=True)
+    runner.run_agent, agent_calls = create_scripted_runner(state, review_verdicts, cancelled)
+    verifier, verify_calls = create_scripted_verifier(verifications)
     engine = WorkflowEngine(
-        config,
-        state,
-        registry,
-        runner,
-        verifier,
-        metadata_collector=MagicMock(
-            return_value=MagicMock(files_changed=("src/app.py",))
-        ),
+        config, state, registry, runner, verifier,
+        metadata_collector=MagicMock(return_value=AgentRunMetadata(files_changed=("calc.py",))),
     )
-    result = asyncio.run(engine.run_high_level(description, Path.cwd()))
-    return result, state, engine
+    repo = make_git_repo()
+    try:
+        result = asyncio.run(engine.run_high_level(description, repo))
+        tasks = state.list_tasks(result.workflow_id)
+    finally:
+        state.close()
+        shutil.rmtree(repo, ignore_errors=True)
+    print(f"Ready: {result.ready}  Summary: {result.summary}")
+    print(f"Agent calls: {agent_calls}")
+    print(f"Verification runs: {verify_calls}")
+    for task in tasks:
+        print(f"  {task.role}: {task.status.value}")
+    return result, tasks, agent_calls, verify_calls
+
+
+def banner(title):
+    print("\n" + "=" * 80 + f"\n{title}\n" + "=" * 80)
 
 
 def test_clean_success():
-    print("\n" + "=" * 80 + "\nTEST 1: CLEAN SUCCESS\n" + "=" * 80)
-    config = create_test_config()
-    result, state, engine = run_workflow_test(
-        "Add a multiply function",
-        config,
-        mock_runner=create_mock_runner(exit_code=0, succeeded=True),
-        mock_verifier=create_mock_verifier(should_pass=True),
+    banner("TEST 1: CLEAN SUCCESS")
+    result, tasks, calls, verifies = run_scenario("Add a multiply function")
+    return (
+        result.ready
+        and bool(tasks)
+        and all(t.status == TaskStatus.PASSED for t in tasks)
+        and {"architecture", "implementation", "review"} <= set(calls)
+        and "debugging" not in calls
+        and verifies == [True]
     )
-    print(f"Ready: {result.ready}, Summary: {result.summary}, ID: {result.workflow_id}")
-    tasks = state.list_tasks(result.workflow_id)
-    print(f"Tasks: {len(tasks)}")
-    for t in tasks:
-        print(f"  {t.role}: {t.status.value}")
-    ok = result.ready and len(tasks) == 4 and all(t.status == TaskStatus.PASSED for t in tasks)
-    print(f"\n[{'PASS' if ok else 'FAIL'}] TEST 1: Clean success")
-    state.close()
-    return ok
 
 
 def test_verification_failure_and_repair():
-    print("\n" + "=" * 80 + "\nTEST 2: VERIFICATION FAILURE AND REPAIR\n" + "=" * 80)
-    config = create_test_config()
-    fc = MagicMock()
-    fc.succeeded = False
-    fc.output = "one test failed"
-    fc.exit_code = 1
-    pc = MagicMock()
-    pc.succeeded = True
-    pc.output = "tests passed"
-    pc.exit_code = 0
-    vm = MagicMock()
-    vm.run = MagicMock(
-        side_effect=[asyncio.sleep(0, result=[fc]), asyncio.sleep(0, result=[pc])]
-    )
-    result, state, engine = run_workflow_test(
-        "Fix calculator",
-        config,
-        mock_runner=create_mock_runner(exit_code=0, succeeded=True),
-        mock_verifier=vm,
-    )
-    print(f"Ready: {result.ready}, Summary: {result.summary}, ID: {result.workflow_id}")
-    tasks = state.list_tasks(result.workflow_id)
-    print(f"Tasks: {len(tasks)}")
-    by_role = {}
-    for t in tasks:
-        by_role.setdefault(t.role, []).append(t)
-    for role, rt in by_role.items():
-        print(f"  {role}: {len(rt)} tasks")
-    ok = (
-        result.ready
-        and len(tasks) > 4
-        and len(by_role.get("debugging", [])) >= 1
-        and len(by_role.get("verification", [])) >= 2
-        and len(by_role.get("review", [])) >= 2
-    )
-    print(f"\n[{'PASS' if ok else 'FAIL'}] TEST 2: Verification failure and repair")
-    state.close()
-    return ok
+    banner("TEST 2: VERIFICATION FAILURE AND REPAIR")
+    result, _tasks, calls, verifies = run_scenario(
+        "Fix calculator", verifications=(False, True))
+    # Failing verification must trigger a debugging repair, then a passing
+    # re-verification, before the workflow may be READY.
+    return result.ready and "debugging" in calls and verifies[:2] == [False, True]
 
 
 def test_review_rejection_and_repair():
-    print("\n" + "=" * 80 + "\nTEST 3: REVIEW REJECTION AND REPAIR\n" + "=" * 80)
-    config = create_test_config()
-    result, state, engine = run_workflow_test(
-        "Feature with comments",
-        config,
-        mock_runner=create_mock_runner(exit_code=0, succeeded=True),
-        mock_verifier=create_mock_verifier(should_pass=True),
-    )
-    print(f"Ready: {result.ready}, Summary: {result.summary}, ID: {result.workflow_id}")
-    # The review repair mechanism exists as _repair_failed_review; verification
-    # repair is inline in run_high_level.
-    ok = hasattr(engine, "_repair_failed_review") and hasattr(engine, "run_high_level")
-    print(f"\n[{'PASS' if ok else 'FAIL'}] TEST 3: Review rejection repair mechanisms")
-    state.close()
-    return ok
+    banner("TEST 3: REVIEW REJECTION AND REPAIR")
+    result, _tasks, calls, _verifies = run_scenario(
+        "Feature with comments", review_verdicts=(REJECT,))
+    # A REJECT verdict must lead to a repair and a second, approving review.
+    first_review = calls.index("review") if "review" in calls else -1
+    repaired_after_reject = first_review >= 0 and any(
+        role in ("debugging", "implementation") for role in calls[first_review + 1:])
+    return result.ready and calls.count("review") >= 2 and repaired_after_reject
+
+
+def test_review_rejection_without_repair_is_not_ready():
+    banner("TEST 3b: PERSISTENT REVIEW REJECTION")
+    result, tasks, _calls, _verifies = run_scenario(
+        "Feature reviewers never accept", review_verdicts=(REJECT, REJECT, REJECT, REJECT))
+    return not result.ready and any(t.status == TaskStatus.FAILED for t in tasks)
 
 
 def test_cancellation():
-    print("\n" + "=" * 80 + "\nCANCELLATION TEST\n" + "=" * 80)
-    config = create_test_config()
-    result, state, engine = run_workflow_test(
-        "Cancelled task",
-        config,
-        mock_runner=create_mock_runner(exit_code=0, succeeded=False, cancelled=True),
-        mock_verifier=create_mock_verifier(should_pass=True),
+    banner("CANCELLATION TEST")
+    result, tasks, _calls, _verifies = run_scenario("Cancelled task", cancelled=True)
+    return (
+        not result.ready
+        and not any(t.status == TaskStatus.PASSED for t in tasks)
     )
-    print(f"Ready: {result.ready}, Summary: {result.summary}, ID: {result.workflow_id}")
-    tasks = state.list_tasks(result.workflow_id)
-    print(f"Tasks: {len(tasks)}")
-    ok = not result.ready and any(t.status == TaskStatus.FAILED for t in tasks)
-    print(f"\n[{'PASS' if ok else 'FAIL'}] Cancellation test")
-    state.close()
-    return ok
 
 
-if __name__ == "__main__":
+SCENARIOS = [
+    ("TEST 1: Clean Success", test_clean_success),
+    ("TEST 2: Verification Failure and Repair", test_verification_failure_and_repair),
+    ("TEST 3: Review Rejection and Repair", test_review_rejection_and_repair),
+    ("TEST 3b: Persistent Rejection Not Ready", test_review_rejection_without_repair_is_not_ready),
+    ("Cancellation Test", test_cancellation),
+]
+
+
+def main():
     print("AgentOps Acceptance Tests - Issue #4")
     results = []
-    for name, func in [
-        ("TEST 1: Clean Success", test_clean_success),
-        ("TEST 2: Verification Failure and Repair", test_verification_failure_and_repair),
-        ("TEST 3: Review Rejection and Repair", test_review_rejection_and_repair),
-        ("Cancellation Test", test_cancellation),
-    ]:
+    for name, func in SCENARIOS:
         try:
-            results.append((name, func()))
-        except Exception as e:
-            print(f"FAIL: {e}")
-            results.append((name, False))
-    print("\n" + "=" * 80 + "\nSUMMARY\n" + "=" * 80)
-    passed = sum(1 for _, r in results if r)
-    for name, r in results:
-        print(f"{name:<45} {'PASS' if r else 'FAIL'}")
+            ok = bool(func())
+        except Exception as exc:  # a crash is a failed scenario, never a skip
+            print(f"ERROR: {type(exc).__name__}: {exc}")
+            ok = False
+        print(f"\n[{'PASS' if ok else 'FAIL'}] {name}")
+        results.append((name, ok))
+    banner("SUMMARY")
+    passed = sum(1 for _, ok in results if ok)
+    for name, ok in results:
+        print(f"{name:<45} {'PASS' if ok else 'FAIL'}")
     print(f"\nTOTAL: {passed}/{len(results)} tests passed")
     if passed == len(results):
         print("\nALL TESTS PASSED - AgentOps behaves as described in Issue #4")
-        sys.exit(0)
-    else:
-        print(f"\n{len(results) - passed} test(s) failed")
-        sys.exit(1)
+        return 0
+    print(f"\n{len(results) - passed} test(s) failed")
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

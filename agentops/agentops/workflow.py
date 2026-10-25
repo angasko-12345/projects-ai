@@ -913,6 +913,11 @@ class WorkflowEngine:
             return
         task = claimed
         started = True
+        # A well-formed REJECT verdict is the reviewer's judgment of this
+        # change, not a flaky run. Re-running the same reviewer on the same,
+        # unchanged code would let a second roll overturn it and reach READY
+        # with no repair; the rejection must go to _repair_failed_review.
+        verdict_rejected = False
         try:
             if task.role == "verification":
                 if self.verification_kernel is not None:
@@ -1060,6 +1065,7 @@ class WorkflowEngine:
                             else:
                                 verdict_reason = "review verdict rejected the change"
                     self._record_review_verdict(task, verdict)
+                    verdict_rejected = verdict is not None and not verdict.is_approved
                     task.status = TaskStatus.PASSED if (
                         result.succeeded and satisfied and structured_ok
                         and not success_denied and verdict_ok
@@ -1141,7 +1147,8 @@ class WorkflowEngine:
                     "failure.create", persist_error,
                     workflow_id=task.workflow_id, task_id=task.id,
                 )
-        if task.status is TaskStatus.FAILED and task.attempts < task.max_attempts:
+        if (task.status is TaskStatus.FAILED and task.attempts < task.max_attempts
+                and not verdict_rejected):
             # Bounded retry: consult the deterministic policy (attempt budget
             # enforced by max_attempts) and back off, respecting cancellation.
             # Every retry creates a distinct AgentRun linked to its parent via
