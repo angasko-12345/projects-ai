@@ -1,4 +1,6 @@
 import os
+import subprocess
+import sys
 import tempfile
 import threading
 import unittest
@@ -14,16 +16,21 @@ from token_tracker.db import default_db_path
 # headless machine and on a desktop alike. Must be set before PySide6 loads.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+# Only the optional dependency is guarded. An ImportError raised by
+# token_tracker.gui itself (a bad import, a renamed name) must fail the
+# suite, not quietly skip every GUI test.
 try:
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QApplication
 
-    from token_tracker import db
-    from token_tracker.gui import PALETTE, MainWindow
-
     _HAS_QT = True
 except ImportError:  # PySide6 is optional: the GUI is the only consumer
     _HAS_QT = False
+
+from token_tracker import db  # Qt-free
+
+if _HAS_QT:
+    from token_tracker.gui import PALETTE, MainWindow
 
 
 class DatabasePathTest(unittest.TestCase):
@@ -225,6 +232,33 @@ class WindowLifetimeTest(unittest.TestCase):
                 del window
             finally:
                 conn.close()
+
+
+@unittest.skipUnless(_HAS_QT, "PySide6 is not installed")
+class ImportGuardTest(unittest.TestCase):
+    def test_broken_gui_module_fails_the_import_instead_of_skipping(self):
+        tests_dir = Path(__file__).resolve().parent
+        script = (
+            "import sys, importlib.abc\n"
+            "class Broken(importlib.abc.MetaPathFinder):\n"
+            "    def find_spec(self, name, path=None, target=None):\n"
+            "        if name == 'token_tracker.gui':\n"
+            "            raise ImportError('gui.py is broken')\n"
+            "sys.meta_path.insert(0, Broken())\n"
+            "import test_gui\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=tests_dir,
+            env={**os.environ, "PYTHONPATH": os.pathsep.join(
+                [str(tests_dir.parent), os.environ.get("PYTHONPATH", "")]
+            )},
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        self.assertNotEqual(result.returncode, 0, "a broken gui.py was swallowed as a skip")
+        self.assertIn("gui.py is broken", result.stderr)
 
 
 if __name__ == "__main__":
