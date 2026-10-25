@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Callable, Iterable
 
-from . import db, opencode
+from . import config, db, opencode
 from .model import EventValidationError, UsageEvent, normalize_event
 
 
@@ -54,6 +54,17 @@ def _user_home() -> Path:
     return Path.home()
 
 
+def _data_dir_candidate(*parts: str) -> Path:
+    """Candidate inside the configured per-agent data directory.
+
+    The directory comes from ``config.data_dir()`` (env var, config file, then
+    the user's home); a configured directory that is missing raises with the
+    setting named, so a typo is recorded as a sync error rather than a source
+    that quietly looks uninstalled.
+    """
+    return config.data_dir().joinpath(*parts)
+
+
 # --------------------------------------------------------------- kilo
 
 
@@ -64,7 +75,7 @@ def find_kilo() -> Path | None:
         + [
             _user_home() / ".kilo" / "share" / "kilo.db",
             _user_home() / ".local" / "share" / "kilo" / "kilo.db",
-            Path("D:/admin/code/cli_files/kilo/home/share/kilo.db"),
+            _data_dir_candidate("kilo", "home", "share", "kilo.db"),
         ]
     )
 
@@ -126,7 +137,7 @@ def find_claude() -> Path | None:
         ([Path(env)] if env else [])
         + [
             _user_home() / ".claude" / "projects",
-            Path("D:/admin/code/cli_files/claude/home/projects"),
+            _data_dir_candidate("claude", "home", "projects"),
         ]
     )
 
@@ -265,7 +276,7 @@ def find_cline() -> Path | None:
         ([Path(env)] if env else [])
         + [
             _user_home() / ".cline" / "data" / "sessions",
-            Path("D:/admin/code/cli_files/cline/home/data/sessions"),
+            _data_dir_candidate("cline", "home", "data", "sessions"),
         ]
     )
 
@@ -352,7 +363,7 @@ def find_dsh() -> Path | None:
     return _first_existing(
         ([Path(env)] if env else [])
         + [
-            Path("D:/admin/code/cli_files/dsh/sessions"),
+            _data_dir_candidate("dsh", "sessions"),
         ]
     )
 
@@ -475,7 +486,7 @@ def find_pi() -> Path | None:
         ([Path(env)] if env else [])
         + [
             _user_home() / ".pi" / "agent" / "sessions",
-            Path("D:/admin/code/cli_files/pi/home/agent/sessions"),
+            _data_dir_candidate("pi", "home", "agent", "sessions"),
         ]
     )
 
@@ -486,7 +497,7 @@ def find_omp() -> Path | None:
         ([Path(env)] if env else [])
         + [
             _user_home() / ".omp" / "agent" / "sessions",
-            Path("D:/admin/code/cli_files/oh-my-pi/home/agent/sessions"),
+            _data_dir_candidate("oh-my-pi", "home", "agent", "sessions"),
         ]
     )
 
@@ -582,7 +593,7 @@ def find_codex() -> Path | None:
         ([Path(env)] if env else [])
         + [
             _user_home() / ".codex" / "sessions",
-            Path("D:/admin/code/cli_files/codex/home/sessions"),
+            _data_dir_candidate("codex", "home", "sessions"),
         ]
     )
 
@@ -670,7 +681,7 @@ def find_hermes() -> Path | None:
         ([Path(env)] if env else [])
         + [
             _user_home() / ".hermes" / "state.db",
-            Path("D:/admin/code/cli_files/hermes/state.db"),
+            _data_dir_candidate("hermes", "state.db"),
         ]
     )
 
@@ -754,7 +765,7 @@ def find_copilot() -> Path | None:
             base / "Code" / "User" / "globalStorage" / "github.copilot-chat" / "session-state",
             base / "Code - Insiders" / "User" / "globalStorage" / "github.copilot-chat" / "session-state",
         ]
-    candidates.append(Path("D:/admin/code/cli_files/copilot/home/session-state"))
+    candidates.append(_data_dir_candidate("copilot", "home", "session-state"))
     found = _first_existing(candidates)
     if found is None or not any(found.rglob("events.jsonl")):
         return None

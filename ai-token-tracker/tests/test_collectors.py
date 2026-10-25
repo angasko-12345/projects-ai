@@ -13,7 +13,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from token_tracker import collectors, db
+from token_tracker import collectors, config, db
 from token_tracker.model import EVENT_COLUMNS, normalize_event
 
 
@@ -304,17 +304,22 @@ def build_copilot_dir(root: Path) -> None:
 # ----------------------------------------------------------- claude fixtures
 
 
-def build_claude_dir(root: Path) -> None:
-    """Claude Code projects: one JSONL file with assistant records including duplicates."""
-    project_dir = root / "D--admin-code-projects" / "session-1"
+def build_claude_dir(root: Path) -> str:
+    """Claude Code projects: one JSONL file with assistant records including duplicates.
+
+    Returns the project path recorded in the fixture, which lives under the
+    test's temp directory rather than naming a real working copy.
+    """
+    project_dir = root / "projects" / "session-1"
     project_dir.mkdir(parents=True)
+    project_cwd = (root / "work" / "projects").as_posix()
     # Record 1: normal assistant message with usage; model string uses the
     # real router alias "open_router" (437 of 449 records in the live store).
     rec1 = {
         "type": "assistant",
         "requestId": "req-1",
         "timestamp": "2026-10-06T10:00:00.100Z",
-        "cwd": "D:/admin/code/projects",
+        "cwd": project_cwd,
         "model": "anthropic/open_router/google/gemma-4-26b-a4b-it:free",
         "message": {
             "role": "assistant",
@@ -333,7 +338,7 @@ def build_claude_dir(root: Path) -> None:
         "type": "assistant",
         "requestId": "req-1",
         "timestamp": "2026-10-06T10:00:01.200Z",
-        "cwd": "D:/admin/code/projects",
+        "cwd": project_cwd,
         "model": "anthropic/open_router/google/gemma-4-26b-a4b-it:free",
         "message": {
             "role": "assistant",
@@ -351,7 +356,7 @@ def build_claude_dir(root: Path) -> None:
         "type": "assistant",
         "requestId": "req-2",
         "timestamp": "2026-10-06T10:05:00.000Z",
-        "cwd": "D:/admin/code/projects",
+        "cwd": project_cwd,
         "model": "claude-sonnet-4-5",
         "message": {
             "role": "assistant",
@@ -370,7 +375,7 @@ def build_claude_dir(root: Path) -> None:
         "type": "assistant",
         "requestId": "",
         "timestamp": "2026-10-06T10:10:00.000Z",
-        "cwd": "D:/admin/code/projects",
+        "cwd": project_cwd,
         "model": "<synthetic>",
         "message": {
             "role": "assistant",
@@ -393,6 +398,7 @@ def build_claude_dir(root: Path) -> None:
         "\n".join(json.dumps(r) for r in [rec1, rec2, rec3, rec4, rec5]) + "\n",
         encoding="utf-8",
     )
+    return project_cwd
 
 
 # ----------------------------------------------------------- cline fixtures
@@ -675,7 +681,7 @@ class CollectorParsingTest(unittest.TestCase):
 
     def test_claude_dedupes_duplicate_rids_and_splits_usage(self):
         claude_dir = self.root / "claude"
-        build_claude_dir(claude_dir)
+        project_cwd = build_claude_dir(claude_dir)
         events = collectors.collect_claude(claude_dir)
         # req-1 appears twice (different timestamps) → deduped to one
         # req-2 is separate request; synthetic (no usage) skipped; user skipped
@@ -688,7 +694,7 @@ class CollectorParsingTest(unittest.TestCase):
         self.assertEqual(e1.raw_metadata["model_raw"],
                          "anthropic/open_router/google/gemma-4-26b-a4b-it:free")
         self.assertEqual(e1.model, "google/gemma-4-26b-a4b-it:free")
-        self.assertEqual(e1.project, "D:/admin/code/projects")
+        self.assertEqual(e1.project, project_cwd)
         # Anthropic: input excludes cache; output includes thinking
         self.assertEqual(e1.input_tokens, 22298)
         self.assertEqual(e1.cache_read_tokens, 1234)
@@ -1074,8 +1080,92 @@ class SyncAllTest(unittest.TestCase):
         kilo_db.write_bytes(b"")  # existence is all find_kilo checks
         with mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop("KILO_DB", None)
-            with mock.patch.object(collectors, "_user_home", lambda: fake_home):
+            os.environ.pop(config.ENV_VAR, None)
+            with mock.patch.object(config, "config_file", lambda: self.root / "config.json"):
+                with mock.patch.object(collectors, "_user_home", lambda: fake_home):
+                    self.assertEqual(collectors.find_kilo(), kilo_db)
+
+
+# ------------------------------------------- data directory configuration
+
+
+class DataDirConfigurationTest(unittest.TestCase):
+    """The collected-agent tree root is configured, never hardcoded."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        # Never read the developer's real setting or config file.
+        saved = {
+            key: os.environ.pop(key)
+            for key in (config.ENV_VAR, "KILO_DB")
+            if key in os.environ
+        }
+        self.addCleanup(lambda: os.environ.update(saved))
+        patcher = mock.patch.object(config, "config_file", lambda: self.root / "config.json")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_environment_variable_selects_the_data_trees(self):
+        trees = self.root / "collected"
+        kilo_db = trees / "kilo" / "home" / "share" / "kilo.db"
+        kilo_db.parent.mkdir(parents=True)
+        kilo_db.write_bytes(b"")
+        with mock.patch.dict(os.environ, {config.ENV_VAR: str(trees)}):
+            with mock.patch.object(collectors, "_user_home", lambda: self.root / "home"):
                 self.assertEqual(collectors.find_kilo(), kilo_db)
+
+    def test_config_file_is_used_when_the_variable_is_unset(self):
+        trees = self.root / "collected"
+        trees.mkdir()
+        (self.root / "config.json").write_text(
+            json.dumps({"data_dir": str(trees)}), encoding="utf-8"
+        )
+        self.assertEqual(config.data_dir(), trees)
+
+    def test_environment_variable_wins_over_the_config_file(self):
+        from_env = self.root / "from-env"
+        from_file = self.root / "from-file"
+        from_env.mkdir()
+        from_file.mkdir()
+        (self.root / "config.json").write_text(
+            json.dumps({"data_dir": str(from_file)}), encoding="utf-8"
+        )
+        with mock.patch.dict(os.environ, {config.ENV_VAR: str(from_env)}):
+            self.assertEqual(config.data_dir(), from_env)
+
+    def test_home_directory_is_the_last_resort(self):
+        with mock.patch.object(config.Path, "home", lambda: self.root):
+            self.assertEqual(config.data_dir(), self.root)
+
+    def test_missing_configured_directory_names_the_setting(self):
+        missing = self.root / "gone"
+        with mock.patch.dict(os.environ, {config.ENV_VAR: str(missing)}):
+            with self.assertRaises(config.ConfigError) as caught:
+                config.data_dir()
+        message = str(caught.exception)
+        self.assertIn(config.ENV_VAR, message)
+        self.assertIn("gone", message)
+
+    def test_malformed_config_file_is_reported(self):
+        (self.root / "config.json").write_text("{not json", encoding="utf-8")
+        with self.assertRaises(config.ConfigError) as caught:
+            config.data_dir()
+        self.assertIn("config.json", str(caught.exception))
+
+    def test_misconfigured_data_dir_is_recorded_as_a_sync_error(self):
+        conn = db.connect(self.root / "test.db")
+        self.addCleanup(conn.close)
+        registry = [
+            collectors.Collector("kilo", "Kilo", "exact", "agent",
+                                 collectors.find_kilo, collectors.collect_kilo),
+        ]
+        with mock.patch.dict(os.environ, {config.ENV_VAR: str(self.root / "gone")}):
+            with mock.patch.object(collectors, "REGISTRY", registry):
+                results = collectors.sync_all(conn)
+        self.assertEqual(results["kilo"]["status"], "error")
+        self.assertIn(config.ENV_VAR, results["kilo"]["error"])
 
 
 # ----------------------------------------------------- legacy imports

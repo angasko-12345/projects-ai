@@ -24,6 +24,7 @@ ai-token-tracker/
     db.py         -> SQLite storage, insert_events upsert/dedup, totals, breakdown, export/import
     model.py      -> UsageEvent dataclass, normalize_event, make_event_id, make_dedup_key
     collectors.py -> REGISTRY, find_*/collect_* functions, sync_all
+    config.py     -> layered data-directory resolution (env var, config file, home default)
     opencode.py   -> OpenCode-specific collector
     format.py     -> human_tokens, human_count, human_cost
   tests/
@@ -36,6 +37,8 @@ ai-token-tracker/
 Data flow: collectors read local agent stores read-only -> `normalize_event` validates and produces `UsageEvent` -> `db.insert_events` upserts with idempotency -> GUI queries `db.totals`, `db.breakdown`, `db.daily_series`, `db.all_events`.
 
 Database default location: `D:/ai-token-tracker/usage.db` when `D:` exists, otherwise `%LOCALAPPDATA%/ai-token-tracker/usage.db`. Override with `AI_TOKEN_TRACKER_DB`.
+
+Collector data directory: the optional collected-agent tree root is resolved by `config.data_dir()` — `TOKEN_TRACKER_DATA_DIR`, then `data_dir` in `%APPDATA%/ai-token-tracker/config.json` (or `$XDG_CONFIG_HOME`/`~/.config`), then the user's home directory. No absolute machine-specific paths belong in collector code; a configured directory that is missing raises `config.ConfigError` and surfaces as a sync error.
 
 ## Collector rules
 

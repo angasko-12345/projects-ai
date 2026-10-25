@@ -70,6 +70,27 @@ OpenCode's message-level token sums reconcile exactly with its own session rollu
 
 An agent and a provider are tracked independently: OpenCode -> OpenRouter -> model X and OMP -> OpenRouter -> model X are one agent attribution each, one shared provider. Content identity of a canonical usage event is `request_id` when a source provides one, otherwise a fallback key of provider + model + token counts + timestamp bucketed to 5 seconds. Content dedup applies only across different sources (the same underlying request seen from two sources collapses into one row, keeping the first-seen attribution); two events from the same source with different ids are never content-merged, and zero-token rows stay distinct.
 
+## Configuration
+
+Each collector looks for its source in layers, most specific first:
+
+1. **Per-source environment variable** — `OPENCODE_DB`, `KILO_DB`, `HERMES_STATE_DB`, `CODEX_SESSIONS`, `PI_SESSIONS`, `OMP_SESSIONS`, `CLAUDE_PROJECTS`, `CLINE_SESSIONS`, `DSH_SESSIONS`. Point one at the source's own store and that source reads nothing else.
+2. **The source's standard local path** — e.g. `~/.claude/projects`, `~/.codex/sessions`, Cline's `~/.cline/data/sessions`, Copilot's `%APPDATA%/Code/User/globalStorage/github.copilot-chat/session-state`.
+3. **The per-agent data directory** — an optional directory holding collected agent trees laid out as `<data_dir>/<agent>/home/...`: `kilo/home/share/kilo.db`, `claude/home/projects`, `cline/home/data/sessions`, `dsh/sessions`, `pi/home/agent/sessions`, `oh-my-pi/home/agent/sessions`, `codex/home/sessions`, `hermes/state.db`, `copilot/home/session-state`.
+
+Layer 3 is configured by, in order:
+
+- the `TOKEN_TRACKER_DATA_DIR` environment variable, or
+- `data_dir` in the config file — `%APPDATA%/ai-token-tracker/config.json` on Windows, `$XDG_CONFIG_HOME/ai-token-tracker/config.json` (else `~/.config/...`) everywhere else:
+
+```json
+{"data_dir": "~/.ai-token-tracker/cli_files"}
+```
+
+- otherwise it defaults to your home directory, so `~/kilo/home/share/kilo.db` and friends are checked before the collector reports the source as missing.
+
+A configured location that does not exist is an error, not a silent fallback to the default: the source's status shows a red error dot naming the variable or config file and the path, so a typo never looks like "that agent is not installed". `~` is expanded in configured values.
+
 ## Database
 
 Default location:
