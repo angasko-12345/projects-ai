@@ -4,12 +4,14 @@ This is the canonical repository instruction file. The root `AGENTS.md` is only 
 
 ## Project identity and scope
 
-- This repository is a container for five independent Python products plus the process material agents use to work on them. The products do not depend on each other, and a change in one is not a change in the other.
+- This repository is a container for six independent Python products and one Node application plus the process material agents use to work on them. The products do not depend on each other, and a change in one is not a change in the other.
   - `agentops/` — a local-first orchestrator for installed coding-agent CLIs. It plans, implements, verifies, reviews, persists, and merges work in isolated Git worktrees. See `agentops/AGENTS.md`.
   - `universal-game-agent/` — a reinforcement-learning agent that plays Pong, including a Windows-only path that plays a real external game window through screen capture and real keyboard input. See `universal-game-agent/AGENTS.md`.
   - `small-projects/mini-llm/` — a small GPT-style causal language model built from scratch with PyTorch. See `small-projects/mini-llm/AGENTS.md`.
   - `ai-token-tracker/` — a local desktop GUI that tracks AI token usage across providers and coding agents from local agent stores. See `ai-token-tracker/AGENTS.md`.
   - `tiktok-slop-factory/` — a procedural generator that renders vertical TikTok-style videos from fictional scripts: a Gemini or keyless local text backend plus locally generated FFmpeg visuals. Its suite is pytest, includes real FFmpeg renders, and is excluded from measurement in `verification.json` — read `tiktok-slop-factory/AGENTS.md` before invoking it.
+  - `small-projects/privacy_audit_tool/` — a read-only, local-first privacy footprint audit for Windows that scans locally obtained mail archives and browser data and writes evidence reports. Its suite is unittest and it is not measured in `verification.json`; see `small-projects/privacy_audit_tool/AGENTS.md`.
+  - `qr-generator/` — an Expo/React Native Android QR code app (not Python): on-device generation, PNG/SVG export, and an optional Pro tier through Google Play. Its suite is Jest and it is not measured in `verification.json`; see `qr-generator/AGENTS.md`.
 
 ## Canonical locations
 
@@ -54,6 +56,8 @@ from its own directory rather than from the repository root. Read the local
 | `small-projects/mini-llm/` | `cd small-projects/mini-llm` then `python -m unittest discover -s tests` |
 | `ai-token-tracker/` | `cd ai-token-tracker` then `python -m unittest discover -s tests` |
 | `tiktok-slop-factory/` | `cd tiktok-slop-factory` then `python -m pytest tests -q` (pytest, not unittest; real FFmpeg renders; fully keyless/offline — see `tiktok-slop-factory/AGENTS.md` before running) |
+| `small-projects/privacy_audit_tool/` | `cd small-projects/privacy_audit_tool` then `python -m unittest discover -s tests` |
+| `qr-generator/` | `cd qr-generator` then `npm test` (Jest, not Python; run `npm run typecheck` and `npm run lint` too — see `qr-generator/AGENTS.md`) |
 
 Treat any new failure or skip as attributable to the current work until proven otherwise.
 An empty, interrupted, all-skipped, or unknown run is never a pass. The repository's only

@@ -10,10 +10,11 @@ correct.
 - A reinforcement-learning agent that plays Pong. The standard path is a Gymnasium toy
   environment; the experimental path plays a real external Pong window on Windows through
   screen capture and real keyboard input.
-- The repository root is a container. This package is one of five Python products here; see
+- The repository root is a container. This package is one of six Python products here; see
   `agentops/AGENTS.md`, `small-projects/mini-llm/AGENTS.md`, `ai-token-tracker/AGENTS.md`,
-  and `tiktok-slop-factory/AGENTS.md`
-  for the others. No product is a subproject of another, and a change in one is not a change in another.
+  `tiktok-slop-factory/AGENTS.md`, and `small-projects/privacy_audit_tool/AGENTS.md`
+  for the others, plus the Node app in `qr-generator/AGENTS.md`. No product is a subproject of
+  another, and a change in one is not a change in another.
 - Runtime dependencies are not standard-library only: `requirements.txt` lists `torch`,
   `gymnasium`, `numpy`, `pyyaml`, and `mss`, all unpinned. This differs from the other
   products in this repository.

@@ -3,7 +3,7 @@
 Local-first AI tools and experiments by [@angasko-12345](https://github.com/angasko-12345).
 Each folder is a self-contained project with its own README, dependencies and tests.
 
-AgentOps, Universal Game Agent, mini-llm and AI Token Tracker are the four Python products measured in `.agents/evidence/verification.json`. Every product here has a CI test suite; TikTok Slop Factory is deliberately left out of the evidence file (its real FFmpeg renders make re-measuring expensive) and QR Generator is Node. The smaller utilities have no CI.
+AgentOps, Universal Game Agent, mini-llm and AI Token Tracker are the four Python products measured in `.agents/evidence/verification.json`. Every product here has a CI test suite; TikTok Slop Factory is deliberately left out of the evidence file (its real FFmpeg renders make re-measuring expensive), and QR Generator is a Node app outside that file.
 
 Everything here runs on your own machine: no accounts, no hosted backend, and no telemetry unless a project says otherwise.
 
