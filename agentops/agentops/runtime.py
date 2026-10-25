@@ -162,15 +162,24 @@ class ProcessRuntime:
         env: dict[str, str] | None = None,
         stdout: object = asyncio.subprocess.PIPE,
         stderr: object = asyncio.subprocess.PIPE,
+        stdin: object = asyncio.subprocess.DEVNULL,
     ) -> Any:
         """Spawn a child with the runtime policy unless overridden.
 
-        Injected factories receive exactly the caller-supplied arguments: no
-        platform options are passed through, because existing factories do not
-        accept them.  Documented degradation: custom-spawned children skip
-        the unified policy (no guaranteed own process group on POSIX, no
-        guaranteed console hiding on Windows) and are cleaned up with a
-        direct kill rather than process-group signals.
+        Children default to reading from the null device
+        (``asyncio.subprocess.DEVNULL``): agents must never hang waiting for
+        input on an inherited orchestrator stdin (non-TTY agents that read
+        stdin to EOF, such as ``opencode run "<prompt>"`` — anomalyco/opencode
+        #52938, the AgentOps issue #4 timeout root cause).  Pass ``stdin``
+        explicitly to inherit or redirect it.
+
+        Injected factories receive exactly the caller-supplied arguments plus
+        ``cwd``, ``env``, ``stdout``, ``stderr``, and ``stdin`` (with this
+        default): no platform options are passed through, because existing
+        factories do not accept them.  Documented degradation: custom-spawned
+        children skip the unified policy (no guaranteed own process group on
+        POSIX, no guaranteed console hiding on Windows) and are cleaned up
+        with a direct kill rather than process-group signals.
         """
         argv = tuple(command)
         # Only wrap children this runtime spawns itself.  An injected factory
@@ -195,6 +204,7 @@ class ProcessRuntime:
             env=self.environment() if env is None else env,
             stdout=stdout,
             stderr=stderr,
+            stdin=stdin,
             **options,
         )
 
@@ -288,6 +298,7 @@ class ProcessRuntime:
         timeout: float,
         cancel_event: threading.Event | None = None,
         stderr: object = asyncio.subprocess.PIPE,
+        stdin: object = asyncio.subprocess.DEVNULL,
         on_running: Callable[[Any], None] | None = None,
     ) -> ProcessResult:
         """Run one command with timeout, cooperative cancellation, and cleanup.
@@ -304,6 +315,7 @@ class ProcessRuntime:
         owns_process_group = self.spawn is None
         process = await self.spawn_process(
             *argv, cwd=cwd, env=env, stdout=asyncio.subprocess.PIPE, stderr=stderr,
+            stdin=stdin,
         )
         if on_running is not None:
             try:
