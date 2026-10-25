@@ -2,6 +2,13 @@
 
 Special tokens (fixed IDs, in order): <pad>=0, <unk>=1, <bos>=2, <eos>=3.
 Trained model is saved to data/tokenizer.json and supports encode/decode.
+
+The trainer is seeded with the full 256-symbol ByteLevel alphabet, so every byte
+has a token even when the training corpus never contained it. Without that seed
+an unseen character (an accent, an emoji, a tab) encodes to <unk> and cannot
+round-trip, and llama.cpp's byte-level tokenizer silently drops those bytes
+instead, so the two tokenizers disagree. The smallest valid vocabulary is
+therefore 256 byte symbols + the special tokens (MIN_VOCAB_SIZE).
 """
 
 from __future__ import annotations
@@ -15,6 +22,18 @@ from tokenizers.pre_tokenizers import ByteLevel
 from tokenizers.trainers import BpeTrainer
 
 SPECIAL_TOKENS = ["<pad>", "<unk>", "<bos>", "<eos>"]
+BYTE_ALPHABET_SIZE = len(ByteLevel.alphabet())  # 256
+MIN_VOCAB_SIZE = BYTE_ALPHABET_SIZE + len(SPECIAL_TOKENS)  # 260
+
+
+def check_vocab_size(vocab_size: int) -> None:
+    """Refuse a vocabulary too small to hold every byte plus the special tokens."""
+    if vocab_size < MIN_VOCAB_SIZE:
+        raise ValueError(
+            f"vocab_size {vocab_size} is too small: the tokenizer needs at least "
+            f"{MIN_VOCAB_SIZE} ids ({BYTE_ALPHABET_SIZE} byte symbols + "
+            f"{len(SPECIAL_TOKENS)} special tokens)"
+        )
 
 
 def train_bpe_tokenizer(
@@ -24,6 +43,7 @@ def train_bpe_tokenizer(
     min_frequency: int = 2,
     show_progress: bool = False,
 ) -> Tokenizer:
+    check_vocab_size(vocab_size)
     tok = Tokenizer(BPE(unk_token="<unk>"))
     tok.pre_tokenizer = ByteLevel(add_prefix_space=False)
     tok.decoder = ByteLevelDecoder()
@@ -31,6 +51,7 @@ def train_bpe_tokenizer(
         vocab_size=vocab_size,
         min_frequency=min_frequency,
         special_tokens=SPECIAL_TOKENS,
+        initial_alphabet=ByteLevel.alphabet(),
         show_progress=show_progress,
     )
     tok.train(input_files, trainer)

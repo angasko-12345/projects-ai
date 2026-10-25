@@ -1,5 +1,5 @@
 # The BPE vocabulary depends on the exact bytes of the corpus: the shipped
-# sample yields 308 ids with LF line endings and 310 with CRLF. With the
+# sample yields 515 ids with LF line endings and 516 with CRLF. With the
 # default core.autocrlf=true a Windows checkout would silently rewrite the
 # corpus and produce a different tokenizer than a Linux clone.
 #

@@ -46,6 +46,7 @@ import {
 import { ToastBanner, type ToastData } from './src/ui/Toast';
 import { captureQrPng, copyQrPng, saveQrPng, shareQrPng } from './src/util/qrExport';
 import { readLogoDataUri, saveQrSvg, shareQrSvg } from './src/util/qrSvgExport';
+import { noteSuccessfulExport } from './src/util/reviewPrompt';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -101,8 +102,13 @@ function MainScreen() {
   const captureViewRef = useRef<RNView>(null);
   const toastTimerRef = useRef<number | null>(null);
   const lastSaveDirectoryRef = useRef<string | null>(null);
+  // Any error shown this session blocks the in-app review prompt.
+  const sessionHadErrorRef = useRef(false);
 
   const showToast = useCallback((text: string, tone: ToastData['tone'] = 'neutral') => {
+    if (tone === 'error') {
+      sessionHadErrorRef.current = true;
+    }
     clearTimeout(toastTimerRef.current);
     setToast({ text, tone });
     toastTimerRef.current = setTimeout(() => setToast(null), 2800);
@@ -197,6 +203,11 @@ function MainScreen() {
   const themeIcon: keyof typeof Ionicons.glyphMap =
     mode === 'system' ? 'contrast-outline' : mode === 'light' ? 'sunny-outline' : 'moon-outline';
 
+  // Success moments feed the in-app review prompt (see src/util/review.ts).
+  const noteSuccess = () => {
+    void noteSuccessfulExport(sessionHadErrorRef.current);
+  };
+
   const runExport = async (task: () => Promise<void>) => {
     if (exportBusy || preview.kind !== 'ready') {
       return;
@@ -230,6 +241,7 @@ function MainScreen() {
       if (result.status === 'saved') {
         lastSaveDirectoryRef.current = result.directoryUri;
         showToast('QR code saved as PNG.', 'success');
+        noteSuccess();
       } else if (result.status === 'error') {
         showToast(result.message, 'error');
       }
@@ -241,6 +253,8 @@ function MainScreen() {
       const result = await shareQrPng(image);
       if (result.status === 'unavailable' || result.status === 'error') {
         showToast(result.message, 'error');
+      } else {
+        noteSuccess();
       }
     });
 
@@ -249,6 +263,7 @@ function MainScreen() {
       const image = await captureQrPng(captureViewRef);
       await copyQrPng(image);
       showToast('QR code image copied.', 'success');
+      noteSuccess();
     });
 
   const handleSaveSvg = () =>
@@ -261,6 +276,7 @@ function MainScreen() {
       if (result.status === 'saved') {
         lastSaveDirectoryRef.current = result.directoryUri;
         showToast('QR code saved as SVG.', 'success');
+        noteSuccess();
       } else if (result.status === 'error') {
         showToast(result.message, 'error');
       }
@@ -275,6 +291,8 @@ function MainScreen() {
       const result = await shareQrSvg(svg);
       if (result.status === 'unavailable' || result.status === 'error') {
         showToast(result.message, 'error');
+      } else {
+        noteSuccess();
       }
     });
 
@@ -300,6 +318,7 @@ function MainScreen() {
     };
     setSaved((current) => [code, ...current]);
     showToast('Code saved to your library.', 'success');
+    noteSuccess();
   };
 
   const handleLoadSaved = (code: SavedCode) => {
