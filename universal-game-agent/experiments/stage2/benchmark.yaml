@@ -1,0 +1,85 @@
+# Stage 2 multi-game Atari benchmark (runner: python -m training.stage2 ...).
+# Scope and rationale: experiments/stage2/PLAN.md; results: experiments/stage2/RESULTS.md;
+# Kaggle steps: experiments/stage2/kaggle/README.md.
+#
+# Games (ALE rom ids). Train = Stage 1's three (Pong, Breakout, SpaceInvaders: horizontal mover
+# +- fire, different objectives) + Seaquest (full 18-action set: vertical, diagonal, fire;
+# oxygen/rescue mechanic) + Qbert (UP/RIGHT/LEFT/DOWN jumps, no shooting), so vertical and
+# diagonal pad actions are exercised in training. Held-out:
+#   demon_attack -- near transfer: same minimal set as SpaceInvaders/Pong, new visuals/enemies
+#                   (Stage 1's near held-out game);
+#   freeway      -- vertical-control transfer: {NOOP, UP, DOWN}; in Stage 1 vertical control was
+#                   never trained (negative control); here Seaquest/Qbert train it, so this
+#                   now tests transfer of a trained control to a new game;
+#   asterix      -- 8-direction movement without fire, collect/avoid objective: mid transfer.
+# Every game has random/human reference scores (training/hns.py, DQN Zoo atari_data.py).
+#
+# Arms (3 seeds each): random (eval only), specialist x5, multi (all 5 train games at once),
+# zeroshot (= the multi checkpoint evaluated on the held-out games; no extra training),
+# scratch x3 and finetune x3 (held-out games; finetune starts from multi's weights of the
+# same seed, fresh optimizer, same budget as scratch). All arms share one pipeline:
+# UGA 18-action pad, sign-clipped training reward + per-game return normalisation,
+# EpisodicLife + FireReset (training only), sticky actions 0.25 (ALE v5 / Machado et al. 2018).
+#
+# Budget per seed (agent steps = decisions = 4 emulator frames):
+#   multi 10.0M + specialist 5 x 2.0M + scratch 3 x 2.0M + finetune 3 x 2.0M = 32.0M
+#   3 seeds = 96.0M. Hours = steps / measured sps / 3600 per process (see kaggle/README.md;
+#   GPU sps is NOT measured here -- run the kit's throughput step first). Use --scale to shrink
+#   every budget by the same factor.
+
+seeds: [0, 1, 2]
+
+suite:
+  kind: atari
+  train: [pong, breakout, space_invaders, seaquest, qbert]
+  heldout: [demon_attack, freeway, asterix]
+  mix: {pong: 2, breakout: 2, space_invaders: 2, seaquest: 2, qbert: 2}   # multi-arm slots; sum = num_envs
+
+env:
+  type: atari
+  obs_size: 84
+  num_stack: 4
+  skip: 4
+  sticky: 0.25
+  max_episode_frames: 108000
+  noop_max: 30
+  reward_transform: sign      # training only
+  action_space: universal     # one 18-action head for every game (needed for multi / finetune)
+  obs_dtype: uint8
+  episodic_life: true         # training only; ALE lives counter stays inside the adapter
+  fire_reset: true            # training only; only games whose minimal set has FIRE
+
+model:
+  in_channels: 4
+  frame_size: 84
+  feature_dim: 512
+  hidden_size: 128            # unused (recurrent: false)
+  num_layers: 1
+  recurrent: false
+  encoder: nature             # 'impala' = IMPALA-ResNet ablation (~3-4x the compute per step)
+  init: orthogonal
+
+ppo:
+  preset: cleanrl             # CleanRL ppo_atari knobs (training/fast_ppo.py:CLEANRL_PRESET)
+  num_envs: 10
+  rollout_length: 128         # batch 1280, 4 minibatches of 320
+  reward_norm: per_game       # per-game running return std, so dense-score games do not dominate
+  device: auto
+  torch_threads: 0
+  # total_timesteps / seed / checkpoint_dir / telemetry_path / anneal_total_timesteps are set
+  # per run by training/stage2.py; LR anneals once over each run's full budget.
+
+budgets:
+  multi: 10000000
+  specialist: 2000000
+  scratch: 2000000
+  finetune: 2000000
+  chunk_every: 250000         # checkpoint + progress.json every 250k steps (resume point)
+  curve_every:                # extra held-out-game evals during these arms (transfer curves)
+    scratch: 500000
+    finetune: 500000
+
+eval:
+  episodes: 10
+  policy: sample              # sample from the policy (Stage 1 saw greedy collapse); 'greedy' optional
+  max_episode_frames: 27000   # eval cap (7.5 min), as Stage 1's pilot

@@ -41,26 +41,42 @@ FIELDNAMES: tuple[str, ...] = (
     "upd_mean_total",
 )
 
+#: Fast-engine CSV (``training/fast_ppo.py``): the legacy columns, unchanged and
+#: in order, then Stage 2 columns appended at the end (CleanRL diagnostics and
+#: the raw full-game score, which differs from the training return under sign
+#: clipping / episodic life). Legacy CSVs keep ``FIELDNAMES`` exactly.
+FAST_FIELDNAMES: tuple[str, ...] = FIELDNAMES + (
+    "approx_kl",
+    "old_approx_kl",
+    "clipfrac",
+    "explained_variance",
+    "learning_rate",
+    "mean_game_score",
+    "game_episodes",
+    "upd_mean_game_score",
+)
+
 
 class PPOUpdateCSVWriter:
     """Append-only CSV writer for PPO per-update records."""
 
-    def __init__(self, path: str | Path) -> None:
+    def __init__(self, path: str | Path, fieldnames: tuple[str, ...] = FIELDNAMES) -> None:
         self.path = Path(path)
+        self.fieldnames = tuple(fieldnames)
         self._ensure_header()
 
     def _ensure_header(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if not self.path.exists() or self.path.stat().st_size == 0:
             with open(self.path, "a", newline="", encoding="utf-8") as fh:
-                csv.DictWriter(fh, fieldnames=FIELDNAMES).writeheader()
+                csv.DictWriter(fh, fieldnames=self.fieldnames).writeheader()
 
     def append(self, record: Mapping) -> None:
         """Append one update row. Missing columns raise ``KeyError``."""
         self._ensure_header()
         with open(self.path, "a", newline="", encoding="utf-8") as fh:
-            csv.DictWriter(fh, fieldnames=FIELDNAMES, extrasaction="ignore").writerow(
-                {key: record[key] for key in FIELDNAMES}
+            csv.DictWriter(fh, fieldnames=self.fieldnames, extrasaction="ignore").writerow(
+                {key: record[key] for key in self.fieldnames}
             )
 
     def write_history(self, history: Mapping) -> int:
@@ -71,5 +87,5 @@ class PPOUpdateCSVWriter:
         self._ensure_header()
         updates = len(history.get("timesteps") or [])
         for index in range(updates):
-            self.append({key: history[key][index] for key in FIELDNAMES})
+            self.append({key: history[key][index] for key in self.fieldnames})
         return updates

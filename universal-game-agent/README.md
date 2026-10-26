@@ -273,6 +273,27 @@ Nothing else in the package imports `ale_py`; without it every ALE test skips.
   package at runtime. Check the ROM terms yourself before redistributing
   anything that bundles them.
 
+## Stage 2: fast engine and multi-game benchmark (`training/fast_ppo.py`, `training/stage2.py`)
+
+All opt-in; every existing config keeps the legacy engine unchanged.
+
+- **Fast engine** (`ppo.engine: fast`, or `ppo.preset: cleanrl` for the CleanRL
+  `ppo_atari.py` hyperparameters): batched rollout forward under
+  `torch.inference_mode`, uint8 observation storage scaled in-model, batched
+  recurrent replay, `ppo.device: cpu|cuda|auto`, `ppo.torch_threads`, LR
+  annealing, Adam eps, shuffled minibatches, `approx_kl` / `clipfrac` /
+  `explained_variance` and raw full-game score appended to the telemetry CSV.
+  Checkpoints carry `schema_version: 2`; legacy files (no key) still load.
+- **Model / env flags:** `model.recurrent: false` (frame stack only),
+  `model.encoder: impala`, `model.init: orthogonal`; `env.obs_dtype: uint8`
+  (about 2x faster preprocessing), `env.episodic_life` / `env.fire_reset`
+  (training only; ALE lives stay inside the adapter), `ppo.reward_norm: per_game`.
+- **Configs / runner:** `configs/stage2_pong_cleanrl.yaml`;
+  `python -m training.stage2 {plan,random,run,all,aggregate} --config
+  experiments/stage2/benchmark.yaml` (5 train + 3 held-out games, human-normalised
+  scores from `training/hns.py`). Kaggle kit: `experiments/stage2/kaggle/`.
+  Plan, numbers and limitations: `experiments/stage2/PLAN.md`, `RESULTS.md`.
+
 ## Limitations (explicitly not implemented)
 
 - The Windows interface is infrastructure: no generic external-game

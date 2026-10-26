@@ -30,8 +30,18 @@ Preprocessing (documented choices, all ALE v5 / CleanRL-consistent):
 * ``max_episode_frames`` default 108000 (v5's 30 min cap);
 * ``noop_max`` default 30: each reset plays 1..30 NOOPs drawn from the reset
   seed (CleanRL ``NoopResetEnv``); 0 disables;
-* deliberately NOT included: ``EpisodicLifeEnv`` (would use the lives counter
-  as a training signal) and ``FireResetEnv`` (a per-game reset macro).
+* by default NOT included: ``EpisodicLifeEnv`` and ``FireResetEnv``. Stage 2
+  adds both as opt-in **training-only** flags (``episodic_life``, ``fire_reset``)
+  for CleanRL parity. They read the ALE's own lives counter and game-over flag
+  *inside this adapter*; the only thing that changes outside is the
+  ``terminated`` flag the trainer sees (a lost life ends a training episode
+  while the game continues). Lives never reach the observation or ``info``.
+  Evaluation (``train=False``) always plays full games with both off.
+
+Training telemetry: :meth:`AtariGame.drain_game_scores` hands the trainer the
+raw score of every *full game* finished since the last call (so curves report
+real game score under sign clipping and episodic life). It is not an
+observation and the model never sees it.
 """
 from __future__ import annotations
 
@@ -48,6 +58,7 @@ except ImportError:  # pragma: no cover - minimal installs
 
 SCREEN_SHAPE = (210, 160, 3)
 REWARD_TRANSFORMS = ("none", "sign")
+OBS_DTYPES = ("float32", "uint8")
 ACTION_SPACES = ("universal", "native")
 VECTOR_BACKENDS = ("sync", "ale")
 
@@ -80,7 +91,8 @@ class AtariGame(_Base):
     reward_semantics = GENERIC_SEMANTICS
 
     def __init__(self, game: str, *, sticky: float = 0.25, max_episode_frames: int = 108_000,
-                 noop_max: int = 30, mode: int | None = None, difficulty: int | None = None):
+                 noop_max: int = 30, mode: int | None = None, difficulty: int | None = None,
+                 episodic_life: bool = False, fire_reset: bool = False, reset_action_frames: int = 4):
         _, AtariEnv = _require_ale()
         if not isinstance(game, str) or not game:
             raise ValueError(f"game must be an ALE rom id like 'pong', got {game!r}")
@@ -104,18 +116,71 @@ class AtariGame(_Base):
         self._noop_rng = np.random.default_rng()
         self._done = True  # must reset() before the first step()
         self._screen = None
+        self.episodic_life = bool(episodic_life)
+        # CleanRL applies FireResetEnv only when the minimal set has FIRE (at index 1).
+        self.fire_reset = bool(fire_reset) and "FIRE" in self.action_meanings
+        if self.fire_reset and (self.action_meanings[1] != "FIRE" or len(self.action_meanings) < 3):
+            raise RuntimeError(f"{game}: fire_reset needs FIRE at index 1 and >= 3 actions")
+        if not isinstance(reset_action_frames, int) or reset_action_frames <= 0:
+            raise ValueError(f"reset_action_frames must be a positive int, got {reset_action_frames!r}")
+        self._reset_frames = reset_action_frames
+        self._real_done = True
+        self._lives = 0
+        self._game_score = 0.0
+        self._finished_scores: list[float] = []
 
-    def reset(self, *, seed: int | None = None, options=None):
-        if seed is not None:
-            self._noop_rng = np.random.default_rng([int(seed), 0x5EED])
+    def _lives_now(self) -> int:
+        return int(self._ale_env.ale.lives())
+
+    def _macro(self, action: int, obs):
+        """FireReset step: hold ``action`` for one decision (``reset_action_frames``)."""
+        for _ in range(self._reset_frames):
+            obs, _, term, trunc, _ = self._ale_env.step(action)
+            if term or trunc:
+                return obs, True
+        return obs, False
+
+    def _full_reset(self, seed):
         obs, _ = self._ale_env.reset(seed=None if seed is None else int(seed))
         for _ in range(int(self._noop_rng.integers(1, self._noop_max + 1)) if self._noop_max else 0):
             obs, _, term, trunc, _ = self._ale_env.step(0)
             if term or trunc:
                 obs, _ = self._ale_env.reset()
+        self._game_score = 0.0
+        return obs
+
+    def reset(self, *, seed: int | None = None, options=None):
+        if seed is not None:
+            self._noop_rng = np.random.default_rng([int(seed), 0x5EED])
+        if self.episodic_life and not self._real_done and seed is None:
+            # Life lost, game still running: CleanRL EpisodicLifeEnv steps a no-op
+            # instead of resetting the game.
+            obs, _, term, trunc, _ = self._ale_env.step(0)
+            if term or trunc:
+                self._record_game_end()
+                obs = self._full_reset(None)
+        else:
+            obs = self._full_reset(seed)
+        if self.fire_reset:  # CleanRL FireResetEnv: FIRE (1) then action 2
+            for action in (1, 2):
+                obs, ended = self._macro(action, obs)
+                if ended:
+                    self._record_game_end()
+                    obs = self._full_reset(None)
+        self._lives = self._lives_now()
+        self._real_done = False
         self._done = False
         self._screen = obs
         return obs, {}
+
+    def _record_game_end(self):
+        self._finished_scores.append(self._game_score)
+        self._game_score = 0.0
+
+    def drain_game_scores(self) -> list[float]:
+        """Raw scores of full games finished since the last call (training telemetry)."""
+        out, self._finished_scores = self._finished_scores, []
+        return out
 
     def step(self, action):
         if self._done:
@@ -128,6 +193,15 @@ class AtariGame(_Base):
         obs, reward, term, trunc, _ = self._ale_env.step(int(action))
         terminated = bool(term)
         truncated = bool(trunc) and not terminated
+        self._game_score += float(reward)
+        self._real_done = terminated or truncated
+        if self._real_done:
+            self._record_game_end()
+        elif self.episodic_life:
+            lives = self._lives_now()
+            if 0 < lives < self._lives:  # CleanRL EpisodicLifeEnv condition
+                terminated = True
+            self._lives = lives
         self._done = terminated or truncated
         self._screen = obs
         return obs, float(reward), terminated, truncated, {}
@@ -163,10 +237,14 @@ class RewardTransform(_WrapperBase):
 
 def make_atari_factory(game: str, *, obs_size: int = 84, num_stack: int = 4, skip: int = 4,
                        sticky: float = 0.25, max_episode_frames: int = 108_000, noop_max: int = 30,
-                       reward_transform: str = "none", action_space: str = "universal"):
+                       reward_transform: str = "none", action_space: str = "universal",
+                       obs_dtype: str = "float32", episodic_life: bool = False,
+                       fire_reset: bool = False):
     """Zero-argument factory: ALE game -> UGA pixel pipeline (-> UGA pad)."""
     from environment.preprocessing import PreprocessingWrapper
 
+    if obs_dtype not in OBS_DTYPES:
+        raise ValueError(f"obs_dtype must be one of {OBS_DTYPES}, got {obs_dtype!r}")
     if reward_transform not in REWARD_TRANSFORMS:
         raise ValueError(f"reward_transform must be one of {REWARD_TRANSFORMS}, got {reward_transform!r}")
     if action_space not in ACTION_SPACES:
@@ -174,9 +252,17 @@ def make_atari_factory(game: str, *, obs_size: int = 84, num_stack: int = 4, ski
     _require_ale()
 
     def make():
-        env = PreprocessingWrapper(
-            AtariGame(game, sticky=sticky, max_episode_frames=max_episode_frames, noop_max=noop_max),
-            size=obs_size, num_stack=num_stack, skip=skip)
+        extra = {}
+        if episodic_life or fire_reset:  # legacy construction stays byte-identical
+            extra = {"episodic_life": episodic_life, "fire_reset": fire_reset,
+                     "reset_action_frames": skip}
+        game_env = AtariGame(game, sticky=sticky, max_episode_frames=max_episode_frames,
+                             noop_max=noop_max, **extra)
+        if obs_dtype == "float32":
+            env = PreprocessingWrapper(game_env, size=obs_size, num_stack=num_stack, skip=skip)
+        else:
+            env = PreprocessingWrapper(game_env, size=obs_size, num_stack=num_stack, skip=skip,
+                                       obs_dtype=obs_dtype)
         if reward_transform != "none":
             env = RewardTransform(env, reward_transform)
         if action_space == "universal":
@@ -190,17 +276,32 @@ def make_atari_factory(game: str, *, obs_size: int = 84, num_stack: int = 4, ski
 
 
 _ATARI_KEYS = {"type", "game", "obs_size", "num_stack", "skip", "sticky", "max_episode_frames",
-               "noop_max", "reward_transform", "action_space", "vector_backend"}
+               "noop_max", "reward_transform", "action_space", "vector_backend", "obs_dtype",
+               "episodic_life", "fire_reset"}
 
 
 def atari_kwargs(env_cfg: dict, *, train: bool = True) -> dict:
-    """Factory kwargs from an ``env:`` mapping (``train=False`` -> raw reward)."""
+    """Factory kwargs from an ``env:`` mapping.
+
+    ``train=False`` (evaluation) -> raw reward and full games: the training-only
+    ``reward_transform``, ``episodic_life`` and ``fire_reset`` are dropped.
+    Stage 2 keys appear only when set, so legacy factories are unchanged.
+    """
     import warnings
 
     for key in env_cfg:
         if key not in _ATARI_KEYS:
             warnings.warn(f"env: ignoring unknown atari config key {key!r}", UserWarning, stacklevel=3)
+    extra = {}
+    if "obs_dtype" in env_cfg:
+        extra["obs_dtype"] = str(env_cfg["obs_dtype"])
+    for key in ("episodic_life", "fire_reset"):
+        if train and env_cfg.get(key, False):
+            if not isinstance(env_cfg[key], bool):
+                raise ValueError(f"env.{key} must be a bool, got {env_cfg[key]!r}")
+            extra[key] = True
     return {
+        **extra,
         "obs_size": int(env_cfg.get("obs_size", 84)),
         "num_stack": int(env_cfg.get("num_stack", 4)),
         "skip": int(env_cfg.get("skip", 4)),
@@ -270,15 +371,20 @@ class AtariVectorEnvAdapter(SyncVectorEnv):
     def __init__(self, game: str, num_envs: int, *, obs_size: int = 84, num_stack: int = 4,
                  skip: int = 4, sticky: float = 0.25, max_episode_frames: int = 108_000,
                  noop_max: int = 30, reward_transform: str = "none", action_space: str = "universal",
-                 num_threads: int = 0):
+                 num_threads: int = 0, obs_dtype: str = "float32", episodic_life: bool = False,
+                 fire_reset: bool = False):
         from ale_py.vector_env import AtariVectorEnv
+
+        if obs_dtype not in OBS_DTYPES:
+            raise ValueError(f"obs_dtype must be one of {OBS_DTYPES}, got {obs_dtype!r}")
+        self._uint8 = obs_dtype == "uint8"
 
         self._vec = AtariVectorEnv(
             game, num_envs, num_threads=num_threads, max_num_frames_per_episode=max_episode_frames,
             repeat_action_probability=sticky, full_action_space=False, autoreset_mode="SameStep",
             img_height=obs_size, img_width=obs_size, grayscale=True, stack_num=num_stack,
-            frameskip=skip, maxpool=True, noop_max=noop_max, episodic_life=False,
-            reward_clipping=False, use_fire_reset=False)
+            frameskip=skip, maxpool=True, noop_max=noop_max, episodic_life=bool(episodic_life),
+            reward_clipping=False, use_fire_reset=bool(fire_reset))
         self._n = num_envs
         self._closed = False
         self._pending = [None] * num_envs
@@ -301,7 +407,9 @@ class AtariVectorEnvAdapter(SyncVectorEnv):
             self._to_native = tuple(range(len(meanings)))
             n_actions = len(meanings)
         self._action_space = spaces.Discrete(n_actions)
-        self._obs_space = spaces.Box(0.0, 1.0, (num_stack, obs_size, obs_size), np.float32)
+        shape = (num_stack, obs_size, obs_size)
+        self._obs_space = (spaces.Box(0, 255, shape, np.uint8) if self._uint8
+                           else spaces.Box(0.0, 1.0, shape, np.float32))
         self._envs = []  # no per-slot python envs
 
     @property
@@ -316,8 +424,9 @@ class AtariVectorEnvAdapter(SyncVectorEnv):
     def single_observation_space(self):
         return self._obs_space
 
-    @staticmethod
-    def _f(obs) -> np.ndarray:
+    def _f(self, obs) -> np.ndarray:
+        if self._uint8:
+            return np.array(obs, dtype=np.uint8, copy=True)
         return np.asarray(obs, dtype=np.float32) / 255.0
 
     def reset(self, *, seeds=None):

@@ -20,6 +20,10 @@ experiments/generalization/**/*.zip
 !experiments/stage1/
 experiments/stage1/**/*.pt
 experiments/stage1/**/*.zip
+# Stage 2 (benchmark readiness) evidence: plan, results, small JSON, Kaggle kit; never checkpoints.
+!experiments/stage2/
+experiments/stage2/**/*.pt
+experiments/stage2/**/*.zip
 logs/*.log
 # OS / editors
 .DS_Store

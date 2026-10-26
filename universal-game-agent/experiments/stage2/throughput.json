@@ -1,0 +1,187 @@
+{
+  "note": "ALE Pong PPO training steps/s (agent decisions incl. update), 8 envs x 128 steps, interleaved rounds; shared 2-vCPU sandbox -- see load columns.",
+  "torch_threads": 2,
+  "updates_per_measurement": 2,
+  "ppo": [
+    {
+      "round": 0,
+      "arm": "legacy",
+      "steps": 2048,
+      "seconds": 16.55,
+      "steps_per_second": 123.7,
+      "load_1min_before": 1.83642578125,
+      "load_1min_after": 1.86279296875
+    },
+    {
+      "round": 0,
+      "arm": "fast_gru",
+      "steps": 2048,
+      "seconds": 13.97,
+      "steps_per_second": 146.6,
+      "load_1min_before": 1.86279296875,
+      "load_1min_after": 2.8310546875
+    },
+    {
+      "round": 0,
+      "arm": "fast_cleanrl",
+      "steps": 2048,
+      "seconds": 10.22,
+      "steps_per_second": 200.3,
+      "load_1min_before": 2.8310546875,
+      "load_1min_after": 2.72509765625
+    },
+    {
+      "round": 1,
+      "arm": "legacy",
+      "steps": 2048,
+      "seconds": 15.23,
+      "steps_per_second": 134.5,
+      "load_1min_before": 2.72509765625,
+      "load_1min_after": 2.41943359375
+    },
+    {
+      "round": 1,
+      "arm": "fast_gru",
+      "steps": 2048,
+      "seconds": 9.82,
+      "steps_per_second": 208.5,
+      "load_1min_before": 2.41943359375,
+      "load_1min_after": 2.32568359375
+    },
+    {
+      "round": 1,
+      "arm": "fast_cleanrl",
+      "steps": 2048,
+      "seconds": 9.82,
+      "steps_per_second": 208.5,
+      "load_1min_before": 2.32568359375,
+      "load_1min_after": 2.03173828125
+    },
+    {
+      "round": 2,
+      "arm": "legacy",
+      "steps": 2048,
+      "seconds": 14.71,
+      "steps_per_second": 139.2,
+      "load_1min_before": 2.03173828125,
+      "load_1min_after": 1.9013671875
+    },
+    {
+      "round": 2,
+      "arm": "fast_gru",
+      "steps": 2048,
+      "seconds": 19.25,
+      "steps_per_second": 106.4,
+      "load_1min_before": 1.9013671875,
+      "load_1min_after": 2.39599609375
+    },
+    {
+      "round": 2,
+      "arm": "fast_cleanrl",
+      "steps": 2048,
+      "seconds": 9.74,
+      "steps_per_second": 210.3,
+      "load_1min_before": 2.39599609375,
+      "load_1min_after": 2.345703125
+    }
+  ],
+  "summary": {
+    "legacy": {
+      "median_sps": 134.5,
+      "runs": [
+        123.7,
+        134.5,
+        139.2
+      ],
+      "speedup_vs_legacy": 1.0
+    },
+    "fast_gru": {
+      "median_sps": 146.6,
+      "runs": [
+        146.6,
+        208.5,
+        106.4
+      ],
+      "speedup_vs_legacy": 1.09
+    },
+    "fast_cleanrl": {
+      "median_sps": 208.5,
+      "runs": [
+        200.3,
+        208.5,
+        210.3
+      ],
+      "speedup_vs_legacy": 1.55
+    }
+  },
+  "env_only_8_envs": [
+    {
+      "obs_dtype": "float32",
+      "num_envs": 8,
+      "decisions_per_second": 899.9
+    },
+    {
+      "obs_dtype": "uint8",
+      "num_envs": 8,
+      "decisions_per_second": 1615.4
+    }
+  ],
+  "hardware": {
+    "platform": "Linux-6.12.110+-aarch64-with-glibc2.41",
+    "machine": "aarch64",
+    "processor": "aarch64",
+    "cpu_count": 2,
+    "python": "3.12.15",
+    "torch": "2.14.1+cpu",
+    "torch_threads": 2,
+    "numpy": "2.5.3",
+    "ale_py": "0.12.1",
+    "mem_total": "8136692 kB",
+    "load_average_1_5_15": [
+      1.96,
+      2.81,
+      3.93
+    ]
+  },
+  "measured_local": "2026-10-26 10:41:10 +0000",
+  "extra_fast_cleanrl_torch_threads_1": {
+    "runs": [
+      {
+        "round": 0,
+        "arm": "fast_cleanrl",
+        "steps": 2048,
+        "seconds": 15.77,
+        "steps_per_second": 129.9,
+        "load_1min_before": 0.7705078125,
+        "load_1min_after": 1.580078125
+      },
+      {
+        "round": 1,
+        "arm": "fast_cleanrl",
+        "steps": 2048,
+        "seconds": 15.77,
+        "steps_per_second": 129.9,
+        "load_1min_before": 1.580078125,
+        "load_1min_after": 1.7197265625
+      }
+    ],
+    "summary": {
+      "fast_cleanrl": {
+        "median_sps": 129.9,
+        "runs": [
+          129.9,
+          129.9
+        ]
+      }
+    },
+    "note": "1 torch thread is slower than 2 on this 2-vCPU box"
+  },
+  "compute_floor": {
+    "what": "Nature CNN + 512 + head, fwd+bwd+Adam on one 256-sample minibatch, 2 torch threads, isolated microbenchmark",
+    "seconds_per_minibatch": 0.218,
+    "minibatches_per_1024_step_update": 16,
+    "update_seconds": 3.5,
+    "max_sps_if_env_and_rollout_were_free": 293,
+    "note": "CleanRL-faithful update cost on this CPU; bounds any engine. Measured 2026-10-26 in the same session (bench outside the repo)."
+  }
+}
