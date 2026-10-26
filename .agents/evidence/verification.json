@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-10-26T00:46:26+00:00",
-  "commit": "c73620ac66d75dad03e70ac9f9d93e459af908b0",
+  "generated_at": "2026-10-26T04:28:06+00:00",
+  "commit": "e214aef9fcb3c398aae52c95fbf56686b7444299",
   "python": "3.12.15",
   "platform": "Linux 6.12.110+ (aarch64)",
-  "measured_in": "a clean clone of c73620ac66d7",
+  "measured_in": "a clean clone of e214aef9fcb3",
   "clean_checkout": true,
   "command_note": "Every command runs from its own product directory with the interpreter that ran this script. There is no repository-wide test command and these products share no dependencies.",
   "excluded": {
@@ -62,7 +62,7 @@
     {
       "product": "small-projects/mini-llm",
       "directory": "small-projects/mini-llm",
-      "commit": "cac71b02bcbc4e69be61767e3e43b08b0b95d0d0",
+      "commit": "e214aef9fcb3c398aae52c95fbf56686b7444299",
       "command": [
         "/workspace/work/venv/bin/python",
         "-m",
@@ -72,14 +72,14 @@
         "tests"
       ],
       "dirty_paths": [],
-      "total": 259,
-      "duration_seconds": 39.683,
-      "skipped": 1,
+      "total": 297,
+      "duration_seconds": 54.871,
+      "skipped": 2,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 259 tests in 39.683s",
-        "OK (skipped=1)"
+        "Ran 297 tests in 54.871s",
+        "OK (skipped=2)"
       ],
       "result": "pass"
     },
