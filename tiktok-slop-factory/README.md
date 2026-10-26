@@ -317,6 +317,59 @@ to do about it. If a narration passes this gate but the caption bounds still
 cannot represent its full length, that is a separate caption-policy question —
 this gate does not paper over it by touching the audio.
 
+## Checking a clip against a campaign brief
+
+`clipcheck.py` is a separate, read-only linter for a **finished** vertical clip
+and its post text. It works on any MP4, including ones edited in CapCut or
+made by this generator, and it never modifies, re-encodes or uploads anything.
+
+```powershell
+Copy-Item examples\campaign.example.toml my_campaign.toml
+notepad my_campaign.toml
+python clipcheck.py "C:\clips\my clip.mp4" --campaign my_campaign.toml --post post.txt
+python clipcheck.py "C:\clips\my clip.mp4" --campaign my_campaign.toml --json
+```
+
+`--post` is a plain UTF-8 text file holding exactly the post description.
+`--threads N` sets FFmpeg threads per analysis pass (default `1`, so it stays
+out of the way of a render running on the same machine; `0` lets FFmpeg pick).
+
+The campaign file is TOML (`examples/campaign.example.toml` documents every
+key). Every rule is optional; a rule you leave out reports `SKIP`, never a
+silent pass. Unknown keys are rejected so a typo cannot switch a rule off.
+
+| Check | Measured with | Fails / warns when |
+|---|---|---|
+| `container` | the generator's own final-output validation (ffprobe + full decode) | unreadable or truncated file (then media checks are skipped) |
+| `aspect` | ffprobe | not 9:16 vertical (fail) |
+| `duration` | ffprobe | outside `[video] length_range` (fail) |
+| `opening` | `blackdetect` / `freezedetect`, first 1.0 s | black first frame (fail); first second static (warn) |
+| `static` | `freezedetect`, before the end card | a still stretch longer than `max_static_seconds` (warn) |
+| `loudness` | `ebur128` integrated LUFS | silent or no audio (fail); outside the window by up to 1 LU (warn), further (fail) |
+| `true_peak` | `ebur128` true peak | above `max_true_peak` (warn) |
+| `cta_logo` | frames at 4 fps over the clip's tail, normalized cross-correlation against your logo at several scales | logo visible less than `[cta] min_seconds` (fail); within one 0.25 s sample of it (warn) |
+| `post_hashtags` | post text | a required hashtag missing, out of order, split up, or (with `hashtags_must_be_last`) followed by anything (fail) |
+| `post_mentions` / `post_disclosure` | post text, case-insensitive | a required mention or the disclosure line is absent (fail) |
+
+Exit codes: `0` everything passed (or was not configured), `2` at least one
+warning, `1` at least one failure or the check could not run (bad arguments,
+unreadable campaign or post file, FFmpeg missing). This differs from
+`make_videos.py`, whose `2` means a partial batch, which is why clipcheck is
+its own command rather than a `make_videos.py` subcommand.
+
+Honest limits:
+
+* The logo match is a measurement, not a guarantee. It needs the logo image
+  as it appears in your end card (same crop), counts only matches at least
+  `min_width_fraction` of the frame width (so a small corner watermark is not
+  mistaken for the call-to-action), and is accurate to one 0.25 s sample.
+  It needs numpy: `pip install -r requirements-qc.txt`. Without numpy the
+  check reports `warn` / "not measured" and everything else still runs.
+* It does not listen to the narration: "say the brand name in the first
+  three seconds" style rules need speech recognition and are not checked.
+* Passing every check does not mean a clip will get views or be approved;
+  it means the measurable rules of the brief are met.
+
 ## Tests
 
 ```powershell
@@ -366,3 +419,4 @@ build without them will fail loudly rather than render black.
 
 Deliberately not included, and not planned: database, dashboard, browser
 automation, TikTok uploader, Docker, agent orchestration. Keep it small.
+`clipcheck.py` only reads media and text; it never posts anything.

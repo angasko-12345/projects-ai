@@ -17,7 +17,7 @@ from that product's directory. There is no repository-wide test command.
 | `ai-token-tracker.yml` | `ai-token-tracker/` | `python -m unittest discover -s tests -v` | none (stdlib only) |
 | `privacy-audit.yml` | `small-projects/privacy_audit_tool/` | `python -m unittest discover -s tests` | none (stdlib only; `maigret` is optional, online-scan-only, and deliberately not installed) |
 | `qr-generator.yml` | `qr-generator/` | `npm run typecheck`, `npm run lint`, `npm test` | `npm ci` (installs from the lockfile); Node 24 |
-| `tiktok-slop-factory.yml` | `tiktok-slop-factory/` | `python -m pytest tests -q` (pytest, not unittest) | `pip install -r requirements.txt`; `ffmpeg` apt-installed; ~10-minute suite; no key, see below |
+| `tiktok-slop-factory.yml` | `tiktok-slop-factory/` | `python -m pytest tests -q` (pytest, not unittest) | `pip install -r requirements.txt` and the optional `requirements-qc.txt` (numpy, so clipcheck's logo tests run instead of skipping); `ffmpeg` apt-installed; ~10-minute suite; no key, see below |
 | `evidence.yml` | repository root | `python tools/evidence/check.py` | none (stdlib only); needs full history |
 
 All jobs run on `ubuntu-latest` on CPU. The four measured Python products use
