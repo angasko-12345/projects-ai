@@ -1,0 +1,4 @@
+# Optional: lets clipcheck.py measure how long the campaign logo is on screen
+# (template matching). Without it that one check reports "not measured" (warn)
+# and every other check still runs. Not needed to generate videos.
+numpy>=1.24

@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import tempfile
 import threading
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from time import monotonic
 from uuid import uuid4
@@ -21,6 +23,12 @@ from .agent_run import (
 from .agent_adapter import adapter_for
 from .agent_result import parse_agent_result
 from .config import AgentConfig
+from .prompt_transport import (
+    PROMPT_FILE_PLACEHOLDER,
+    PromptDelivery,
+    PromptTransportError,
+    prepare_prompt_delivery,
+)
 from .runtime import OperationCancelled, ProcessRuntime
 from .logging import LogManager, RunLogArtifacts
 from .persistence import DegradationRecorder
@@ -42,7 +50,6 @@ def _safe_structured_result(stdout: object) -> object | None:
         extra_warnings = tuple(dict.fromkeys((*result.warnings, *parsed.warnings)))
         metadata = dict(result.metadata)
         metadata.setdefault("parse_mode", parsed.parse_mode.value)
-        from dataclasses import replace
         result = replace(result, warnings=extra_warnings, metadata=metadata)
         return result.to_dict()
     except Exception:
@@ -94,8 +101,12 @@ class AgentRunner:
         runtime: ProcessRuntime | None = None,
         degradation: DegradationRecorder | None = None,
         systemd_run_enabled: bool = False,
+        platform: str | None = None,
     ):
         self.logs = logs
+        # Injectable platform seam for prompt transport selection (U1); None
+        # means sys.platform at run time.
+        self._platform = platform
         self.pass_env_names = pass_env_names
         self.pass_env_prefixes = pass_env_prefixes
         self.run_observer = run_observer
@@ -135,6 +146,30 @@ class AgentRunner:
         """Wait for process output while allowing a thread-owned cancel event."""
         # Compatibility seam: cancellation-aware waiting lives in ProcessRuntime.
         return await ProcessRuntime().communicate_with_cancel(process, cancel_event)
+
+    def _prompt_file_path(self) -> Path:
+        """A fresh private path for the file prompt transport (under .agentops/)."""
+        root = getattr(self.logs, "root", None)
+        if isinstance(root, (str, os.PathLike)):
+            directory = Path(root) / "prompts"
+        else:
+            directory = Path(tempfile.gettempdir()) / "agentops-prompts"
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory / f"{uuid4().hex}.prompt.txt"
+
+    def prepare_delivery(self, agent: DetectedAgent, prompt: str, prompt_file: Path | None = None) -> PromptDelivery:
+        """Decide how ``prompt`` reaches ``agent`` (raises PromptTransportError)."""
+        config = agent.config
+        return prepare_prompt_delivery(
+            name=config.name,
+            executable=agent.executable or config.command,
+            args=config.args,
+            prompt=prompt,
+            transport=getattr(config, "prompt_transport", "auto"),
+            stdin_args=getattr(config, "stdin_args", None),
+            prompt_file=str(prompt_file) if prompt_file is not None else None,
+            platform=self._platform,
+        )
 
     def _notify_create(self, observer: AgentRunObserver | None, context: AgentRunContext) -> str | None:
         if observer is None:
@@ -214,10 +249,36 @@ class AgentRunner:
             command=command,
         )
         observer = run_observer or self.run_observer
+        # U1: decide prompt delivery before anything is spawned.  A prompt
+        # that cannot reach the agent intact is refused, never truncated.
+        prompt_file: Path | None = None
+        if any(PROMPT_FILE_PLACEHOLDER in argument for argument in agent.config.args):
+            prompt_file = self._prompt_file_path()
+        try:
+            delivery = self.prepare_delivery(agent, prompt, prompt_file)
+        except PromptTransportError as error:
+            run_id = self._notify_create(observer, context)
+            self._notify_finish(observer, run_id, AgentRunOutcome(
+                status=AgentRunStatus.FAILED,
+                duration_seconds=0.0,
+                error=str(error),
+                failure_classification="environment",
+            ))
+            raise
+        command = delivery.argv
+        if isinstance(context, AgentRunContext):
+            context = replace(
+                context, command=command, executable=delivery.executable,
+                delivery=delivery.metadata(),
+            )
         run_id = self._notify_create(observer, context)
         self._notify_starting(observer, run_id)
         started = monotonic()
         try:
+            if delivery.prompt_file is not None:
+                descriptor = os.open(delivery.prompt_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as handle:
+                    handle.write(prompt)
             execution = await self._runtime.run_process(
                 command,
                 cwd=working_directory,
@@ -226,6 +287,7 @@ class AgentRunner:
                 cancel_event=cancel_event,
                 stderr=asyncio.subprocess.PIPE,
                 on_running=lambda _process: self._notify_running(observer, run_id),
+                input_bytes=delivery.stdin_bytes,
             )
             if execution.cancelled:
                 raise OperationCancelled
@@ -335,3 +397,9 @@ class AgentRunner:
             )
             self._notify_finish(observer, run_id, outcome)
             raise
+        finally:
+            if delivery.prompt_file is not None:
+                try:
+                    os.unlink(delivery.prompt_file)
+                except OSError:
+                    pass

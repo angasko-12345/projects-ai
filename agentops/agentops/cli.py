@@ -12,7 +12,7 @@ from pathlib import Path
 from . import __version__
 from .agent_run import AgentRunStatus, GitRunMetadataCollector
 from .artifacts import ArtifactError, ArtifactStore
-from .config import AppConfig, _load_data, load_config
+from .config import AppConfig, _load_data, load_config, resolve_config_source
 from .finalize import (
     WorktreeFinalization, finalize_for_outcome, implementation_passed, record_worktree_provenance, retry_merge_for_worktree,
 )
@@ -80,7 +80,10 @@ def _build_services(args: argparse.Namespace) -> CliServices:
     constructor bound as a default on :class:`CliServices`. Tests
     substitute the bundle wholesale through ``main(argv, services=...)``.
     """
-    return CliServices(config=load_config(args.config))
+    # U2 precedence: --config > <repo>/.agentops/config.yaml > user config >
+    # bundled. The repository is the command's --cwd when it has one.
+    source = resolve_config_source(args.config, getattr(args, "cwd", None) or Path.cwd())
+    return CliServices(config=load_config(source.path))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -89,6 +92,20 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"agentops {__version__}")
     subcommands = parser.add_subparsers(dest="command", required=True)
     subcommands.add_parser("agents", help="Detect configured coding-agent CLIs")
+    init = subcommands.add_parser(
+        "init", help="Detect this repository's stack and write .agentops/config.yaml")
+    init.add_argument("--cwd", type=Path, default=Path.cwd(),
+                      help="Directory inside the target repository (default: current directory)")
+    init.add_argument("--force", action="store_true", help="Overwrite an existing repository config")
+    init.add_argument("--print", dest="print_only", action="store_true",
+                      help="Print the config that would be written; write nothing")
+    doctor = subcommands.add_parser(
+        "doctor", help="Check agents, prompt transport, config, verification, and Git state")
+    doctor.add_argument("--cwd", type=Path, default=Path.cwd(),
+                        help="Directory inside the target repository (default: current directory)")
+    doctor.add_argument("--json", action="store_true", help="Emit a machine-readable report")
+    doctor.add_argument("--probe", action="store_true",
+                        help="Also run each found agent's version command (up to 15 s each)")
     subcommands.add_parser("gui", help="Launch the AgentOps desktop client")
     subcommands.add_parser("status", help="Show persistent workflow status")
     run = subcommands.add_parser("run", help="Run one installed agent")
@@ -178,6 +195,60 @@ def _resolve_state_base(
         return directory
 
 
+def _cmd_init(args: argparse.Namespace) -> int:
+    """``agentops init``: write a repo-specific starter config (never clobbers)."""
+    from .init_config import run_init
+
+    manager = GitWorktreeManager()
+    try:
+        root = manager.repository_root(args.cwd)
+    except GitError as error:
+        print(f"ERROR: agentops init needs a Git repository: {error}")
+        return 1
+    result = run_init(root, force=args.force, dry_run=args.print_only)
+    if args.print_only:
+        _print_text(result.text.rstrip("\n"))
+        return 0
+    detection = result.detection
+    print(f"Repository: {root}")
+    print(f"Detected stack: {', '.join(detection.stacks) or 'none'}")
+    for check in detection.checks:
+        required = "required" if check.required else "optional"
+        print(f"  check {check.name:<14} {' '.join(check.command)}  ({required}; {check.evidence})")
+    if detection.placeholder:
+        print("  no test command detected: wrote a TODO placeholder check that fails until you replace it")
+    for note in detection.notes:
+        print(f"  note: {note}")
+    installed = ", ".join(result.installed_agents) or "none found on PATH"
+    print(f"Installed agent CLIs: {installed}")
+    if not result.written:
+        print(f"ERROR: {result.message}")
+        return 1
+    # Keep .agentops/ (config, state, worktrees) out of the user's Git status
+    # the same way task runs do, so the base stays clean for the merge gate.
+    try:
+        manager._exclude_agentops_state(root)
+    except GitError as error:
+        print(f"WARNING: {error}")
+    print(result.message.capitalize())
+    print("Next: agentops doctor")
+    return 0
+
+
+def _cmd_doctor(args: argparse.Namespace) -> int:
+    """``agentops doctor``: read-only readiness report; exit 1 on any blocker."""
+    import json
+
+    from .doctor import run_doctor
+
+    report = run_doctor(args.cwd, args.config, probe=args.probe)
+    if args.json:
+        print(json.dumps(report.to_json(), indent=2))
+    else:
+        _print_text(report.render_text())
+    return 0 if report.ok else 1
+
+
 def main(argv: list[str] | None = None, services: CliServices | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "gui":
@@ -192,6 +263,10 @@ def main(argv: list[str] | None = None, services: CliServices | None = None) -> 
             print(f"ERROR: {error}")
             return 1
         return 0
+    if args.command == "init":
+        return _cmd_init(args)
+    if args.command == "doctor":
+        return _cmd_doctor(args)
     try:
         # The injected bundle is used as-is; only an absent one gets the
         # production wiring, so a test that passes fakes never touches the

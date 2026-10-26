@@ -41,6 +41,9 @@ from agentops.verification_model import (
 from agentops.workflow import WorkflowEngine
 
 
+_FLEET_CONFIG = Path(__file__).resolve().parents[1] / "examples" / "hacir-fleet.yaml"
+
+
 class FakeProcess:
     def __init__(self, stdout: bytes, stderr: bytes, returncode: int | None):
         self._stdout = stdout
@@ -133,18 +136,19 @@ class ProfileConfigTests(unittest.TestCase):
             os.unlink(path)
 
     def test_bundled_config_exposes_runnable_standard_profile(self):
+        # U2: repo-neutral default. The old profile pinned
+        # working_directory "agentops" and an AgentOps self-check, so it
+        # could never pass on anyone else's repository.
         config = load_config()
         self.assertEqual(config.default_verification_profile, "standard")
         profile = config.verification_profiles["standard"]
         self.assertEqual(profile.default_timeout_seconds, 900)
-        self.assertEqual(len(profile.checks), 2)
-        check, optional = profile.checks
+        self.assertEqual(len(profile.checks), 1)
+        (check,) = profile.checks
         self.assertEqual(check.command, ("python", "-m", "unittest", "discover", "-s", "tests"))
-        self.assertEqual(check.working_directory, "agentops")
+        self.assertIsNone(check.working_directory)
         self.assertTrue(check.required)
         self.assertEqual(check.timeout_seconds, 900)
-        self.assertFalse(optional.required)
-        self.assertEqual(optional.timeout_seconds, 60)
 
     def test_bundled_profile_runs_checks_in_operation_worktree_without_shell(self):
         config = load_config()
@@ -156,7 +160,7 @@ class ProfileConfigTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / "agentops" / "tests").mkdir(parents=True)
+            (root / "tests").mkdir(parents=True)
             state, kernel = _harness(
                 root,
                 config.verification_profiles["standard"],
@@ -172,11 +176,10 @@ class ProfileConfigTests(unittest.TestCase):
             [command for command, _ in calls],
             [
                 ("python", "-m", "unittest", "discover", "-s", "tests"),
-                ("python", "-m", "agentops", "--help"),
             ],
         )
         self.assertTrue(all("shell" not in kwargs for _, kwargs in calls))
-        self.assertTrue(all(kwargs["cwd"] == str(root / "agentops") for _, kwargs in calls))
+        self.assertTrue(all(kwargs["cwd"] == str(root.resolve()) for _, kwargs in calls))
         self.assertEqual(config.verification_commands, (
             ("python", "-m", "unittest", "discover", "-s", "tests"),
         ))
@@ -1044,8 +1047,9 @@ class RequiredSkipInvariantTests(unittest.TestCase):
         # the required test check is skipped as inapplicable and the optional
         # CLI check passes. The kernel used to report PASSED (passed >= 1) with
         # required_failures=1 and persist it, contradicting
-        # assert_report_consistent.
-        profile = load_config().verification_profiles["standard"]
+        # assert_report_consistent. The old bundled profile (kept verbatim as
+        # examples/hacir-fleet.yaml) has exactly this required+optional shape.
+        profile = load_config(_FLEET_CONFIG).verification_profiles["standard"]
 
         async def factory(*command, **kwargs):
             return FakeProcess(b"ok", b"", 0)
