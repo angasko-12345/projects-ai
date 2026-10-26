@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-10-26T00:43:27+00:00",
-  "commit": "3244435371621045ea75178e069b8b1229e7fae0",
+  "generated_at": "2026-10-26T00:46:26+00:00",
+  "commit": "c73620ac66d75dad03e70ac9f9d93e459af908b0",
   "python": "3.12.15",
   "platform": "Linux 6.12.110+ (aarch64)",
-  "measured_in": "a clean clone of 324443537162",
+  "measured_in": "a clean clone of c73620ac66d7",
   "clean_checkout": true,
   "command_note": "Every command runs from its own product directory with the interpreter that ran this script. There is no repository-wide test command and these products share no dependencies.",
   "excluded": {
@@ -86,7 +86,7 @@
     {
       "product": "ai-token-tracker",
       "directory": "ai-token-tracker",
-      "commit": "88b3095927f5d0a6400eddf17b580e4f6130ab46",
+      "commit": "c73620ac66d75dad03e70ac9f9d93e459af908b0",
       "command": [
         "/usr/local/bin/python",
         "-m",
@@ -96,13 +96,13 @@
         "tests"
       ],
       "dirty_paths": [],
-      "total": 82,
-      "duration_seconds": 5.032,
+      "total": 128,
+      "duration_seconds": 0.286,
       "skipped": 8,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 82 tests in 5.032s",
+        "Ran 128 tests in 0.286s",
         "OK (skipped=8)"
       ],
       "result": "pass"
