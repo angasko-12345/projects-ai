@@ -82,6 +82,18 @@ python -m unittest discover -s tests
   (2026-10-25), so unseen characters never become `<unk>`. `--vocab-size` and
   `train_bpe_tokenizer` refuse anything below 260 (256 bytes + 4 specials).
 
+- Bits per byte (added 2026-10-26): every training eval logs `val_bpb` and
+  checkpoints store it beside `val_loss` (optional key; older checkpoints still
+  load). `src/evaluate.py` recomputes it (`python -m src.evaluate --checkpoint
+  ...`) with a fixed seeded sample sheet. `train.evaluate()` delegates to
+  `src.evaluate.evaluate_stats`, whose loss arithmetic is unchanged.
+
+- Mixed precision (added 2026-10-26): `--amp {off,fp16,bf16}`, Config field
+  `amp`, default `off` (fp32, bit-identical to the pre-AMP loop; pinned by
+  `tests/test_amp.py`). fp16 is CUDA-only with a GradScaler whose state is
+  saved as `scaler_state`; resuming with a different `--amp` is refused.
+  CPU CI cannot exercise fp16; `TestFp16OnCuda` is skipped without CUDA.
+
 ## GGUF export (added 2026-10-26)
 
 - `src/export_gguf.py` writes a checkpoint as a llama.cpp `gpt2`-arch GGUF with
