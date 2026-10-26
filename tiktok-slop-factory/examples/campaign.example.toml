@@ -1,0 +1,45 @@
+# Example campaign brief for clipcheck.py. Generic placeholder values only:
+# copy this file, then replace them with the rules from your campaign's brief.
+#
+#   python clipcheck.py my_clip.mp4 --campaign my_campaign.toml --post my_post.txt
+#
+# Every section and key is optional. A rule you leave out is reported as SKIP,
+# never as a pass. Unknown keys are rejected, so a typo cannot switch a rule off.
+
+[campaign]
+name = "Example brand campaign"
+
+[video]
+# Allowed clip length in seconds, inclusive.
+length_range = [15.0, 28.0]
+# Longest stretch the picture may sit still before the end card (retention rule).
+max_static_seconds = 1.5
+
+[audio]
+# Integrated loudness window in LUFS, inclusive. Outside by <= 1 LU is a warning,
+# further is a failure.
+loudness_target = [-15.0, -14.0]
+# True-peak ceiling in dBTP; above it is a warning (clipping after re-encode).
+max_true_peak = -1.0
+
+[cta]
+# The brand logo exactly as it appears in your end card (PNG/JPG), relative to
+# this file. Uncomment and point it at your own logo to measure the CTA.
+# logo_path = "logo.png"
+# Minimum time the logo must be on screen, in seconds.
+min_seconds = 2.0
+# Only matches at least this share of the frame width count, so a small corner
+# watermark is not mistaken for the call-to-action. Default 0.25.
+min_width_fraction = 0.25
+# Normalized cross-correlation needed to count a frame as showing the logo. Default 0.70.
+match_threshold = 0.70
+
+[post]
+# Hashtags the post must carry, in exactly this order (case-insensitive).
+required_hashtags = ["#brandpartner", "#gamedev", "#indiegame"]
+# true: the hashtags must be the very end of the post, nothing after them.
+hashtags_must_be_last = true
+# Words the description must mention (case-insensitive).
+required_mentions = ["BrandName"]
+# A disclosure line that must appear in the post (leave empty for none).
+disclosure_line = ""

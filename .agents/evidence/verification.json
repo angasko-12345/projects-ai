@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-10-26T04:28:06+00:00",
-  "commit": "e214aef9fcb3c398aae52c95fbf56686b7444299",
+  "generated_at": "2026-10-26T08:09:16+00:00",
+  "commit": "aa405a86707a9dbd58b950c9960ea622bf51efa7",
   "python": "3.12.15",
   "platform": "Linux 6.12.110+ (aarch64)",
-  "measured_in": "a clean clone of e214aef9fcb3",
+  "measured_in": "a clean clone of aa405a86707a",
   "clean_checkout": true,
   "command_note": "Every command runs from its own product directory with the interpreter that ran this script. There is no repository-wide test command and these products share no dependencies.",
   "excluded": {
@@ -14,7 +14,7 @@
     {
       "product": "agentops",
       "directory": "agentops",
-      "commit": "3244435371621045ea75178e069b8b1229e7fae0",
+      "commit": "aa405a86707a9dbd58b950c9960ea622bf51efa7",
       "command": [
         "/usr/local/bin/python",
         "-m",
@@ -24,13 +24,13 @@
         "tests"
       ],
       "dirty_paths": [],
-      "total": 1011,
-      "duration_seconds": 38.134,
+      "total": 1050,
+      "duration_seconds": 39.388,
       "skipped": 82,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 1011 tests in 38.134s",
+        "Ran 1050 tests in 39.388s",
         "OK (skipped=82)"
       ],
       "result": "pass"
@@ -62,9 +62,9 @@
     {
       "product": "small-projects/mini-llm",
       "directory": "small-projects/mini-llm",
-      "commit": "e214aef9fcb3c398aae52c95fbf56686b7444299",
+      "commit": "23ed6c22ec4ed40250e696df5a57ba0f1e8da1cd",
       "command": [
-        "/workspace/work/venv/bin/python",
+        "/tmp/mllm/bin/python",
         "-m",
         "unittest",
         "discover",
@@ -72,14 +72,14 @@
         "tests"
       ],
       "dirty_paths": [],
-      "total": 297,
-      "duration_seconds": 54.871,
-      "skipped": 2,
+      "total": 276,
+      "duration_seconds": 60.202,
+      "skipped": 3,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 297 tests in 54.871s",
-        "OK (skipped=2)"
+        "Ran 276 tests in 60.202s",
+        "OK (skipped=3)"
       ],
       "result": "pass"
     },

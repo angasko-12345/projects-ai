@@ -85,6 +85,9 @@ class ClassificationTests(unittest.TestCase):
             (dict(error="Command not allowlisted by policy"), FailureCategory.POLICY_VIOLATION),
             (dict(error="Review did not pass: changes requested", role="review"), FailureCategory.REVIEW_REJECTION),
             (dict(error="some completely novel gibberish xyzzy"), FailureCategory.UNKNOWN),
+            # Opt-in: only reachable when the caller passes usage_limit_patterns.
+            (dict(error="Error: You've hit your usage limit.", exit_code=1,
+                  usage_limit_patterns=("usage limit",)), FailureCategory.USAGE_LIMIT),
         ]
         seen = set()
         for kwargs, expected in cases:
@@ -663,7 +666,7 @@ class StructuredEvidenceTests(unittest.TestCase):
                     row[0] for row in state.connection.execute(
                         "SELECT version FROM schema_migrations ORDER BY version").fetchall()
                 ]
-                self.assertEqual(versions, [1, 2, 3, 4, 5, 6, 7, 8])
+                self.assertEqual(versions, [1, 2, 3, 4, 5, 6, 7, 8, 9])
             finally:
                 state.close()
 

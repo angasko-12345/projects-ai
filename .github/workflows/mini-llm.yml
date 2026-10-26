@@ -31,5 +31,14 @@ jobs:
           python-version: "3.11"
       - name: Install runtime dependencies
         run: python -m pip install -r requirements.txt
+      # Optional dependency, only for src/export_gguf.py and its tests. Installed
+      # here so tests/test_export_gguf.py actually runs in CI;
+      # MINI_LLM_REQUIRE_GGUF=1 turns a missing gguf into a failure instead of
+      # a silent skip. llama.cpp itself is not installed: the llama-server
+      # parity test stays opt-in (LLAMA_CPP_DIR) and is skipped here.
+      - name: Install the optional GGUF export dependency
+        run: python -m pip install -r requirements-gguf.txt
       - name: Run mini-llm test suite
+        env:
+          MINI_LLM_REQUIRE_GGUF: "1"
         run: python -m unittest discover -s tests

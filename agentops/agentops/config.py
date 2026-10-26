@@ -51,6 +51,46 @@ class AgentConfig:
 
 
 @dataclass(frozen=True)
+class HeadroomConfig:
+    """Opt-in HeadroomGate settings (top-level ``headroom`` key).
+
+    Exactly one of ``file`` / ``command`` is set.  ``agents`` maps an agent
+    name to the ai-token-tracker provider it draws on, optionally narrowed to
+    window labels or limit ids.
+    """
+
+    agents: dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]]
+    file: Path | None = None
+    command: tuple[str, ...] | None = None
+    command_timeout_seconds: float = 30.0
+    cache_seconds: float = 60.0
+    max_age_seconds: float = 900.0
+    reject_at_percent: float = 95.0
+    deprioritize_at_percent: float | None = 80.0
+    unknown_policy: str = "deprioritize"
+
+
+@dataclass(frozen=True)
+class UsageLimitConfig:
+    """Opt-in ``usage_limit`` failure category and per-agent cooldown
+    (top-level ``usage_limits`` key; absent or ``enabled: false`` = off)."""
+
+    use_default_patterns: bool = True
+    patterns: tuple[str, ...] = ()
+    agent_patterns: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    default_cooldown_seconds: float = 3600.0
+    max_cooldown_seconds: float = 86400.0
+
+    def patterns_for(self, agent: str | None) -> tuple[str, ...]:
+        from .failure import DEFAULT_USAGE_LIMIT_PATTERNS
+
+        combined = (DEFAULT_USAGE_LIMIT_PATTERNS if self.use_default_patterns else ()) + self.patterns
+        if agent:
+            combined += self.agent_patterns.get(agent, ())
+        return tuple(dict.fromkeys(item.lower() for item in combined if item.strip()))
+
+
+@dataclass(frozen=True)
 class AppConfig:
     agents: dict[str, AgentConfig]
     role_preferences: dict[str, tuple[str, ...]]
@@ -69,6 +109,9 @@ class AppConfig:
     systemd_run_enabled: bool = False
     security_review: bool = False
     max_review_rounds: int = 2
+    # Opt-in; None keeps routing and failure classification exactly as before.
+    headroom: HeadroomConfig | None = None
+    usage_limits: UsageLimitConfig | None = None
 
 
 # Bundled as package data by AgentOps.spec, so it resolves identically from a
@@ -367,12 +410,136 @@ def load_config(path: str | Path | None = None) -> AppConfig:
     max_review_rounds = workflows.get("max_review_rounds", 2)
     if isinstance(max_review_rounds, bool) or not isinstance(max_review_rounds, int) or max_review_rounds < 0:
         raise ValueError("workflows.max_review_rounds must be zero or greater.")
+    headroom = _headroom_config(data.get("headroom"), agents, Path(path) if path else None)
+    usage_limits = _usage_limit_config(data.get("usage_limits"), agents)
+    if (headroom is not None or usage_limits is not None) and not routing_enabled:
+        warnings.warn(
+            "headroom / usage_limits cooldowns act through the router; with routing disabled "
+            "they will not affect agent selection.", stacklevel=2)
     return AppConfig(agents, role_preferences, verification_commands, max_attempts, concurrency,
                      max_repair_cycles, tuple(names), tuple(prefixes),
                      verification_profiles, default_profile,
                      float(backoff_base), float(backoff_max), float(backoff_factor),
                      routing_enabled, systemd_run_enabled,
-                     security_review, max_review_rounds)
+                     security_review, max_review_rounds,
+                     headroom=headroom, usage_limits=usage_limits)
+
+
+def _positive_number(value: Any, label: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+        raise ValueError(f"{label} must be a positive number.")
+    return float(value)
+
+
+def _percent(value: Any, label: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 < value <= 1000:
+        raise ValueError(f"{label} must be a number above 0.")
+    return float(value)
+
+
+def _string_list(value: Any, label: str) -> tuple[str, ...]:
+    if not isinstance(value, list) or not all(isinstance(item, str) and item.strip() for item in value):
+        raise ValueError(f"{label} must be a list of non-empty strings.")
+    return tuple(item.strip() for item in value)
+
+
+def _headroom_config(raw: Any, agents: dict[str, AgentConfig], config_path: Path | None) -> HeadroomConfig | None:
+    """Parse the opt-in ``headroom`` section; absent means no gate."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError("headroom must be a mapping.")
+    if raw.get("enabled", True) is False:
+        return None
+    if not isinstance(raw.get("enabled", True), bool):
+        raise ValueError("headroom.enabled must be a boolean.")
+    file_value = raw.get("file")
+    command_value = raw.get("command")
+    if (file_value is None) == (command_value is None):
+        raise ValueError("headroom needs exactly one of 'file' or 'command'.")
+    file_path: Path | None = None
+    command: tuple[str, ...] | None = None
+    if file_value is not None:
+        if not isinstance(file_value, str) or not file_value.strip():
+            raise ValueError("headroom.file must be a non-empty string.")
+        file_path = Path(os.path.expanduser(os.path.expandvars(file_value.strip())))
+        if not file_path.is_absolute() and config_path is not None:
+            file_path = config_path.parent / file_path
+    else:
+        command = _command(command_value, "headroom.command")
+    raw_agents = raw.get("agents")
+    if not isinstance(raw_agents, dict) or not raw_agents:
+        raise ValueError("headroom.agents must map agent names to a tracker provider.")
+    bindings: dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]] = {}
+    for name, binding in raw_agents.items():
+        if name not in agents:
+            raise ValueError(f"headroom.agents references unknown agent: {name}")
+        if isinstance(binding, str) and binding.strip():
+            bindings[name] = (binding.strip(), (), ())
+            continue
+        if not isinstance(binding, dict):
+            raise ValueError(f"headroom.agents.{name} must be a provider name or a mapping.")
+        provider = binding.get("provider")
+        if not isinstance(provider, str) or not provider.strip():
+            raise ValueError(f"headroom.agents.{name}.provider must be a non-empty string.")
+        windows = _string_list(binding.get("windows", []), f"headroom.agents.{name}.windows")
+        limit_ids = _string_list(binding.get("limit_ids", []), f"headroom.agents.{name}.limit_ids")
+        bindings[name] = (provider.strip(), windows, limit_ids)
+    unknown_policy = raw.get("unknown_policy", "deprioritize")
+    if unknown_policy not in ("allow", "deprioritize", "reject"):
+        raise ValueError("headroom.unknown_policy must be 'allow', 'deprioritize' or 'reject'.")
+    deprioritize_at = raw.get("deprioritize_at_percent", 80.0)
+    reject_at = _percent(raw.get("reject_at_percent", 95.0), "headroom.reject_at_percent")
+    if deprioritize_at is not None:
+        deprioritize_at = _percent(deprioritize_at, "headroom.deprioritize_at_percent")
+        if deprioritize_at > reject_at:
+            raise ValueError("headroom.deprioritize_at_percent must not exceed reject_at_percent.")
+    return HeadroomConfig(
+        agents=bindings,
+        file=file_path,
+        command=command,
+        command_timeout_seconds=_positive_number(
+            raw.get("command_timeout_seconds", 30.0), "headroom.command_timeout_seconds"),
+        cache_seconds=_positive_number(raw.get("cache_seconds", 60.0), "headroom.cache_seconds"),
+        max_age_seconds=_positive_number(raw.get("max_age_seconds", 900.0), "headroom.max_age_seconds"),
+        reject_at_percent=reject_at,
+        deprioritize_at_percent=deprioritize_at,
+        unknown_policy=unknown_policy,
+    )
+
+
+def _usage_limit_config(raw: Any, agents: dict[str, AgentConfig]) -> UsageLimitConfig | None:
+    """Parse the opt-in ``usage_limits`` section; absent means the category is off."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError("usage_limits must be a mapping.")
+    enabled = raw.get("enabled", True)
+    if not isinstance(enabled, bool):
+        raise ValueError("usage_limits.enabled must be a boolean.")
+    if not enabled:
+        return None
+    use_defaults = raw.get("use_default_patterns", True)
+    if not isinstance(use_defaults, bool):
+        raise ValueError("usage_limits.use_default_patterns must be a boolean.")
+    patterns = _string_list(raw.get("patterns", []), "usage_limits.patterns")
+    raw_agents = raw.get("agents", {})
+    if not isinstance(raw_agents, dict):
+        raise ValueError("usage_limits.agents must map agent names to pattern lists.")
+    agent_patterns: dict[str, tuple[str, ...]] = {}
+    for name, value in raw_agents.items():
+        if name not in agents:
+            raise ValueError(f"usage_limits.agents references unknown agent: {name}")
+        agent_patterns[name] = _string_list(value, f"usage_limits.agents.{name}")
+    if not use_defaults and not patterns and not agent_patterns:
+        raise ValueError("usage_limits needs patterns when use_default_patterns is false.")
+    default_cooldown = _positive_number(
+        raw.get("default_cooldown_seconds", 3600.0), "usage_limits.default_cooldown_seconds")
+    max_cooldown = _positive_number(
+        raw.get("max_cooldown_seconds", 86400.0), "usage_limits.max_cooldown_seconds")
+    if default_cooldown > max_cooldown:
+        raise ValueError("usage_limits.default_cooldown_seconds must not exceed max_cooldown_seconds.")
+    return UsageLimitConfig(use_defaults, patterns, agent_patterns, default_cooldown, max_cooldown)
 
 
 # --- Config precedence (upgrade U2) ---------------------------------------
