@@ -61,7 +61,8 @@ mini-llm/
 ├── tests/                     # test_model, test_pipeline, test_prepare_streaming,
 │                              # test_throughput, test_tokenizer
 ├── prepare_data.py            # tokenizer training + streaming encode/split to .bin
-├── docs/                      # experiment records (e.g. EXPERIMENT-tinystories.md)
+├── kaggle/                    # train_tinystories.ipynb + run_recipe.py (T4 baseline)
+├── docs/                      # experiment records (EXPERIMENT-tinystories.md, RESULTS.md)
 ├── requirements.txt
 └── README.md
 ```
@@ -212,6 +213,55 @@ the checkpoint was trained in: omit `--amp` (or pass the same value) to
 continue; a different value is refused, so a loss scale is never silently
 dropped or invented. Checkpoints written before `--amp` existed read as `off`.
 `--amp` works with `--grad-accum-steps` and `--loss-chunk-size`.
+
+### Kaggle T4 baseline (`kaggle/train_tinystories.ipynb`)
+
+A fixed, reproducible recipe on a free Kaggle GPU: full TinyStories, vocab
+8192, d384/L6, context 512, `--amp fp16`, 196,608,000 tokens, two seeds,
+validation bits per byte as the headline number. The notebook only calls
+`kaggle/run_recipe.py`, which also runs from a shell
+(`python kaggle/run_recipe.py --stage smoke|full|export|summary|all`). Results
+go in [`docs/RESULTS.md`](docs/RESULTS.md); its fields stay blank until a run
+fills them.
+
+How to run it on Kaggle:
+
+1. kaggle.com → **Create → New Notebook → File → Import Notebook**, and import
+   `small-projects/mini-llm/kaggle/train_tinystories.ipynb` from this repo
+   (GitHub URL or uploaded file).
+2. Right panel → **Session options**: **Accelerator: GPU T4 x2** (the recipe
+   uses one GPU) and **Internet: On** (it downloads the 1.9 GB corpus and the
+   code). Phone verification on the Kaggle account is needed for both.
+3. In the first code cell, set `REPO_REF` (`main` once the PRs are merged,
+   otherwise the branch name). Optional first check: set `RUN_FULL = False`
+   and **Run All** interactively; the smoke cell prints tokens/sec and the
+   projected hours for the full run.
+4. For the full run: `RUN_FULL = True`, then **Save Version → Save & Run All
+   (Commit)**. It keeps running with the browser closed.
+5. When it finishes, open the version's **Output** tab and download
+   `minillm-t4/results.md`, `run.json` and (optionally) `gguf/model-q8_0.gguf`.
+
+Time and quota, honestly stated:
+
+- Not yet measured on a T4. The smoke cell measures it; the 2026-10-25 plan's
+  rough estimate was 1–2 h per epoch-scale run at 14M params, and this budget is
+  ~0.4 epoch per seed. Data download + tokenizer training + encoding is extra
+  and also unmeasured.
+- Kaggle's GPU quota is about 30 h/week ("or sometimes higher depending on
+  demand", Kaggle docs) and a session runs at most 12 h. If the smoke cell says
+  both seeds will not fit one session, run one seed per saved version
+  (`ONLY_SEED = 1337`, then `ONLY_SEED = 4242`); each version re-prepares the
+  data, and the tokenizer and `.bin` digests in `run.json` show it was the same
+  data (prep was byte-identical across two runs on a 2 MB slice; not checked at
+  full scale). Within one session, re-running a cell skips finished work and an
+  unfinished seed resumes from its newest checkpoint; a new session starts
+  clean.
+- A forum post claims the P100 option was retired on 2026-09-15, leaving T4 x2.
+  That is **unverified**; check the Accelerator menu.
+
+The GGUF export cell needs `src/export_gguf.py` (the GGUF export PR). On a
+checkout without it the cell prints why it skipped and everything else is
+unaffected; the Q8_0 step downloads the pinned llama.cpp `b11874` CPU build.
 
 ### Window stride
 
