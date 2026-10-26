@@ -16,7 +16,7 @@ facts, this file is correct.
   for the others, plus the Node app in `qr-generator/AGENTS.md`. No product is a subproject of
   another, and a change in one is not a change in another.
 - Runtime dependencies: `torch`, `tokenizers`, `numpy` (see `requirements.txt`,
-  unpinned). Training is CPU-capable; the expensive real-corpus runs target a cloud
+  unpinned). Optional: `gguf` for the GGUF export only (`requirements-gguf.txt`). Training is CPU-capable; the expensive real-corpus runs target a cloud
   GPU via the existing device-agnostic loop (`--device cuda`, fail-fast without CUDA).
 
 ## Tests
@@ -81,6 +81,25 @@ python -m unittest discover -s tests
 - The BPE trainer is seeded with `initial_alphabet=ByteLevel.alphabet()`
   (2026-10-25), so unseen characters never become `<unk>`. `--vocab-size` and
   `train_bpe_tokenizer` refuse anything below 260 (256 bytes + 4 specials).
+
+## GGUF export (added 2026-10-26)
+
+- `src/export_gguf.py` writes a checkpoint as a llama.cpp `gpt2`-arch GGUF with
+  gguf-py directly (llama.cpp's `convert_hf_to_gguf.py` refuses custom BPE
+  tokenizers). Per-head `wq/wk/wv` are concatenated into `attn_qkv` (all q, then
+  all k, then all v) with a zero bias; the tied head writes no `output.weight`;
+  `tokenizer.ggml.pre = "gpt-2"`, `add_bos_token = true`. Mapping and caveats:
+  `docs/GGUF-llama-server.md`.
+- `gguf` is an optional dependency (`requirements-gguf.txt`), imported lazily;
+  nothing outside `export_gguf.py` needs it. The export reuses `read_checkpoint`,
+  `load_model` and `generate.check_tokenizer_provenance`, so a wrong tokenizer is
+  refused the same way generation refuses it.
+- A tokenizer from before the `initial_alphabet` fix still exports (old
+  checkpoints keep working with their own `--tokenizer`); the exporter warns and
+  writes `mini_llm.full_byte_alphabet = false`.
+- `tests/test_export_gguf.py`: gguf-dependent tests skip without `gguf` unless
+  `MINI_LLM_REQUIRE_GGUF=1` (set in CI, which installs `requirements-gguf.txt`).
+  `TestLlamaCppParity` needs `LLAMA_CPP_DIR` and is skipped in CI.
 
 ## Checkpoint provenance and resume safety (added 2026-10-10)
 
