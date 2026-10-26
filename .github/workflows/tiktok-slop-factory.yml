@@ -42,5 +42,9 @@ jobs:
           sudo apt-get install -y -qq ffmpeg
       - name: Install runtime dependencies
         run: python -m pip install -r requirements.txt
+      # Optional clipcheck extra (numpy for the CTA logo match). Installed so
+      # the logo tests run in CI instead of skipping; the generator needs none of it.
+      - name: Install clipcheck optional dependencies
+        run: python -m pip install -r requirements-qc.txt
       - name: Run tiktok-slop-factory test suite
         run: python -m pytest tests -q

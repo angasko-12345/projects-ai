@@ -56,12 +56,18 @@ mini-llm/
 │   ├── model.py               # MiniGPT: attention, MLP, blocks
 │   ├── dataset.py             # memmap dataset, x=tokens[:-1] y=tokens[1:]
 │   ├── train.py               # AdamW + warmup/cosine, eval, checkpoints
-│   └── generate.py            # autoregressive sampling (temperature, top-k)
+│   ├── generate.py            # autoregressive sampling (temperature, top-k)
+│   ├── evaluate.py            # val bits-per-byte + fixed seeded sample sheet
+│   └── export_gguf.py         # checkpoint -> GGUF for llama.cpp (optional `gguf` dep)
+├── scripts/                   # gguf_demo.{ps1,sh}: train -> export -> llama-server;
+│                              # llama_parity.py: compare against a real llama-server
 ├── tests/                     # test_model, test_pipeline, test_prepare_streaming,
 │                              # test_throughput, test_tokenizer
 ├── prepare_data.py            # tokenizer training + streaming encode/split to .bin
-├── docs/                      # experiment records (e.g. EXPERIMENT-tinystories.md)
+├── kaggle/                    # train_tinystories.ipynb + run_recipe.py (T4 baseline)
+├── docs/                      # experiment records (EXPERIMENT-tinystories.md, RESULTS.md)
 ├── requirements.txt
+├── requirements-gguf.txt      # optional: `gguf`, only for export_gguf.py
 └── README.md
 ```
 
@@ -178,7 +184,7 @@ expensive run to a free cloud GPU:
 ```bash
 pip install -r requirements.txt
 python prepare_data.py                    # your corpus, same as locally
-python -m src.train --device cuda --max-steps 10000
+python -m src.train --device cuda --amp fp16 --max-steps 10000   # T4: fp16, not bf16
 ```
 
 Run everything from the project root: `train_bin`, `val_bin`,
@@ -189,6 +195,77 @@ also records `data_provenance`, the sha256 digests of the train, val and
 tokenizer files it was trained on. When training runs on CUDA, the per-GPU RNG
 state is saved under `rng_state["cuda"]` and restored on resume; checkpoints
 without that key (all older ones) load unchanged.
+
+### Mixed precision (`--amp`)
+
+`--amp {off,fp16,bf16}` (default `off`) runs the forward pass and loss under
+`torch.autocast`. Weights, optimizer state and checkpoints stay fp32 in every
+mode.
+
+- `off`: plain fp32, the exact code path from before the flag existed (a test
+  pins bit-identical weights against a hand-written fp32 loop).
+- `fp16`: CUDA only. Adds a `GradScaler`; gradients are unscaled before
+  clipping, so `--grad-clip` means the same thing, and updates with inf/nan
+  gradients are skipped (the count is printed at the end). The scaler state
+  is saved in every checkpoint as `scaler_state` and restored on `--resume`.
+  **A Kaggle/Colab T4 has no bf16, so use `--device cuda --amp fp16` there.**
+- `bf16`: no scaler needed. Runs on CPU, or on a GPU with native bf16
+  (Ampere and newer); a GPU without it is refused instead of being emulated.
+
+`--amp fp16` without CUDA fails before any work. A resume keeps the precision
+the checkpoint was trained in: omit `--amp` (or pass the same value) to
+continue; a different value is refused, so a loss scale is never silently
+dropped or invented. Checkpoints written before `--amp` existed read as `off`.
+`--amp` works with `--grad-accum-steps` and `--loss-chunk-size`.
+
+### Kaggle T4 baseline (`kaggle/train_tinystories.ipynb`)
+
+A fixed, reproducible recipe on a free Kaggle GPU: full TinyStories, vocab
+8192, d384/L6, context 512, `--amp fp16`, 196,608,000 tokens, two seeds,
+validation bits per byte as the headline number. The notebook only calls
+`kaggle/run_recipe.py`, which also runs from a shell
+(`python kaggle/run_recipe.py --stage smoke|full|export|summary|all`). Results
+go in [`docs/RESULTS.md`](docs/RESULTS.md); its fields stay blank until a run
+fills them.
+
+How to run it on Kaggle:
+
+1. kaggle.com → **Create → New Notebook → File → Import Notebook**, and import
+   `small-projects/mini-llm/kaggle/train_tinystories.ipynb` from this repo
+   (GitHub URL or uploaded file).
+2. Right panel → **Session options**: **Accelerator: GPU T4 x2** (the recipe
+   uses one GPU) and **Internet: On** (it downloads the 1.9 GB corpus and the
+   code). Phone verification on the Kaggle account is needed for both.
+3. In the first code cell, set `REPO_REF` (`main` once the PRs are merged,
+   otherwise the branch name). Optional first check: set `RUN_FULL = False`
+   and **Run All** interactively; the smoke cell prints tokens/sec and the
+   projected hours for the full run.
+4. For the full run: `RUN_FULL = True`, then **Save Version → Save & Run All
+   (Commit)**. It keeps running with the browser closed.
+5. When it finishes, open the version's **Output** tab and download
+   `minillm-t4/results.md`, `run.json` and (optionally) `gguf/model-q8_0.gguf`.
+
+Time and quota, honestly stated:
+
+- Not yet measured on a T4. The smoke cell measures it; the 2026-10-25 plan's
+  rough estimate was 1–2 h per epoch-scale run at 14M params, and this budget is
+  ~0.4 epoch per seed. Data download + tokenizer training + encoding is extra
+  and also unmeasured.
+- Kaggle's GPU quota is about 30 h/week ("or sometimes higher depending on
+  demand", Kaggle docs) and a session runs at most 12 h. If the smoke cell says
+  both seeds will not fit one session, run one seed per saved version
+  (`ONLY_SEED = 1337`, then `ONLY_SEED = 4242`); each version re-prepares the
+  data, and the tokenizer and `.bin` digests in `run.json` show it was the same
+  data (prep was byte-identical across two runs on a 2 MB slice; not checked at
+  full scale). Within one session, re-running a cell skips finished work and an
+  unfinished seed resumes from its newest checkpoint; a new session starts
+  clean.
+- A forum post claims the P100 option was retired on 2026-09-15, leaving T4 x2.
+  That is **unverified**; check the Accelerator menu.
+
+The GGUF export cell needs `src/export_gguf.py` (the GGUF export PR). On a
+checkout without it the cell prints why it skipped and everything else is
+unaffected; the Q8_0 step downloads the pinned llama.cpp `b11874` CPU build.
 
 ### Window stride
 
@@ -286,6 +363,37 @@ carries `checkpoint_metadata`. Because the paths are verified, a bare
 `--resume` needs no data flags. Generation applies the same check to
 `--tokenizer`.
 
+## Evaluation: bits per byte
+
+Validation loss per token depends on the tokenizer (a bigger vocabulary packs
+more bytes into each token), so it cannot compare runs with different vocab
+sizes. Every eval during training therefore also logs `val_bpb`, and every
+checkpoint stores it next to `val_loss`:
+
+```
+bpb = total target NLL (nats) / (ln 2 * UTF-8 bytes of those targets)
+```
+
+The bytes are counted from the exact target ids that were scored, using a
+per-id byte-length table built from the byte-level vocabulary. Special tokens
+(`<bos>`, `<eos>`, ...) count 0 bytes but their NLL is still counted, so the
+model is charged for predicting story boundaries. (nanochat also drops 0-byte
+targets from the NLL, so its bpb is close to, not identical with, this one.)
+
+To score a checkpoint on its whole val set and print a fixed, seeded sample
+sheet (5 prompts, greedy plus T=0.8 / top-k 40), so two runs can be compared:
+
+```bash
+python -m src.evaluate --checkpoint checkpoints/final.pt --samples --json-out eval.json
+```
+
+By default it scores non-overlapping windows (`--stride` = context length), so
+each val token counts once; training-time evals use stride 1 over
+`--eval-batches` batches, and `--stride 1 --batches <eval_batches>` reproduces
+the number a checkpoint recorded exactly. The val `.bin` and tokenizer default
+to the ones the checkpoint recorded, and the tokenizer is checked against its
+digest.
+
 ## Generation
 
 ```bash
@@ -301,6 +409,26 @@ checked against the digest the checkpoint recorded: a `--tokenizer` that is not
 the one the run used is refused instead of producing garbage. Pass `--seed N`
 for reproducible sampling (same checkpoint + prompt + seed + settings ⇒ same
 text); without it, each run samples differently.
+
+## Run it in llama.cpp (GGUF export)
+
+`src/export_gguf.py` writes a checkpoint as a GGUF file that llama.cpp loads as
+its `gpt2` architecture, so your model runs in `llama-server`, `llama-cli` or LM
+Studio. It needs the optional `gguf` package (`pip install -r requirements-gguf.txt`).
+
+```bash
+python -m src.export_gguf --checkpoint checkpoints/final.pt --out model-f32.gguf   # --dtype f16 for half size
+llama-server -m model-f32.gguf -c 512 --port 9931
+curl -s http://127.0.0.1:9931/v1/completions -H "Content-Type: application/json" \
+  -d '{"prompt": "Once upon a time", "max_tokens": 40}'
+```
+
+`scripts/gguf_demo.ps1` (or `.sh`) does the whole train → export → serve → query
+loop on the shipped sample, and `scripts/llama_parity.py` checks that llama.cpp
+gives the same next-token probabilities as mini-llm. The tokenizer is verified
+against the checkpoint's recorded digest, as in `generate.py`. Details, the tensor
+mapping, quantization notes and the tokenizer caveat for pre-fix tokenizers:
+[docs/GGUF-llama-server.md](docs/GGUF-llama-server.md).
 
 ## Testing
 
@@ -326,6 +454,14 @@ agreement between the shipped corpus, tokenizer and `meta.json`, and
 `TestDataProvenance` — non-default tokenizer/train/val paths, matching resume
 (including a relocated-but-identical artifact tree), and refusal on
 tokenizer/data/val mismatch.
+
+`tests/test_export_gguf.py` covers the GGUF export: tensor names, shapes,
+dtypes and values read back with gguf-py, tokenizer metadata, and a numpy
+re-implementation of llama.cpp's gpt2 graph run on the GGUF tensors alone,
+compared with MiniGPT's logits. Its gguf-dependent tests skip when `gguf` is not
+installed (CI installs it and sets `MINI_LLM_REQUIRE_GGUF=1`, so there they
+fail instead). `TestLlamaCppParity` runs against a real `llama-tokenize` and
+`llama-server` only when `LLAMA_CPP_DIR` points at a llama.cpp build.
 
 ## Limitations
 

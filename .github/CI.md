@@ -13,11 +13,11 @@ from that product's directory. There is no repository-wide test command.
 |---|---|---|---|
 | `agentops.yml` | `agentops/` | `python -m unittest discover -s tests`, then `python acceptance_test.py` from the repository root (the Issue #4 end-to-end scenarios) | none (stdlib only) |
 | `universal-game-agent.yml` | `universal-game-agent/` | `python -m unittest discover -s tests` (two jobs: `tests` without ale-py, where every ALE test skips; `tests-atari` with the optional `requirements-atari.txt`, where they run) | `pip install -r requirements.txt` (+ `-r requirements-atari.txt` in `tests-atari`); no Pillow in either |
-| `mini-llm.yml` | `small-projects/mini-llm/` | `python -m unittest discover -s tests` | `pip install -r requirements.txt` |
+| `mini-llm.yml` | `small-projects/mini-llm/` | `python -m unittest discover -s tests` (with `MINI_LLM_REQUIRE_GGUF=1`) | `pip install -r requirements.txt`, then `pip install -r requirements-gguf.txt` (the optional `gguf` package, so the GGUF export tests run instead of skipping) |
 | `ai-token-tracker.yml` | `ai-token-tracker/` | `python -m unittest discover -s tests -v` | none (stdlib only) |
 | `privacy-audit.yml` | `small-projects/privacy_audit_tool/` | `python -m unittest discover -s tests` | none (stdlib only; `maigret` is optional, online-scan-only, and deliberately not installed) |
 | `qr-generator.yml` | `qr-generator/` | `npm run typecheck`, `npm run lint`, `npm test` | `npm ci` (installs from the lockfile); Node 24 |
-| `tiktok-slop-factory.yml` | `tiktok-slop-factory/` | `python -m pytest tests -q` (pytest, not unittest) | `pip install -r requirements.txt`; `ffmpeg` apt-installed; ~10-minute suite; no key, see below |
+| `tiktok-slop-factory.yml` | `tiktok-slop-factory/` | `python -m pytest tests -q` (pytest, not unittest) | `pip install -r requirements.txt` and the optional `requirements-qc.txt` (numpy, so clipcheck's logo tests run instead of skipping); `ffmpeg` apt-installed; ~10-minute suite; no key, see below |
 | `evidence.yml` | repository root | `python tools/evidence/check.py` | none (stdlib only); needs full history |
 
 All jobs run on `ubuntu-latest` on CPU. The four measured Python products use
@@ -124,6 +124,10 @@ three suites: those numbers would be a fifth place a count could live.
   the `_json_request` seam (2026-10-22), so a full keyless run is measured by
   `tiktok-slop-factory.yml` itself.
 - No GPU training (mini-llm real-corpus runs, UGA training): CPU only.
+- No llama.cpp runtime for mini-llm: `TestLlamaCppParity` (real `llama-tokenize`
+  and `llama-server` against the exported GGUF) runs only when `LLAMA_CPP_DIR`
+  is set, so it is skipped in CI. CI does run the export, the GGUF read-back
+  and the numpy re-implementation of llama.cpp's gpt2 graph from the GGUF.
 - No live external-game runs (UGA Windows path with real window capture and
   keyboard input). External-game tests in CI use fakes and the `synthetic`
   capture backend; they need no display.

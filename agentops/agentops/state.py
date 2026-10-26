@@ -7,6 +7,7 @@ import sqlite3
 import tempfile
 import threading
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -208,6 +209,7 @@ class StateStore:
         self._migrate_artifacts()
         self._migrate_worktree_refs()
         self._migrate_hot_path_indexes()
+        self._migrate_agent_cooldowns()
         self.connection.commit()
 
     def _migrate_agent_runs(self) -> None:
@@ -1969,6 +1971,79 @@ class StateStore:
                 "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
                 (8, utc_now()),
             )
+
+    def _migrate_agent_cooldowns(self) -> None:
+        """v9: per-agent usage-limit cooldowns (opt-in ``usage_limits``).
+
+        One row per agent; a later limit hit replaces the row.  Rows are only
+        written when the usage_limits config is enabled.
+        """
+        self.connection.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS agent_cooldowns (
+                agent TEXT PRIMARY KEY,
+                until_epoch REAL NOT NULL,
+                until_at TEXT NOT NULL,
+                reason TEXT,
+                failure_id TEXT,
+                workflow_id TEXT,
+                task_id TEXT,
+                created_at TEXT NOT NULL
+            );
+            """
+        )
+        migrated = self.connection.execute(
+            "SELECT 1 FROM schema_migrations WHERE version = 9"
+        ).fetchone()
+        if migrated is None:
+            self.connection.execute(
+                "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+                (9, utc_now()),
+            )
+
+    def set_agent_cooldown(
+        self,
+        agent: str,
+        until_epoch: float,
+        reason: str | None = None,
+        *,
+        failure_id: str | None = None,
+        workflow_id: str | None = None,
+        task_id: str | None = None,
+    ) -> None:
+        """Record that ``agent`` must not be routed to before ``until_epoch``."""
+        until_at = datetime.fromtimestamp(float(until_epoch), tz=timezone.utc).isoformat()
+        with self._lock:
+            self.connection.execute(
+                """INSERT OR REPLACE INTO agent_cooldowns (
+                    agent, until_epoch, until_at, reason, failure_id, workflow_id, task_id, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (str(agent), float(until_epoch), until_at, reason, failure_id,
+                 workflow_id, task_id, utc_now()),
+            )
+            self.connection.commit()
+
+    def active_agent_cooldowns(self, now_epoch: float) -> dict[str, dict[str, object]]:
+        """Cooldowns still in force at ``now_epoch``, keyed by agent."""
+        with self._lock:
+            rows = self.connection.execute(
+                "SELECT agent, until_epoch, until_at, reason FROM agent_cooldowns "
+                "WHERE until_epoch > ? ORDER BY agent",
+                (float(now_epoch),),
+            ).fetchall()
+        return {
+            row["agent"]: {
+                "until_epoch": float(row["until_epoch"]),
+                "until_at": row["until_at"],
+                "reason": row["reason"],
+            }
+            for row in rows
+        }
+
+    def clear_agent_cooldown(self, agent: str) -> None:
+        with self._lock:
+            self.connection.execute("DELETE FROM agent_cooldowns WHERE agent = ?", (str(agent),))
+            self.connection.commit()
 
     def record_worktree_ref(self, ref: WorktreeRef) -> WorktreeRef:
         """Persist one worktree provenance record (Phase 3)."""

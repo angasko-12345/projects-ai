@@ -58,7 +58,7 @@ class StateIndexMigrationTests(unittest.TestCase):
                     "SELECT version FROM schema_migrations ORDER BY version"
                 ).fetchall()
             ]
-            self.assertEqual(versions, list(range(1, 9)))
+            self.assertEqual(versions, list(range(1, 10)))
             self.assertIn(
                 "USING INDEX idx_tasks_workflow_created",
                 " ".join(
@@ -93,7 +93,7 @@ class StateIndexMigrationTests(unittest.TestCase):
             state.close()
 
     def test_upgrade_from_every_supported_version_preserves_query_results(self):
-        for version in range(8):
+        for version in range(9):
             with self.subTest(version=version), tempfile.TemporaryDirectory() as directory:
                 database = str(Path(directory) / "state.sqlite")
                 state = StateStore(database)
@@ -120,7 +120,7 @@ class StateIndexMigrationTests(unittest.TestCase):
                             "SELECT version FROM schema_migrations ORDER BY version"
                         ).fetchall()
                     ]
-                    self.assertEqual(versions, list(range(1, 9)))
+                    self.assertEqual(versions, list(range(1, 10)))
                 finally:
                     upgraded.close()
 

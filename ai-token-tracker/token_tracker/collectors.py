@@ -604,18 +604,83 @@ def collect_omp(path: Path) -> list[UsageEvent]:
 
 
 def find_codex() -> Path | None:
+    """Codex rollout root: the live ``sessions`` dir, else ``archived_sessions``.
+
+    ``collect_codex`` also scans the sibling of whichever one is returned, so
+    a home with only archived sessions is still found and collected.
+    """
     env = os.environ.get("CODEX_SESSIONS")
     return _first_existing(
         ([Path(env)] if env else [])
         + [
             _user_home() / ".codex" / "sessions",
+            _user_home() / ".codex" / "archived_sessions",
             _data_dir_candidate("codex", "home", "sessions"),
+            _data_dir_candidate("codex", "home", "archived_sessions"),
         ]
     )
 
 
+_CODEX_SIBLINGS = {"sessions": "archived_sessions", "archived_sessions": "sessions"}
+
+
+def _codex_rollout_files(path: Path) -> list[Path]:
+    """Rollout files under ``path`` and its live/archived sibling, one per name.
+
+    Codex archives a session by moving its rollout from ``sessions/YYYY/MM/DD``
+    to the flat ``archived_sessions`` dir under the same file name. If a copy
+    sits in both places (an interrupted move, a restored backup) the live copy
+    wins, so one session is never collected twice.
+    """
+    roots = [path]
+    sibling = _CODEX_SIBLINGS.get(path.name)
+    if sibling:
+        roots.append(path.parent / sibling)
+    # live dir first so it wins the name tie-break
+    roots.sort(key=lambda r: r.name != "sessions")
+    chosen: dict[str, Path] = {}
+    for root in roots:
+        try:
+            if not root.is_dir():
+                continue
+            found = sorted(root.rglob("rollout-*.jsonl"))
+        except OSError:
+            continue
+        for file in found:
+            chosen.setdefault(file.name, file)
+    return [chosen[name] for name in sorted(chosen)]
+
+
+def _codex_usage_tuple(usage: object) -> tuple[int, int, int, int, int] | None:
+    if not isinstance(usage, dict):
+        return None
+    try:
+        return (
+            int(usage.get("input_tokens") or 0),
+            int(usage.get("cached_input_tokens") or 0),
+            int(usage.get("cache_write_input_tokens") or 0),
+            int(usage.get("output_tokens") or 0),
+            int(usage.get("reasoning_output_tokens") or 0),
+        )
+    except (TypeError, ValueError):
+        return None
+
+
 def collect_codex(path: Path) -> list[UsageEvent]:
-    """Codex rollout logs: token_usage_record rows carry per-response usage.
+    """Codex rollout logs, live and archived.
+
+    Per rollout file, exactly one usage record type is read:
+
+    * ``token_usage_record`` rows (newer CLIs; carry ``response_id``) when the
+      file has any; newer CLIs also write ``event_msg``/``token_count`` for the
+      same responses, so those are ignored to avoid counting every response
+      twice;
+    * otherwise ``event_msg`` rows with ``payload.type == "token_count"``
+      (older CLIs), using ``info.last_token_usage``, or the delta of
+      ``info.total_token_usage`` against the previous one in the file when
+      ``last_token_usage`` is absent. A token_count whose cumulative total did
+      not move is a repeat of the previous one and is skipped. These events
+      have no response id and rely on the content-addressed identity.
 
     usage.input_tokens includes cached input and output_tokens includes
     reasoning output; both are split so the tracker invariant holds
@@ -623,15 +688,13 @@ def collect_codex(path: Path) -> list[UsageEvent]:
     Model comes from the preceding turn_context; provider from session_meta.
     """
     events: list[UsageEvent] = []
-    for file in sorted(path.rglob("rollout-*.jsonl")):
-        cwd: str | None = None
-        model: str | None = None
-        provider = "openai"
+    for file in _codex_rollout_files(path):
         try:
-            lines = file.read_text(encoding="utf-8", errors="replace").splitlines()
+            text = file.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        for line in lines:
+        objs: list[dict] = []
+        for line in text.splitlines():
             line = line.strip()
             if not line:
                 continue
@@ -639,52 +702,93 @@ def collect_codex(path: Path) -> list[UsageEvent]:
                 obj = json.loads(line)
             except ValueError:
                 continue
-            if not isinstance(obj, dict):
-                continue
+            if isinstance(obj, dict):
+                objs.append(obj)
+        use_records = any(o.get("type") == "token_usage_record" for o in objs)
+
+        cwd: str | None = None
+        model: str | None = None
+        provider = "openai"
+        session_id: str | None = None
+        prev_total: tuple[int, int, int, int, int] | None = None
+        for obj in objs:
             kind = obj.get("type")
             payload = obj.get("payload")
             if not isinstance(payload, dict):
                 payload = {}
+            usage_t: tuple[int, int, int, int, int] | None = None
+            request_id = None
+            meta: dict = {}
             if kind == "session_meta":
                 cwd = payload.get("cwd") or cwd
                 provider = payload.get("model_provider") or provider
-            elif kind == "turn_context":
+                session_id = payload.get("session_id") or payload.get("id") or session_id
+                continue
+            if kind == "turn_context":
                 model = payload.get("model") or model
-            elif kind == "token_usage_record":
+                continue
+            if kind == "token_usage_record" and use_records:
                 usage = payload.get("usage")
-                if not isinstance(usage, dict):
+                usage_t = _codex_usage_tuple(usage)
+                if usage_t is None:
                     continue
-                input_total = int(usage.get("input_tokens") or 0)
-                cache_read = int(usage.get("cached_input_tokens") or 0)
-                cache_write = int(usage.get("cache_write_input_tokens") or 0)
-                output_total = int(usage.get("output_tokens") or 0)
-                reasoning = int(usage.get("reasoning_output_tokens") or 0)
-                try:
-                    events.append(
-                        normalize_event(
-                            timestamp=obj.get("timestamp"),
-                            provider=provider,
-                            agent=None,
-                            tool="Codex",
-                            model=model,
-                            project=cwd,
-                            input_tokens=max(input_total - cache_read - cache_write, 0),
-                            output_tokens=max(output_total - reasoning, 0),
-                            cache_read_tokens=cache_read,
-                            cache_write_tokens=cache_write,
-                            reasoning_tokens=reasoning,
-                            exact=True,
-                            source="codex",
-                            request_id=payload.get("response_id"),
-                            raw_metadata={
-                                "session_id": payload.get("session_id"),
-                                "turn_id": payload.get("turn_id"),
-                                "reported_total": usage.get("total_tokens"),
-                            },
-                        )
+                request_id = payload.get("response_id")
+                meta = {
+                    "session_id": payload.get("session_id"),
+                    "turn_id": payload.get("turn_id"),
+                    "reported_total": usage.get("total_tokens"),
+                }
+            elif (
+                kind == "event_msg"
+                and not use_records
+                and payload.get("type") == "token_count"
+            ):
+                info = payload.get("info")
+                if not isinstance(info, dict):
+                    continue  # rate-limit-only snapshot, no usage
+                total_t = _codex_usage_tuple(info.get("total_token_usage"))
+                last = info.get("last_token_usage")
+                if total_t is not None and total_t == prev_total:
+                    continue  # repeated snapshot of the same response
+                usage_t = _codex_usage_tuple(last)
+                if usage_t is None and total_t is not None:
+                    base = prev_total or (0, 0, 0, 0, 0)
+                    usage_t = tuple(max(a - b, 0) for a, b in zip(total_t, base, strict=True))  # type: ignore[assignment]
+                if total_t is not None:
+                    prev_total = total_t
+                if usage_t is None or not any(usage_t):
+                    continue
+                reported = last.get("total_tokens") if isinstance(last, dict) else None
+                meta = {
+                    "session_id": session_id,
+                    "record": "token_count",
+                    "reported_total": reported,
+                }
+            else:
+                continue
+            input_total, cache_read, cache_write, output_total, reasoning = usage_t
+            try:
+                events.append(
+                    normalize_event(
+                        timestamp=obj.get("timestamp"),
+                        provider=provider,
+                        agent=None,
+                        tool="Codex",
+                        model=model,
+                        project=cwd,
+                        input_tokens=max(input_total - cache_read - cache_write, 0),
+                        output_tokens=max(output_total - reasoning, 0),
+                        cache_read_tokens=cache_read,
+                        cache_write_tokens=cache_write,
+                        reasoning_tokens=reasoning,
+                        exact=True,
+                        source="codex",
+                        request_id=request_id,
+                        raw_metadata=meta,
                     )
-                except EventValidationError:
-                    continue
+                )
+            except EventValidationError:
+                continue
     return events
 
 
