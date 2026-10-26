@@ -12,3 +12,4 @@ data/tinystories/
 data/raw/TinyStories-train.txt
 data/raw/tinystories-small.txt
 data/processed/*.bin
+*.gguf
