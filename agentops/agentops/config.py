@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -329,7 +331,8 @@ def load_config(path: str | Path | None = None) -> AppConfig:
     )
     # Missing key means off: a config written before this option existed must
     # not start failing every spawn on Linux hosts without systemd --user
-    # (containers, WSL, CI).  The bundled agents.yaml opts in explicitly.
+    # (containers, WSL, CI).  The bundled agents.yaml leaves it off (U2);
+    # examples/hacir-fleet.yaml opts in explicitly.
     systemd_run_enabled = runtime.get("systemd_run_enabled", False)
     if not isinstance(systemd_run_enabled, bool):
         raise ValueError("runtime.systemd_run_enabled must be a boolean.")
@@ -370,3 +373,90 @@ def load_config(path: str | Path | None = None) -> AppConfig:
                      float(backoff_base), float(backoff_max), float(backoff_factor),
                      routing_enabled, systemd_run_enabled,
                      security_review, max_review_rounds)
+
+
+# --- Config precedence (upgrade U2) ---------------------------------------
+#
+# --config  >  <repo>/.agentops/config.yaml  >  user config  >  bundled.
+#
+# The repo config sits under ``.agentops/``, which AgentOps already keeps out
+# of Git (``.git/info/exclude``), so ``agentops init`` never dirties the base
+# worktree the merge gate checks.  The user config is the place for a personal
+# agent fleet (see ``examples/hacir-fleet.yaml``).
+
+REPO_CONFIG_RELATIVE = Path(".agentops") / "config.yaml"
+
+
+@dataclass(frozen=True)
+class ConfigSource:
+    """Which configuration file wins, and why (``path`` None means bundled)."""
+
+    path: Path | None
+    source: str  # "flag" | "repo" | "user" | "bundled"
+    repository_root: Path | None = None
+
+    def describe(self) -> str:
+        if self.path is None:
+            return "bundled defaults (no --config, repo config, or user config found)"
+        labels = {"flag": "--config", "repo": "repository config", "user": "user config"}
+        return f"{labels.get(self.source, self.source)}: {self.path}"
+
+
+def find_repository_root(start: str | Path) -> Path | None:
+    """Nearest ancestor of ``start`` holding a ``.git`` entry (dir or worktree file).
+
+    Pure filesystem walk, no subprocess: config resolution must work before Git
+    is known to be installed (``doctor`` reports that separately).
+    """
+    try:
+        current = Path(start).resolve()
+    except OSError:
+        return None
+    for candidate in (current, *current.parents):
+        if (candidate / ".git").exists():
+            return candidate
+    return None
+
+
+def user_config_path(
+    platform: str | None = None,
+    environ: dict[str, str] | None = None,
+    home: Path | None = None,
+) -> Path | None:
+    """Per-user config location: %APPDATA%\\AgentOps\\agents.yaml on Windows,
+    $XDG_CONFIG_HOME/agentops/agents.yaml (default ~/.config) elsewhere."""
+    platform = platform or sys.platform
+    environ = dict(os.environ) if environ is None else environ
+    if platform == "win32":
+        appdata = environ.get("APPDATA")
+        return Path(appdata) / "AgentOps" / "agents.yaml" if appdata else None
+    xdg = environ.get("XDG_CONFIG_HOME")
+    if xdg:
+        return Path(xdg) / "agentops" / "agents.yaml"
+    try:
+        base = home if home is not None else Path.home()
+    except (RuntimeError, KeyError):
+        return None
+    return base / ".config" / "agentops" / "agents.yaml"
+
+
+def resolve_config_source(
+    explicit: str | Path | None,
+    cwd: str | Path | None = None,
+    *,
+    platform: str | None = None,
+    environ: dict[str, str] | None = None,
+    home: Path | None = None,
+) -> ConfigSource:
+    """Apply the precedence rule; never reads or validates the chosen file."""
+    root = find_repository_root(cwd if cwd is not None else Path.cwd())
+    if explicit:
+        return ConfigSource(Path(explicit), "flag", root)
+    if root is not None:
+        repo_config = root / REPO_CONFIG_RELATIVE
+        if repo_config.is_file():
+            return ConfigSource(repo_config, "repo", root)
+    user = user_config_path(platform, environ, home)
+    if user is not None and user.is_file():
+        return ConfigSource(user, "user", root)
+    return ConfigSource(None, "bundled", root)

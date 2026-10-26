@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-10-25T21:38:48+00:00",
-  "commit": "75613b57078809c0596b97fc972565e1eb470ba5",
+  "generated_at": "2026-10-26T00:43:27+00:00",
+  "commit": "3244435371621045ea75178e069b8b1229e7fae0",
   "python": "3.12.15",
   "platform": "Linux 6.12.110+ (aarch64)",
-  "measured_in": "a clean clone of 75613b570788",
+  "measured_in": "a clean clone of 324443537162",
   "clean_checkout": true,
   "command_note": "Every command runs from its own product directory with the interpreter that ran this script. There is no repository-wide test command and these products share no dependencies.",
   "excluded": {
@@ -14,7 +14,7 @@
     {
       "product": "agentops",
       "directory": "agentops",
-      "commit": "c3ae22494e8ea5dc3d1bf24669116ad62db5f148",
+      "commit": "3244435371621045ea75178e069b8b1229e7fae0",
       "command": [
         "/usr/local/bin/python",
         "-m",
@@ -24,13 +24,13 @@
         "tests"
       ],
       "dirty_paths": [],
-      "total": 982,
-      "duration_seconds": 39.22,
+      "total": 1011,
+      "duration_seconds": 38.134,
       "skipped": 82,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 982 tests in 39.220s",
+        "Ran 1011 tests in 38.134s",
         "OK (skipped=82)"
       ],
       "result": "pass"
@@ -86,9 +86,9 @@
     {
       "product": "ai-token-tracker",
       "directory": "ai-token-tracker",
-      "commit": "75613b57078809c0596b97fc972565e1eb470ba5",
+      "commit": "88b3095927f5d0a6400eddf17b580e4f6130ab46",
       "command": [
-        "/usr/local/bin/python3",
+        "/usr/local/bin/python",
         "-m",
         "unittest",
         "discover",
@@ -96,13 +96,13 @@
         "tests"
       ],
       "dirty_paths": [],
-      "total": 128,
-      "duration_seconds": 6.831,
+      "total": 82,
+      "duration_seconds": 5.032,
       "skipped": 8,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 128 tests in 6.831s",
+        "Ran 82 tests in 5.032s",
         "OK (skipped=8)"
       ],
       "result": "pass"

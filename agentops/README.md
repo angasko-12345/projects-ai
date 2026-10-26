@@ -3,6 +3,9 @@
 AgentOps is a local-first orchestrator for installed coding-agent CLIs. It detects tools at runtime, persists workflows in SQLite, uses isolated Git worktrees, and verifies changes with allowlisted checks. No hosted API keys are required.
 
 ```powershell
+cd C:\code\my-repo
+python -m agentops init      # detect the stack, write .agentops\config.yaml
+python -m agentops doctor    # check agents, prompt transport, config, verification, git
 python -m agentops agents
 python -m agentops gui
 python -m agentops task "Add a small feature to the current project"
@@ -12,6 +15,8 @@ python -m agentops logs
 
 ## Commands
 
+- `agentops init [--cwd <repo>] [--force] [--print]` detects the repository's stack from evidence (pytest or unittest layout, `package.json` scripts with npm/pnpm/yarn/bun, `go.mod`, `Cargo.toml`) and writes `<repo>/.agentops/config.yaml` with verification checks that run in that repository. Installed agent CLIs are moved to the front of each role preference, and review prefers a different CLI than implementation when two are installed. It never overwrites an existing config without `--force`. When nothing is detectable it writes a `TODO-configure-verification` check that fails if run and that `doctor` reports as blocking, never a vacuous pass. On Windows, npm-style tools are written as `npm.cmd` because checks run without a shell.
+- `agentops doctor [--cwd <repo>] [--json] [--probe]` is read-only. It reports Python and Git, repository state (has a commit, on a branch, clean base), which config won and whether it validates, each agent's resolved path, executable kind (`exe`/`cmd`/`script`) and the prompt transport it will get (or why a `.cmd` shim would be refused), whether implementation and review each have a usable agent, and whether every default verification check is runnable here (spawnable without a shell, `python -m` module importable, unittest start directory and npm script present, no placeholder). `--probe` also runs each agent's version command. Exit code 1 on any blocker; `--json` emits schema `agentops.doctor/v1`.
 - `agentops agents` detects configured local CLIs.
 - `agentops run <agent> "<prompt>"` runs one configured local CLI and saves stdout, stderr, metadata, duration, and exit status.
 - `agentops task "<description>" --cwd <repo>` creates a plan → implementation → verification → review workflow in a Git worktree. A failed verification creates debugging, re-verification, and final-review tasks.
@@ -24,6 +29,10 @@ python -m agentops logs
 - `agentops gui` or `agentops-gui` launches the PySide6 desktop client (requires the `desktop` extra).
 
 ## Configuration
+
+Config precedence: `--config <file>` > `<repo>/.agentops/config.yaml` (written by `agentops init`; `.agentops/` is kept out of Git via `.git/info/exclude`) > user config (`%APPDATA%\AgentOps\agents.yaml` on Windows, `$XDG_CONFIG_HOME/agentops/agents.yaml` or `~/.config/agentops/agents.yaml` elsewhere) > the bundled defaults. `agentops doctor` prints which one won. The desktop client still loads only an explicitly selected file or the bundled defaults.
+
+The bundled defaults are repository-neutral: one required check, `python -m unittest discover -s tests` at the repository root, and `systemd_run_enabled: false`. (Before this change the bundled profile ran AgentOps' own tests from `working_directory: agentops`, so verification could never pass on any other repository.) The previous personal fleet configuration, including the AgentOps self-checks and systemd isolation, is kept verbatim as `examples/hacir-fleet.yaml`; copy it to your user config or pass it with `--config`.
 
 `agents/agents.yaml` includes OpenCode, Codex, Pi, Claude, `fcc-claude`, Copilot, and Antigravity. Unavailable commands are skipped automatically, and role preferences fall back to another compatible installed CLI. An agent may also declare an optional `model` string, which is recorded on its `AgentRun` when available. Optional `display_name`, `priority`, `metadata`, `version_command`, structured-output, cancellation, timeout, and interactive/non-interactive support fields may also be declared. The bundled file is JSON-valid YAML so it works without dependencies; install `agentops[yaml]` for conventional YAML formatting.
 

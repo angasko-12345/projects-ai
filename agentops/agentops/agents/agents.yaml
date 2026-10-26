@@ -201,7 +201,7 @@
                 "default_timeout_seconds": 900,
                 "checks": [
                     {
-                        "name": "agentops-tests",
+                        "name": "tests",
                         "class": "tests",
                         "command": [
                             "python",
@@ -211,23 +211,8 @@
                             "-s",
                             "tests"
                         ],
-                        "working_directory": "agentops",
                         "timeout_seconds": 900,
                         "required": true,
-                        "policy": "sequential"
-                    },
-                    {
-                        "name": "agentops-cli-help",
-                        "class": "custom",
-                        "command": [
-                            "python",
-                            "-m",
-                            "agentops",
-                            "--help"
-                        ],
-                        "working_directory": "agentops",
-                        "timeout_seconds": 60,
-                        "required": false,
                         "policy": "sequential"
                     }
                 ]
@@ -238,7 +223,7 @@
         "max_attempts": 2,
         "concurrency": 1,
         "max_repair_cycles": 1,
-        "systemd_run_enabled": true,
+        "systemd_run_enabled": false,
         "pass_env": {
             "names": [],
             "prefixes": []

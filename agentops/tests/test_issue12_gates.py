@@ -8,6 +8,7 @@ repair loop are production code paths, not mocks.
 import asyncio
 import io
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -68,6 +69,27 @@ def _engine(security_review=False, max_review_rounds=2, max_attempts=1):
     runner = MagicMock()
     verifier = MagicMock()
     return config, state, registry, runner, verifier
+
+
+def _scratch_repo(testcase):
+    """Throwaway git repo for one test, removed on cleanup.
+
+    The engine inspects and may write to its working directory, so these
+    tests must never point it at the developer's own checkout.
+    """
+    directory = Path(tempfile.mkdtemp(prefix="agentops-gate-"))
+    testcase.addCleanup(shutil.rmtree, directory, ignore_errors=True)
+    env = {key: value for key, value in os.environ.items()
+           if not key.startswith("GIT_")}
+    for command in (["git", "init", "-q"],
+                    ["git", "config", "user.email", "gate@agentops.invalid"],
+                    ["git", "config", "user.name", "Gate Test"]):
+        subprocess.run(command, cwd=directory, check=True, env=env)
+    (directory / "base.txt").write_text("base\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=directory, check=True, env=env)
+    subprocess.run(["git", "commit", "-qm", "base"], cwd=directory,
+                   check=True, env=env)
+    return directory
 
 
 def _ok_verifier():
@@ -173,7 +195,7 @@ class ReviewGateTests(unittest.TestCase):
             workflow_id = state.create_workflow("gate test")
             task = state.add_task(Task("Review the change", role, workflow_id,
                                        max_attempts=1))
-            asyncio.run(engine.execute(workflow_id, Path.cwd()))
+            asyncio.run(engine.execute(workflow_id, _scratch_repo(self)))
             return state.get_task(task.id)
         finally:
             state.close()
@@ -227,7 +249,7 @@ class ReviewGateTests(unittest.TestCase):
             workflow_id = state.create_workflow("structured failure")
             task = state.add_task(Task("Do the thing", "implementation",
                                        workflow_id, max_attempts=1))
-            asyncio.run(engine.execute(workflow_id, Path.cwd()))
+            asyncio.run(engine.execute(workflow_id, _scratch_repo(self)))
             self.assertEqual(state.get_task(task.id).status,
                              TaskStatus.FAILED)
         finally:
@@ -245,7 +267,7 @@ class ReviewGateTests(unittest.TestCase):
             workflow_id = state.create_workflow("structured unknown")
             task = state.add_task(Task("Do the thing", "implementation",
                                        workflow_id, max_attempts=1))
-            asyncio.run(engine.execute(workflow_id, Path.cwd()))
+            asyncio.run(engine.execute(workflow_id, _scratch_repo(self)))
             self.assertEqual(state.get_task(task.id).status,
                              TaskStatus.FAILED)
         finally:
@@ -259,7 +281,7 @@ class ReviewGateTests(unittest.TestCase):
             workflow_id = state.create_workflow("verdict event")
             state.add_task(Task("Review the change", "review",
                                        workflow_id, max_attempts=1))
-            asyncio.run(engine.execute(workflow_id, Path.cwd()))
+            asyncio.run(engine.execute(workflow_id, _scratch_repo(self)))
             kinds = [event["kind"] for event in
                      state.list_events(workflow_id)]
             self.assertIn(EventType.REVIEW_COMPLETED.value, kinds)
@@ -286,7 +308,7 @@ class PromptContractTests(unittest.TestCase):
         task = state.add_task(Task("Do the thing", "implementation",
                                    workflow_id, max_attempts=1))
         try:
-            prompt = engine._prompt(task, Path.cwd())
+            prompt = engine._prompt(task, _scratch_repo(self))
         finally:
             state.close()
         self.assertIn('"schema_version": 1', prompt)
@@ -307,7 +329,7 @@ class RepairRoundTests(unittest.TestCase):
                                     _ok_verifier(),
                                     metadata_collector=_evidence_collector())
             result = asyncio.run(
-                engine.run_high_level("Fix the thing", Path.cwd()))
+                engine.run_high_level("Fix the thing", _scratch_repo(self)))
             self.assertTrue(result.ready, result.summary)
             self.assertIn("READY", result.summary)
         finally:
@@ -324,7 +346,7 @@ class RepairRoundTests(unittest.TestCase):
                                     _ok_verifier(),
                                     metadata_collector=_evidence_collector())
             result = asyncio.run(
-                engine.run_high_level("Fix the thing", Path.cwd()))
+                engine.run_high_level("Fix the thing", _scratch_repo(self)))
             self.assertFalse(result.ready)
             self.assertIn("BLOCKED", result.summary)
             self.assertIn("unsafe input", result.summary)
@@ -357,7 +379,7 @@ class RejectionIsNotReRolledTests(unittest.TestCase):
             workflow_id = state.create_workflow("re-roll test")
             task = state.add_task(Task("Review the change", role, workflow_id,
                                        max_attempts=max_attempts))
-            asyncio.run(engine.execute(workflow_id, Path.cwd()))
+            asyncio.run(engine.execute(workflow_id, _scratch_repo(self)))
             return state.get_task(task.id)
         finally:
             state.close()
@@ -396,7 +418,7 @@ class RejectionIsNotReRolledTests(unittest.TestCase):
                                     _ok_verifier(),
                                     metadata_collector=_evidence_collector())
             result = asyncio.run(
-                engine.run_high_level("Fix the thing", Path.cwd()))
+                engine.run_high_level("Fix the thing", _scratch_repo(self)))
             self.assertTrue(result.ready, result.summary)
             first = calls.index("review")
             self.assertIn("debugging", calls[first + 1:],
