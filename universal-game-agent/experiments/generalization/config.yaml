@@ -1,0 +1,42 @@
+# Cross-game generalization experiment (training/generalization.py). Pixels only.
+# Scaled-down pilot budgets for a shared 2-vCPU sandbox; see PLAN.md. Scale every
+# budget at once with `--scale N` instead of editing this file.
+seeds: [0, 1, 2]
+
+env:            # applied identically to every game
+  obs_size: 48  # 48x48 instead of the legacy 84x84: ~2x throughput on this box
+  num_stack: 4
+  skip: 4       # decision period (frames per action); skip 1 did not learn in budget, see RESULTS.md
+  max_steps: 500
+
+model:          # identical for every arm; frame_size must equal env.obs_size
+  in_channels: 4
+  frame_size: 48
+  feature_dim: 256
+  hidden_size: 128
+  num_layers: 1
+
+ppo:            # repo defaults (configs/default.yaml) except num_envs
+  rollout_length: 128
+  minibatch_size: 32
+  update_epochs: 4
+  learning_rate: 0.00025
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  entropy_coef: 0.01
+  value_coef: 0.5
+  max_grad_norm: 0.5
+  num_envs: 3   # multi arm: one slot per training game
+
+budgets:        # env steps; rounded to a multiple of num_envs * rollout_length (384)
+  specialist: 39936   # per game
+  multi: 119808       # = 3 x specialist: same per-game sample count
+  scratch: 30720      # held-out game, from a fresh network
+  finetune: 30720     # held-out game, from the multi checkpoint of the same seed
+  curve_every:
+    scratch: 7680
+    finetune: 7680
+
+eval:
+  episodes: 20  # greedy, seeds 10000 + 1000*seed + i

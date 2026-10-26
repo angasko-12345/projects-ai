@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-10-26T08:50:44+00:00",
-  "commit": "2e446098f18d9275b8379d0ea9c60a3629252704",
+  "generated_at": "2026-10-26T13:44:30+00:00",
+  "commit": "4e3dccc2b75337b4dc4f62bccf5e5591033a2938",
   "python": "3.12.15",
   "platform": "Linux 6.12.110+ (aarch64)",
-  "measured_in": "a clean clone of 2e446098f18d",
+  "measured_in": "a clean clone of 4e3dccc2b753",
   "clean_checkout": true,
   "command_note": "Every command runs from its own product directory with the interpreter that ran this script. There is no repository-wide test command and these products share no dependencies.",
   "excluded": {
@@ -14,9 +14,9 @@
     {
       "product": "agentops",
       "directory": "agentops",
-      "commit": "aa405a86707a9dbd58b950c9960ea622bf51efa7",
+      "commit": "4e3dccc2b75337b4dc4f62bccf5e5591033a2938",
       "command": [
-        "/usr/local/bin/python",
+        "/usr/local/bin/python3",
         "-m",
         "unittest",
         "discover",
@@ -25,12 +25,12 @@
       ],
       "dirty_paths": [],
       "total": 1050,
-      "duration_seconds": 39.388,
+      "duration_seconds": 38.367,
       "skipped": 82,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 1050 tests in 39.388s",
+        "Ran 1050 tests in 38.367s",
         "OK (skipped=82)"
       ],
       "result": "pass"
@@ -38,9 +38,9 @@
     {
       "product": "universal-game-agent",
       "directory": "universal-game-agent",
-      "commit": "eef19f8a50404c6da322e95347e63950644d19a7",
+      "commit": "4e3dccc2b75337b4dc4f62bccf5e5591033a2938",
       "command": [
-        "/workspace/work/w1/ugavenv/bin/python",
+        "/usr/local/bin/python3",
         "-m",
         "unittest",
         "discover",
@@ -48,13 +48,13 @@
         "tests"
       ],
       "dirty_paths": [],
-      "total": 511,
-      "duration_seconds": 88.159,
+      "total": 540,
+      "duration_seconds": 22.104,
       "skipped": 3,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 511 tests in 88.159s",
+        "Ran 540 tests in 22.104s",
         "OK (skipped=3)"
       ],
       "result": "pass"
@@ -62,9 +62,9 @@
     {
       "product": "small-projects/mini-llm",
       "directory": "small-projects/mini-llm",
-      "commit": "2e446098f18d9275b8379d0ea9c60a3629252704",
+      "commit": "4e3dccc2b75337b4dc4f62bccf5e5591033a2938",
       "command": [
-        "/workspace/work/venv/bin/python",
+        "/usr/local/bin/python3",
         "-m",
         "unittest",
         "discover",
@@ -73,22 +73,22 @@
       ],
       "dirty_paths": [],
       "total": 332,
-      "duration_seconds": 37.351,
-      "skipped": 4,
+      "duration_seconds": 34.916,
+      "skipped": 5,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 332 tests in 37.351s",
-        "OK (skipped=4)"
+        "Ran 332 tests in 34.916s",
+        "OK (skipped=5)"
       ],
       "result": "pass"
     },
     {
       "product": "ai-token-tracker",
       "directory": "ai-token-tracker",
-      "commit": "c73620ac66d75dad03e70ac9f9d93e459af908b0",
+      "commit": "4e3dccc2b75337b4dc4f62bccf5e5591033a2938",
       "command": [
-        "/usr/local/bin/python",
+        "/usr/local/bin/python3",
         "-m",
         "unittest",
         "discover",
@@ -97,12 +97,12 @@
       ],
       "dirty_paths": [],
       "total": 128,
-      "duration_seconds": 0.286,
+      "duration_seconds": 0.293,
       "skipped": 8,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 128 tests in 0.286s",
+        "Ran 128 tests in 0.293s",
         "OK (skipped=8)"
       ],
       "result": "pass"

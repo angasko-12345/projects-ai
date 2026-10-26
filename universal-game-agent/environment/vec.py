@@ -46,7 +46,7 @@ from __future__ import annotations
 class SyncVectorEnv:
     """Step N independent environments in lockstep, same process."""
 
-    def __init__(self, factories):
+    def __init__(self, factories, *, check_spaces: bool = False):
         factories = list(factories)
         if not factories:
             raise ValueError("SyncVectorEnv needs at least one environment factory")
@@ -63,6 +63,34 @@ class SyncVectorEnv:
             raise
         self._envs = envs
         self._closed = False
+        if check_spaces:
+            self._check_spaces()
+
+    def _check_spaces(self):
+        """Opt-in guard for heterogeneous (multi-game) slots.
+
+        Different games may share one vector env only when every slot has the
+        same action count and observation shape, because the trainer stacks
+        slots into one batch and one policy head. Off by default, so existing
+        callers keep the unverified homogeneous-factory contract unchanged.
+        """
+        def signature(env):
+            act = getattr(getattr(env, "action_space", None), "n", None)
+            obs = getattr(getattr(env, "observation_space", None), "shape", None)
+            return act, tuple(obs) if obs is not None else None
+
+        first = signature(self._envs[0])
+        for index, env in enumerate(self._envs[1:], start=1):
+            if signature(env) != first:
+                self._closed = True
+                for e in self._envs:
+                    try:
+                        e.close()
+                    except Exception:
+                        pass
+                raise ValueError(
+                    f"slot {index} has (action_n, obs_shape)={signature(env)}, "
+                    f"slot 0 has {first}; multi-game slots must agree")
 
     @property
     def num_envs(self) -> int:

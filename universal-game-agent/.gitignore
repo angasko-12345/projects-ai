@@ -11,6 +11,11 @@ checkpoints/**/*.zip
 checkpoints/**/*.pkl
 experiments/*/
 !experiments/.gitkeep
+# Cross-game generalization evidence is tracked (plan, results, metrics, small GIFs);
+# checkpoints never are -- they live outside the repo (see experiments/generalization/RESULTS.md).
+!experiments/generalization/
+experiments/generalization/**/*.pt
+experiments/generalization/**/*.zip
 logs/*.log
 # OS / editors
 .DS_Store
