@@ -1,0 +1,251 @@
+{
+    "agents": {
+        "opencode": {
+            "command": "opencode",
+            "args": [
+                "run",
+                "{prompt}"
+            ],
+            "roles": [
+                "architecture",
+                "implementation",
+                "debugging",
+                "review"
+            ]
+        },
+        "codex": {
+            "command": "codex",
+            "args": [
+                "exec",
+                "--sandbox",
+                "workspace-write",
+                "{prompt}"
+            ],
+            "roles": [
+                "architecture",
+                "implementation",
+                "debugging",
+                "review"
+            ]
+        },
+        "pi": {
+            "enabled": false,
+            "command": "pi",
+            "args": [
+                "--print",
+                "{prompt}"
+            ],
+            "roles": [
+                "architecture",
+                "implementation",
+                "debugging",
+                "review"
+            ]
+        },
+        "omp": {
+            "command": "omp",
+            "args": [
+                "-p",
+                "{prompt}"
+            ],
+            "roles": [
+                "architecture",
+                "implementation",
+                "debugging",
+                "review"
+            ]
+        },
+        "claude": {
+            "enabled": false,
+            "command": "claude",
+            "args": [
+                "-p",
+                "{prompt}"
+            ],
+            "roles": [
+                "architecture",
+                "implementation",
+                "debugging",
+                "review"
+            ]
+        },
+        "fcc-claude": {
+            "command": "fcc-claude",
+            "args": [
+                "-p",
+                "{prompt}"
+            ],
+            "roles": [
+                "architecture",
+                "implementation",
+                "debugging",
+                "review"
+            ]
+        },
+        "copilot": {
+            "command": "copilot",
+            "args": [
+                "-p",
+                "{prompt}"
+            ],
+            "roles": [
+                "architecture",
+                "implementation",
+                "debugging",
+                "review"
+            ]
+        },
+        "antigravity": {
+            "command": "antigravity",
+            "args": [
+                "{prompt}"
+            ],
+            "roles": [
+                "implementation",
+                "debugging",
+                "review"
+            ]
+        },
+        "kilo": {
+            "command": "kilo",
+            "args": [
+                "run",
+                "{prompt}"
+            ],
+            "roles": [
+                "architecture",
+                "implementation",
+                "debugging",
+                "review"
+            ],
+            "version_command": ["{command}", "-v"]
+        },
+        "hermes-agent": {
+            "command": "hermes-agent",
+            "args": [
+                "--query",
+                "{prompt}"
+            ],
+            "roles": [
+                "architecture",
+                "implementation",
+                "debugging",
+                "review"
+            ],
+            "version_command": ["{command}", "--version"]
+        }
+    },
+    "role_preferences": {
+        "architecture": [
+            "opencode",
+            "omp",
+            "kilo",
+            "hermes-agent",
+            "codex",
+            "claude",
+            "fcc-claude",
+            "pi",
+            "copilot"
+        ],
+        "implementation": [
+            "opencode",
+            "omp",
+            "kilo",
+            "hermes-agent",
+            "codex",
+            "claude",
+            "fcc-claude",
+            "pi",
+            "copilot"
+        ],
+        "debugging": [
+            "opencode",
+            "omp",
+            "kilo",
+            "hermes-agent",
+            "pi",
+            "codex",
+            "claude",
+            "fcc-claude",
+            "copilot"
+        ],
+        "review": [
+            "opencode",
+            "omp",
+            "kilo",
+            "hermes-agent",
+            "codex",
+            "claude",
+            "fcc-claude",
+            "copilot",
+            "pi",
+            "antigravity"
+        ]
+    },
+    "verification": {
+        "commands": [
+            [
+                "python",
+                "-m",
+                "unittest",
+                "discover",
+                "-s",
+                "tests"
+            ]
+        ],
+        "default_profile": "standard",
+        "profiles": {
+            "standard": {
+                "mode": "continue_on_failure",
+                "concurrency": 1,
+                "default_timeout_seconds": 900,
+                "checks": [
+                    {
+                        "name": "agentops-tests",
+                        "class": "tests",
+                        "command": [
+                            "python",
+                            "-m",
+                            "unittest",
+                            "discover",
+                            "-s",
+                            "tests"
+                        ],
+                        "working_directory": "agentops",
+                        "timeout_seconds": 900,
+                        "required": true,
+                        "policy": "sequential"
+                    },
+                    {
+                        "name": "agentops-cli-help",
+                        "class": "custom",
+                        "command": [
+                            "python",
+                            "-m",
+                            "agentops",
+                            "--help"
+                        ],
+                        "working_directory": "agentops",
+                        "timeout_seconds": 60,
+                        "required": false,
+                        "policy": "sequential"
+                    }
+                ]
+            }
+        }
+    },
+    "runtime": {
+        "max_attempts": 2,
+        "concurrency": 1,
+        "max_repair_cycles": 1,
+        "systemd_run_enabled": true,
+        "pass_env": {
+            "names": [],
+            "prefixes": []
+        }
+    }
+    ,"workflows": {
+        "security_review": false,
+        "max_review_rounds": 2
+    }
+}

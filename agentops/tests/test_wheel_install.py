@@ -134,7 +134,8 @@ print('SUCCESS: Config loaded with', len(config.agents), 'agents')
 print('Agents:', ', '.join(sorted(config.agents.keys())))
 assert 'opencode' in config.agents
 assert 'kilo' in config.agents
-assert config.systemd_run_enabled is True
+assert config.systemd_run_enabled is False  # U2: bundled defaults are host-neutral
+import agentops.doctor, agentops.init_config  # U2 modules ship in the wheel
 """
             result = subprocess.run(
                 [str(python_exe), "-c", test_script],
