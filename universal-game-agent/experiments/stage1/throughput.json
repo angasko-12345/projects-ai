@@ -1,0 +1,101 @@
+{
+  "generated_utc": "2026-10-25T22:36:53.155368+00:00",
+  "hardware": {
+    "platform": "Linux-6.12.110+-aarch64-with-glibc2.41",
+    "machine": "aarch64",
+    "processor": "aarch64",
+    "cpu_count": 2,
+    "python": "3.12.15",
+    "torch": "2.14.1+cpu",
+    "torch_threads": 2,
+    "numpy": "2.5.3",
+    "ale_py": "0.12.1",
+    "mem_total": "8136692 kB",
+    "load_average_1_5_15": [
+      2.91,
+      3.46,
+      3.28
+    ]
+  },
+  "game": "pong",
+  "note": "decisions = agent steps (4 emulator frames); random UGA-pad actions; sync = UGA SyncVectorEnv of python AtariGame + PreprocessingWrapper (sequential); ale = ale_py AtariVectorEnv (C++ threads, its own preprocessing)",
+  "env_only": [
+    {
+      "backend": "sync",
+      "num_envs": 1,
+      "decisions": 11135,
+      "seconds": 15.0,
+      "decisions_per_second": 742.3,
+      "frames_per_second": 2969.3
+    },
+    {
+      "backend": "sync",
+      "num_envs": 4,
+      "decisions": 11820,
+      "seconds": 15.0,
+      "decisions_per_second": 787.9,
+      "frames_per_second": 3151.7
+    },
+    {
+      "backend": "sync",
+      "num_envs": 8,
+      "decisions": 10856,
+      "seconds": 15.01,
+      "decisions_per_second": 723.5,
+      "frames_per_second": 2893.9
+    },
+    {
+      "backend": "ale",
+      "num_envs": 1,
+      "decisions": 23263,
+      "seconds": 15.0,
+      "decisions_per_second": 1550.8,
+      "frames_per_second": 6203.4
+    },
+    {
+      "backend": "ale",
+      "num_envs": 4,
+      "decisions": 37224,
+      "seconds": 15.0,
+      "decisions_per_second": 2481.5,
+      "frames_per_second": 9926.2
+    },
+    {
+      "backend": "ale",
+      "num_envs": 8,
+      "decisions": 43160,
+      "seconds": 15.0,
+      "decisions_per_second": 2877.2,
+      "frames_per_second": 11508.7
+    }
+  ],
+  "ppo": [
+    {
+      "num_envs": 1,
+      "backend": "sync",
+      "torch_threads": 2,
+      "updates": 3,
+      "steps": 384,
+      "seconds": 6.4,
+      "steps_per_second": 59.8
+    },
+    {
+      "num_envs": 8,
+      "backend": "sync",
+      "torch_threads": 2,
+      "updates": 3,
+      "steps": 3072,
+      "seconds": 45.1,
+      "steps_per_second": 68.1
+    },
+    {
+      "num_envs": 8,
+      "backend": "ale",
+      "torch_threads": 2,
+      "updates": 3,
+      "steps": 3072,
+      "seconds": 41.4,
+      "steps_per_second": 74.1
+    }
+  ]
+}

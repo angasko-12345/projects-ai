@@ -238,6 +238,13 @@ def _build_eval_model(cfg: dict, make_env, seed: int, checkpoint):
     return ActorCritic(num_actions=num_actions, **cfg.get("model") or {})
 
 
+def _eval_env_factory(make_env_from_config, env_cfg):
+    """Evaluation env factory: Atari evaluates on raw game score (no reward transform)."""
+    if isinstance(env_cfg, dict) and env_cfg.get("type") == "atari":
+        return make_env_from_config(env_cfg, train=False)
+    return make_env_from_config(env_cfg)
+
+
 def _print_eval_report(title: str, rep: dict) -> None:
     actions = rep["action_counts"]
     total = sum(actions.values()) or 1
@@ -272,7 +279,7 @@ def cmd_evaluate(args) -> int:
         return _fail(f"--episodes must be positive, got {args.episodes}")
     seed = args.seed if args.seed is not None else 0
     try:
-        make_env = make_env_from_config(cfg.get("env", {}))
+        make_env = _eval_env_factory(make_env_from_config, cfg.get("env", {}))
     except (ValueError, RuntimeError, OSError) as exc:
         return _fail(f"cannot build environment: {exc}")
     try:
@@ -305,7 +312,7 @@ def cmd_compare(args) -> int:
         return _fail(f"--episodes must be positive, got {args.episodes}")
     seed = args.seed if args.seed is not None else 0
     try:
-        make_env = make_env_from_config(cfg.get("env", {}))
+        make_env = _eval_env_factory(make_env_from_config, cfg.get("env", {}))
     except (ValueError, RuntimeError, OSError) as exc:
         return _fail(f"cannot build environment: {exc}")
     seeds = [seed * 1000 + i for i in range(episodes)]

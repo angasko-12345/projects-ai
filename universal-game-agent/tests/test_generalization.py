@@ -94,5 +94,33 @@ class TestTinyPipeline(unittest.TestCase):
             train_run(_tiny_cfg(), "finetune", 0, Path(tmp), game="volley")
 
 
+@unittest.skipUnless(_HAS_TORCH, "torch not installed")
+class TestChunkedRun(unittest.TestCase):
+    def test_chunk_every_checkpoints_without_changing_training(self):
+        """``budgets.chunk_every`` adds resume points; weights and eval are unchanged."""
+        import torch
+
+        from training.generalization import train_run
+
+        def run(chunk):
+            cfg = _tiny_cfg()
+            if chunk:
+                cfg["budgets"]["chunk_every"] = 48
+            with tempfile.TemporaryDirectory() as tmp:
+                res = train_run(cfg, "multi", 0, Path(tmp))
+                ck = Path(tmp) / "runs" / "multi_multi_s0" / "ckpt" / "ppo_final.pt"
+                state = torch.load(ck, weights_only=True)["model"]
+            return res, state
+
+        plain, w_plain = run(False)
+        chunked, w_chunked = run(True)
+        self.assertEqual(chunked["total_timesteps"], plain["total_timesteps"])
+        self.assertEqual([c["steps"] for c in chunked["curve"]], [96])  # no eval at chunk stops
+        for k in w_plain:
+            self.assertTrue(torch.equal(w_plain[k], w_chunked[k]), k)
+        self.assertEqual(chunked["final_eval"]["pong"]["episode_rewards"],
+                         plain["final_eval"]["pong"]["episode_rewards"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -257,6 +257,35 @@ Pure numpy, no window, no SendInput. Read `experiments/generalization/PLAN.md` a
 - `env.skip: 4` in `experiments/generalization/config.yaml` is a measured decision: skip 1
   did not learn within the pilot budget (`experiments/generalization/diagnostics.json`).
 
+## Real games: ALE / Atari (Stage 1, 2026-10-26)
+
+Optional extra, no window, no SendInput. Read `experiments/stage1/PLAN.md` and `RESULTS.md`
+before changing anything here.
+
+- `environment/atari_env.py` is the only module that touches `ale_py`, always at function
+  scope; `requirements.txt` does not list it (`requirements-atari.txt` does). Every ALE test
+  (`tests/test_atari.py`, one case in `tests/test_universal_actions.py`) skips without it;
+  CI runs the suite twice (`tests` without ale-py, `tests-atari` with it). No Pillow in CI.
+- `AtariGame` never autoresets and raises on `step()` after an episode ended; `info` is
+  always `{}`. `AtariVectorEnvAdapter` (`env.vector_backend: ale`) wraps ALE's autoresetting
+  C++ vector env in `SameStep` mode and is opt-in: its preprocessing is ALE's (area resize),
+  not `PreprocessingWrapper`'s, so its pixels differ slightly from evaluation's.
+- `env.reward_transform: sign` is training-only: `make_env_from_config(..., train=False)`
+  (used by `main.py evaluate/compare` via `_eval_env_factory`, and by
+  `training/generalization.py` evals) drops it, so reported scores are raw game score.
+- The UGA pad (`environment/universal_actions.py`, `PAD_VERSION = "uga-pad18-v1"`) is opt-in
+  via `env.action_space: universal`; the default stays each game's native set, byte-identical.
+  The projection is a pure function of declared action *names*; never add per-game tables.
+  `PPOTrainer.save_checkpoint` writes `action_space` only for pad envs, and
+  `load_checkpoint` refuses a mismatch; legacy checkpoints have no key and still load.
+- `training/generalization.py` takes an optional `suite:` section (`kind: atari`, `train`,
+  `heldout`, `far_heldout`); without it the arcade suite and its outputs are unchanged.
+  `training/atari_baselines.py` is the Atari random / constant-NOOP baseline.
+- Measured in the 2-vCPU sandbox: PPO with the anchor config trains at ~60-80 steps/s
+  (model-bound, not emulator-bound), so the 10M anchor and the pilot are user-PC runs;
+  commands, resume steps and estimates are in `experiments/stage1/RESULTS.md`. A 150k-step
+  Pong sanity run was flat (-20.35 rolling, greedy -21.0): no claim about learning yet.
+
 ## Checkpoints
 
 - `checkpoints/` holds trained PPO weights and is **gitignored on purpose**. Never commit a

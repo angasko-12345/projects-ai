@@ -1,0 +1,64 @@
+# Stage 1 correctness anchor: UGA PPO on ALE Pong, compared with CleanRL ppo_atari.py.
+#   python main.py train    --config configs/atari_pong.yaml
+#   python main.py evaluate --config configs/atari_pong.yaml --checkpoint checkpoints/atari_pong/ppo_final.pt
+# Needs the optional extra: pip install -r requirements-atari.txt (ale-py >= 0.9, bundles ROMs).
+#
+# Reference (https://docs.cleanrl.dev/rl-algorithms/ppo/, ppo_atari.py, PongNoFrameskip-v4,
+# 10M steps, 3 seeds): 20.36 +/- 0.20 (openai/baselines PPO: 20.512 +/- 0.50).
+# CleanRL hyperparameters (cleanrl/ppo_atari.py Args): num_envs 8, num_steps 128, 4 minibatches,
+# 4 epochs, lr 2.5e-4 annealed to 0, clip 0.1 (also value clip), ent 0.01, vf 0.5, gamma 0.99,
+# gae_lambda 0.95, max_grad_norm 0.5, Adam eps 1e-5; wrappers NoopReset(30), MaxAndSkip(4),
+# EpisodicLife, FireReset, ClipReward, 84x84 gray, FrameStack(4); v4 = no sticky actions.
+#
+# Mirrored here: 8 envs x 128 steps, 4 epochs, minibatch 32 steps x 8 slots = 256 samples,
+# lr 2.5e-4, clip 0.1, ent 0.01, vf 0.5, gamma 0.99, lambda 0.95, grad 0.5, noop 30, skip 4
+# with 2-frame max-pool, 84x84 gray, stack 4, sign reward clip, sticky 0.
+# NOT mirrored (known deviations, see experiments/stage1/PLAN.md): constant lr (no annealing),
+# Adam eps 1e-8, sequential (unshuffled) time-chunk minibatches, a GRU-128 after the CNN,
+# no EpisodicLife / FireReset, the 18-action UGA pad instead of Pong's 6-action minimal set,
+# bilinear (not area) resize. A UGA score well below ~20 at 10M is therefore a finding to
+# investigate, not automatically a bug -- but it must be explained before Stage 2.
+
+env:
+  type: atari
+  game: pong
+  obs_size: 84
+  num_stack: 4
+  skip: 4                     # decision = 4 emulator frames, max-pool of the last 2
+  sticky: 0.0                 # PongNoFrameskip-v4 parity; ALE v5 default would be 0.25
+  max_episode_frames: 108000  # ALE v5 default (30 min)
+  noop_max: 30
+  reward_transform: sign      # training only; evaluate reports raw game score
+  action_space: universal     # UGA pad (Discrete 18) -> Pong's minimal set
+  vector_backend: sync        # 'ale' = ale_py AtariVectorEnv (C++ preprocessing; see atari_env.py)
+
+model:
+  in_channels: 4
+  frame_size: 84
+  feature_dim: 512            # CleanRL's 512-unit linear layer
+  hidden_size: 128
+  num_layers: 1
+
+ppo:
+  total_timesteps: 10000000   # agent steps (decisions), = 40M emulator frames, as CleanRL counts
+  rollout_length: 128
+  minibatch_size: 32          # time steps per minibatch, x 8 slots = 256 samples
+  update_epochs: 4
+  learning_rate: 0.00025
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.1
+  entropy_coef: 0.01
+  value_coef: 0.5
+  max_grad_norm: 0.5
+  seed: 1
+  num_envs: 8
+  checkpoint_dir: "checkpoints/atari_pong"
+  checkpoint_every_updates: 50          # every 51200 steps; resume with main.py train --resume
+  telemetry_path: "checkpoints/atari_pong/telemetry.csv"
+
+curiosity:
+  enabled: false
+
+eval:
+  episodes: 10

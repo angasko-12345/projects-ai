@@ -88,6 +88,23 @@ class PPOConfig:
         return cls(**{k: v for k, v in data.items() if k in known})
 
 
+def declared_action_space(env) -> str | None:
+    """Action-space version an env (or a vector env's first slot) declares.
+
+    ``None`` means the legacy native action space; only envs wrapped in the
+    UGA pad (``environment/universal_actions.py``) declare one.
+    """
+    value = getattr(env, "uga_action_space", None)
+    if isinstance(value, str) and value:
+        return value
+    envs = getattr(env, "_envs", None)
+    if isinstance(envs, list) and envs:
+        value = getattr(envs[0], "uga_action_space", None)
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
 def compute_gae(rewards, values, terminated, next_value, gamma, gae_lambda,
                 next_values=None):
     """Discounted GAE. 1D float tensors length T; values length T; next_value scalar.
@@ -678,6 +695,11 @@ class PPOTrainer:
             "curiosity": self.curiosity.state_dict() if self.curiosity is not None else None,
             "env_config": self.env_config,
         }
+        # Versioned only when the env declares a non-native action space, so
+        # legacy checkpoints keep their exact payload (absent key = native).
+        action_space = declared_action_space(self.env)
+        if action_space is not None:
+            payload["action_space"] = action_space
         # Atomic replace: a kill during the temp write leaves only a stray
         # tmp file, never a truncated final checkpoint. Same-dir temp file
         # keeps os.replace atomic on all platforms.
@@ -699,6 +721,12 @@ class PPOTrainer:
         from training.curiosity import CuriosityConfig, CuriosityModule
 
         ckpt = torch.load(path, map_location=device, weights_only=True)
+        saved_space = ckpt.get("action_space") or "native"
+        env_space = declared_action_space(env) or "native"
+        if saved_space != env_space:
+            raise ValueError(
+                f"checkpoint {path} was trained with action space {saved_space!r} but the env "
+                f"declares {env_space!r}; set env.action_space to match or retrain")
         trainer = cls(env, ActorCritic(**ckpt["model_config"]), PPOConfig(**ckpt["ppo_config"]), device)
         trainer.model.load_state_dict(ckpt["model"])
         trainer.optimizer.load_state_dict(ckpt["optimizer"])

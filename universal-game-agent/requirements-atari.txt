@@ -1,0 +1,5 @@
+# Optional extra for env.type: atari (Stage 1). Install on top of requirements.txt:
+#   pip install -r requirements.txt -r requirements-atari.txt
+# ale-py >= 0.9 ships the Atari 2600 ROMs inside the wheel (no AutoROM step).
+# Licence: ale-py is GPL-2.0-only; see README.md "Atari (ALE) extra" before redistributing.
+ale-py>=0.9
