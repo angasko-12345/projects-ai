@@ -56,12 +56,16 @@ mini-llm/
 │   ├── model.py               # MiniGPT: attention, MLP, blocks
 │   ├── dataset.py             # memmap dataset, x=tokens[:-1] y=tokens[1:]
 │   ├── train.py               # AdamW + warmup/cosine, eval, checkpoints
-│   └── generate.py            # autoregressive sampling (temperature, top-k)
+│   ├── generate.py            # autoregressive sampling (temperature, top-k)
+│   └── export_gguf.py         # checkpoint -> GGUF for llama.cpp (optional `gguf` dep)
+├── scripts/                   # gguf_demo.{ps1,sh}: train -> export -> llama-server;
+│                              # llama_parity.py: compare against a real llama-server
 ├── tests/                     # test_model, test_pipeline, test_prepare_streaming,
 │                              # test_throughput, test_tokenizer
 ├── prepare_data.py            # tokenizer training + streaming encode/split to .bin
 ├── docs/                      # experiment records (e.g. EXPERIMENT-tinystories.md)
 ├── requirements.txt
+├── requirements-gguf.txt      # optional: `gguf`, only for export_gguf.py
 └── README.md
 ```
 
@@ -302,6 +306,26 @@ the one the run used is refused instead of producing garbage. Pass `--seed N`
 for reproducible sampling (same checkpoint + prompt + seed + settings ⇒ same
 text); without it, each run samples differently.
 
+## Run it in llama.cpp (GGUF export)
+
+`src/export_gguf.py` writes a checkpoint as a GGUF file that llama.cpp loads as
+its `gpt2` architecture, so your model runs in `llama-server`, `llama-cli` or LM
+Studio. It needs the optional `gguf` package (`pip install -r requirements-gguf.txt`).
+
+```bash
+python -m src.export_gguf --checkpoint checkpoints/final.pt --out model-f32.gguf   # --dtype f16 for half size
+llama-server -m model-f32.gguf -c 512 --port 9931
+curl -s http://127.0.0.1:9931/v1/completions -H "Content-Type: application/json" \
+  -d '{"prompt": "Once upon a time", "max_tokens": 40}'
+```
+
+`scripts/gguf_demo.ps1` (or `.sh`) does the whole train → export → serve → query
+loop on the shipped sample, and `scripts/llama_parity.py` checks that llama.cpp
+gives the same next-token probabilities as mini-llm. The tokenizer is verified
+against the checkpoint's recorded digest, as in `generate.py`. Details, the tensor
+mapping, quantization notes and the tokenizer caveat for pre-fix tokenizers:
+[docs/GGUF-llama-server.md](docs/GGUF-llama-server.md).
+
 ## Testing
 
 ```bash
@@ -326,6 +350,14 @@ agreement between the shipped corpus, tokenizer and `meta.json`, and
 `TestDataProvenance` — non-default tokenizer/train/val paths, matching resume
 (including a relocated-but-identical artifact tree), and refusal on
 tokenizer/data/val mismatch.
+
+`tests/test_export_gguf.py` covers the GGUF export: tensor names, shapes,
+dtypes and values read back with gguf-py, tokenizer metadata, and a numpy
+re-implementation of llama.cpp's gpt2 graph run on the GGUF tensors alone,
+compared with MiniGPT's logits. Its gguf-dependent tests skip when `gguf` is not
+installed (CI installs it and sets `MINI_LLM_REQUIRE_GGUF=1`, so there they
+fail instead). `TestLlamaCppParity` runs against a real `llama-tokenize` and
+`llama-server` only when `LLAMA_CPP_DIR` points at a llama.cpp build.
 
 ## Limitations
 
