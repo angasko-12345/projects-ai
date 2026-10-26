@@ -454,6 +454,11 @@ class AgentCapabilityResolver:
     required_for = required_capabilities
 
 
+#: Larger than the preference bonus (1000 + 10 per rank) plus every other
+#: score component, so a deprioritized agent never outranks a clean one.
+GATE_DEPRIORITIZE_PENALTY = 100000.0
+
+
 class AgentRouter:
     """Deterministic, explainable agent router.
 
@@ -577,6 +582,8 @@ class AgentRouter:
         historical_performance: Mapping[str, object] | None = None,
         excluded: Iterable[str] = (),
         allow_capability_fallback: bool = False,
+        gate_verdicts: Mapping[str, object] | None = None,
+        gate_notes: Iterable[str] = (),
     ) -> RoutingDecision:
         """Score available profiles and return an explainable decision.
 
@@ -584,6 +591,14 @@ class AgentRouter:
         inferred from the role, task description, and repository hints are
         scoring signals: they influence ranking and reasons, but they never
         disqualify an otherwise eligible candidate.
+
+        ``gate_verdicts`` (opt-in, from the headroom gate and usage-limit
+        cooldowns) maps an identifier to an object with ``action``
+        (``reject``/``deprioritize``/``allow``) and ``reasons``.  A rejection
+        is a hard gate with its reasons recorded; a deprioritized candidate
+        ranks below every candidate that is not, preferences included.
+        ``gate_notes`` are appended to the decision's constraints.  Both
+        default to empty, which leaves routing unchanged.
         """
         if isinstance(available_agents, Mapping):
             available_values = tuple(available_agents.values())
@@ -608,7 +623,9 @@ class AgentRouter:
             "required capabilities: " + (", ".join(sorted(requested)) if requested else "none"),
             "desired capabilities: " + (", ".join(sorted(desired)) if desired else "none"),
             "routing: " + ("deterministic" if self.enabled else "disabled"),
+            *(str(note) for note in gate_notes),
         )
+        verdicts = dict(gate_verdicts or {})
         if not self.enabled:
             return self._static_decision(profiles, str(role or ""), user_preferences, constraints, excluded)
 
@@ -632,6 +649,11 @@ class AgentRouter:
             missing = sorted(requested - profile.capabilities)
             if missing:
                 rejection_reasons.append("missing required capabilities: " + ", ".join(missing))
+            verdict = verdicts.get(profile.identifier)
+            verdict_action = getattr(verdict, "action", None)
+            verdict_reasons = tuple(str(item) for item in getattr(verdict, "reasons", ()) or ())
+            if verdict_action == "reject":
+                rejection_reasons.extend(verdict_reasons or ("rejected by routing gate",))
             if rejection_reasons:
                 rejected.append(RoutingRejection(profile.identifier, tuple(rejection_reasons), constraints))
                 continue
@@ -655,6 +677,9 @@ class AgentRouter:
             score -= float(profile.configured_priority)
             performance = _history_score(profile.identifier, historical_performance)
             score += performance * 25.0
+            if verdict_action == "deprioritize":
+                score -= GATE_DEPRIORITIZE_PENALTY
+                reasons.extend(verdict_reasons or ("deprioritized by routing gate",))
             reasons.append("available")
             if not excluded_names:
                 reasons.append("fallback not required")
@@ -667,6 +692,8 @@ class AgentRouter:
             # evidence in the decision.
             for profile in profiles:
                 if not profile.availability or not profile.supports_role(role) or profile.identifier in excluded_names:
+                    continue
+                if getattr(verdicts.get(profile.identifier), "action", None) == "reject":
                     continue
                 score = 5.0 - float(profile.configured_priority)
                 reasons = ("fallback used; required capabilities unavailable", "available")

@@ -98,6 +98,41 @@ AgentRun metadata includes the resolved executable, role, optional configured mo
 
 The registry exposes capability-rich `AgentProfile` records containing identifier, display name, executable path, detected version, availability, roles, capabilities, structured-output support, cancellation/timeout support, interactive/non-interactive support, configured priority, and optional metadata. Workflows use a deterministic `AgentRouter` by default: explicit role, availability, and required-capability constraints gate eligibility, while explicit user preferences, inferred task fit, historical success, configured priority, and a stable identifier tie-breaker determine ranking. Each decision is persisted as a `routing.decision` event with the selected agent, executed agent, score, alternatives, reasons, rejected candidates, and constraints. Set `runtime.routing_enabled` (or `runtime.routing.enabled`) to `false` to preserve the previous static preference/fallback selection behavior. The engine additionally derives small bounded repository characteristics for the task's working directory (`repo_inspection.py`: dominant languages, root manifests, detected test runner, size category; names-only scan with a capped cache, never opening `.env` or credential files) and passes them as desired-capability hints — a signal, not a gate; selection degrades to empty characteristics if inspection fails.
 
+### Headroom gate and usage-limit failover (opt-in)
+
+Both are off unless the config has the section; the bundled `agents.yaml` has neither, so routing and failure classification are unchanged by default. Both act through the router, so they need routing enabled (the default).
+
+`headroom` reads the versioned JSON that `ai-token-tracker` writes (`python -m token_tracker headroom --json`, schema `ai-token-tracker/headroom` version 1). AgentOps does not import the tracker; the JSON document is the contract. Give exactly one of `file` (what `--out` wrote) or `command` (an argv list, run without a shell, output cached for `cache_seconds`), and map each agent to the tracker provider it draws on:
+
+```json
+"headroom": {
+  "file": "%LOCALAPPDATA%/ai-token-tracker/headroom.json",
+  "max_age_seconds": 900,
+  "reject_at_percent": 95,
+  "deprioritize_at_percent": 80,
+  "unknown_policy": "deprioritize",
+  "agents": {"codex": "codex", "claude": {"provider": "claude", "windows": ["5h", "weekly"]}}
+}
+```
+
+- A mapped agent with a window that is `exhausted`, reported as reached, or at/above `reject_at_percent` is rejected. The reason lands in the `routing.decision` event's `rejected_candidates`, for example `headroom: codex weekly 100% used (exhausted), resets 2026-10-27 05:40 UTC`. A stale high reading still rejects (usage only rises until the reset); an expired one does not.
+- At/above `deprioritize_at_percent` (set `null` to turn off), the agent ranks below every agent that is not deprioritized, preferences included, but still runs if nothing else is eligible.
+- No trustworthy reading for a mapped agent (provider `no_data`/`not_configured`/`error`, a stale or expired window): `unknown_policy` decides, `allow`, `deprioritize` (default) or `reject`.
+- If the document is missing, unreadable, not JSON, an unknown `schema`/`schema_version`, or older than `max_age_seconds` by its `generated_at`, the gate does nothing: routing is exactly as without it. Each routing decision's constraints say so, and a `headroom-unavailable` event is logged once per distinct cause.
+- Agents not listed under `agents` are never affected. If every candidate is rejected, the task fails with an environment failure that lists each rejection.
+
+`usage_limits` adds a deterministic `USAGE_LIMIT` failure category. When a failed agent run's output tail (last 4000 characters) contains a known limit message (`usage limit`, `rate limit`, `too many requests`, `quota exceeded`, `resource_exhausted`, ...; see `DEFAULT_USAGE_LIMIT_PATTERNS` in `failure.py`) or one of your patterns (case-insensitive substrings), the failure is `USAGE_LIMIT`, the agent gets a cooldown stored in the state database (survives a restart), and the bounded retry goes to the next eligible agent. The cooldown lasts as long as the message says ("try again in 20 minutes", `Retry-After: 30`), else `default_cooldown_seconds`, capped by `max_cooldown_seconds`. Absolute reset clock times are not parsed (their zone is ambiguous). Failover needs `runtime.max_attempts` of at least 2.
+
+```json
+"usage_limits": {
+  "default_cooldown_seconds": 3600,
+  "max_cooldown_seconds": 86400,
+  "use_default_patterns": true,
+  "patterns": [],
+  "agents": {"claude": ["Claude AI usage limit reached"]}
+}
+```
+
 ## Process runtime
 
 `agentops/runtime.py` is the single shared process layer for agent runs, kernel verification checks, and legacy verification commands. It owns the reduced process environment, one cross-platform spawn policy (Windows `CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP`, POSIX `start_new_session=True`), cancellation-aware output collection, timeouts, and process-group termination with bounded cleanup. Custom process factories keep their existing spawn behavior and are cleaned up with direct kills rather than process-group signals. Cooperative cancellation, timeouts, and external task cancellation all terminate the child before reporting; cancellation never strands a running process.
@@ -110,7 +145,7 @@ A verification report totals checks, passed, failed, skipped, and required failu
 
 ## Failure, Repair, and Recovery Kernel
 
-Failures are first-class records with source, category (16 deterministic categories covering agent, process, timeout, cancellation, test/lint/typecheck/build/verification, environment, dependency, git-conflict, dirty-worktree, policy, review-rejection, and unknown), severity, retryable/repairable flags, evidence, primary error, related agent and verification runs, recommended action, and timestamps. Classification is deterministic string matching plus explicit flags — no LLM is used for basic error classification.
+Failures are first-class records with source, category (16 deterministic categories covering agent, process, timeout, cancellation, test/lint/typecheck/build/verification, environment, dependency, git-conflict, dirty-worktree, policy, review-rejection, and unknown, plus an opt-in `USAGE_LIMIT` category, see above), severity, retryable/repairable flags, evidence, primary error, related agent and verification runs, recommended action, and timestamps. Classification is deterministic string matching plus explicit flags — no LLM is used for basic error classification.
 
 Repair decisions are `retry_same_agent`, `retry_different_agent`, `repair_implementation`, `rerun_verification`, `request_approval`, or `stop`. Retries are bounded by policy (`runtime.max_attempts`, `runtime.max_repair_cycles`, exponential backoff with `backoff_base_seconds`/`backoff_max_seconds`/`backoff_factor`, cancellation-aware), inherit previous attempt context plus verification evidence, and every retry/repair creates a distinct `AgentRun` linked to its parent. Policy violations and merge conflicts request approval and preserve the worktree instead of retrying blindly.
 

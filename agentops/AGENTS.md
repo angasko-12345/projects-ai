@@ -61,19 +61,19 @@ Console scripts: `agentops` -> `agentops.cli:main`, `agentops-gui` -> `agentops.
 
 ## Persistence
 
-- `agentops/state.py` is the sole SQLite owner. Current additive schema is v8; v8 added
-  the hot-path indexes on `tasks` and `workflows`, and v7 the `structured_evidence`
-  column on failures (both in the additive migration chain of `agentops/state.py`). Do
-  not create a second state owner.
+- `agentops/state.py` is the sole SQLite owner. Current additive schema is v9; v9 added
+  the `agent_cooldowns` table (opt-in usage-limit cooldowns), v8 the hot-path indexes on
+  `tasks` and `workflows`, and v7 the `structured_evidence` column on failures (all in the
+  additive migration chain of `agentops/state.py`). Do not create a second state owner.
 - `StateStore` owns SQLite with WAL, a busy timeout, and its existing locking model.
 - The migration set covers workflows, tasks, agent runs, verification runs/checks/reports,
   failures, events, artifacts, worktree provenance, and the hot-path indexes.
 - Migrations are additive only: `CREATE TABLE IF NOT EXISTS`, explicit column names on
   every migrated-table insert, and `INSERT OR IGNORE` for migration versions. Never
   rewrite an existing table and never rely on positional inserts.
-- After touching migrations, update the hardcoded `[1..8]` migration-version assertions in
-  both `tests/test_events.py:276` and `tests/test_failure_kernel.py:666`. Adding a
-  migration means updating both.
+- After touching migrations, update the hardcoded `[1..9]` migration-version assertions in
+  `tests/test_events.py`, `tests/test_failure_kernel.py`, and `tests/test_state_indexes.py`
+  (`range(1, 10)` and the upgrade loop bound). Adding a migration means updating all of them.
 - `.agentops/` under this product's repository root is where runtime state and logs live.
   It is generated state, not a repository deliverable.
 - Artifact and event payloads stay redacted, schema-tolerant, and free of secrets.
@@ -98,6 +98,11 @@ Console scripts: `agentops` -> `agentops.cli:main`, `agentops-gui` -> `agentops.
 - Agent selection: `agentops/registry.py` (PATH discovery, role preference),
   `agentops/agent_adapter.py` (per-agent command and capability behavior), and
   `agentops/routing.py` (deterministic, explainable routing with fallback).
+  Opt-in routing gates: `agentops/headroom.py` (leaf; evaluates ai-token-tracker's
+  `headroom --json` v1 document into reject/deprioritize verdicts, fail-open on a
+  missing/stale/unknown-schema document) with its I/O in `agentops/headroom_source.py`,
+  and usage-limit cooldowns (`usage_limits` config, `FailureCategory.USAGE_LIMIT`,
+  `agent_cooldowns` table). Both reach `AgentRouter.route` as `gate_verdicts`.
 - Execution: `agentops/runner.py` delegates process lifecycle to the shared
   `agentops/runtime.py` layer.
 - Verification: `agentops/verification_kernel.py` executes configured profiles with
