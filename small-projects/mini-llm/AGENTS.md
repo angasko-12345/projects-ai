@@ -88,6 +88,12 @@ python -m unittest discover -s tests
   ...`) with a fixed seeded sample sheet. `train.evaluate()` delegates to
   `src.evaluate.evaluate_stats`, whose loss arithmetic is unchanged.
 
+- Mixed precision (added 2026-10-26): `--amp {off,fp16,bf16}`, Config field
+  `amp`, default `off` (fp32, bit-identical to the pre-AMP loop; pinned by
+  `tests/test_amp.py`). fp16 is CUDA-only with a GradScaler whose state is
+  saved as `scaler_state`; resuming with a different `--amp` is refused.
+  CPU CI cannot exercise fp16; `TestFp16OnCuda` is skipped without CUDA.
+
 ## Checkpoint provenance and resume safety (added 2026-10-10)
 
 `meta.json` records which artifacts produced the `.bin` files, by content:

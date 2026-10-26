@@ -8,6 +8,7 @@ import os
 from dataclasses import asdict, dataclass
 
 META_FILENAME = "meta.json"
+AMP_MODES = ("off", "fp16", "bf16")
 HASH_CHUNK_BYTES = 1 << 20  # streaming read size for artifact digests
 
 # Provenance keys prepare_data.py writes and every run re-verifies. A meta.json
@@ -122,6 +123,10 @@ class Config:
     # >= 1 recomputes each chunk in backward so full B x T x vocab logits never exist.
     loss_chunk_size: int = 0
     seed: int = 42
+    # Mixed precision: "off" (default, plain fp32, unchanged behavior), "fp16"
+    # (CUDA only, autocast + GradScaler; the setting for a Kaggle T4, which has
+    # no bf16) or "bf16" (autocast, no scaler; CPU or a GPU with native bf16).
+    amp: str = "off"
 
     # LR schedule
     min_lr_ratio: float = 0.1  # cosine decays to learning_rate * min_lr_ratio
@@ -167,6 +172,8 @@ class Config:
             value = getattr(self, name)
             assert value is None or (isinstance(value, int) and value >= 1), \
                 f"{name} must be a positive int or None, got {value!r}"
+        assert self.amp in AMP_MODES, \
+            f"amp must be one of {', '.join(AMP_MODES)}, got {self.amp!r}"
         assert isinstance(self.keep_last, int) and self.keep_last >= 1, \
             f"keep_last must be a positive int (>= 1), got {self.keep_last!r}"
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import math
 import os
 import random
@@ -316,6 +317,93 @@ def maybe_compile_model(model, enabled: bool):
     return compiled
 
 
+def _cuda_has_native_bf16() -> bool:
+    """True only for GPUs that run bf16 natively (Ampere and newer).
+
+    Newer PyTorch reports emulated bf16 as supported by default, which on a T4
+    would mean a slow run instead of a clear refusal.
+    """
+    try:
+        return bool(torch.cuda.is_bf16_supported(including_emulation=False))
+    except TypeError:  # older PyTorch without the keyword
+        return bool(torch.cuda.is_bf16_supported())
+
+
+def resolve_amp(mode: str, device: torch.device) -> torch.dtype | None:
+    """Map --amp to the autocast dtype, refusing combinations that cannot work.
+
+    off -> None (plain fp32, the exact pre-AMP code path). fp16 needs CUDA: its
+    GradScaler-based recipe is what a T4 needs, and fp16 autocast on CPU is not a
+    supported training path. bf16 runs on CPU or on a GPU with native bf16.
+    """
+    if mode == "off":
+        return None
+    if mode == "fp16":
+        if device.type != "cuda":
+            raise SystemExit(
+                f"--amp fp16 needs a CUDA device (got {device.type}); fp16 training "
+                "uses a GradScaler on the GPU. Use --amp bf16 or --amp off on CPU"
+            )
+        return torch.float16
+    if mode == "bf16":
+        if device.type == "cuda" and not _cuda_has_native_bf16():
+            raise SystemExit(
+                "--amp bf16 requested but this GPU has no native bf16 (a T4 does "
+                "not); use --amp fp16 --device cuda"
+            )
+        return torch.bfloat16
+    raise SystemExit(f"--amp must be off, fp16 or bf16, got {mode!r}")
+
+
+def amp_autocast_factory(device: torch.device, dtype: torch.dtype | None):
+    """Zero-argument callable returning the autocast context, or None for fp32."""
+    if dtype is None:
+        return None
+    return lambda: torch.autocast(device_type=device.type, dtype=dtype)
+
+
+def make_grad_scaler(device: torch.device, dtype: torch.dtype | None):
+    """A GradScaler for fp16, None otherwise (bf16 has fp32's range and needs none)."""
+    if dtype != torch.float16:
+        return None
+    return torch.amp.GradScaler(device.type)
+
+
+def restore_grad_scaler(scaler, ckpt: dict, path: str) -> None:
+    """Load the checkpoint's GradScaler state into `scaler`, if both exist.
+
+    A fp16 checkpoint without scaler state (written by hand, or by a build that
+    predates it) resumes with a fresh scale, which only costs a few skipped
+    steps while the scale re-calibrates; that is reported, not hidden.
+    """
+    if scaler is None:
+        return
+    state = ckpt.get("scaler_state")
+    if state:
+        scaler.load_state_dict(state)
+        print(f"restored GradScaler from {path}: scale {scaler.get_scale():.0f}")
+    else:
+        print(f"warning: {path} records no GradScaler state; fp16 resumes with a "
+              "fresh loss scale", file=sys.stderr)
+
+
+def optimizer_step(model, optimizer, scaler, grad_clip: float) -> None:
+    """Clip and step. With a GradScaler, gradients are unscaled before clipping.
+
+    Clipping scaled gradients would compare a norm inflated by the loss scale
+    against grad_clip; unscale_ first so the threshold means what it says. The
+    scaler's step() skips the update when it found inf/nan gradients.
+    """
+    if scaler is None:
+        torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+        optimizer.step()
+        return
+    scaler.unscale_(optimizer)
+    torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+    scaler.step(optimizer)
+    scaler.update()
+
+
 def set_seed(seed: int) -> None:
     random.seed(seed)
     np.random.seed(seed)
@@ -509,7 +597,8 @@ def rotate_checkpoints(checkpoint_dir: str, keep_last: int,
 
 
 def save_checkpoint(path: str, model, optimizer, step: int, cfg: Config, lr: float | None = None,
-                    extra: dict | None = None, progress: dict | None = None) -> None:
+                    extra: dict | None = None, progress: dict | None = None,
+                    scaler=None) -> None:
     # LR is set manually (warmup + cosine), so scheduler state is the schedule
     # config plus the current lr value.
     rng_state = capture_rng_state()
@@ -532,6 +621,10 @@ def save_checkpoint(path: str, model, optimizer, step: int, cfg: Config, lr: flo
         "config": cfg.to_dict(),
         "rng_state": rng_state,
     }
+    # fp16 only: the loss scale and its growth tracker, plain floats/ints, so the
+    # file still loads under weights_only=True. Absent for off/bf16 runs.
+    if scaler is not None:
+        ckpt["scaler_state"] = scaler.state_dict()
     # Which data/tokenizer set produced these weights, by content. Stored next to
     # the config because the config's paths are what the user typed, while these
     # digests are what a resume must be able to prove against the current artifacts.
@@ -714,10 +807,27 @@ def train(cfg: Config, resume_from: str | None = None, start_step: int | None = 
           f"(sha256 {provenance['tokenizer_sha256'][:12]}...)")
     if resume_from:
         check_resume_provenance(ckpt, cfg, resume_from)
+        # A resumed run continues in the precision it was trained in. Switching
+        # mid-run (say fp16 -> off) is not forbidden by the math, but silently
+        # dropping or inventing a loss scale is, so it has to be a new run.
+        recorded_amp = ckpt["config"].get("amp", "off")
+        if recorded_amp != cfg.amp:
+            raise SystemExit(
+                f"refusing to resume {resume_from}: it was trained with --amp "
+                f"{recorded_amp}, this run asks for --amp {cfg.amp}. Omit --amp (or "
+                f"pass --amp {recorded_amp}) to continue it, or start a new run."
+            )
     configure_torch_threads(cfg)
     set_seed(cfg.seed)
     device = resolve_device(device_spec)
     print(f"device: {device}")
+    amp_dtype = resolve_amp(cfg.amp, device)
+    autocast = amp_autocast_factory(device, amp_dtype)
+    forward_context = autocast or contextlib.nullcontext
+    scaler = make_grad_scaler(device, amp_dtype)
+    if amp_dtype is not None:
+        print(f"amp: {cfg.amp} autocast"
+              + (" + GradScaler" if scaler is not None else ""))
 
     model = from_config(cfg).to(device)
     # The original module owns params, optimizer state and checkpoints;
@@ -754,6 +864,7 @@ def train(cfg: Config, resume_from: str | None = None, start_step: int | None = 
         # load_state_dict restored the checkpoint's parameter-group settings;
         # put back the ones the user explicitly asked to change.
         apply_explicit_optimizer_overrides(optimizer, cfg, explicit_optimizer_fields)
+        restore_grad_scaler(scaler, ckpt, resume_from)
         # The LR schedule is a pure function of the step number, so continuing from
         # the checkpoint's step continues the original warmup/cosine curve.
         print(f"resumed {resume_from} at step {ckpt['step']} -> next {ckpt['step'] + 1}")
@@ -774,6 +885,7 @@ def train(cfg: Config, resume_from: str | None = None, start_step: int | None = 
     train_iter = iter(train_loader)  # build_dataloader guarantees >= 1 full batch
     last_train_loss = last_val_loss = last_val_bpb = float("nan")
     total_tokens = 0
+    skipped_updates = 0  # fp16 only: updates GradScaler skipped for inf/nan grads
     t_start = time.perf_counter()
     # Each loss is scaled by 1/accum before backward, so the accumulated gradient
     # is the mean over batch_size * accum examples; steps count optimizer updates.
@@ -794,26 +906,36 @@ def train(cfg: Config, resume_from: str | None = None, start_step: int | None = 
                 x, y = next(train_iter)
             x, y = x.to(device), y.to(device)
             total_tokens += x.numel()  # actual batch tokens, not batch_size * context
-            if cfg.loss_chunk_size > 0:
-                loss = _chunked_loss(train_model, x, y, cfg.loss_chunk_size)
+            # nullcontext when --amp off, so the fp32 path is the pre-AMP code.
+            with forward_context():
+                if cfg.loss_chunk_size > 0:
+                    loss = _chunked_loss(train_model, x, y, cfg.loss_chunk_size)
+                else:
+                    _, loss = train_model(x, y)
+            if scaler is not None:
+                scaler.scale(loss / accum).backward()
             else:
-                _, loss = train_model(x, y)
-            (loss / accum).backward()
+                (loss / accum).backward()
             group_loss += loss.item() / accum
 
-        torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
-        optimizer.step()
+        scale_before = scaler.get_scale() if scaler is not None else None
+        optimizer_step(model, optimizer, scaler, cfg.grad_clip)
+        # GradScaler lowers the scale exactly when it skipped the update.
+        if scaler is not None and scaler.get_scale() < scale_before:
+            skipped_updates += 1
 
         if step % 10 == 0 or step == 1:
             print(
                 f"step {step}/{cfg.max_steps} "
-                f"train_loss {group_loss:.4f} lr {lr:.6f}",
+                f"train_loss {group_loss:.4f} lr {lr:.6f}"
+                + (f" scale {scaler.get_scale():.0f}" if scaler is not None else ""),
                 flush=True,
             )
 
         if step % cfg.eval_interval == 0 or step == cfg.max_steps:
             stats = evaluate_stats(train_model, val_loader, cfg.eval_batches, device,
-                                   cfg.loss_chunk_size, byte_lengths=byte_lengths)
+                                   cfg.loss_chunk_size, byte_lengths=byte_lengths,
+                                   autocast=autocast)
             val_loss, val_bpb = stats["loss"], stats["bpb"]
             last_train_loss, last_val_loss, last_val_bpb = group_loss, val_loss, val_bpb
             print(
@@ -827,6 +949,7 @@ def train(cfg: Config, resume_from: str | None = None, start_step: int | None = 
                 model, optimizer, step, cfg, lr=lr, progress=progress_snapshot(),
                 extra={"train_loss": group_loss, "val_loss": val_loss,
                        "val_bpb": val_bpb},
+                scaler=scaler,
             )
             # Rotate only after the new checkpoint is safely on disk, so the file
             # just written can never be deleted and the newest always survives.
@@ -840,8 +963,12 @@ def train(cfg: Config, resume_from: str | None = None, start_step: int | None = 
         progress=progress_snapshot(),
         extra={"train_loss": last_train_loss, "val_loss": last_val_loss,
                "val_bpb": last_val_bpb},
+        scaler=scaler,
     )
     print("saved final checkpoint")
+    if scaler is not None:
+        print(f"fp16: {skipped_updates} of {cfg.max_steps - start_step + 1} updates "
+              f"skipped for inf/nan gradients; final loss scale {scaler.get_scale():.0f}")
     elapsed = time.perf_counter() - t_start
     n_steps = cfg.max_steps - start_step + 1
     print(f"training time {elapsed:.1f}s over {n_steps} steps, "
@@ -883,6 +1010,7 @@ CLI_CONFIG_FIELDS = (
     ("vocab_size", "vocab_size"),
     ("torch_threads", "torch_threads"),
     ("torch_interop_threads", "torch_interop_threads"),
+    ("amp", "amp"),
 )
 
 
@@ -960,6 +1088,11 @@ def make_parser() -> argparse.ArgumentParser:
                         help="training device: auto (default) picks CUDA when "
                              "available, else CPU; cuda fails instead of silently "
                              "falling back to CPU")
+    parser.add_argument("--amp", choices=("off", "fp16", "bf16"), default=None,
+                        help="mixed precision: off (default, fp32), fp16 (CUDA only: "
+                             "autocast + GradScaler, use this on a Kaggle T4) or bf16 "
+                             "(CPU, or a GPU with native bf16). A resume keeps the "
+                             "checkpoint's setting; passing a different one is refused")
     parser.add_argument("--resume", default=None, metavar="CHECKPOINT",
                         help="continue from step_N.pt / final.pt: model, optimizer, "
                              "step and the original lr schedule are all restored")

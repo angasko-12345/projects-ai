@@ -179,7 +179,7 @@ expensive run to a free cloud GPU:
 ```bash
 pip install -r requirements.txt
 python prepare_data.py                    # your corpus, same as locally
-python -m src.train --device cuda --max-steps 10000
+python -m src.train --device cuda --amp fp16 --max-steps 10000   # T4: fp16, not bf16
 ```
 
 Run everything from the project root: `train_bin`, `val_bin`,
@@ -190,6 +190,28 @@ also records `data_provenance`, the sha256 digests of the train, val and
 tokenizer files it was trained on. When training runs on CUDA, the per-GPU RNG
 state is saved under `rng_state["cuda"]` and restored on resume; checkpoints
 without that key (all older ones) load unchanged.
+
+### Mixed precision (`--amp`)
+
+`--amp {off,fp16,bf16}` (default `off`) runs the forward pass and loss under
+`torch.autocast`. Weights, optimizer state and checkpoints stay fp32 in every
+mode.
+
+- `off`: plain fp32, the exact code path from before the flag existed (a test
+  pins bit-identical weights against a hand-written fp32 loop).
+- `fp16`: CUDA only. Adds a `GradScaler`; gradients are unscaled before
+  clipping, so `--grad-clip` means the same thing, and updates with inf/nan
+  gradients are skipped (the count is printed at the end). The scaler state
+  is saved in every checkpoint as `scaler_state` and restored on `--resume`.
+  **A Kaggle/Colab T4 has no bf16, so use `--device cuda --amp fp16` there.**
+- `bf16`: no scaler needed. Runs on CPU, or on a GPU with native bf16
+  (Ampere and newer); a GPU without it is refused instead of being emulated.
+
+`--amp fp16` without CUDA fails before any work. A resume keeps the precision
+the checkpoint was trained in: omit `--amp` (or pass the same value) to
+continue; a different value is refused, so a loss scale is never silently
+dropped or invented. Checkpoints written before `--amp` existed read as `off`.
+`--amp` works with `--grad-accum-steps` and `--loss-chunk-size`.
 
 ### Window stride
 

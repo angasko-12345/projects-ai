@@ -200,7 +200,8 @@ def main(argv: list[str] | None = None) -> dict:
     from src.dataset import build_dataloader
     from src.generate import check_tokenizer_provenance
     from src.tokenizer import load_tokenizer
-    from src.train import load_model, read_checkpoint, resolve_device
+    from src.train import (amp_autocast_factory, load_model, read_checkpoint,
+                           resolve_amp, resolve_device)
 
     parser = argparse.ArgumentParser(description="Validation bits-per-byte + sample sheet")
     parser.add_argument("--checkpoint", required=True)
@@ -216,6 +217,8 @@ def main(argv: list[str] | None = None) -> dict:
                         help="val window stride (default: context_length, i.e. "
                              "non-overlapping windows, so every val token is scored once)")
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
+    parser.add_argument("--amp", choices=("off", "fp16", "bf16"), default="off",
+                        help="autocast the forward pass (fp16 needs CUDA); off is fp32")
     parser.add_argument("--samples", action="store_true",
                         help="also print the fixed seeded sample sheet")
     parser.add_argument("--json-out", default=None, help="write the results as JSON")
@@ -228,7 +231,7 @@ def main(argv: list[str] | None = None) -> dict:
     check_tokenizer_provenance(ckpt, tokenizer_path)
     tok = load_tokenizer(tokenizer_path)
     device = resolve_device(args.device)
-    autocast = None
+    autocast = amp_autocast_factory(device, resolve_amp(args.amp, device))
     model.to(device)
 
     val_bin = args.val_bin or cfg.val_bin
@@ -245,6 +248,7 @@ def main(argv: list[str] | None = None) -> dict:
         "val_bin": os.path.abspath(val_bin),
         "stride": stride,
         "batches": min(batches, len(loader)),
+        "amp": args.amp,
         "val_loss": stats["loss"],
         "val_bpb": stats["bpb"],
         "val_tokens": stats["tokens"],
