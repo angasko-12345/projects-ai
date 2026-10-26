@@ -73,6 +73,48 @@ def preprocess_frame(frame: np.ndarray, size: int = TARGET_SIZE) -> np.ndarray:
     return np.clip(_resize_bilinear(gray, int(size)) / 255.0, 0.0, 1.0).astype(np.float32)
 
 
+_LUMA32 = _LUMA.astype(np.float32)
+_TABLES: dict = {}
+OBS_DTYPES = ("float32", "uint8")
+
+
+def _bilinear_tables(h: int, w: int, size: int):
+    """Cached gather indices + float32 weights of :func:`_resize_bilinear`."""
+    key = (h, w, size)
+    if key not in _TABLES:
+        rows = np.clip((np.arange(size) + 0.5) * h / size - 0.5, 0, h - 1)
+        cols = np.clip((np.arange(size) + 0.5) * w / size - 0.5, 0, w - 1)
+        r0 = np.floor(rows).astype(np.intp)
+        c0 = np.floor(cols).astype(np.intp)
+        r1 = np.minimum(r0 + 1, h - 1)
+        c1 = np.minimum(c0 + 1, w - 1)
+        dr = (rows - r0).astype(np.float32)[:, None]
+        dc = (cols - c0).astype(np.float32)[None, :]
+        _TABLES[key] = (r0, r1, c0, c1, dr, dc)
+    return _TABLES[key]
+
+
+def preprocess_frame_uint8(frame: np.ndarray, size: int = TARGET_SIZE) -> np.ndarray:
+    """RGB uint8 frame -> ``(size, size)`` uint8 gray (0..255), fast float32 path.
+
+    Same math as :func:`preprocess_frame` (BT.601 luma, then the same bilinear
+    sample grid) evaluated in float32 with cached tables and rounded to uint8:
+    ``preprocess_frame_uint8(f) / 255`` differs from ``preprocess_frame(f)`` by
+    at most half a grey level plus float32 rounding. Opt-in
+    (``env.obs_dtype: uint8``); the float32 path is the legacy pipeline.
+    """
+    _validate_frame(frame)
+    h, w, _ = frame.shape
+    size = int(size)
+    gray = frame.astype(np.float32) @ _LUMA32
+    if (h, w) != (size, size):
+        r0, r1, c0, c1, dr, dc = _bilinear_tables(h, w, size)
+        top = gray[r0][:, c0] * (1 - dc) + gray[r0][:, c1] * dc
+        bot = gray[r1][:, c0] * (1 - dc) + gray[r1][:, c1] * dc
+        gray = top * (1 - dr) + bot * dr
+    return np.clip(np.rint(gray), 0, 255).astype(np.uint8)
+
+
 def to_torch(obs: np.ndarray):
     """Share a stacked obs with PyTorch (no copy); needs torch installed."""
     try:
@@ -86,20 +128,24 @@ def to_torch(obs: np.ndarray):
 class FrameStack:
     """Stack the last ``num_stack`` processed frames channel-first."""
 
-    def __init__(self, num_stack: int = 4, size: int = TARGET_SIZE):
+    def __init__(self, num_stack: int = 4, size: int = TARGET_SIZE, dtype: str = "float32"):
         if not isinstance(num_stack, (int, np.integer)) or int(num_stack) <= 0:
             raise ValueError(f"num_stack must be a positive int, got {num_stack!r}")
+        if dtype not in OBS_DTYPES:
+            raise ValueError(f"dtype must be one of {OBS_DTYPES}, got {dtype!r}")
         self.num_stack, self.size = int(num_stack), int(size)
+        self.dtype = dtype
+        self._process = preprocess_frame if dtype == "float32" else preprocess_frame_uint8
         self._frames: deque[np.ndarray] = deque(maxlen=self.num_stack)
 
     def reset(self, frame: np.ndarray) -> np.ndarray:
-        first = preprocess_frame(frame, self.size)
+        first = self._process(frame, self.size)
         self._frames.clear()
         self._frames.extend([first] * self.num_stack)
         return self.get()
 
     def push(self, frame: np.ndarray) -> np.ndarray:
-        self._frames.append(preprocess_frame(frame, self.size))
+        self._frames.append(self._process(frame, self.size))
         if len(self._frames) < self.num_stack:
             pad = [self._frames[0]] * (self.num_stack - len(self._frames))
             return np.stack([*pad, *self._frames])
@@ -122,10 +168,12 @@ class PreprocessingWrapper(_WrapperBase):
 
     ``skip`` repeats the action and sums rewards (DQN-style), max-pooling the
     last two raw frames to tame flicker. Observation: ``(num_stack, size,
-    size)`` float32 in ``[0, 1]``.
+    size)`` float32 in ``[0, 1]`` (legacy), or uint8 0..255 with
+    ``obs_dtype="uint8"`` (fast path, see :func:`preprocess_frame_uint8`).
     """
 
-    def __init__(self, env, size: int = TARGET_SIZE, num_stack: int = 4, skip: int = 1):
+    def __init__(self, env, size: int = TARGET_SIZE, num_stack: int = 4, skip: int = 1,
+                 obs_dtype: str = "float32"):
         if gym is not None:
             super().__init__(env)
         else:
@@ -139,12 +187,13 @@ class PreprocessingWrapper(_WrapperBase):
         # wrapped env's hit/miss claim whenever it aggregates.
         self.reward_semantics = (reward_semantics_of(env) if self.skip == 1
                                  else GENERIC_SEMANTICS)
-        self.stack = FrameStack(num_stack=num_stack, size=size)
+        self.stack = FrameStack(num_stack=num_stack, size=size, dtype=obs_dtype)
         shape = (num_stack, size, size)
         if gym is not None:
             from gymnasium import spaces
 
-            self.observation_space = spaces.Box(0.0, 1.0, shape, np.float32)
+            self.observation_space = (spaces.Box(0.0, 1.0, shape, np.float32) if obs_dtype == "float32"
+                                      else spaces.Box(0, 255, shape, np.uint8))
             self.action_space = env.action_space
         else:
             self.observation_space = shape

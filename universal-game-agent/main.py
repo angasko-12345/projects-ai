@@ -157,6 +157,43 @@ def _sync_curiosity_scale(trainer, cfg: dict) -> None:
 
 
 
+def _train_fast(cfg: dict, ppo_kwargs: dict, args) -> int:
+    """``ppo.engine: fast`` / ``ppo.preset``: Stage 2 batched engine (training/fast_ppo.py)."""
+    from dataclasses import asdict
+
+    from training.experiment import make_env_for_training, make_env_from_config
+    from training.fast_ppo import FastPPOConfig, FastPPOTrainer, build_trainer
+    from training.ppo import summarize_history
+
+    if (cfg.get("curiosity") or {}).get("enabled", False):
+        return _fail("curiosity is a legacy-engine feature; disable it or use ppo.engine: legacy")
+    config = FastPPOConfig.from_dict(ppo_kwargs)
+    try:
+        make_env = make_env_from_config(cfg.get("env", {}))
+        env = make_env_for_training(make_env, config.num_envs)
+        if args.resume is not None:
+            if not Path(args.resume).is_file():
+                return _fail(f"checkpoint not found: {args.resume} (--resume PATH)")
+            trainer = FastPPOTrainer.load_checkpoint(args.resume, env, config_overrides=asdict(config))
+            print(f"resumed from {args.resume} at step {trainer.num_timesteps}")
+        else:
+            probe = make_env()
+            num_actions = int(probe.action_space.n)
+            probe.close()
+            trainer = build_trainer(env, num_actions, cfg.get("model") or {}, ppo_kwargs,
+                                    env_config=cfg.get("env"))
+    except (ValueError, RuntimeError, OSError) as exc:
+        return _fail(f"cannot set up fast training: {exc}")
+    print(f"engine=fast device={trainer.device} threads={__import__('torch').get_num_threads()} "
+          f"recurrent={trainer.model.recurrent}")
+    history = trainer.train()
+    summary = summarize_history(history)
+    print(f"train done: steps={trainer.num_timesteps} updates_run={summary['updates_run']} "
+          f"mean_reward_100={summary['mean_reward']:.2f} episodes={summary['episodes']} "
+          f"checkpoint={Path(config.checkpoint_dir) / 'ppo_final.pt'}")
+    return 0
+
+
 def cmd_train(args) -> int:
     cfg, err = _load_config(args.config)
     if err is not None:
@@ -173,7 +210,11 @@ def cmd_train(args) -> int:
         ppo_kwargs["seed"] = args.seed
     if args.checkpoint_dir is not None:
         ppo_kwargs["checkpoint_dir"] = args.checkpoint_dir
+    from training.fast_ppo import wants_fast_engine
+
     try:
+        if wants_fast_engine(ppo_kwargs):
+            return _train_fast(cfg, ppo_kwargs, args)
         ppo_config = PPOConfig.from_dict(ppo_kwargs)
     except (ValueError, TypeError) as exc:
         return _fail(f"invalid training configuration: {exc}")

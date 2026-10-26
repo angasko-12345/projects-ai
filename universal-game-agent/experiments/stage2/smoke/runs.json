@@ -1,0 +1,431 @@
+{
+ "finetune_freeway_s0": {
+  "arm": "finetune",
+  "seed": 0,
+  "game": "freeway",
+  "slot_games": [
+   "freeway",
+   "freeway",
+   "freeway",
+   "freeway",
+   "freeway",
+   "freeway",
+   "freeway",
+   "freeway",
+   "freeway",
+   "freeway"
+  ],
+  "total_timesteps": 1280,
+  "train_seconds": 7.174522758000421,
+  "steps_per_second": 178.4090793457519,
+  "resumes": 0,
+  "chunks": [
+   {
+    "steps": 1280,
+    "seconds": 7.2,
+    "sps": 178.4,
+    "game_score_100": {}
+   }
+  ],
+  "device": "cpu",
+  "final_eval": {
+   "pong": {
+    "mean_score": -20.5,
+    "scores": [
+     -21.0,
+     -20.0
+    ],
+    "hns": 0.00566572237960338,
+    "policy": "sample"
+   },
+   "breakout": {
+    "mean_score": 2.5,
+    "scores": [
+     4.0,
+     1.0
+    ],
+    "hns": 0.02777777777777778,
+    "policy": "sample"
+   },
+   "space_invaders": {
+    "mean_score": 97.5,
+    "scores": [
+     135.0,
+     60.0
+    ],
+    "hns": -0.03320839087262445,
+    "policy": "sample"
+   },
+   "seaquest": {
+    "mean_score": 70.0,
+    "scores": [
+     120.0,
+     20.0
+    ],
+    "hns": 3.810766845375741e-05,
+    "policy": "sample"
+   },
+   "qbert": {
+    "mean_score": 37.5,
+    "scores": [
+     75.0,
+     0.0
+    ],
+    "hns": -0.00951012331560217,
+    "policy": "sample"
+   },
+   "demon_attack": {
+    "mean_score": 120.0,
+    "scores": [
+     120.0,
+     120.0
+    ],
+    "hns": -0.017648029028533727,
+    "policy": "sample"
+   },
+   "freeway": {
+    "mean_score": 0.0,
+    "scores": [
+     0.0,
+     0.0
+    ],
+    "hns": 0.0,
+    "policy": "sample"
+   },
+   "asterix": {
+    "mean_score": 225.0,
+    "scores": [
+     350.0,
+     100.0
+    ],
+    "hns": 0.0018086889416758108,
+    "policy": "sample"
+   }
+  }
+ },
+ "multi_multi_s0": {
+  "arm": "multi",
+  "seed": 0,
+  "game": null,
+  "slot_games": [
+   "pong",
+   "pong",
+   "breakout",
+   "breakout",
+   "space_invaders",
+   "space_invaders",
+   "seaquest",
+   "seaquest",
+   "qbert",
+   "qbert"
+  ],
+  "total_timesteps": 5120,
+  "train_seconds": 31.067949716999465,
+  "steps_per_second": 164.80006072619872,
+  "resumes": 1,
+  "chunks": [
+   {
+    "steps": 1280,
+    "seconds": 7.9,
+    "sps": 161.1,
+    "game_score_100": {
+     "breakout": 0.0
+    }
+   },
+   {
+    "steps": 2560,
+    "seconds": 8.6,
+    "sps": 148.6,
+    "game_score_100": {
+     "breakout": 1.0
+    }
+   },
+   {
+    "steps": 3840,
+    "seconds": 7.8,
+    "sps": 163.5,
+    "game_score_100": {}
+   },
+   {
+    "steps": 5120,
+    "seconds": 6.7,
+    "sps": 191.6,
+    "game_score_100": {
+     "breakout": 2.5,
+     "qbert": 25.0
+    }
+   }
+  ],
+  "device": "cpu",
+  "final_eval": {
+   "pong": {
+    "mean_score": -20.5,
+    "scores": [
+     -21.0,
+     -20.0
+    ],
+    "hns": 0.00566572237960338,
+    "policy": "sample"
+   },
+   "breakout": {
+    "mean_score": 2.0,
+    "scores": [
+     3.0,
+     1.0
+    ],
+    "hns": 0.010416666666666668,
+    "policy": "sample"
+   },
+   "space_invaders": {
+    "mean_score": 287.5,
+    "scores": [
+     350.0,
+     225.0
+    ],
+    "hns": 0.09173406983625962,
+    "policy": "sample"
+   },
+   "seaquest": {
+    "mean_score": 50.0,
+    "scores": [
+     100.0,
+     0.0
+    ],
+    "hns": -0.00043823818721821183,
+    "policy": "sample"
+   },
+   "qbert": {
+    "mean_score": 37.5,
+    "scores": [
+     75.0,
+     0.0
+    ],
+    "hns": -0.00951012331560217,
+    "policy": "sample"
+   },
+   "demon_attack": {
+    "mean_score": 65.0,
+    "scores": [
+     70.0,
+     60.0
+    ],
+    "hns": -0.04788608499642641,
+    "policy": "sample"
+   },
+   "freeway": {
+    "mean_score": 0.0,
+    "scores": [
+     0.0,
+     0.0
+    ],
+    "hns": 0.0,
+    "policy": "sample"
+   },
+   "asterix": {
+    "mean_score": 200.0,
+    "scores": [
+     150.0,
+     250.0
+    ],
+    "hns": -0.0012057926277838737,
+    "policy": "sample"
+   }
+  }
+ },
+ "scratch_freeway_s0": {
+  "arm": "scratch",
+  "seed": 0,
+  "game": "freeway",
+  "slot_games": [
+   "freeway",
+   "freeway",
+   "freeway",
+   "freeway",
+   "freeway",
+   "freeway",
+   "freeway",
+   "freeway",
+   "freeway",
+   "freeway"
+  ],
+  "total_timesteps": 1280,
+  "train_seconds": 7.245326709000437,
+  "steps_per_second": 176.66560134685608,
+  "resumes": 0,
+  "chunks": [
+   {
+    "steps": 1280,
+    "seconds": 7.2,
+    "sps": 176.7,
+    "game_score_100": {}
+   }
+  ],
+  "device": "cpu",
+  "final_eval": {
+   "pong": {
+    "mean_score": -21.0,
+    "scores": [
+     -21.0,
+     -21.0
+    ],
+    "hns": -0.00849858356940512,
+    "policy": "sample"
+   },
+   "breakout": {
+    "mean_score": 2.0,
+    "scores": [
+     3.0,
+     1.0
+    ],
+    "hns": 0.010416666666666668,
+    "policy": "sample"
+   },
+   "space_invaders": {
+    "mean_score": 167.5,
+    "scores": [
+     180.0,
+     155.0
+    ],
+    "hns": 0.012823042020122312,
+    "policy": "sample"
+   },
+   "seaquest": {
+    "mean_score": 70.0,
+    "scores": [
+     100.0,
+     40.0
+    ],
+    "hns": 3.810766845375741e-05,
+    "policy": "sample"
+   },
+   "qbert": {
+    "mean_score": 37.5,
+    "scores": [
+     75.0,
+     0.0
+    ],
+    "hns": -0.00951012331560217,
+    "policy": "sample"
+   },
+   "demon_attack": {
+    "mean_score": 65.0,
+    "scores": [
+     20.0,
+     110.0
+    ],
+    "hns": -0.04788608499642641,
+    "policy": "sample"
+   },
+   "freeway": {
+    "mean_score": 0.0,
+    "scores": [
+     0.0,
+     0.0
+    ],
+    "hns": 0.0,
+    "policy": "sample"
+   },
+   "asterix": {
+    "mean_score": 300.0,
+    "scores": [
+     350.0,
+     250.0
+    ],
+    "hns": 0.010852133650054864,
+    "policy": "sample"
+   }
+  }
+ },
+ "random": {
+  "0": {
+   "pong": {
+    "mean_score": -21.0,
+    "std_score": 0.0,
+    "scores": [
+     -21.0,
+     -21.0
+    ],
+    "mean_length": 788.5,
+    "hns": -0.00849858356940512,
+    "policy": "uniform-random-pad"
+   },
+   "breakout": {
+    "mean_score": 0.5,
+    "std_score": 0.5,
+    "scores": [
+     0.0,
+     1.0
+    ],
+    "mean_length": 181.0,
+    "hns": -0.041666666666666664,
+    "policy": "uniform-random-pad"
+   },
+   "space_invaders": {
+    "mean_score": 265.0,
+    "std_score": 105.0,
+    "scores": [
+     160.0,
+     370.0
+    ],
+    "mean_length": 671.5,
+    "hns": 0.07693825212073387,
+    "policy": "uniform-random-pad"
+   },
+   "seaquest": {
+    "mean_score": 140.0,
+    "std_score": 60.0,
+    "scores": [
+     80.0,
+     200.0
+    ],
+    "mean_length": 606.0,
+    "hns": 0.0017053181633056498,
+    "policy": "uniform-random-pad"
+   },
+   "qbert": {
+    "mean_score": 12.5,
+    "std_score": 12.5,
+    "scores": [
+     0.0,
+     25.0
+    ],
+    "mean_length": 285.5,
+    "hns": -0.011391081249858928,
+    "policy": "uniform-random-pad"
+   },
+   "demon_attack": {
+    "mean_score": 170.0,
+    "std_score": 20.0,
+    "scores": [
+     190.0,
+     150.0
+    ],
+    "mean_length": 996.5,
+    "hns": 0.009841112760459621,
+    "policy": "uniform-random-pad"
+   },
+   "freeway": {
+    "mean_score": 0.0,
+    "std_score": 0.0,
+    "scores": [
+     0.0,
+     0.0
+    ],
+    "mean_length": 996.5,
+    "hns": 0.0,
+    "policy": "uniform-random-pad"
+   },
+   "asterix": {
+    "mean_score": 150.0,
+    "std_score": 0.0,
+    "scores": [
+     150.0,
+     150.0
+    ],
+    "mean_length": 207.0,
+    "hns": -0.007234755766703243,
+    "policy": "uniform-random-pad"
+   }
+  }
+ }
+}

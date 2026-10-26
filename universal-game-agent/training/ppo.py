@@ -721,6 +721,11 @@ class PPOTrainer:
         from training.curiosity import CuriosityConfig, CuriosityModule
 
         ckpt = torch.load(path, map_location=device, weights_only=True)
+        if "schema_version" in ckpt:  # Stage 2 fast-engine checkpoint (v1 has no key)
+            from training.fast_ppo import FastPPOTrainer, check_schema
+
+            check_schema(ckpt, path)
+            return FastPPOTrainer.load_checkpoint(path, env, device=str(device))
         saved_space = ckpt.get("action_space") or "native"
         env_space = declared_action_space(env) or "native"
         if saved_space != env_space:

@@ -1,0 +1,375 @@
+{
+  "table": [
+    {
+      "arm": "finetune",
+      "game": "freeway",
+      "split": "heldout",
+      "score": {
+        "mean": 0.0,
+        "std": 0.0,
+        "n": 1
+      },
+      "hns": {
+        "mean": 0.0,
+        "std": 0.0,
+        "n": 1
+      },
+      "seeds": [
+        0
+      ]
+    },
+    {
+      "arm": "multi",
+      "game": "breakout",
+      "split": "train",
+      "score": {
+        "mean": 2.0,
+        "std": 0.0,
+        "n": 1
+      },
+      "hns": {
+        "mean": 0.010416666666666668,
+        "std": 0.0,
+        "n": 1
+      },
+      "seeds": [
+        0
+      ]
+    },
+    {
+      "arm": "multi",
+      "game": "pong",
+      "split": "train",
+      "score": {
+        "mean": -20.5,
+        "std": 0.0,
+        "n": 1
+      },
+      "hns": {
+        "mean": 0.00566572237960338,
+        "std": 0.0,
+        "n": 1
+      },
+      "seeds": [
+        0
+      ]
+    },
+    {
+      "arm": "multi",
+      "game": "qbert",
+      "split": "train",
+      "score": {
+        "mean": 37.5,
+        "std": 0.0,
+        "n": 1
+      },
+      "hns": {
+        "mean": -0.00951012331560217,
+        "std": 0.0,
+        "n": 1
+      },
+      "seeds": [
+        0
+      ]
+    },
+    {
+      "arm": "multi",
+      "game": "seaquest",
+      "split": "train",
+      "score": {
+        "mean": 50.0,
+        "std": 0.0,
+        "n": 1
+      },
+      "hns": {
+        "mean": -0.00043823818721821183,
+        "std": 0.0,
+        "n": 1
+      },
+      "seeds": [
+        0
+      ]
+    },
+    {
+      "arm": "multi",
+      "game": "space_invaders",
+      "split": "train",
+      "score": {
+        "mean": 287.5,
+        "std": 0.0,
+        "n": 1
+      },
+      "hns": {
+        "mean": 0.09173406983625962,
+        "std": 0.0,
+        "n": 1
+      },
+      "seeds": [
+        0
+      ]
+    },
+    {
+      "arm": "random",
+      "game": "asterix",
+      "split": "heldout",
+      "score": {
+        "mean": 150.0,
+        "std": 0.0,
+        "n": 1
+      },
+      "hns": {
+        "mean": -0.007234755766703243,
+        "std": 0.0,
+        "n": 1
+      },
+      "seeds": [
+        0
+      ]
+    },
+    {
+      "arm": "random",
+      "game": "breakout",
+      "split": "train",
+      "score": {
+        "mean": 0.5,
+        "std": 0.0,
+        "n": 1
+      },
+      "hns": {
+        "mean": -0.041666666666666664,
+        "std": 0.0,
+        "n": 1
+      },
+      "seeds": [
+        0
+      ]
+    },
+    {
+      "arm": "random",
+      "game": "demon_attack",
+      "split": "heldout",
+      "score": {
+        "mean": 170.0,
+        "std": 0.0,
+        "n": 1
+      },
+      "hns": {
+        "mean": 0.009841112760459621,
+        "std": 0.0,
+        "n": 1
+      },
+      "seeds": [
+        0
+      ]
+    },
+    {
+      "arm": "random",
+      "game": "freeway",
+      "split": "heldout",
+      "score": {
+        "mean": 0.0,
+        "std": 0.0,
+        "n": 1
+      },
+      "hns": {
+        "mean": 0.0,
+        "std": 0.0,
+        "n": 1
+      },
+      "seeds": [
+        0
+      ]
+    },
+    {
+      "arm": "random",
+      "game": "pong",
+      "split": "train",
+      "score": {
+        "mean": -21.0,
+        "std": 0.0,
+        "n": 1
+      },
+      "hns": {
+        "mean": -0.00849858356940512,
+        "std": 0.0,
+        "n": 1
+      },
+      "seeds": [
+        0
+      ]
+    },
+    {
+      "arm": "random",
+      "game": "qbert",
+      "split": "train",
+      "score": {
+        "mean": 12.5,
+        "std": 0.0,
+        "n": 1
+      },
+      "hns": {
+        "mean": -0.011391081249858928,
+        "std": 0.0,
+        "n": 1
+      },
+      "seeds": [
+        0
+      ]
+    },
+    {
+      "arm": "random",
+      "game": "seaquest",
+      "split": "train",
+      "score": {
+        "mean": 140.0,
+        "std": 0.0,
+        "n": 1
+      },
+      "hns": {
+        "mean": 0.0017053181633056498,
+        "std": 0.0,
+        "n": 1
+      },
+      "seeds": [
+        0
+      ]
+    },
+    {
+      "arm": "random",
+      "game": "space_invaders",
+      "split": "train",
+      "score": {
+        "mean": 265.0,
+        "std": 0.0,
+        "n": 1
+      },
+      "hns": {
+        "mean": 0.07693825212073387,
+        "std": 0.0,
+        "n": 1
+      },
+      "seeds": [
+        0
+      ]
+    },
+    {
+      "arm": "scratch",
+      "game": "freeway",
+      "split": "heldout",
+      "score": {
+        "mean": 0.0,
+        "std": 0.0,
+        "n": 1
+      },
+      "hns": {
+        "mean": 0.0,
+        "std": 0.0,
+        "n": 1
+      },
+      "seeds": [
+        0
+      ]
+    },
+    {
+      "arm": "zeroshot",
+      "game": "asterix",
+      "split": "heldout",
+      "score": {
+        "mean": 200.0,
+        "std": 0.0,
+        "n": 1
+      },
+      "hns": {
+        "mean": -0.0012057926277838737,
+        "std": 0.0,
+        "n": 1
+      },
+      "seeds": [
+        0
+      ]
+    },
+    {
+      "arm": "zeroshot",
+      "game": "demon_attack",
+      "split": "heldout",
+      "score": {
+        "mean": 65.0,
+        "std": 0.0,
+        "n": 1
+      },
+      "hns": {
+        "mean": -0.04788608499642641,
+        "std": 0.0,
+        "n": 1
+      },
+      "seeds": [
+        0
+      ]
+    },
+    {
+      "arm": "zeroshot",
+      "game": "freeway",
+      "split": "heldout",
+      "score": {
+        "mean": 0.0,
+        "std": 0.0,
+        "n": 1
+      },
+      "hns": {
+        "mean": 0.0,
+        "std": 0.0,
+        "n": 1
+      },
+      "seeds": [
+        0
+      ]
+    }
+  ],
+  "summary_hns": {
+    "random/train": {
+      "mean_hns": 0.003417447759621761,
+      "median_hns": -0.00849858356940512,
+      "games": 5
+    },
+    "random/heldout": {
+      "mean_hns": 0.0008687856645854594,
+      "median_hns": 0.0,
+      "games": 3
+    },
+    "multi/train": {
+      "mean_hns": 0.019573619475941856,
+      "median_hns": 0.00566572237960338,
+      "games": 5
+    },
+    "zeroshot/heldout": {
+      "mean_hns": -0.016363959208070093,
+      "median_hns": -0.0012057926277838737,
+      "games": 3
+    },
+    "scratch/heldout": {
+      "mean_hns": 0.0,
+      "median_hns": 0.0,
+      "games": 1
+    },
+    "finetune/heldout": {
+      "mean_hns": 0.0,
+      "median_hns": 0.0,
+      "games": 1
+    }
+  },
+  "transfer": {
+    "freeway": {
+      "finetune_minus_scratch": {
+        "mean": 0.0,
+        "std": 0.0,
+        "n": 1
+      },
+      "seeds": [
+        0
+      ]
+    }
+  },
+  "runs": 3,
+  "hns_source": "https://github.com/google-deepmind/dqn_zoo/blob/master/dqn_zoo/atari_data.py",
+  "hns_note": "UGA protocol (sticky actions, eval frame cap, pad) differs from the reference protocol; HNS is comparable across UGA arms, indicative vs published numbers."
+}

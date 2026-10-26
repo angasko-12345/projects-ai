@@ -1,0 +1,60 @@
+# Stage 2 CleanRL-faithful Pong (fast engine). Compare with CleanRL ppo_atari.py on
+# PongNoFrameskip-v4: 20.36 +/- 0.20 at 10M steps, 3 seeds (https://docs.cleanrl.dev/rl-algorithms/ppo/).
+#   python main.py train    --config configs/stage2_pong_cleanrl.yaml
+#   python main.py evaluate --config configs/stage2_pong_cleanrl.yaml --checkpoint checkpoints/stage2_pong_cleanrl/ppo_final.pt
+# Needs: pip install -r requirements-atari.txt
+#
+# Matches cleanrl/ppo_atari.py Args + make_env: 8 envs x 128 steps, 4 minibatches (256), 4 epochs,
+# lr 2.5e-4 linearly annealed to 0, Adam eps 1e-5, clip 0.1 (+ value clip), ent 0.01, vf 0.5,
+# gamma 0.99, lambda 0.95, max-grad 0.5, per-minibatch advantage norm, shuffled minibatches,
+# orthogonal init, Nature CNN -> 512 -> heads (no GRU), obs/255 in-model, NoopReset(30),
+# MaxAndSkip(4), EpisodicLife, FireReset, ClipReward(sign), 84x84 gray, FrameStack(4),
+# minimal action set, no sticky actions (v4).
+# Remaining deviations: bilinear resize of the max-pooled RGB frame then BT.601 gray (CleanRL:
+# area resize via gym ResizeObservation, then GrayScaleObservation); EpisodicLife is checked
+# per emulator frame inside the adapter (CleanRL: after each 4-frame MaxAndSkip step); the GAE
+# accumulation is cut at truncations and truncations bootstrap (CleanRL treats them as dones);
+# approx_kl/clipfrac are averaged over all minibatches (CleanRL logs the last approx_kl).
+
+env:
+  type: atari
+  game: pong
+  obs_size: 84
+  num_stack: 4
+  skip: 4
+  sticky: 0.0
+  max_episode_frames: 108000
+  noop_max: 30
+  reward_transform: sign      # training only; evaluate reports raw game score
+  action_space: native        # Pong's 6-action minimal set (CleanRL); Stage 1 used the 18-pad
+  obs_dtype: uint8            # fast float32 preprocessing, stored as uint8, /255 in-model
+  episodic_life: true         # training only, uses the ALE lives counter inside the adapter
+  fire_reset: true            # training only
+
+model:
+  in_channels: 4
+  frame_size: 84
+  feature_dim: 512
+  hidden_size: 128            # unused when recurrent: false (kept for the API)
+  num_layers: 1
+  recurrent: false
+  encoder: nature
+  init: orthogonal
+
+ppo:
+  preset: cleanrl             # fills the CleanRL knobs (training/fast_ppo.py:CLEANRL_PRESET)
+  total_timesteps: 10000000
+  rollout_length: 128
+  num_envs: 8
+  seed: 1
+  torch_threads: 0            # 0 = torch default; set to your physical core count
+  device: auto                # cuda when available (Kaggle T4), else cpu
+  checkpoint_dir: "checkpoints/stage2_pong_cleanrl"
+  checkpoint_every_updates: 50
+  telemetry_path: "checkpoints/stage2_pong_cleanrl/telemetry.csv"
+
+curiosity:
+  enabled: false
+
+eval:
+  episodes: 10

@@ -1,0 +1,326 @@
+{
+  "config": "/workspace/work/stage2_runs/pong_150k.yaml",
+  "checkpoint_steps": 150528,
+  "seeds": [
+    10000,
+    10001,
+    10002,
+    10003,
+    10004,
+    10005,
+    10006,
+    10007,
+    10008,
+    10009
+  ],
+  "action_meanings": [
+    "NOOP",
+    "FIRE",
+    "RIGHT",
+    "LEFT",
+    "RIGHTFIRE",
+    "LEFTFIRE"
+  ],
+  "env": {
+    "type": "atari",
+    "game": "pong",
+    "obs_size": 84,
+    "num_stack": 4,
+    "skip": 4,
+    "sticky": 0.0,
+    "max_episode_frames": 108000,
+    "noop_max": 30,
+    "reward_transform": "sign",
+    "action_space": "native",
+    "obs_dtype": "uint8",
+    "episodic_life": true,
+    "fire_reset": true
+  },
+  "model": {
+    "in_channels": 4,
+    "frame_size": 84,
+    "feature_dim": 512,
+    "hidden_size": 128,
+    "num_layers": 1,
+    "recurrent": false,
+    "encoder": "nature",
+    "init": "orthogonal"
+  },
+  "ppo": {
+    "preset": "cleanrl",
+    "total_timesteps": 150528,
+    "rollout_length": 128,
+    "num_envs": 8,
+    "seed": 1,
+    "torch_threads": 2,
+    "device": "cpu",
+    "checkpoint_dir": "/workspace/work/stage2_runs/pong_150k",
+    "checkpoint_every_updates": 25,
+    "telemetry_path": "/workspace/work/stage2_runs/pong_150k/telemetry.csv",
+    "anneal_total_timesteps": 150528
+  },
+  "eval": {
+    "ppo_greedy": {
+      "mean": -21.0,
+      "std": 0.0,
+      "scores": [
+        -21.0,
+        -21.0,
+        -21.0,
+        -21.0,
+        -21.0,
+        -21.0,
+        -21.0,
+        -21.0,
+        -21.0,
+        -21.0
+      ],
+      "mean_length": 760.9,
+      "action_counts": {
+        "5": 7609
+      }
+    },
+    "ppo_sampled": {
+      "mean": -20.2,
+      "std": 0.8717797887081348,
+      "scores": [
+        -21.0,
+        -20.0,
+        -21.0,
+        -21.0,
+        -20.0,
+        -21.0,
+        -20.0,
+        -18.0,
+        -20.0,
+        -20.0
+      ],
+      "mean_length": 925.6,
+      "action_counts": {
+        "2": 1320,
+        "5": 2466,
+        "4": 1946,
+        "3": 1625,
+        "1": 1083,
+        "0": 816
+      }
+    },
+    "random_native": {
+      "mean": -19.6,
+      "std": 0.4898979485566356,
+      "scores": [
+        -20.0,
+        -20.0,
+        -20.0,
+        -20.0,
+        -19.0,
+        -19.0,
+        -20.0,
+        -19.0,
+        -20.0,
+        -19.0
+      ],
+      "mean_length": 1013.8
+    },
+    "const_noop": {
+      "mean": -21.0,
+      "std": 0.0,
+      "scores": [
+        -21.0,
+        -21.0,
+        -21.0,
+        -21.0,
+        -21.0,
+        -21.0,
+        -21.0,
+        -21.0,
+        -21.0,
+        -21.0
+      ],
+      "mean_length": 760.9
+    }
+  },
+  "training_curve": [
+    {
+      "steps": 10240,
+      "game_score_100": -20.25,
+      "games_seen": 8,
+      "train_return_100": -20.25,
+      "entropy": 1.76,
+      "approx_kl": 0.00033,
+      "clipfrac": 0.0,
+      "explained_variance": 0.004,
+      "learning_rate": 0.00023469387755102041,
+      "fps": 59.0
+    },
+    {
+      "steps": 20480,
+      "game_score_100": -20.0,
+      "games_seen": 16,
+      "train_return_100": -20.0,
+      "entropy": 1.737,
+      "approx_kl": 0.00093,
+      "clipfrac": 0.0613,
+      "explained_variance": 0.011,
+      "learning_rate": 0.00021768707482993198,
+      "fps": 72.1
+    },
+    {
+      "steps": 30720,
+      "game_score_100": -19.96,
+      "games_seen": 28,
+      "train_return_100": -19.964,
+      "entropy": 1.764,
+      "approx_kl": 7e-05,
+      "clipfrac": 0.0,
+      "explained_variance": 0.028,
+      "learning_rate": 0.00020068027210884355,
+      "fps": 90.4
+    },
+    {
+      "steps": 40960,
+      "game_score_100": -20.07,
+      "games_seen": 40,
+      "train_return_100": -20.075,
+      "entropy": 1.754,
+      "approx_kl": 0.00017,
+      "clipfrac": 0.0,
+      "explained_variance": 0.107,
+      "learning_rate": 0.0001836734693877551,
+      "fps": 74.3
+    },
+    {
+      "steps": 51200,
+      "game_score_100": -20.2,
+      "games_seen": 50,
+      "train_return_100": -20.2,
+      "entropy": 1.757,
+      "approx_kl": 0.00099,
+      "clipfrac": 0.0503,
+      "explained_variance": 0.243,
+      "learning_rate": 0.0001666666666666667,
+      "fps": 79.4
+    },
+    {
+      "steps": 61440,
+      "game_score_100": -20.38,
+      "games_seen": 8,
+      "train_return_100": -20.375,
+      "entropy": 1.717,
+      "approx_kl": 0.00108,
+      "clipfrac": 0.0544,
+      "explained_variance": 0.501,
+      "learning_rate": 0.00014965986394557823,
+      "fps": 103.0
+    },
+    {
+      "steps": 71680,
+      "game_score_100": -20.62,
+      "games_seen": 21,
+      "train_return_100": -20.619,
+      "entropy": 1.715,
+      "approx_kl": 0.00053,
+      "clipfrac": 0.0098,
+      "explained_variance": 0.525,
+      "learning_rate": 0.00013265306122448977,
+      "fps": 75.5
+    },
+    {
+      "steps": 81920,
+      "game_score_100": -20.59,
+      "games_seen": 32,
+      "train_return_100": -20.594,
+      "entropy": 1.719,
+      "approx_kl": 0.0009,
+      "clipfrac": 0.0225,
+      "explained_variance": 0.431,
+      "learning_rate": 0.00011564625850340135,
+      "fps": 69.1
+    },
+    {
+      "steps": 92160,
+      "game_score_100": -20.63,
+      "games_seen": 43,
+      "train_return_100": -20.628,
+      "entropy": 1.719,
+      "approx_kl": 0.00079,
+      "clipfrac": 0.0298,
+      "explained_variance": 0.653,
+      "learning_rate": 9.863945578231292e-05,
+      "fps": 63.9
+    },
+    {
+      "steps": 102400,
+      "game_score_100": -20.54,
+      "games_seen": 56,
+      "train_return_100": -20.536,
+      "entropy": 1.689,
+      "approx_kl": 0.00045,
+      "clipfrac": 0.0,
+      "explained_variance": 0.679,
+      "learning_rate": 8.16326530612245e-05,
+      "fps": 60.5
+    },
+    {
+      "steps": 112640,
+      "game_score_100": -20.25,
+      "games_seen": 8,
+      "train_return_100": -20.25,
+      "entropy": 1.721,
+      "approx_kl": 0.00063,
+      "clipfrac": 0.0,
+      "explained_variance": 0.649,
+      "learning_rate": 6.462585034013605e-05,
+      "fps": 62.5
+    },
+    {
+      "steps": 122880,
+      "game_score_100": -20.55,
+      "games_seen": 22,
+      "train_return_100": -20.545,
+      "entropy": 1.72,
+      "approx_kl": 0.00029,
+      "clipfrac": 0.0,
+      "explained_variance": 0.778,
+      "learning_rate": 4.761904761904762e-05,
+      "fps": 90.2
+    },
+    {
+      "steps": 133120,
+      "game_score_100": -20.5,
+      "games_seen": 32,
+      "train_return_100": -20.5,
+      "entropy": 1.693,
+      "approx_kl": 0.00036,
+      "clipfrac": 0.0,
+      "explained_variance": 0.743,
+      "learning_rate": 3.061224489795919e-05,
+      "fps": 90.4
+    },
+    {
+      "steps": 143360,
+      "game_score_100": -20.47,
+      "games_seen": 43,
+      "train_return_100": -20.465,
+      "entropy": 1.716,
+      "approx_kl": 5e-05,
+      "clipfrac": 0.0,
+      "explained_variance": 0.659,
+      "learning_rate": 1.3605442176870735e-05,
+      "fps": 79.5
+    },
+    {
+      "steps": 150528,
+      "game_score_100": -20.44,
+      "games_seen": 50,
+      "train_return_100": -20.44,
+      "entropy": 1.727,
+      "approx_kl": 0.0,
+      "clipfrac": 0.0,
+      "explained_variance": 0.86,
+      "learning_rate": 1.7006802721088455e-06,
+      "fps": 80.8
+    }
+  ],
+  "note": "seed 1, 150528 steps, CleanRL preset, LR annealed over 150528; 3 chunks of <=51200 steps (resumed twice)"
+}

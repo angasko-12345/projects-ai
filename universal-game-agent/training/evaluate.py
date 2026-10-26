@@ -60,7 +60,10 @@ def evaluate(model: ActorCritic, make_env, episodes: int = 20, seeds=None, greed
                 counts: dict = {}
                 positive = negative = 0
                 while True:
-                    t = torch.from_numpy(np.ascontiguousarray(obs, dtype=np.float32)).unsqueeze(0).to(device)
+                    # uint8 obs (env.obs_dtype: uint8) stay uint8; the model scales them.
+                    arr = (np.ascontiguousarray(obs) if getattr(obs, "dtype", None) == np.uint8
+                           else np.ascontiguousarray(obs, dtype=np.float32))
+                    t = torch.from_numpy(arr).unsqueeze(0).to(device)
                     logits, _, hidden = model(t, hidden)
                     action = int(logits.argmax(-1).item()) if greedy else int(torch.distributions.Categorical(logits=logits).sample().item())
                     counts[action] = counts.get(action, 0) + 1

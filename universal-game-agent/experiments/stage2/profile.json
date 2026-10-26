@@ -1,0 +1,196 @@
+{
+  "runs": [
+    {
+      "label": "legacy-anchor-8env-before-idle",
+      "engine": "legacy",
+      "preset": null,
+      "model": {
+        "in_channels": 4,
+        "frame_size": 84,
+        "feature_dim": 512,
+        "hidden_size": 128,
+        "num_layers": 1
+      },
+      "num_envs": 8,
+      "rollout_length": 128,
+      "updates_timed": 2,
+      "steps_timed": 2048,
+      "torch_threads": 2,
+      "steps_per_second": 132.6,
+      "seconds": {
+        "rollout_total_s": 3.974,
+        "rollout/model.forward (rollout/bootstrap)": 0.952,
+        "rollout/env.step (ALE + preprocessing)": 2.467,
+        "rollout/other (tensor conversion, stacking, bookkeeping)": 0.555,
+        "update_total_s": 11.477,
+        "update/model.forward_sequence (update replay)": 2.851,
+        "update/loss.backward": 7.858,
+        "update/optimizer.step": 0.128,
+        "update/other (GAE, segment split, indexing, loss math)": 0.64
+      },
+      "share_of_total": {
+        "rollout/model.forward (rollout/bootstrap)": 0.062,
+        "rollout/env.step (ALE + preprocessing)": 0.16,
+        "rollout/other (tensor conversion, stacking, bookkeeping)": 0.036,
+        "update/model.forward_sequence (update replay)": 0.185,
+        "update/loss.backward": 0.509,
+        "update/optimizer.step": 0.008,
+        "update/other (GAE, segment split, indexing, loss math)": 0.041
+      },
+      "calls": {
+        "model.forward (rollout/bootstrap)": 272,
+        "env.step (ALE + preprocessing)": 2048,
+        "model.forward_sequence (update replay)": 256,
+        "loss.backward": 32,
+        "optimizer.step": 32
+      },
+      "generated_utc": "2026-10-26T09:37:36.373102+00:00",
+      "hardware": {
+        "platform": "Linux-6.12.110+-aarch64-with-glibc2.41",
+        "machine": "aarch64",
+        "processor": "aarch64",
+        "cpu_count": 2,
+        "python": "3.12.15",
+        "torch": "2.14.1+cpu",
+        "torch_threads": 2,
+        "numpy": "2.5.3",
+        "ale_py": "0.12.1",
+        "mem_total": "8136692 kB",
+        "load_average_1_5_15": [
+          2.63,
+          1.15,
+          0.46
+        ]
+      },
+      "note": "first measurement, before any Stage 2 code, machine idle (load ~0.4 at start)"
+    },
+    {
+      "label": "legacy-anchor-8env",
+      "engine": "legacy",
+      "preset": null,
+      "model": {
+        "in_channels": 4,
+        "frame_size": 84,
+        "feature_dim": 512,
+        "hidden_size": 128,
+        "num_layers": 1
+      },
+      "num_envs": 8,
+      "rollout_length": 128,
+      "updates_timed": 2,
+      "steps_timed": 2048,
+      "torch_threads": 2,
+      "steps_per_second": 137.2,
+      "seconds": {
+        "rollout_total_s": 4.051,
+        "rollout/model.forward (rollout/bootstrap)": 1.282,
+        "rollout/env.step (ALE + preprocessing)": 2.339,
+        "rollout/other (tensor conversion, stacking, bookkeeping)": 0.43,
+        "update_total_s": 10.879,
+        "update/model.forward_sequence (update replay)": 2.585,
+        "update/loss.backward": 7.574,
+        "update/optimizer.step": 0.126,
+        "update/other (GAE, segment split, indexing, loss math)": 0.594
+      },
+      "share_of_total": {
+        "rollout/model.forward (rollout/bootstrap)": 0.086,
+        "rollout/env.step (ALE + preprocessing)": 0.157,
+        "rollout/other (tensor conversion, stacking, bookkeeping)": 0.029,
+        "update/model.forward_sequence (update replay)": 0.173,
+        "update/loss.backward": 0.507,
+        "update/optimizer.step": 0.008,
+        "update/other (GAE, segment split, indexing, loss math)": 0.04
+      },
+      "calls": {
+        "model.forward (rollout/bootstrap)": 272,
+        "env.step (ALE + preprocessing)": 2048,
+        "model.forward_sequence (update replay)": 256,
+        "loss.backward": 32,
+        "optimizer.step": 32
+      },
+      "generated_utc": "2026-10-26T10:41:37.301698+00:00",
+      "hardware": {
+        "platform": "Linux-6.12.110+-aarch64-with-glibc2.41",
+        "machine": "aarch64",
+        "processor": "aarch64",
+        "cpu_count": 2,
+        "python": "3.12.15",
+        "torch": "2.14.1+cpu",
+        "torch_threads": 2,
+        "numpy": "2.5.3",
+        "ale_py": "0.12.1",
+        "mem_total": "8136692 kB",
+        "load_average_1_5_15": [
+          1.79,
+          2.69,
+          3.85
+        ]
+      }
+    },
+    {
+      "label": "fast-cleanrl-ff-uint8-8env",
+      "engine": "fast",
+      "preset": null,
+      "model": {
+        "in_channels": 4,
+        "frame_size": 84,
+        "feature_dim": 512,
+        "hidden_size": 128,
+        "num_layers": 1,
+        "recurrent": false,
+        "encoder": "nature",
+        "init": "orthogonal"
+      },
+      "num_envs": 8,
+      "rollout_length": 128,
+      "updates_timed": 2,
+      "steps_timed": 2048,
+      "torch_threads": 2,
+      "steps_per_second": 163.8,
+      "seconds": {
+        "rollout_total_s": 3.94,
+        "rollout/model.forward (rollout/bootstrap)": 2.106,
+        "rollout/env.step (ALE + preprocessing)": 1.52,
+        "rollout/other (tensor conversion, stacking, bookkeeping)": 0.314,
+        "update_total_s": 8.559,
+        "update/loss.backward": 6.051,
+        "update/optimizer.step": 0.174,
+        "update/other (GAE, segment split, indexing, loss math)": 2.334
+      },
+      "share_of_total": {
+        "rollout/model.forward (rollout/bootstrap)": 0.169,
+        "rollout/env.step (ALE + preprocessing)": 0.122,
+        "rollout/other (tensor conversion, stacking, bookkeeping)": 0.025,
+        "update/loss.backward": 0.484,
+        "update/optimizer.step": 0.014,
+        "update/other (GAE, segment split, indexing, loss math)": 0.187
+      },
+      "calls": {
+        "model.forward (rollout/bootstrap)": 258,
+        "env.step (ALE + preprocessing)": 2048,
+        "loss.backward": 32,
+        "optimizer.step": 32
+      },
+      "generated_utc": "2026-10-26T10:41:59.828941+00:00",
+      "hardware": {
+        "platform": "Linux-6.12.110+-aarch64-with-glibc2.41",
+        "machine": "aarch64",
+        "processor": "aarch64",
+        "cpu_count": 2,
+        "python": "3.12.15",
+        "torch": "2.14.1+cpu",
+        "torch_threads": 2,
+        "numpy": "2.5.3",
+        "ale_py": "0.12.1",
+        "mem_total": "8136692 kB",
+        "load_average_1_5_15": [
+          1.79,
+          2.63,
+          3.81
+        ]
+      }
+    }
+  ],
+  "note": "Wall-clock split of PPO training on ALE Pong (configs/atari_pong.yaml blocks, 8 envs x 128 steps). One warm-up update excluded. Shared 2-vCPU sandbox.",
+  "superseded": "Two early fast-engine profiles (fast-cleanrl-ff-8env 112.2 sps, fast-recurrent-8env 67.7 sps) were taken under heavy co-tenant load (load avg ~2-4) before the uint8 preprocessing and the segment-batched GRU replay existed; they are dropped as not comparable. See RESULTS.md."
+}
