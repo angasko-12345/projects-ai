@@ -286,6 +286,30 @@ before changing anything here.
   commands, resume steps and estimates are in `experiments/stage1/RESULTS.md`. A 150k-step
   Pong sanity run was flat (-20.35 rolling, greedy -21.0): no claim about learning yet.
 
+## Throughput knobs (U1, 2026-10-26)
+
+All opt-in; defaults are legacy and `num_envs: 1` stays byte-identical
+(`tests/test_vec_ppo_equivalence.py` is the guard; do not edit it to make a change pass).
+Table and measured numbers: README "Throughput knobs", `experiments/throughput_baseline.json`,
+`experiments/throughput_after.json`; preset: `configs/toy_fast.yaml`.
+
+- `AsyncVectorEnv` (`environment/vec.py`) subclasses `SyncVectorEnv` so the trainer's
+  `isinstance` check holds, but has no in-process `_envs`. It always uses `spawn`; its factories
+  must be picklable, so `env.vector_backend: async` builds them as
+  `training.experiment.ConfigEnvFactory` (a config mapping, not a closure). Same seeds and
+  actions must give identical trajectories to `SyncVectorEnv` (`tests/test_vec_async.py`).
+- `env.obs_dtype: uint8` frames are scaled by `/255` inside `ActorCritic` (and the curiosity
+  encoder). Float input is used as given, so legacy float paths are unchanged. Any new code
+  turning observations into tensors must use `agent.model.obs_tensor`, never a bare
+  `float32` cast, or uint8 frames reach the CNN as 0..255.
+- `ppo.batched_update` (`_update_vector_batched` + `ActorCritic.forward_masked_sequence`) must
+  keep matching the slot-loop `_update_vector` to float tolerance (`tests/test_ppo_u1.py`).
+- Telemetry `FIELDNAMES` gained four trailing columns (`approx_kl`, `clipfrac`,
+  `explained_variance`, `learning_rate`), optional for `PPOUpdateCSVWriter.append`.
+  `explained_variance` is `None` (empty cell) when the returns have zero variance.
+- Benchmarks in the shared 2-vCPU sandbox are load-sensitive: compare only paired runs taken
+  back to back, and read `host.load_average_at_report` in the JSON.
+
 ## Checkpoints
 
 - `checkpoints/` holds trained PPO weights and is **gitignored on purpose**. Never commit a

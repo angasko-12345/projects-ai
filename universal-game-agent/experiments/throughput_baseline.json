@@ -1,0 +1,774 @@
+{
+  "runs": [
+    {
+      "benchmark": "training.benchmark --env toy",
+      "timestamp_utc": "2026-10-26T04:22:41Z",
+      "label": "baseline: pre-U1 code at 339dd92, configs/default.yaml (rollout 128, minibatch 32, 4 epochs), SyncVectorEnv",
+      "host": {
+        "cpu": "Neoverse-V2",
+        "machine": "aarch64",
+        "platform": "Linux-6.12.110+-aarch64-with-glibc2.41",
+        "os_cpu_count": 2,
+        "usable_cpus": 2,
+        "python": "3.12.15",
+        "torch": "2.14.1+cpu",
+        "torch_threads": 2,
+        "numpy": "2.5.3",
+        "load_average_at_report": [
+          4.73583984375,
+          4.423828125,
+          2.4755859375
+        ]
+      },
+      "config_file": "configs/default.yaml",
+      "ppo_overrides": {},
+      "env_overrides": {},
+      "total_timesteps_per_variant": 4096,
+      "seed": 0,
+      "env_only": [
+        {
+          "num_envs": 1,
+          "steps": 4096,
+          "elapsed": 1.5977590670000268,
+          "env_steps_per_sec": 2563.5905216239535
+        },
+        {
+          "num_envs": 8,
+          "steps": 4096,
+          "elapsed": 2.082027320999998,
+          "env_steps_per_sec": 1967.313280996087
+        }
+      ],
+      "train": [
+        {
+          "num_envs": 1,
+          "total_timesteps": 4096,
+          "updates": 32,
+          "elapsed": 142.96684627499997,
+          "env_steps_per_sec": 28.649998980331784,
+          "torch_threads_during_run": 2,
+          "ppo": {
+            "checkpoint_every_updates": 0,
+            "clip_range": 0.2,
+            "entropy_coef": 0.01,
+            "gae_lambda": 0.95,
+            "gamma": 0.99,
+            "learning_rate": 0.00025,
+            "max_grad_norm": 0.5,
+            "minibatch_size": 32,
+            "num_envs": 1,
+            "rollout_length": 128,
+            "seed": 0,
+            "telemetry_path": null,
+            "total_timesteps": 4096,
+            "update_epochs": 4,
+            "value_coef": 0.5
+          },
+          "env": {
+            "height": 48,
+            "max_steps": 500,
+            "num_stack": 4,
+            "obs_size": 84,
+            "skip": 1,
+            "width": 64
+          },
+          "speedup_vs_first": 1.0
+        },
+        {
+          "num_envs": 8,
+          "total_timesteps": 4096,
+          "updates": 4,
+          "elapsed": 118.78220986999997,
+          "env_steps_per_sec": 34.48327829969511,
+          "torch_threads_during_run": 2,
+          "ppo": {
+            "checkpoint_every_updates": 0,
+            "clip_range": 0.2,
+            "entropy_coef": 0.01,
+            "gae_lambda": 0.95,
+            "gamma": 0.99,
+            "learning_rate": 0.00025,
+            "max_grad_norm": 0.5,
+            "minibatch_size": 32,
+            "num_envs": 8,
+            "rollout_length": 128,
+            "seed": 0,
+            "telemetry_path": null,
+            "total_timesteps": 4096,
+            "update_epochs": 4,
+            "value_coef": 0.5
+          },
+          "env": {
+            "height": 48,
+            "max_steps": 500,
+            "num_stack": 4,
+            "obs_size": 84,
+            "skip": 1,
+            "width": 64
+          },
+          "speedup_vs_first": 1.2036048700514046
+        }
+      ]
+    },
+    {
+      "benchmark": "training.benchmark --env toy",
+      "timestamp_utc": "2026-10-26T04:38:29Z",
+      "label": "paired rep 1: baseline code (339dd92), configs/default.yaml",
+      "host": {
+        "cpu": "Neoverse-V2",
+        "machine": "aarch64",
+        "platform": "Linux-6.12.110+-aarch64-with-glibc2.41",
+        "os_cpu_count": 2,
+        "usable_cpus": 2,
+        "python": "3.12.15",
+        "torch": "2.14.1+cpu",
+        "torch_threads": 2,
+        "numpy": "2.5.3",
+        "load_average_at_report": [
+          1.97705078125,
+          4.19677734375,
+          3.8388671875
+        ]
+      },
+      "config_file": "configs/default.yaml",
+      "ppo_overrides": {},
+      "env_overrides": {},
+      "total_timesteps_per_variant": 2048,
+      "seed": 0,
+      "env_only": [
+        {
+          "num_envs": 1,
+          "steps": 2048,
+          "elapsed": 0.48641380499998377,
+          "env_steps_per_sec": 4210.40681606491
+        },
+        {
+          "num_envs": 8,
+          "steps": 2048,
+          "elapsed": 0.4982839680001234,
+          "env_steps_per_sec": 4110.106147343462
+        }
+      ],
+      "train": [
+        {
+          "num_envs": 1,
+          "total_timesteps": 2048,
+          "updates": 16,
+          "elapsed": 14.114968657999952,
+          "env_steps_per_sec": 145.09419394560635,
+          "torch_threads_during_run": 2,
+          "ppo": {
+            "checkpoint_every_updates": 0,
+            "clip_range": 0.2,
+            "entropy_coef": 0.01,
+            "gae_lambda": 0.95,
+            "gamma": 0.99,
+            "learning_rate": 0.00025,
+            "max_grad_norm": 0.5,
+            "minibatch_size": 32,
+            "num_envs": 1,
+            "rollout_length": 128,
+            "seed": 0,
+            "telemetry_path": null,
+            "total_timesteps": 2048,
+            "update_epochs": 4,
+            "value_coef": 0.5
+          },
+          "env": {
+            "height": 48,
+            "max_steps": 500,
+            "num_stack": 4,
+            "obs_size": 84,
+            "skip": 1,
+            "width": 64
+          },
+          "speedup_vs_first": 1.0
+        },
+        {
+          "num_envs": 8,
+          "total_timesteps": 2048,
+          "updates": 2,
+          "elapsed": 15.649843980000014,
+          "env_steps_per_sec": 130.86392443383312,
+          "torch_threads_during_run": 2,
+          "ppo": {
+            "checkpoint_every_updates": 0,
+            "clip_range": 0.2,
+            "entropy_coef": 0.01,
+            "gae_lambda": 0.95,
+            "gamma": 0.99,
+            "learning_rate": 0.00025,
+            "max_grad_norm": 0.5,
+            "minibatch_size": 32,
+            "num_envs": 8,
+            "rollout_length": 128,
+            "seed": 0,
+            "telemetry_path": null,
+            "total_timesteps": 2048,
+            "update_epochs": 4,
+            "value_coef": 0.5
+          },
+          "env": {
+            "height": 48,
+            "max_steps": 500,
+            "num_stack": 4,
+            "obs_size": 84,
+            "skip": 1,
+            "width": 64
+          },
+          "speedup_vs_first": 0.9019239218000139
+        }
+      ]
+    },
+    {
+      "benchmark": "training.benchmark --env toy",
+      "timestamp_utc": "2026-10-26T04:39:34Z",
+      "label": "paired rep 2: baseline code (339dd92), configs/default.yaml",
+      "host": {
+        "cpu": "Neoverse-V2",
+        "machine": "aarch64",
+        "platform": "Linux-6.12.110+-aarch64-with-glibc2.41",
+        "os_cpu_count": 2,
+        "usable_cpus": 2,
+        "python": "3.12.15",
+        "torch": "2.14.1+cpu",
+        "torch_threads": 2,
+        "numpy": "2.5.3",
+        "load_average_at_report": [
+          2.84130859375,
+          4.138671875,
+          3.85009765625
+        ]
+      },
+      "config_file": "configs/default.yaml",
+      "ppo_overrides": {},
+      "env_overrides": {},
+      "total_timesteps_per_variant": 2048,
+      "seed": 0,
+      "env_only": [
+        {
+          "num_envs": 1,
+          "steps": 2048,
+          "elapsed": 0.4893166490001022,
+          "env_steps_per_sec": 4185.4288101273505
+        },
+        {
+          "num_envs": 8,
+          "steps": 2048,
+          "elapsed": 0.4983443400001306,
+          "env_steps_per_sec": 4109.60822791619
+        }
+      ],
+      "train": [
+        {
+          "num_envs": 1,
+          "total_timesteps": 2048,
+          "updates": 16,
+          "elapsed": 14.283331723999936,
+          "env_steps_per_sec": 143.3839134715884,
+          "torch_threads_during_run": 2,
+          "ppo": {
+            "checkpoint_every_updates": 0,
+            "clip_range": 0.2,
+            "entropy_coef": 0.01,
+            "gae_lambda": 0.95,
+            "gamma": 0.99,
+            "learning_rate": 0.00025,
+            "max_grad_norm": 0.5,
+            "minibatch_size": 32,
+            "num_envs": 1,
+            "rollout_length": 128,
+            "seed": 0,
+            "telemetry_path": null,
+            "total_timesteps": 2048,
+            "update_epochs": 4,
+            "value_coef": 0.5
+          },
+          "env": {
+            "height": 48,
+            "max_steps": 500,
+            "num_stack": 4,
+            "obs_size": 84,
+            "skip": 1,
+            "width": 64
+          },
+          "speedup_vs_first": 1.0
+        },
+        {
+          "num_envs": 8,
+          "total_timesteps": 2048,
+          "updates": 2,
+          "elapsed": 13.675101583999776,
+          "env_steps_per_sec": 149.76122754336342,
+          "torch_threads_during_run": 2,
+          "ppo": {
+            "checkpoint_every_updates": 0,
+            "clip_range": 0.2,
+            "entropy_coef": 0.01,
+            "gae_lambda": 0.95,
+            "gamma": 0.99,
+            "learning_rate": 0.00025,
+            "max_grad_norm": 0.5,
+            "minibatch_size": 32,
+            "num_envs": 8,
+            "rollout_length": 128,
+            "seed": 0,
+            "telemetry_path": null,
+            "total_timesteps": 2048,
+            "update_epochs": 4,
+            "value_coef": 0.5
+          },
+          "env": {
+            "height": 48,
+            "max_steps": 500,
+            "num_stack": 4,
+            "obs_size": 84,
+            "skip": 1,
+            "width": 64
+          },
+          "speedup_vs_first": 1.0444771935523904
+        }
+      ]
+    },
+    {
+      "benchmark": "training.benchmark --env toy",
+      "timestamp_utc": "2026-10-26T04:41:46Z",
+      "label": "paired rep 3: baseline code (339dd92), configs/default.yaml",
+      "host": {
+        "cpu": "Neoverse-V2",
+        "machine": "aarch64",
+        "platform": "Linux-6.12.110+-aarch64-with-glibc2.41",
+        "os_cpu_count": 2,
+        "usable_cpus": 2,
+        "python": "3.12.15",
+        "torch": "2.14.1+cpu",
+        "torch_threads": 2,
+        "numpy": "2.5.3",
+        "load_average_at_report": [
+          3.6640625,
+          4.16845703125,
+          3.9111328125
+        ]
+      },
+      "config_file": "configs/default.yaml",
+      "ppo_overrides": {},
+      "env_overrides": {},
+      "total_timesteps_per_variant": 2048,
+      "seed": 0,
+      "env_only": [
+        {
+          "num_envs": 1,
+          "steps": 2048,
+          "elapsed": 0.5325489759998163,
+          "env_steps_per_sec": 3845.655690455607
+        },
+        {
+          "num_envs": 8,
+          "steps": 2048,
+          "elapsed": 0.5364096389998849,
+          "env_steps_per_sec": 3817.9776258652196
+        }
+      ],
+      "train": [
+        {
+          "num_envs": 1,
+          "total_timesteps": 2048,
+          "updates": 16,
+          "elapsed": 34.89210497199997,
+          "env_steps_per_sec": 58.695226374088584,
+          "torch_threads_during_run": 2,
+          "ppo": {
+            "checkpoint_every_updates": 0,
+            "clip_range": 0.2,
+            "entropy_coef": 0.01,
+            "gae_lambda": 0.95,
+            "gamma": 0.99,
+            "learning_rate": 0.00025,
+            "max_grad_norm": 0.5,
+            "minibatch_size": 32,
+            "num_envs": 1,
+            "rollout_length": 128,
+            "seed": 0,
+            "telemetry_path": null,
+            "total_timesteps": 2048,
+            "update_epochs": 4,
+            "value_coef": 0.5
+          },
+          "env": {
+            "height": 48,
+            "max_steps": 500,
+            "num_stack": 4,
+            "obs_size": 84,
+            "skip": 1,
+            "width": 64
+          },
+          "speedup_vs_first": 1.0
+        },
+        {
+          "num_envs": 8,
+          "total_timesteps": 2048,
+          "updates": 2,
+          "elapsed": 46.27517726100018,
+          "env_steps_per_sec": 44.256988762007715,
+          "torch_threads_during_run": 2,
+          "ppo": {
+            "checkpoint_every_updates": 0,
+            "clip_range": 0.2,
+            "entropy_coef": 0.01,
+            "gae_lambda": 0.95,
+            "gamma": 0.99,
+            "learning_rate": 0.00025,
+            "max_grad_norm": 0.5,
+            "minibatch_size": 32,
+            "num_envs": 8,
+            "rollout_length": 128,
+            "seed": 0,
+            "telemetry_path": null,
+            "total_timesteps": 2048,
+            "update_epochs": 4,
+            "value_coef": 0.5
+          },
+          "env": {
+            "height": 48,
+            "max_steps": 500,
+            "num_stack": 4,
+            "obs_size": 84,
+            "skip": 1,
+            "width": 64
+          },
+          "speedup_vs_first": 0.754013426576463
+        }
+      ]
+    },
+    {
+      "benchmark": "training.benchmark --env toy",
+      "timestamp_utc": "2026-10-26T04:44:58Z",
+      "label": "paired rep 4: baseline code (339dd92), configs/default.yaml",
+      "host": {
+        "cpu": "Neoverse-V2",
+        "machine": "aarch64",
+        "platform": "Linux-6.12.110+-aarch64-with-glibc2.41",
+        "os_cpu_count": 2,
+        "usable_cpus": 2,
+        "python": "3.12.15",
+        "torch": "2.14.1+cpu",
+        "torch_threads": 2,
+        "numpy": "2.5.3",
+        "load_average_at_report": [
+          3.119140625,
+          4.0908203125,
+          3.96337890625
+        ]
+      },
+      "config_file": "configs/default.yaml",
+      "ppo_overrides": {},
+      "env_overrides": {},
+      "total_timesteps_per_variant": 2048,
+      "seed": 0,
+      "env_only": [
+        {
+          "num_envs": 1,
+          "steps": 2048,
+          "elapsed": 0.4868742190001285,
+          "env_steps_per_sec": 4206.4252327960285
+        },
+        {
+          "num_envs": 8,
+          "steps": 2048,
+          "elapsed": 0.49725372900002185,
+          "env_steps_per_sec": 4118.621702683923
+        }
+      ],
+      "train": [
+        {
+          "num_envs": 1,
+          "total_timesteps": 2048,
+          "updates": 16,
+          "elapsed": 19.797809315999984,
+          "env_steps_per_sec": 103.44578873910403,
+          "torch_threads_during_run": 2,
+          "ppo": {
+            "checkpoint_every_updates": 0,
+            "clip_range": 0.2,
+            "entropy_coef": 0.01,
+            "gae_lambda": 0.95,
+            "gamma": 0.99,
+            "learning_rate": 0.00025,
+            "max_grad_norm": 0.5,
+            "minibatch_size": 32,
+            "num_envs": 1,
+            "rollout_length": 128,
+            "seed": 0,
+            "telemetry_path": null,
+            "total_timesteps": 2048,
+            "update_epochs": 4,
+            "value_coef": 0.5
+          },
+          "env": {
+            "height": 48,
+            "max_steps": 500,
+            "num_stack": 4,
+            "obs_size": 84,
+            "skip": 1,
+            "width": 64
+          },
+          "speedup_vs_first": 1.0
+        },
+        {
+          "num_envs": 8,
+          "total_timesteps": 2048,
+          "updates": 2,
+          "elapsed": 13.052888006000103,
+          "env_steps_per_sec": 156.90014340570323,
+          "torch_threads_during_run": 2,
+          "ppo": {
+            "checkpoint_every_updates": 0,
+            "clip_range": 0.2,
+            "entropy_coef": 0.01,
+            "gae_lambda": 0.95,
+            "gamma": 0.99,
+            "learning_rate": 0.00025,
+            "max_grad_norm": 0.5,
+            "minibatch_size": 32,
+            "num_envs": 8,
+            "rollout_length": 128,
+            "seed": 0,
+            "telemetry_path": null,
+            "total_timesteps": 2048,
+            "update_epochs": 4,
+            "value_coef": 0.5
+          },
+          "env": {
+            "height": 48,
+            "max_steps": 500,
+            "num_stack": 4,
+            "obs_size": 84,
+            "skip": 1,
+            "width": 64
+          },
+          "speedup_vs_first": 1.5167378519527173
+        }
+      ]
+    },
+    {
+      "benchmark": "training.benchmark --env toy",
+      "timestamp_utc": "2026-10-26T04:46:14Z",
+      "label": "paired rep 5: baseline code (339dd92), configs/default.yaml",
+      "host": {
+        "cpu": "Neoverse-V2",
+        "machine": "aarch64",
+        "platform": "Linux-6.12.110+-aarch64-with-glibc2.41",
+        "os_cpu_count": 2,
+        "usable_cpus": 2,
+        "python": "3.12.15",
+        "torch": "2.14.1+cpu",
+        "torch_threads": 2,
+        "numpy": "2.5.3",
+        "load_average_at_report": [
+          3.0478515625,
+          3.96435546875,
+          3.935546875
+        ]
+      },
+      "config_file": "configs/default.yaml",
+      "ppo_overrides": {},
+      "env_overrides": {},
+      "total_timesteps_per_variant": 2048,
+      "seed": 0,
+      "env_only": [
+        {
+          "num_envs": 1,
+          "steps": 2048,
+          "elapsed": 0.49291054500008613,
+          "env_steps_per_sec": 4154.912125078684
+        },
+        {
+          "num_envs": 8,
+          "steps": 2048,
+          "elapsed": 0.5018176539997512,
+          "env_steps_per_sec": 4081.1637129071896
+        }
+      ],
+      "train": [
+        {
+          "num_envs": 1,
+          "total_timesteps": 2048,
+          "updates": 16,
+          "elapsed": 13.729509665999558,
+          "env_steps_per_sec": 149.16774523068142,
+          "torch_threads_during_run": 2,
+          "ppo": {
+            "checkpoint_every_updates": 0,
+            "clip_range": 0.2,
+            "entropy_coef": 0.01,
+            "gae_lambda": 0.95,
+            "gamma": 0.99,
+            "learning_rate": 0.00025,
+            "max_grad_norm": 0.5,
+            "minibatch_size": 32,
+            "num_envs": 1,
+            "rollout_length": 128,
+            "seed": 0,
+            "telemetry_path": null,
+            "total_timesteps": 2048,
+            "update_epochs": 4,
+            "value_coef": 0.5
+          },
+          "env": {
+            "height": 48,
+            "max_steps": 500,
+            "num_stack": 4,
+            "obs_size": 84,
+            "skip": 1,
+            "width": 64
+          },
+          "speedup_vs_first": 1.0
+        },
+        {
+          "num_envs": 8,
+          "total_timesteps": 2048,
+          "updates": 2,
+          "elapsed": 12.45926319399996,
+          "env_steps_per_sec": 164.3756912516513,
+          "torch_threads_during_run": 2,
+          "ppo": {
+            "checkpoint_every_updates": 0,
+            "clip_range": 0.2,
+            "entropy_coef": 0.01,
+            "gae_lambda": 0.95,
+            "gamma": 0.99,
+            "learning_rate": 0.00025,
+            "max_grad_norm": 0.5,
+            "minibatch_size": 32,
+            "num_envs": 8,
+            "rollout_length": 128,
+            "seed": 0,
+            "telemetry_path": null,
+            "total_timesteps": 2048,
+            "update_epochs": 4,
+            "value_coef": 0.5
+          },
+          "env": {
+            "height": 48,
+            "max_steps": 500,
+            "num_stack": 4,
+            "obs_size": 84,
+            "skip": 1,
+            "width": 64
+          },
+          "speedup_vs_first": 1.1019519735814967
+        }
+      ]
+    },
+    {
+      "benchmark": "training.benchmark --env toy",
+      "timestamp_utc": "2026-10-26T04:47:30Z",
+      "label": "paired rep 6: baseline code (339dd92), configs/default.yaml",
+      "host": {
+        "cpu": "Neoverse-V2",
+        "machine": "aarch64",
+        "platform": "Linux-6.12.110+-aarch64-with-glibc2.41",
+        "os_cpu_count": 2,
+        "usable_cpus": 2,
+        "python": "3.12.15",
+        "torch": "2.14.1+cpu",
+        "torch_threads": 2,
+        "numpy": "2.5.3",
+        "load_average_at_report": [
+          3.0556640625,
+          3.8544921875,
+          3.904296875
+        ]
+      },
+      "config_file": "configs/default.yaml",
+      "ppo_overrides": {},
+      "env_overrides": {},
+      "total_timesteps_per_variant": 2048,
+      "seed": 0,
+      "env_only": [
+        {
+          "num_envs": 1,
+          "steps": 2048,
+          "elapsed": 0.4853924960002587,
+          "env_steps_per_sec": 4219.265886629834
+        },
+        {
+          "num_envs": 8,
+          "steps": 2048,
+          "elapsed": 0.4951480760000777,
+          "env_steps_per_sec": 4136.136439313719
+        }
+      ],
+      "train": [
+        {
+          "num_envs": 1,
+          "total_timesteps": 2048,
+          "updates": 16,
+          "elapsed": 13.650668143000075,
+          "env_steps_per_sec": 150.02928637234461,
+          "torch_threads_during_run": 2,
+          "ppo": {
+            "checkpoint_every_updates": 0,
+            "clip_range": 0.2,
+            "entropy_coef": 0.01,
+            "gae_lambda": 0.95,
+            "gamma": 0.99,
+            "learning_rate": 0.00025,
+            "max_grad_norm": 0.5,
+            "minibatch_size": 32,
+            "num_envs": 1,
+            "rollout_length": 128,
+            "seed": 0,
+            "telemetry_path": null,
+            "total_timesteps": 2048,
+            "update_epochs": 4,
+            "value_coef": 0.5
+          },
+          "env": {
+            "height": 48,
+            "max_steps": 500,
+            "num_stack": 4,
+            "obs_size": 84,
+            "skip": 1,
+            "width": 64
+          },
+          "speedup_vs_first": 1.0
+        },
+        {
+          "num_envs": 8,
+          "total_timesteps": 2048,
+          "updates": 2,
+          "elapsed": 14.537962818999858,
+          "env_steps_per_sec": 140.87255728315947,
+          "torch_threads_during_run": 2,
+          "ppo": {
+            "checkpoint_every_updates": 0,
+            "clip_range": 0.2,
+            "entropy_coef": 0.01,
+            "gae_lambda": 0.95,
+            "gamma": 0.99,
+            "learning_rate": 0.00025,
+            "max_grad_norm": 0.5,
+            "minibatch_size": 32,
+            "num_envs": 8,
+            "rollout_length": 128,
+            "seed": 0,
+            "telemetry_path": null,
+            "total_timesteps": 2048,
+            "update_epochs": 4,
+            "value_coef": 0.5
+          },
+          "env": {
+            "height": 48,
+            "max_steps": 500,
+            "num_stack": 4,
+            "obs_size": 84,
+            "skip": 1,
+            "width": 64
+          },
+          "speedup_vs_first": 0.9389670556289933
+        }
+      ]
+    }
+  ]
+}
