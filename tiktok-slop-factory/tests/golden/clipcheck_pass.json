@@ -1,0 +1,63 @@
+{
+  "tool": "clipcheck",
+  "schema": 1,
+  "verdict": "pass",
+  "exit_code": 0,
+  "checks": [
+    {
+      "id": "container",
+      "status": "pass",
+      "expected": "decodable video file"
+    },
+    {
+      "id": "aspect",
+      "status": "pass",
+      "expected": "9:16 vertical"
+    },
+    {
+      "id": "duration",
+      "status": "pass",
+      "expected": "3-5s"
+    },
+    {
+      "id": "opening",
+      "status": "pass",
+      "expected": "moving picture from frame 0 (first 1s)"
+    },
+    {
+      "id": "static",
+      "status": "pass",
+      "expected": "<= 1.5s (before the detected CTA)"
+    },
+    {
+      "id": "loudness",
+      "status": "pass",
+      "expected": "-15 to -14 LUFS"
+    },
+    {
+      "id": "true_peak",
+      "status": "pass",
+      "expected": "<= -1 dBTP"
+    },
+    {
+      "id": "cta_logo",
+      "status": "pass",
+      "expected": ">= 2s visible (logo >= 25% of width)"
+    },
+    {
+      "id": "post_hashtags",
+      "status": "pass",
+      "expected": "#brandpartner #gamedev #indiegame (last, nothing after)"
+    },
+    {
+      "id": "post_mentions",
+      "status": "pass",
+      "expected": "BrandName"
+    },
+    {
+      "id": "post_disclosure",
+      "status": "pass",
+      "expected": "'AI voice'"
+    }
+  ]
+}

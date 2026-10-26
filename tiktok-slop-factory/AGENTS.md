@@ -8,7 +8,7 @@ product's facts, this file is correct.
 ## Identity
 
 - A procedural generator that turns short fictional scripts into vertical
-  (1080x1920, H.264/AAC) TikTok-style MP4s. One CLI entry point,
+  (1080x1920, H.264/AAC) TikTok-style MP4s. The generator's CLI entry point is
   `make_videos.py` (`--count`, `--backend`, `--dry-run`; exit codes 0/1/2 as
   documented in the README). All content produced is explicitly fictional.
 - Two backends, deliberately behind one seam (`app/providers.py`, the
@@ -22,11 +22,23 @@ product's facts, this file is correct.
     network service**: "keyless" never means "offline".
   - Adding a backend means implementing the same contract and registering it
     in `app/providers.py`; nothing may be monkeypatched onto `app.gemini`.
+- A second, read-only entry point, `clipcheck.py` (`app/campaign.py`,
+  `app/qc.py`), lints any finished vertical MP4 plus its post text against a
+  campaign brief TOML (`examples/campaign.example.toml`). It only analyses
+  media with FFmpeg/ffprobe and never writes, re-encodes, or uploads anything;
+  exit codes are 0 pass / 2 warnings / 1 failures or could not run (usage
+  errors included), deliberately separate from `make_videos.py`'s 0/1/2.
+  numpy is an **optional** extra (`requirements-qc.txt`) used only for the
+  CTA logo match; without it that check reports "not measured" (warn). Keep
+  campaign specifics generic in the repo: no brand footage, account handles,
+  or real campaign documents in examples or fixtures (tests build fixtures
+  with lavfi in `tmp_path`).
 - Visuals are generated locally with FFmpeg (`app/visuals.py`, `app/renderer.py`);
   no stock-media API. Deliberately excluded scope (README): database, dashboard,
   browser automation, TikTok uploader, Docker, agent orchestration. Do not add
   any of these here.
-- Runtime dependencies: `python-dotenv`, `edge-tts` (`requirements.txt`).
+- Runtime dependencies: `python-dotenv`, `edge-tts` (`requirements.txt`);
+  optional `numpy` for clipcheck's logo match (`requirements-qc.txt`).
   The test runner is **pytest**, not unittest — this product is the exception
   to the unittest commands the other products use.
 
