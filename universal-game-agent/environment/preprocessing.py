@@ -117,22 +117,41 @@ class FrameStack:
 _WrapperBase = gym.Wrapper if gym is not None else object
 
 
+#: Observation dtypes ``PreprocessingWrapper`` can emit (first = default).
+OBS_DTYPES = ("float32", "uint8")
+
+
+def quantize_uint8(obs: np.ndarray) -> np.ndarray:
+    """``[0, 1]`` float stack -> ``round(x * 255)`` uint8 (clipped)."""
+    return np.clip(np.rint(np.asarray(obs, dtype=np.float32) * 255.0), 0, 255).astype(np.uint8)
+
+
 class PreprocessingWrapper(_WrapperBase):
     """Gymnasium wrapper: frame skip + grayscale/resize/normalize + stacking.
 
     ``skip`` repeats the action and sums rewards (DQN-style), max-pooling the
     last two raw frames to tame flicker. Observation: ``(num_stack, size,
     size)`` float32 in ``[0, 1]``.
+
+    ``obs_dtype="uint8"`` (opt-in, ``env.obs_dtype: uint8``) emits the same
+    stack quantised to ``round(x * 255)`` as uint8 in ``[0, 255]``: a quarter
+    of the bytes to store and ship between processes. ``ActorCritic``
+    divides uint8 input by 255 itself, so the model sees ``[0, 1]`` again (to
+    within half a grey level). The default stays float32, byte-identical.
     """
 
-    def __init__(self, env, size: int = TARGET_SIZE, num_stack: int = 4, skip: int = 1):
+    def __init__(self, env, size: int = TARGET_SIZE, num_stack: int = 4, skip: int = 1,
+                 obs_dtype: str = "float32"):
         if gym is not None:
             super().__init__(env)
         else:
             self.env = env
         if not isinstance(skip, (int, np.integer)) or int(skip) <= 0:
             raise ValueError(f"skip must be a positive int, got {skip!r}")
+        if obs_dtype not in OBS_DTYPES:
+            raise ValueError(f"obs_dtype must be one of {OBS_DTYPES}, got {obs_dtype!r}")
         self.size, self.skip = int(size), int(skip)
+        self.obs_dtype = obs_dtype
         # Frame skip sums rewards across `skip` decisions into one decision, so
         # one decision can pay several hit events and the step count stops
         # equalling the event count. The wrapper therefore withdraws the
@@ -144,7 +163,10 @@ class PreprocessingWrapper(_WrapperBase):
         if gym is not None:
             from gymnasium import spaces
 
-            self.observation_space = spaces.Box(0.0, 1.0, shape, np.float32)
+            if obs_dtype == "uint8":
+                self.observation_space = spaces.Box(0, 255, shape, np.uint8)
+            else:
+                self.observation_space = spaces.Box(0.0, 1.0, shape, np.float32)
             self.action_space = env.action_space
         else:
             self.observation_space = shape
@@ -152,7 +174,12 @@ class PreprocessingWrapper(_WrapperBase):
 
     def reset(self, *, seed=None, options=None):
         raw, info = self.env.reset(seed=seed, options=options)
-        return self.stack.reset(raw), info
+        return self._out(self.stack.reset(raw)), info
+
+    def _out(self, stacked: np.ndarray) -> np.ndarray:
+        if self.obs_dtype == "uint8":
+            return quantize_uint8(stacked)
+        return stacked
 
     def step(self, action):
         total, prev, last = 0.0, None, None
@@ -165,7 +192,7 @@ class PreprocessingWrapper(_WrapperBase):
             if terminated or truncated:
                 break
         pooled = np.maximum(prev, last) if prev is not None else last
-        return self.stack.push(pooled), total, terminated, truncated, info
+        return self._out(self.stack.push(pooled)), total, terminated, truncated, info
 
 
 def _chase_last_frame(stacked: np.ndarray) -> int:

@@ -72,5 +72,50 @@ class TestBenchmark(unittest.TestCase):
         env.close()
 
 
+@unittest.skipUnless(_HAS_TORCH, "torch not installed")
+class TestToyBenchmark(unittest.TestCase):
+    """``--env toy``: real toy Pong + real PPO, tiny budgets."""
+
+    def _cfg(self, **ppo):
+        from training.benchmark import DEFAULT_CONFIG, _load_toy_config
+
+        base = {"rollout_length": 8, "minibatch_size": 4, "update_epochs": 1}
+        base.update(ppo)
+        return _load_toy_config(DEFAULT_CONFIG, base, {"max_steps": 20})
+
+    def test_toy_variant_counts_and_restores_settings(self):
+        from training.benchmark import run_toy_variant
+
+        r = run_toy_variant(2, 32, self._cfg(), seed=0)
+        self.assertEqual(r["total_timesteps"], 32)
+        self.assertEqual(r["updates"], 2)
+        self.assertGreater(r["env_steps_per_sec"], 0)
+        self.assertEqual(r["ppo"]["num_envs"], 2)
+        self.assertNotIn("checkpoint_dir", r["ppo"])
+
+    def test_toy_benchmark_with_overrides_and_env_only(self):
+        from training.benchmark import run_toy_benchmark
+
+        out = run_toy_benchmark([1, 2], 16, self._cfg(batched_update=True), env_only_steps=16)
+        self.assertEqual([r["num_envs"] for r in out["train"]], [1, 2])
+        self.assertEqual([r["steps"] for r in out["env_only"]], [16, 16])
+        self.assertEqual(out["train"][0]["speedup_vs_first"], 1.0)
+
+    def test_host_info_fields(self):
+        from training.benchmark import host_info
+
+        info = host_info()
+        for key in ("cpu", "os_cpu_count", "torch", "torch_threads", "python"):
+            self.assertIn(key, info)
+
+    def test_override_parsing(self):
+        from training.benchmark import _parse_overrides
+
+        self.assertEqual(_parse_overrides(["a=1", "b=true", "c=sync", "d=null"]),
+                         {"a": 1, "b": True, "c": "sync", "d": None})
+        with self.assertRaises(ValueError):
+            _parse_overrides(["nokey"])
+
+
 if __name__ == "__main__":
     unittest.main()

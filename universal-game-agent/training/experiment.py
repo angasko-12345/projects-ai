@@ -36,26 +36,75 @@ def load_experiment(path: str | Path) -> dict:
 
 _ENV_KEYS = {"type", "width", "height", "max_steps", "obs_size", "num_stack", "skip",
              "capture", "window", "lifecycle", "actions", "timing", "reward",
-             "termination", "allow_live_capture"}
+             "termination", "allow_live_capture", "vector_backend", "obs_dtype"}
+#: ``env.vector_backend`` values for the toy path (``sync`` = legacy default).
+TOY_VECTOR_BACKENDS = ("sync", "async")
+
+
+class ConfigEnvFactory:
+    """Picklable zero-argument env factory: ``make_env_from_config(cfg)()``.
+
+    What ``env.vector_backend: async`` hands each ``AsyncVectorEnv`` worker;
+    a closure cannot cross a spawn boundary, a config mapping can. The
+    worker rebuilds the env from the same mapping with the backend forced
+    back to ``sync`` (a worker holds one env, never a nested vector env).
+    """
+
+    def __init__(self, env_cfg: dict, train: bool = True):
+        cfg = dict(env_cfg or {})
+        cfg["vector_backend"] = "sync"
+        self.env_cfg = cfg
+        self.train = bool(train)
+
+    def __call__(self):
+        return make_env_from_config(self.env_cfg, train=self.train)()
+
+
+def _attach_async(make, env_cfg: dict, train: bool):
+    from environment.vec import AsyncVectorEnv
+
+    def make_vector(num_envs: int):
+        return AsyncVectorEnv([ConfigEnvFactory(env_cfg, train)] * num_envs)
+
+    make.make_vector = make_vector
+    return make
+
+
 def make_env_from_config(env_cfg: dict, *, train: bool = True):
     """Toy Pong by default; ``type: external`` / ``type: atari`` delegate to their factories.
 
     ``train=False`` (evaluation) only matters for ``atari``: it drops the
     training-only ``reward_transform`` so evaluation reports raw game score.
+
+    ``env.vector_backend: async`` (toy and atari; opt-in) makes
+    ``make_env_for_training`` build an ``AsyncVectorEnv`` with one worker
+    process per slot instead of a ``SyncVectorEnv``. It changes nothing for
+    ``num_envs: 1`` or for evaluation, which build single envs.
+    ``env.obs_dtype: uint8`` (toy and atari; opt-in) emits uint8 frames.
     """
     import warnings
 
+    backend = str((env_cfg or {}).get("vector_backend", "sync"))
     if (env_cfg or {}).get("type", "toy") == "external":
+        if backend != "sync":
+            raise ValueError("env.vector_backend is not supported for type: external "
+                             "(one real window per run)")
         from environment.external_game import make_external_env_from_config
 
         return make_external_env_from_config(env_cfg)
     if (env_cfg or {}).get("type", "toy") == "atari":
         from environment.atari_env import make_atari_env_from_config
 
-        return make_atari_env_from_config(env_cfg, train=train)
+        make = make_atari_env_from_config(env_cfg, train=train)
+        if backend == "async":
+            _attach_async(make, env_cfg, train)
+        return make
     for key in (env_cfg or {}):
         if key not in _ENV_KEYS:
             warnings.warn(f"env: ignoring unknown config key {key!r}", UserWarning, stacklevel=3)
+    if backend not in TOY_VECTOR_BACKENDS:
+        raise ValueError(f"env.vector_backend must be one of {TOY_VECTOR_BACKENDS}, got {backend!r}")
+    obs_dtype = str((env_cfg or {}).get("obs_dtype", "float32"))
 
     def make():
         return PreprocessingWrapper(
@@ -67,7 +116,10 @@ def make_env_from_config(env_cfg: dict, *, train: bool = True):
             size=int(env_cfg.get("obs_size", 84)),
             num_stack=int(env_cfg.get("num_stack", 4)),
             skip=int(env_cfg.get("skip", 1)),
+            obs_dtype=obs_dtype,
         )
+    if backend == "async":
+        _attach_async(make, env_cfg, train)
     return make
 
 

@@ -3,13 +3,37 @@
 image (B, C, 84, 84) -> small CNN -> feature vector -> GRU -> actor head
 (logits over the configured action space) + critic head (scalar value).
 Game-independent: only tensor shapes matter, never game internals.
+
+Input scale: float input is used as given (the legacy ``[0, 1]`` frames,
+unchanged). uint8 input (``env.obs_dtype: uint8``) is divided by 255 inside
+the model, so stored rollouts can stay uint8 and still reach the CNN in
+``[0, 1]``.
 """
 from __future__ import annotations
 
 import argparse
 
+import numpy as np
 import torch
 import torch.nn as nn
+
+
+def _as_input(obs: torch.Tensor) -> torch.Tensor:
+    """uint8 frames -> float in [0, 1]; any other dtype -> ``.float()`` as before."""
+    if obs.dtype == torch.uint8:
+        return obs.float().div_(255.0)
+    return obs.float()
+
+
+def obs_tensor(obs) -> torch.Tensor:
+    """numpy observation -> tensor for the model, keeping uint8 as uint8.
+
+    Anything else becomes contiguous float32 exactly like the legacy
+    ``torch.from_numpy(np.ascontiguousarray(obs, dtype=np.float32))``.
+    """
+    if isinstance(obs, np.ndarray) and obs.dtype == np.uint8:
+        return torch.from_numpy(np.ascontiguousarray(obs))
+    return torch.from_numpy(np.ascontiguousarray(obs, dtype=np.float32))
 
 
 class ActorCritic(nn.Module):
@@ -96,7 +120,7 @@ class ActorCritic(nn.Module):
                 f"hidden must be ({cfg['num_layers']},{obs.shape[0]},{cfg['hidden_size']}), "
                 f"got {tuple(hidden.shape) if isinstance(hidden, torch.Tensor) else hidden!r}"
             )
-        feat = self.fc(self.cnn(obs.float()))
+        feat = self.fc(self.cnn(_as_input(obs)))
         out, new_hidden = self.gru(feat.unsqueeze(1), hidden)
         last = out.squeeze(1)
         return self.actor(last), self.critic(last).squeeze(-1), new_hidden
@@ -124,10 +148,55 @@ class ActorCritic(nn.Module):
                 f"hidden must be ({cfg['num_layers']},1,{cfg['hidden_size']}), "
                 f"got {tuple(hidden.shape) if isinstance(hidden, torch.Tensor) else hidden!r}"
             )
-        feat = self.fc(self.cnn(obs_seq.float()))  # (T, F)
+        feat = self.fc(self.cnn(_as_input(obs_seq)))  # (T, F)
         out, new_hidden = self.gru(feat.unsqueeze(0), hidden)  # (1, T, H)
         last = out.squeeze(0)
         return self.actor(last), self.critic(last).squeeze(-1), new_hidden
+
+    def forward_masked_sequence(self, obs: torch.Tensor, hidden: torch.Tensor,
+                                reset_before: torch.Tensor):
+        """Batched replay of a ``[time, slot]`` chunk with per-slot episode resets.
+
+        ``obs`` (T,N,C,H,W), ``hidden`` (L,N,H) = each slot's state before
+        step 0, ``reset_before`` (T,N) bool = "this slot's hidden is zeroed
+        before step t" (its previous step ended an episode). Returns logits
+        (T,N,A), values (T,N) and the post-step hidden (L,N,H) after step T-1.
+
+        Mathematically the same as running :meth:`forward_sequence` slot by
+        slot on segments split at dones (the legacy ``ppo.batched_update:
+        false`` path): the CNN runs once over all T*N frames and the GRU runs
+        over maximal spans with no reset in any slot, zeroing reset slots in
+        between. Floating-point results can differ in the last bits because
+        batch shapes differ.
+        """
+        cfg = self._config
+        if not isinstance(obs, torch.Tensor) or obs.dim() != 5:
+            raise ValueError(f"obs must be a 5D (T,N,C,H,W) tensor, got {type(obs)}")
+        steps, slots = int(obs.shape[0]), int(obs.shape[1])
+        if tuple(obs.shape[2:]) != (cfg["in_channels"], cfg["frame_size"], cfg["frame_size"]):
+            raise ValueError(f"obs frames must be ({cfg['in_channels']},{cfg['frame_size']},"
+                             f"{cfg['frame_size']}), got {tuple(obs.shape[2:])}")
+        if hidden.shape != (cfg["num_layers"], slots, cfg["hidden_size"]):
+            raise ValueError(f"hidden must be ({cfg['num_layers']},{slots},{cfg['hidden_size']}), "
+                             f"got {tuple(hidden.shape)}")
+        if tuple(reset_before.shape) != (steps, slots):
+            raise ValueError(f"reset_before must be ({steps},{slots}), got {tuple(reset_before.shape)}")
+        feat = self.fc(self.cnn(_as_input(obs.reshape(steps * slots, *obs.shape[2:]))))
+        feat = feat.reshape(steps, slots, -1).transpose(0, 1)  # (N, T, F) for batch_first
+        any_reset = reset_before.any(dim=1).tolist()
+        bounds = [t for t in range(1, steps) if any_reset[t]]
+        outs = []
+        h = hidden
+        start = 0
+        for end in [*bounds, steps]:
+            if any_reset[start]:
+                keep = (~reset_before[start]).to(h.dtype).view(1, slots, 1)
+                h = h * keep
+            out, h = self.gru(feat[:, start:end], h)
+            outs.append(out)
+            start = end
+        out = torch.cat(outs, dim=1).transpose(0, 1)  # (T, N, H)
+        return self.actor(out), self.critic(out).squeeze(-1), h
 
     def save(self, path) -> None:
         torch.save({"config": self._config, "state": self.state_dict()}, path)

@@ -87,10 +87,52 @@ toy pixels -> grayscale/84x84/normalize -> frame stack (4,84,84)
   `total_timesteps` counts total samples across slots, so the evaluation
   budget stays unchanged.
 - Limits: `SyncVectorEnv` is synchronous and single-process — envs are
-  stepped in order, so throughput comes from batching the model's
-  forward/learning passes, not from parallel stepping. Vector rollouts
+  stepped in order. `env.vector_backend: async` (opt-in, see Throughput
+  below) swaps in `AsyncVectorEnv`: one worker process per slot, same
+  contract. Vector rollouts
   report no per-update external reward component breakdown (`comp_sums` is
   empty); curiosity works and masks boundary steps via `dones`.
+
+## Throughput knobs (U1, all opt-in)
+
+Every knob defaults to the legacy behaviour; `configs/toy_fast.yaml` turns
+them all on for toy Pong with 8 envs. `num_envs: 1` training is
+byte-identical to before (`tests/test_vec_ppo_equivalence.py`, unchanged).
+
+| key | what it does |
+|---|---|
+| `env.vector_backend: async` | `AsyncVectorEnv` (`environment/vec.py`): one `spawn` subprocess per slot (the start method Windows has), slots step in parallel. Same explicit per-slot reset contract as `SyncVectorEnv`, no autoreset (an ALE slot that ended still raises if stepped). Same seeds + actions give identical trajectories (`tests/test_vec_async.py`). Toy and Atari; not `external`. |
+| `env.obs_dtype: uint8` | `PreprocessingWrapper` emits `round(x*255)` uint8 frames (the ALE vector adapter passes ALE's own uint8 frames through, exactly); rollouts store uint8 and `ActorCritic` divides by 255 inside the model. |
+| `ppo.batched_update: true` | Vector update runs one CNN pass over the whole `[time, slot]` chunk and a masked GRU over all slots (`ActorCritic.forward_masked_sequence`) instead of a Python loop over slots. Same maths; floats can differ in the last bits (`tests/test_ppo_u1.py` checks params to 1e-5). |
+| `ppo.inference_mode: true` | Rollout collection under `torch.inference_mode()`; identical numbers. Not combinable with curiosity. |
+| `ppo.torch_threads: N` | `torch.set_num_threads(N)` when the trainer starts. |
+| `ppo.adam_eps` | Adam epsilon (default `1e-8`, torch's own; CleanRL uses `1e-5`). |
+| `ppo.anneal_lr: true` | Linear learning-rate decay to 0 over `total_timesteps` (CleanRL). |
+
+Every update now also records `approx_kl`, `clipfrac`, `explained_variance`
+(empty when undefined) and `learning_rate` in the history and as the last
+four CSV telemetry columns. They are diagnostics only; training never reads them.
+
+Measure with `python -m training.benchmark --env toy` (real toy Pong + real
+PPO config, plus a random-action env-only ceiling; `--json` records the host).
+Measured 2026-10-26 in a shared 2-vCPU sandbox (aarch64, torch 2.14 CPU, other
+jobs on the same cores), six paired back-to-back reps of 2048 PPO steps, medians
+(`experiments/throughput_baseline.json`, `experiments/throughput_after.json` `summary`):
+
+| run | steps/s |
+|---|---|
+| before U1, `default.yaml`, 1 env | 144 |
+| before U1, `default.yaml`, 8 envs (`SyncVectorEnv`) | 145 |
+| `toy_fast.yaml`, 8 envs, async | 199 |
+| `toy_fast.yaml`, 8 envs, `vector_backend: sync` (3 reps) | 227 |
+
+That is about 1.45x, not the 5x target: on two cores the PPO update (4 epochs
+of CNN forward+backward per sample) is compute-bound, and async workers
+compete with the trainer for the same cores. The 5x target is for a
+multi-core PC and has not been measured there. To measure on your machine:
+`python -m training.benchmark --env toy --num-envs 1 8 --total-timesteps 4096`
+for the baseline, then the same with `--config configs/toy_fast.yaml`
+(and `--env-opt vector_backend=sync` to compare the two backends).
 
 ## Per-update CSV telemetry (`ppo.telemetry_path`)
 
@@ -100,12 +142,14 @@ toy pixels -> grayscale/84x84/normalize -> frame stack (4,84,84)
   through `PPOUpdateCSVWriter` (`training/telemetry.py`), taken straight
   from the history row — no duplicated metric math, and nothing reads the
   file back.
-- Columns are fixed by `FIELDNAMES`: the 18 scalar per-update history
+- Columns are fixed by `FIELDNAMES`: the 18 original scalar per-update history
   series (`timesteps`, `fps`, `policy_loss`, `value_loss`, `entropy`,
   `mean_reward`, `mean_ext_reward`, `mean_int_reward`, `predictor_loss`,
   `pixel_change`, `episodes`, `upd_episodes`, `upd_mean_length`,
   `upd_terminated`, `upd_truncated`, `upd_mean_ext`, `upd_mean_int`,
-  `upd_mean_total`). The two dict series (`components`, `upd_action_share`)
+  `upd_mean_total`), then the four U1 columns `approx_kl`, `clipfrac`,
+  `explained_variance`, `learning_rate` (optional: a record without them
+  writes empty cells). The two dict series (`components`, `upd_action_share`)
   have no CSV encoding and are excluded. Column order is an append-only
   contract: added columns go at the end, never reorder or remove.
 - Files are written at the exact configured path: open in append mode only,

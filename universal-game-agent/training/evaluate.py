@@ -31,7 +31,7 @@ from __future__ import annotations
 import numpy as np
 import torch
 
-from agent.model import ActorCritic
+from agent.model import ActorCritic, obs_tensor
 from environment.reward import GENERIC_SEMANTICS, SIGN_SEMANTICS, reward_semantics_of
 
 
@@ -60,7 +60,7 @@ def evaluate(model: ActorCritic, make_env, episodes: int = 20, seeds=None, greed
                 counts: dict = {}
                 positive = negative = 0
                 while True:
-                    t = torch.from_numpy(np.ascontiguousarray(obs, dtype=np.float32)).unsqueeze(0).to(device)
+                    t = obs_tensor(obs).unsqueeze(0).to(device)
                     logits, _, hidden = model(t, hidden)
                     action = int(logits.argmax(-1).item()) if greedy else int(torch.distributions.Categorical(logits=logits).sample().item())
                     counts[action] = counts.get(action, 0) + 1
