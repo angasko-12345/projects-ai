@@ -8,6 +8,7 @@ without evidence.
 
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -32,6 +33,9 @@ class FailureCategory(StrEnum):
     DIRTY_WORKTREE = "DIRTY_WORKTREE"
     POLICY_VIOLATION = "POLICY_VIOLATION"
     REVIEW_REJECTION = "REVIEW_REJECTION"
+    # Opt-in (config ``usage_limits``): the agent hit a provider usage/rate
+    # limit.  Only produced when the caller passes usage_limit_patterns.
+    USAGE_LIMIT = "USAGE_LIMIT"
     UNKNOWN = "UNKNOWN"
 
 
@@ -275,6 +279,69 @@ class RepairPlan:
     previous_evidence: str | None = None
 
 
+# Known limit messages from coding-agent CLIs and the APIs behind them, matched
+# case-insensitively as substrings.  Bare "quota" and bare "429" are left out on
+# purpose: both occur in ordinary code and logs.  Used only when the caller
+# opts in by passing usage_limit_patterns to FailureClassifier.classify.
+DEFAULT_USAGE_LIMIT_PATTERNS: tuple[str, ...] = (
+    "usage limit",
+    "rate limit",
+    "rate_limit",
+    "ratelimit",
+    "too many requests",
+    "quota exceeded",
+    "exceeded your current quota",
+    "insufficient_quota",
+    "resource_exhausted",
+    "resource exhausted",
+    "hit your limit",
+    "limit reached",
+    "limit will reset",
+    "resets at",
+)
+
+#: Only the tail of the failure text is searched: a limit message is the last
+#: thing a CLI prints, while earlier output may quote code about rate limits.
+USAGE_LIMIT_TAIL_CHARS = 4000
+
+_RETRY_AFTER_RE = re.compile(
+    r"(?:retry[- ]after[:= ]\s*|try again in\s+|retry in\s+|resets? in\s+)"
+    r"(\d+(?:\.\d+)?)\s*(seconds?|secs?|s|minutes?|mins?|m|hours?|hrs?|h)?\b",
+    re.IGNORECASE,
+)
+_UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600}
+
+
+def match_usage_limit(text: str | None, patterns: tuple[str, ...] | list[str]) -> str | None:
+    """The first configured pattern found in the tail of ``text``, else None."""
+    if not text or not patterns:
+        return None
+    tail = text[-USAGE_LIMIT_TAIL_CHARS:].lower()
+    for pattern in patterns:
+        needle = str(pattern).strip().lower()
+        if needle and needle in tail:
+            return needle
+    return None
+
+
+def parse_retry_after_seconds(text: str | None) -> float | None:
+    """A relative wait stated in the limit message ("try again in 20 minutes",
+    "Retry-After: 30"), in seconds.  Absolute clock times are not parsed: their
+    time zone is ambiguous, so the configured default cooldown applies."""
+    if not text:
+        return None
+    matches = list(_RETRY_AFTER_RE.finditer(text[-USAGE_LIMIT_TAIL_CHARS:]))
+    if not matches:
+        return None
+    found = matches[-1]  # the newest statement wins
+    if found is None:
+        return None
+    amount = float(found.group(1))
+    unit = (found.group(2) or "s").lower()[0]
+    seconds = amount * _UNIT_SECONDS.get(unit, 1)
+    return seconds if seconds > 0 else None
+
+
 def _contains(haystack: str, *needles: str) -> bool:
     lowered = haystack.lower()
     return any(needle in lowered for needle in needles)
@@ -297,10 +364,28 @@ class FailureClassifier:
         role: str | None = None,
         agent_available: bool = True,
         evidence: FailureEvidence | None = None,
+        usage_limit_patterns: tuple[str, ...] | None = None,
     ) -> ClassificationResult:
         src = source if isinstance(source, FailureSource) else FailureSource(str(source))
         text = " ".join(part for part in (error or "", output or "") if part).strip()
         lowered = text.lower()
+
+        # Opt-in usage-limit category.  Cancellation and timeout stay
+        # authoritative: a killed run that happened to print a limit line was
+        # still killed.  None (the default) leaves classification unchanged.
+        if usage_limit_patterns:
+            stopped = cancelled or timed_out or (
+                evidence is not None and (evidence.cancelled or evidence.timed_out)
+            )
+            haystack = text
+            if evidence is not None and evidence.stderr_peek and evidence.stderr_peek not in text:
+                haystack = f"{text} {evidence.stderr_peek}"
+            if not stopped and match_usage_limit(haystack, usage_limit_patterns):
+                return ClassificationResult(
+                    FailureCategory.USAGE_LIMIT, FailureSeverity.MEDIUM,
+                    retryable=True, repairable=False,
+                    recommended_action=RepairAction.RETRY_DIFFERENT_AGENT, source=src,
+                )
 
         if evidence is not None and not evidence.is_empty():
             structured = FailureClassifier._classify_structured(src, evidence)
@@ -624,6 +709,27 @@ class FailureClassifier:
                 verification_run_id=failure.verification_run_id,
                 previous_evidence=failure.evidence,
             )
+        if failure.category is FailureCategory.USAGE_LIMIT:
+            # The same agent would hit the same limit: only a different agent
+            # is a useful retry, and the failed one is in cooldown.
+            if policy.should_retry_attempt(attempt, failure) and alternate_agent_available:
+                return RepairPlan(
+                    failure_id=failure.id, action=RepairAction.RETRY_DIFFERENT_AGENT,
+                    reason="Usage limit hit; retry with a different agent while this one cools down.",
+                    next_attempt=attempt + 1, next_repair_cycle=repair_cycle,
+                    parent_run_id=failure.agent_run_id,
+                    verification_run_id=failure.verification_run_id,
+                    previous_evidence=failure.evidence,
+                )
+            return RepairPlan(
+                failure_id=failure.id, action=RepairAction.STOP,
+                reason="Usage limit hit and no other agent or attempt remains; wait for the reset.",
+                next_attempt=attempt, next_repair_cycle=repair_cycle,
+                inherit_context=False,
+                parent_run_id=failure.agent_run_id,
+                verification_run_id=failure.verification_run_id,
+                previous_evidence=failure.evidence,
+            )
         if failure.category is FailureCategory.POLICY_VIOLATION:
             return RepairPlan(
                 failure_id=failure.id, action=RepairAction.REQUEST_APPROVAL,
@@ -752,4 +858,7 @@ __all__ = [
     "FailureClassifier",
     "build_retry_prompt",
     "new_failure_id",
+    "DEFAULT_USAGE_LIMIT_PATTERNS",
+    "match_usage_limit",
+    "parse_retry_after_seconds",
 ]
