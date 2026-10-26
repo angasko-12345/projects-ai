@@ -78,9 +78,14 @@ describe('premium feature list', () => {
       'logo',
       'saved-codes',
       'history',
-      'no-ads',
     ];
     expect([...ids].sort()).toEqual([...expected].sort());
     expect(ids).toHaveLength(expected.length);
+  });
+
+  it('never sells ad removal, since the free tier has no ads either', () => {
+    for (const feature of PREMIUM_FEATURES) {
+      expect(`${feature.title} ${feature.detail}`).not.toMatch(/\bads?\b/i);
+    }
   });
 });

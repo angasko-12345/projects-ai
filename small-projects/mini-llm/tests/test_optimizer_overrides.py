@@ -48,7 +48,7 @@ def build_data(tmp: str, context_length: int = 16) -> str:
         "--tokenizer-out", os.path.join(tmp, "tokenizer.json"),
         "--train-out", os.path.join(tmp, "train.bin"),
         "--val-out", os.path.join(tmp, "val.bin"),
-        "--vocab-size", "256",
+        "--vocab-size", "512",
         "--min-frequency", "1",
         "--val-frac", "0.2",
         "--context-length", str(context_length),

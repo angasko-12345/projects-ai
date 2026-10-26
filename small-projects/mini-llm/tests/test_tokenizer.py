@@ -6,7 +6,14 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.tokenizer import SPECIAL_TOKENS, decode, encode, load_tokenizer, train_bpe_tokenizer
+from src.tokenizer import (
+    MIN_VOCAB_SIZE,
+    SPECIAL_TOKENS,
+    decode,
+    encode,
+    load_tokenizer,
+    train_bpe_tokenizer,
+)
 
 TINY_CORPUS = [
     "hello world hello mini llm\n",
@@ -26,7 +33,7 @@ class TestTokenizer(unittest.TestCase):
             f.writelines(TINY_CORPUS)
         cls.tok_path = os.path.join(cls.tmp.name, "tokenizer.json")
         cls.tok = train_bpe_tokenizer(
-            [cls.corpus_path], cls.tok_path, vocab_size=64, min_frequency=1
+            [cls.corpus_path], cls.tok_path, vocab_size=512, min_frequency=1
         )
 
     @classmethod
@@ -61,6 +68,32 @@ class TestTokenizer(unittest.TestCase):
         for i in ids:
             self.assertGreaterEqual(i, 0)
             self.assertLess(i, vocab)
+
+    def test_special_token_ids_are_fixed(self):
+        for i, t in enumerate(SPECIAL_TOKENS):
+            self.assertEqual(self.tok.token_to_id(t), i)
+
+    def test_unseen_characters_round_trip_without_unk(self):
+        # TINY_CORPUS is ASCII-only, so none of these bytes were seen in training.
+        # Without the full byte alphabet they encoded to <unk> and were lost.
+        unk = self.tok.token_to_id("<unk>")
+        for text in ("caf\u00e9 \u00fcn\u00efcode \U0001F680\ttab\n\nx",
+                     "\u65e5\u672c\u8a9e \u00a9 \x00\x7f"):
+            ids = encode(self.tok, text)
+            self.assertNotIn(unk, ids, text)
+            self.assertEqual(decode(self.tok, ids), text)
+
+    def test_vocab_holds_the_full_byte_alphabet(self):
+        self.assertGreaterEqual(self.tok.get_vocab_size(), MIN_VOCAB_SIZE)
+        self.assertEqual(MIN_VOCAB_SIZE, 256 + len(SPECIAL_TOKENS))
+
+    def test_vocab_below_byte_alphabet_is_rejected(self):
+        with self.assertRaises(ValueError) as ctx:
+            train_bpe_tokenizer([self.corpus_path],
+                                os.path.join(self.tmp.name, "small.json"),
+                                vocab_size=MIN_VOCAB_SIZE - 1, min_frequency=1)
+        self.assertIn(str(MIN_VOCAB_SIZE), str(ctx.exception))
+        self.assertFalse(os.path.exists(os.path.join(self.tmp.name, "small.json")))
 
 
 if __name__ == "__main__":

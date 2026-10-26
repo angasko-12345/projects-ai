@@ -65,3 +65,23 @@ jobs:
         # cancellation. Exits non-zero if any scenario fails.
         working-directory: .
         run: python acceptance_test.py
+
+  # U1: the Linux jobs simulate Windows prompt transport with injected seams.
+  # This job runs the same module plus real cmd.exe shim checks
+  # (tests/test_prompt_transport_windows.py, skipped off Windows), so the
+  # "multi-line prompt reaches the agent byte-exact or is refused" claim is
+  # exercised on an actual Windows host. Scoped to the transport modules: the
+  # full suite has not been validated on windows-latest yet.
+  windows-prompt-transport:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: agentops
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run prompt transport tests on Windows
+        run: python -m unittest -v tests.test_prompt_transport tests.test_prompt_transport_windows tests.test_stdin_spawn_policy

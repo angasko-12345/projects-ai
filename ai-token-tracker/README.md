@@ -49,7 +49,7 @@ All collectors read official local data read-only and import full history on eve
 | OpenCode | `~/.local/share/opencode/opencode.db` (`OPENCODE_DB` overrides) | exact | full history |
 | Kilo | `~/.kilo/share/kilo.db` or `~/.local/share/kilo/kilo.db` (`KILO_DB` overrides) | exact | full history |
 | Hermes | Hermes session/usage SQLite (`HERMES_STATE_DB` overrides) | exact | full history |
-| Codex | Codex rollout session files (`CODEX_SESSIONS` overrides) | exact | full history |
+| Codex | Codex rollout session files, live `sessions/` and `archived_sessions/` (`CODEX_SESSIONS` overrides) | exact | full history |
 | Pi | Pi session JSONL dirs (`PI_SESSIONS` overrides) | exact | full history |
 | Oh My Pi | Oh My Pi session JSONL dirs (`OMP_SESSIONS` overrides) | exact | full history |
 | **GitHub Copilot** | Copilot CLI `events.jsonl` (AppData) | exact | full history |
@@ -112,7 +112,7 @@ Reads OpenCode's own database (`~/.local/share/opencode/opencode.db`, `OPENCODE_
 Collector-verified inclusive/exclusive semantics:
 - **GitHub Copilot**: `usage.inputTokens` is the total including cache reads/writes; `tokenDetails.input.tokenCount` is the exclusive non-cached input (`33 + 436512 + 75452 == 511997` in the live store) and is used directly. `usage.outputTokens` includes reasoning.
 - **Claude Code**: Anthropic semantics, `input_tokens` excludes cache, `output_tokens` includes thinking (split out).
-- **Codex**: `usage.input_tokens` includes cached input; `output_tokens` includes reasoning; both split.
+- **Codex**: `usage.input_tokens` includes cached input; `output_tokens` includes reasoning; both split. Per rollout file one record type is read: `token_usage_record` when present (newer CLIs also write `event_msg`/`token_count` for the same responses, which is then ignored so nothing counts twice), otherwise `token_count` (`info.last_token_usage`, or the delta of `info.total_token_usage`; repeated snapshots skipped). The sibling of the found sessions dir (`sessions` <-> `archived_sessions`) is scanned too; a rollout present in both is read once, live copy first.
 - **Cline**: `inputTokens` includes cache reads/writes; split.
 - **Hermes**: API-counted rollups where `input + output + cache_read + cache_write = api-reported total`.
 

@@ -68,6 +68,9 @@ class AgentRunContext:
     command: tuple[str, ...] | None = None
     parent_run_id: str | None = None
     relationship: AgentRunRelationship = AgentRunRelationship.ROOT
+    # U1: prompt-free delivery facts (prompt_transport, executable_kind,
+    # executable_resolution) recorded by the runner once delivery is decided.
+    delivery: dict[str, object] | None = None
 
     @property
     def prompt_metadata(self) -> dict[str, object]:
@@ -88,10 +91,13 @@ class AgentRunContext:
     @property
     def command_metadata(self) -> dict[str, object]:
         command = self.safe_command or ()
-        return {
+        metadata: dict[str, object] = {
             "argv": list(command),
             "prompt_hash": self.prompt_metadata["hash"],
         }
+        if self.delivery:
+            metadata.update(self.delivery)
+        return metadata
 
 
 @dataclass(frozen=True)
