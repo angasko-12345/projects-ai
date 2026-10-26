@@ -11,7 +11,7 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from time import monotonic
+from time import monotonic, time as wall_clock
 from uuid import uuid4
 
 from .agent_run import (
@@ -36,6 +36,7 @@ from .execution_model import (
 )
 from .failure import (
     Failure,
+    FailureCategory,
     FailureClassifier,
     FailureEvidence,
     FailureSeverity,
@@ -45,12 +46,15 @@ from .failure import (
     RetryPolicy,
     build_retry_prompt,
     new_failure_id,
+    parse_retry_after_seconds,
 )
 from .logging import redact_text
 from .persistence import DegradationRecorder, event_emitter
 from .security import findings_for_prompt, scan_many
 from .verdict import parse_verdict
 from .config import AppConfig
+from .headroom import REJECT, GateVerdict, HeadroomGate, format_utc, merge_verdicts
+from .headroom_source import build_headroom_gate
 from .events import Event, EventSeverity, EventType
 from .registry import AgentRegistry, DetectedAgent
 from .repo_inspection import RepositoryInspector
@@ -460,7 +464,9 @@ class WorkflowEngine:
                  verification_kernel: VerificationKernel | None = None,
                  router: AgentRouter | None = None,
                  degradation: DegradationRecorder | None = None,
-                 repo_inspector: RepositoryInspector | None = None):
+                 repo_inspector: RepositoryInspector | None = None,
+                 headroom_gate: HeadroomGate | None = None,
+                 clock: Callable[[], float] | None = None):
         self.config = config
         self.state = state
         self.registry = registry
@@ -473,6 +479,16 @@ class WorkflowEngine:
         if self.router is None and getattr(config, "routing_enabled", True):
             self.router = AgentRouter()
         self.repo_inspector = repo_inspector if repo_inspector is not None else RepositoryInspector()
+        # Opt-in routing gates.  Without a ``headroom`` config section there
+        # is no gate, and without ``usage_limits`` no cooldown is read or
+        # written: routing and classification stay exactly as before.
+        self.clock = clock if clock is not None else wall_clock
+        self.headroom_gate = (
+            headroom_gate if headroom_gate is not None
+            else build_headroom_gate(getattr(config, "headroom", None))
+        )
+        self._headroom_last_unavailable: str | None = None
+        self._gate_rejections: dict[str, tuple[str, ...]] = {}
         # A8: persistence failures are classified instead of swallowed.  The
         # recorder emits a WARNING event through the same store it watches, so
         # it degrades to an in-memory entry when the store is the thing that broke.
@@ -822,11 +838,13 @@ class WorkflowEngine:
         excluded: set[str],
         working_directory: object = None,
         repository_characteristics: dict[str, object] | None = None,
+        routing_gate: tuple[dict[str, GateVerdict], list[str]] | None = None,
     ) -> DetectedAgent | None:
         """Select through the router when available, otherwise use legacy selection.
 
         ``repository_characteristics`` lets async callers pass flags computed
-        off the event loop; when omitted they are computed here.
+        off the event loop; when omitted they are computed here.  The same
+        holds for ``routing_gate`` (headroom verdicts and cooldowns).
         """
         router = getattr(self, "router", None)
         if router is not None:
@@ -835,6 +853,11 @@ class WorkflowEngine:
             except Exception:
                 profiles = None
             if isinstance(profiles, dict):
+                gate_verdicts, gate_notes = (
+                    routing_gate if routing_gate is not None else self._routing_gate(task)
+                )
+                gate_rejected = {name for name, verdict in gate_verdicts.items() if verdict.rejects}
+                self._gate_rejections.pop(task.id, None)
                 try:
                     decision = router.route(
                         role=task.role,
@@ -852,11 +875,18 @@ class WorkflowEngine:
                         user_preferences=self.config.role_preferences.get(task.role, ()),
                         historical_performance=self._historical_performance(task.workflow_id),
                         excluded=excluded,
+                        **({"gate_verdicts": gate_verdicts, "gate_notes": gate_notes}
+                           if gate_verdicts or gate_notes else {}),
                     )
                 except Exception:
-                    return self.registry.select(task.role, excluded)
+                    return self.registry.select(task.role, set(excluded) | gate_rejected)
                 selected = getattr(decision, "selected_agent", None)
                 identifier = getattr(selected, "identifier", None)
+                if not identifier and gate_rejected:
+                    self._gate_rejections[task.id] = tuple(
+                        f"{name}: {'; '.join(gate_verdicts[name].reasons)}"
+                        for name in sorted(gate_rejected)
+                    )
                 if identifier:
                     try:
                         agent = self.registry.get(identifier)
@@ -865,13 +895,104 @@ class WorkflowEngine:
                     except (KeyError, TypeError):
                         # A stale router/registry mapping must not silently
                         # execute a different agent than the persisted decision.
-                        fallback = self.registry.select(task.role, excluded)
+                        fallback = self.registry.select(task.role, set(excluded) | gate_rejected)
                         executed = fallback.config.name if fallback is not None else None
                         self._record_routing_decision(task, decision, executed)
                         return fallback
                 self._record_routing_decision(task, decision, None)
                 return None
         return self.registry.select(task.role, excluded)
+
+    def _routing_gate_active(self) -> bool:
+        return (getattr(self, "headroom_gate", None) is not None
+                or getattr(self.config, "usage_limits", None) is not None)
+
+    def _routing_gate(self, task: Task) -> tuple[dict[str, GateVerdict], list[str]]:
+        """Opt-in verdicts from the headroom gate and usage-limit cooldowns.
+
+        Both sources fail open: an unusable headroom document or an unreadable
+        cooldown table yields no verdicts (routing unchanged) and is logged.
+        """
+        notes: list[str] = []
+        headroom_verdicts: dict[str, GateVerdict] = {}
+        cooldown_verdicts: dict[str, GateVerdict] = {}
+        if not self._routing_gate_active():
+            return {}, notes
+        try:
+            now = float(self.clock())
+        except Exception:
+            now = wall_clock()
+        gate = getattr(self, "headroom_gate", None)
+        if gate is not None:
+            headroom_verdicts, snapshot = gate.check(now)
+            notes.append(HeadroomGate.note(snapshot))
+            if snapshot.usable:
+                self._headroom_last_unavailable = None
+            else:
+                key = f"{snapshot.status}: {snapshot.detail}"
+                if key != self._headroom_last_unavailable:
+                    # Logged once per distinct cause; every routing decision
+                    # still carries the note in its constraints.
+                    self._headroom_last_unavailable = key
+                    try:
+                        self.state.event(
+                            task.workflow_id, task.id, "headroom-unavailable",
+                            f"Headroom gate inactive ({key}); routing unchanged.",
+                        )
+                    except Exception as error:
+                        self.degradation.record(
+                            "event.headroom_unavailable", error,
+                            workflow_id=task.workflow_id, task_id=task.id,
+                        )
+        if getattr(self.config, "usage_limits", None) is not None:
+            try:
+                cooldowns = self.state.active_agent_cooldowns(now)
+            except Exception as error:
+                self.degradation.record(
+                    "state.agent_cooldowns", error,
+                    workflow_id=task.workflow_id, task_id=task.id,
+                )
+                cooldowns = {}
+            for agent, row in cooldowns.items():
+                reason = row.get("reason")
+                text = f"usage limit cooldown until {format_utc(row.get('until_epoch'))}"
+                if reason:
+                    text += f" ({reason})"
+                cooldown_verdicts[agent] = GateVerdict(REJECT, (text,))
+            if cooldowns:
+                notes.append("usage-limit cooldowns: " + ", ".join(sorted(cooldowns)))
+        return merge_verdicts(headroom_verdicts, cooldown_verdicts), notes
+
+    def _record_usage_limit_cooldown(self, task: Task, failure: Failure | None, text: str) -> None:
+        """Persist the failed agent's cooldown so it survives a restart."""
+        limits = getattr(self.config, "usage_limits", None)
+        agent = task.assigned_agent
+        if limits is None or not agent:
+            return
+        try:
+            now = float(self.clock())
+        except Exception:
+            now = wall_clock()
+        stated = parse_retry_after_seconds(text)
+        wait = stated if stated is not None else limits.default_cooldown_seconds
+        wait = min(max(wait, 1.0), limits.max_cooldown_seconds)
+        basis = "stated by the agent" if stated is not None else "default cooldown"
+        until = now + wait
+        try:
+            self.state.set_agent_cooldown(
+                agent, until, f"usage limit hit; {basis}",
+                failure_id=getattr(failure, "id", None),
+                workflow_id=task.workflow_id, task_id=task.id,
+            )
+            self.state.event(
+                task.workflow_id, task.id, "agent-cooldown",
+                f"{agent} hit a usage limit; not routed until {format_utc(until)} ({basis}).",
+            )
+        except Exception as error:
+            self.degradation.record(
+                "state.agent_cooldowns", error,
+                workflow_id=task.workflow_id, task_id=task.id,
+            )
 
     def _record_routing_decision(self, task: Task, decision, executed_agent: str | None = None) -> None:
         """Persist an explainable routing decision without leaking metadata."""
@@ -995,12 +1116,34 @@ class WorkflowEngine:
                         )
                     except Exception:
                         repository_characteristics = {}
+                    if self._routing_gate_active():
+                        # The headroom command may take seconds; keep it
+                        # (and the cooldown read) off the event loop too.
+                        try:
+                            routing_gate = await asyncio.to_thread(self._routing_gate, task)
+                        except Exception:
+                            routing_gate = ({}, [])
+                    else:
+                        routing_gate = None
+                else:
+                    routing_gate = None
                 agent = self._select_agent(
                     task, excluded, working_directory, repository_characteristics,
+                    routing_gate=routing_gate,
                 )
                 if agent is None:
                     task.status = TaskStatus.FAILED
-                    if excluded:
+                    gate_rejections = self._gate_rejections.pop(task.id, ())
+                    if gate_rejections:
+                        task.result = (
+                            f"No eligible agent for role '{task.role}': no installed agent supports it "
+                            "after routing-gate rejections ("
+                            + " | ".join(gate_rejections) + ")."
+                        )
+                        if excluded:
+                            task.result += f" Already tried and excluded: {', '.join(sorted(excluded))}."
+                        self.state.event(task.workflow_id, task.id, "no-agent-fallback", task.result)
+                    elif excluded:
                         task.result = (
                             f"No installed agent supports role '{task.role}' "
                             f"(already tried and excluded: {', '.join(sorted(excluded))})."
@@ -1009,10 +1152,17 @@ class WorkflowEngine:
                     else:
                         task.result = f"No installed agent supports role '{task.role}'."
                     self._record_no_agent_run(task, working_directory)
+                    # Gate reasons are free text (window labels, policy names):
+                    # classify on the fixed sentence so they cannot steer the
+                    # category; the full text is still the recorded evidence.
+                    classify_text = (
+                        f"No installed agent supports role '{task.role}'."
+                        if gate_rejections else task.result
+                    )
                     self.record_failure(
                         task,
                         FailureClassifier.classify(
-                            source=FailureSource.ENVIRONMENT, error=task.result,
+                            source=FailureSource.ENVIRONMENT, error=classify_text,
                             role=task.role, agent_available=False,
                         ),
                         evidence=task.result, primary_error=task.result,
@@ -1237,9 +1387,11 @@ class WorkflowEngine:
             error=task.result,
             role=task.role,
             evidence=evidence,
+            **self._usage_limit_kwargs(task),
         )
+        failure = None
         try:
-            self.record_failure(
+            failure = self.record_failure(
                 task, classification, agent_run_id=run_id,
                 verification_run_id=task.verification_run_id,
                 evidence=task.result, primary_error=task.result,
@@ -1250,6 +1402,16 @@ class WorkflowEngine:
                 "failure.create", persist_error,
                 workflow_id=task.workflow_id, task_id=task.id,
             )
+        if classification.category is FailureCategory.USAGE_LIMIT:
+            self._record_usage_limit_cooldown(
+                task, failure, f"{task.result or ''}\n{redact_text(stderr)[-500:]}")
+
+    def _usage_limit_kwargs(self, task: Task) -> dict[str, object]:
+        """Classifier opt-in: patterns only when ``usage_limits`` is configured."""
+        limits = getattr(self.config, "usage_limits", None)
+        if limits is None:
+            return {}
+        return {"usage_limit_patterns": limits.patterns_for(task.assigned_agent)}
 
     def _record_legacy_verification_failure(self, task: Task, results) -> None:
         """Record a failed legacy verification run with structured evidence.

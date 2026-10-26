@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-10-26T04:43:27+00:00",
-  "commit": "fc403958582cc12c3be1b80b9d46c5a98b814b85",
+  "generated_at": "2026-10-26T08:34:28+00:00",
+  "commit": "1520873517486da5a3ff0e3c6c1eae73a7635972",
   "python": "3.12.15",
   "platform": "Linux 6.12.110+ (aarch64)",
-  "measured_in": "a clean clone of fc403958582c",
+  "measured_in": "a clean clone of 152087351748",
   "clean_checkout": true,
   "command_note": "Every command runs from its own product directory with the interpreter that ran this script. There is no repository-wide test command and these products share no dependencies.",
   "excluded": {
@@ -14,7 +14,7 @@
     {
       "product": "agentops",
       "directory": "agentops",
-      "commit": "3244435371621045ea75178e069b8b1229e7fae0",
+      "commit": "aa405a86707a9dbd58b950c9960ea622bf51efa7",
       "command": [
         "/usr/local/bin/python",
         "-m",
@@ -24,13 +24,13 @@
         "tests"
       ],
       "dirty_paths": [],
-      "total": 1011,
-      "duration_seconds": 38.134,
+      "total": 1050,
+      "duration_seconds": 39.388,
       "skipped": 82,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 1011 tests in 38.134s",
+        "Ran 1050 tests in 39.388s",
         "OK (skipped=82)"
       ],
       "result": "pass"
@@ -62,7 +62,7 @@
     {
       "product": "small-projects/mini-llm",
       "directory": "small-projects/mini-llm",
-      "commit": "fc403958582cc12c3be1b80b9d46c5a98b814b85",
+      "commit": "1520873517486da5a3ff0e3c6c1eae73a7635972",
       "command": [
         "/workspace/work/venv/bin/python",
         "-m",
@@ -72,14 +72,14 @@
         "tests"
       ],
       "dirty_paths": [],
-      "total": 315,
-      "duration_seconds": 59.02,
-      "skipped": 2,
+      "total": 314,
+      "duration_seconds": 64.743,
+      "skipped": 4,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 315 tests in 59.020s",
-        "OK (skipped=2)"
+        "Ran 314 tests in 64.743s",
+        "OK (skipped=4)"
       ],
       "result": "pass"
     },
