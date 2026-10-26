@@ -82,6 +82,12 @@ python -m unittest discover -s tests
   (2026-10-25), so unseen characters never become `<unk>`. `--vocab-size` and
   `train_bpe_tokenizer` refuse anything below 260 (256 bytes + 4 specials).
 
+- Bits per byte (added 2026-10-26): every training eval logs `val_bpb` and
+  checkpoints store it beside `val_loss` (optional key; older checkpoints still
+  load). `src/evaluate.py` recomputes it (`python -m src.evaluate --checkpoint
+  ...`) with a fixed seeded sample sheet. `train.evaluate()` delegates to
+  `src.evaluate.evaluate_stats`, whose loss arithmetic is unchanged.
+
 ## Checkpoint provenance and resume safety (added 2026-10-10)
 
 `meta.json` records which artifacts produced the `.bin` files, by content:

@@ -18,7 +18,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.config import Config, config_for_data, file_sha256, provenance_mismatches
 from src.dataset import build_dataloader
+from src.evaluate import evaluate_stats, token_byte_lengths
 from src.model import from_config
+from src.tokenizer import load_tokenizer
 
 # Checkpoint format versions.
 #
@@ -620,34 +622,14 @@ def _chunked_loss(module, x, y, chunk_size):
     return getattr(module, "_orig_mod", module).chunked_loss(x, y, chunk_size)
 
 
-@torch.no_grad()
 def evaluate(model, loader, batches: int, device: torch.device,
              chunk_size: int = 0) -> float:
-    # batches <= 0 would average nothing and report a fake 0.0 loss.
-    if not isinstance(batches, int) or batches < 1:
-        raise ValueError(f"batches must be a positive int (>= 1), got {batches!r}")
-    model.eval()
-    n_batches = len(loader)
-    if n_batches == 0:
-        raise ValueError("cannot evaluate on an empty loader")
-    # Never cycle: re-reading a short val set would weight its batches more than
-    # their share and report a loss that is not the corpus loss. Weight by target
-    # tokens so a ragged final batch counts for the tokens it actually has.
-    limit = min(batches, n_batches)
-    total_loss, total_tokens = 0.0, 0
-    for i, (x, y) in enumerate(loader):
-        if i >= limit:
-            break
-        x, y = x.to(device), y.to(device)
-        if chunk_size > 0:
-            loss = _chunked_loss(model, x, y, chunk_size)
-        else:
-            _, loss = model(x, y)
-        n_tokens = y.numel()
-        total_loss += loss.item() * n_tokens
-        total_tokens += n_tokens
-    model.train()
-    return total_loss / max(1, total_tokens)
+    """Token-weighted mean val loss over the first `batches` batches.
+
+    The arithmetic lives in src.evaluate.evaluate_stats, which also counts the
+    scored targets' bytes for bits per byte when given a byte-length table.
+    """
+    return evaluate_stats(model, loader, batches, device, chunk_size)["loss"]
 
 
 def _digest_or_missing(path: str) -> str:
@@ -753,6 +735,10 @@ def train(cfg: Config, resume_from: str | None = None, start_step: int | None = 
     # it independent of --stride and --batch-size, so it means the same thing in a
     # resumed run as in the run that wrote the checkpoint.
     n_train_tokens = max(1, len(train_loader.dataset.tokens))
+    # Per-id UTF-8 byte lengths, so each eval also reports bits per byte, a number
+    # that is comparable across tokenizers (val_loss per token is not). The
+    # tokenizer was already verified against meta.json by data_provenance().
+    byte_lengths = token_byte_lengths(load_tokenizer(cfg.tokenizer_path), cfg.vocab_size)
 
     optimizer = torch.optim.AdamW(
         build_param_groups(model, cfg.weight_decay),
@@ -786,7 +772,7 @@ def train(cfg: Config, resume_from: str | None = None, start_step: int | None = 
     model.train()
     train_model.train()
     train_iter = iter(train_loader)  # build_dataloader guarantees >= 1 full batch
-    last_train_loss = last_val_loss = float("nan")
+    last_train_loss = last_val_loss = last_val_bpb = float("nan")
     total_tokens = 0
     t_start = time.perf_counter()
     # Each loss is scaled by 1/accum before backward, so the accumulated gradient
@@ -826,19 +812,21 @@ def train(cfg: Config, resume_from: str | None = None, start_step: int | None = 
             )
 
         if step % cfg.eval_interval == 0 or step == cfg.max_steps:
-            val_loss = evaluate(train_model, val_loader, cfg.eval_batches, device,
-                                cfg.loss_chunk_size)
-            last_train_loss, last_val_loss = group_loss, val_loss
+            stats = evaluate_stats(train_model, val_loader, cfg.eval_batches, device,
+                                   cfg.loss_chunk_size, byte_lengths=byte_lengths)
+            val_loss, val_bpb = stats["loss"], stats["bpb"]
+            last_train_loss, last_val_loss, last_val_bpb = group_loss, val_loss, val_bpb
             print(
                 f"step {step} train_loss {group_loss:.4f} "
-                f"val_loss {val_loss:.4f} lr {lr:.6f}",
+                f"val_loss {val_loss:.4f} lr {lr:.6f} val_bpb {val_bpb:.4f}",
                 flush=True,
             )
             checkpoint_path = os.path.join(cfg.checkpoint_dir, f"step_{step}.pt")
             save_checkpoint(
                 checkpoint_path,
                 model, optimizer, step, cfg, lr=lr, progress=progress_snapshot(),
-                extra={"train_loss": group_loss, "val_loss": val_loss},
+                extra={"train_loss": group_loss, "val_loss": val_loss,
+                       "val_bpb": val_bpb},
             )
             # Rotate only after the new checkpoint is safely on disk, so the file
             # just written can never be deleted and the newest always survives.
@@ -850,7 +838,8 @@ def train(cfg: Config, resume_from: str | None = None, start_step: int | None = 
         os.path.join(cfg.checkpoint_dir, "final.pt"), model, optimizer,
         cfg.max_steps, cfg, lr=lr_at_step(cfg.max_steps, cfg),
         progress=progress_snapshot(),
-        extra={"train_loss": last_train_loss, "val_loss": last_val_loss},
+        extra={"train_loss": last_train_loss, "val_loss": last_val_loss,
+               "val_bpb": last_val_bpb},
     )
     print("saved final checkpoint")
     elapsed = time.perf_counter() - t_start

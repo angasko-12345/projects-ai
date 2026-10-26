@@ -56,7 +56,8 @@ mini-llm/
 │   ├── model.py               # MiniGPT: attention, MLP, blocks
 │   ├── dataset.py             # memmap dataset, x=tokens[:-1] y=tokens[1:]
 │   ├── train.py               # AdamW + warmup/cosine, eval, checkpoints
-│   └── generate.py            # autoregressive sampling (temperature, top-k)
+│   ├── generate.py            # autoregressive sampling (temperature, top-k)
+│   └── evaluate.py            # val bits-per-byte + fixed seeded sample sheet
 ├── tests/                     # test_model, test_pipeline, test_prepare_streaming,
 │                              # test_throughput, test_tokenizer
 ├── prepare_data.py            # tokenizer training + streaming encode/split to .bin
@@ -285,6 +286,37 @@ model shape and tokenizer are still known — and every later run
 carries `checkpoint_metadata`. Because the paths are verified, a bare
 `--resume` needs no data flags. Generation applies the same check to
 `--tokenizer`.
+
+## Evaluation: bits per byte
+
+Validation loss per token depends on the tokenizer (a bigger vocabulary packs
+more bytes into each token), so it cannot compare runs with different vocab
+sizes. Every eval during training therefore also logs `val_bpb`, and every
+checkpoint stores it next to `val_loss`:
+
+```
+bpb = total target NLL (nats) / (ln 2 * UTF-8 bytes of those targets)
+```
+
+The bytes are counted from the exact target ids that were scored, using a
+per-id byte-length table built from the byte-level vocabulary. Special tokens
+(`<bos>`, `<eos>`, ...) count 0 bytes but their NLL is still counted, so the
+model is charged for predicting story boundaries. (nanochat also drops 0-byte
+targets from the NLL, so its bpb is close to, not identical with, this one.)
+
+To score a checkpoint on its whole val set and print a fixed, seeded sample
+sheet (5 prompts, greedy plus T=0.8 / top-k 40), so two runs can be compared:
+
+```bash
+python -m src.evaluate --checkpoint checkpoints/final.pt --samples --json-out eval.json
+```
+
+By default it scores non-overlapping windows (`--stride` = context length), so
+each val token counts once; training-time evals use stride 1 over
+`--eval-batches` batches, and `--stride 1 --batches <eval_batches>` reproduces
+the number a checkpoint recorded exactly. The val `.bin` and tokenizer default
+to the ones the checkpoint recorded, and the tokenizer is checked against its
+digest.
 
 ## Generation
 
