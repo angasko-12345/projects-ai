@@ -22,7 +22,7 @@ import torch
 import torch.nn as nn
 from torch.distributions import Categorical
 
-from agent.model import ActorCritic
+from agent.model import ActorCritic, obs_tensor
 from environment.vec import SyncVectorEnv
 from training.telemetry import FIELDNAMES, PPOUpdateCSVWriter
 
@@ -49,6 +49,22 @@ class PPOConfig:
     # (training/telemetry.py). A relative path resolves against the process
     # working directory, so configs should normally use an absolute path.
     telemetry_path: str | None = None
+    # --- U1 throughput / PPO-detail knobs. Every default is the legacy
+    # behaviour, so existing configs and checkpoints train byte-identically.
+    # Adam epsilon. 1e-8 is torch's default (legacy); CleanRL uses 1e-5.
+    adam_eps: float = 1e-8
+    # Linear learning-rate decay to 0 over total_timesteps (CleanRL anneal_lr).
+    anneal_lr: bool = False
+    # torch.set_num_threads(n) when the trainer is built; None = leave torch's default.
+    torch_threads: int | None = None
+    # Run rollout collection under torch.inference_mode() instead of no_grad.
+    # Same numbers; not combinable with curiosity (its running stats update in-place).
+    inference_mode: bool = False
+    # Vector update: one CNN pass over the whole [time, slot] chunk and a
+    # masked GRU over all slots (ActorCritic.forward_masked_sequence) instead
+    # of slot-by-slot segment replay. Same maths, float results may differ in
+    # the last bits. Single-env training ignores it.
+    batched_update: bool = False
 
     def __post_init__(self):
         for name in (
@@ -76,6 +92,17 @@ class PPOConfig:
             raise ValueError(
                 "telemetry_path must be a path string or None "
                 f"(None disables telemetry), got {self.telemetry_path!r}")
+        if (isinstance(self.adam_eps, bool) or not isinstance(self.adam_eps, (int, float))
+                or not self.adam_eps > 0):
+            raise ValueError(f"adam_eps must be a positive number, got {self.adam_eps!r}")
+        for name in ("anneal_lr", "inference_mode", "batched_update"):
+            if not isinstance(getattr(self, name), bool):
+                raise ValueError(f"{name} must be true or false, got {getattr(self, name)!r}")
+        if self.torch_threads is not None and (
+                not isinstance(self.torch_threads, int) or isinstance(self.torch_threads, bool)
+                or self.torch_threads < 1):
+            raise ValueError(
+                f"torch_threads must be an int >= 1 or None (torch default), got {self.torch_threads!r}")
 
     @classmethod
     def from_dict(cls, data: dict) -> PPOConfig:
@@ -103,6 +130,64 @@ def declared_action_space(env) -> str | None:
         if isinstance(value, str) and value:
             return value
     return None
+
+
+def _np_obs(obs) -> np.ndarray:
+    """Contiguous observation array: uint8 kept, anything else float32 (legacy)."""
+    if isinstance(obs, np.ndarray) and obs.dtype == np.uint8:
+        return np.ascontiguousarray(obs)
+    return np.ascontiguousarray(obs, dtype=np.float32)
+
+
+def _pixel_change(obs: torch.Tensor) -> float:
+    """Mean absolute frame-to-frame change over the time axis (metric only).
+
+    uint8 frames are compared in ``[0, 1]`` units like float frames, and
+    never with wrapping uint8 subtraction.
+    """
+    if obs.shape[0] <= 1:
+        return 0.0
+    if obs.dtype == torch.uint8:
+        obs = obs.float() / 255.0
+    return float(torch.abs(obs[1:] - obs[:-1]).mean())
+
+
+def _escape_inference(value):
+    """Clone inference-mode tensors (recursively) so autograd may use them."""
+    if isinstance(value, torch.Tensor):
+        return value.clone() if value.is_inference() else value
+    if isinstance(value, dict):
+        return {k: _escape_inference(v) for k, v in value.items()}
+    if isinstance(value, tuple):
+        return tuple(_escape_inference(v) for v in value)
+    if isinstance(value, list):
+        return [_escape_inference(v) for v in value]
+    return value
+
+
+def explained_variance(values: torch.Tensor, returns: torch.Tensor) -> float | None:
+    """CleanRL's ``1 - Var(returns - values) / Var(returns)``.
+
+    ``None`` when it is undefined (``Var(returns) == 0``, e.g. a reward-free
+    rollout); CleanRL reports NaN there, but ``None`` compares equal to
+    itself, so identical runs keep identical histories (an empty CSV cell).
+    """
+    y_pred = values.detach().reshape(-1).double().cpu().numpy()
+    y_true = returns.detach().reshape(-1).double().cpu().numpy()
+    var_y = np.var(y_true)
+    if not np.isfinite(var_y) or var_y == 0:
+        return None
+    return float(1.0 - np.var(y_true - y_pred) / var_y)
+
+
+def _ratio_stats(new_logprobs: torch.Tensor, old_logprobs: torch.Tensor, clip_range: float):
+    """approx_kl (CleanRL's unbiased k3 estimator) and clip fraction. Diagnostics only."""
+    with torch.no_grad():
+        logratio = new_logprobs.detach() - old_logprobs.detach()
+        ratio = logratio.exp()
+        approx_kl = ((ratio - 1) - logratio).mean().item()
+        clipfrac = ((ratio - 1.0).abs() > clip_range).float().mean().item()
+    return approx_kl, clipfrac
 
 
 def compute_gae(rewards, values, terminated, next_value, gamma, gae_lambda,
@@ -194,7 +279,13 @@ class PPOTrainer:
         self._num_slots = env.num_envs if self._vec else 1
         self.device = torch.device(device)
         self.model.to(self.device)
-        self.optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
+        if config.torch_threads is not None:
+            torch.set_num_threads(config.torch_threads)
+        if config.inference_mode and curiosity is not None:
+            raise ValueError("ppo.inference_mode cannot be combined with curiosity: the curiosity "
+                             "normalizer updates its running statistics in place during rollout")
+        self.optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate,
+                                          eps=config.adam_eps)
         self.curiosity = curiosity
         self.env_config = dict(env_config) if env_config is not None else None
         self.num_timesteps = 0
@@ -210,6 +301,8 @@ class PPOTrainer:
             "upd_terminated": [], "upd_truncated": [], "upd_mean_ext": [],
             "upd_mean_int": [], "upd_mean_total": [], "components": [],
             "upd_action_share": [],
+            # CleanRL-style update diagnostics (never read back by training).
+            "approx_kl": [], "clipfrac": [], "explained_variance": [], "learning_rate": [],
         }
 
     def _initial_obs(self, seed):
@@ -232,8 +325,18 @@ class PPOTrainer:
         return self.env.step(action)
 
     # -- rollout ---------------------------------------------------------
-    @torch.no_grad()
     def collect_rollout(self, respect_budget: bool = False):
+        if not self.config.inference_mode:
+            return self._collect(respect_budget=respect_budget)
+        # Same computation under inference_mode; the buffers it returns are
+        # cloned out of inference mode because update() backpropagates
+        # through ops that save them.
+        with torch.inference_mode():
+            result = self._collect(respect_budget=respect_budget)
+        return _escape_inference(result)
+
+    @torch.no_grad()
+    def _collect(self, respect_budget: bool = False):
         if self._vec:
             return self._collect_vector(respect_budget=respect_budget)
         cfg = self.config
@@ -255,7 +358,7 @@ class PPOTrainer:
                 rollout_steps, max(cfg.total_timesteps - self.num_timesteps, 1)
             )
         for _ in range(rollout_steps):
-            t = torch.from_numpy(np.ascontiguousarray(obs, dtype=np.float32)).unsqueeze(0).to(self.device)
+            t = obs_tensor(obs).unsqueeze(0).to(self.device)
             logits, value, hidden = self.model(t, hidden)
             dist = Categorical(logits=logits.squeeze(0))
             action = dist.sample()
@@ -265,7 +368,7 @@ class PPOTrainer:
             buf["logprobs"].append(dist.log_prob(action).cpu())
             buf["values"].append(value.squeeze(0).cpu())
             hidden_traj.append(hidden.clone())
-            next_list.append(np.ascontiguousarray(next_obs, dtype=np.float32))
+            next_list.append(_np_obs(next_obs))
             buf["ext"].append(float(reward))
             buf["terminated"].append(bool(terminated))
             buf["truncated"].append(bool(truncated))
@@ -300,11 +403,7 @@ class PPOTrainer:
         buf["rewards"] = buf["ext"] + buf["int_rewards"]  # total drives GAE
         # No frame pair exists for a one-step rollout: report 0.0 (no observed
         # change) instead of NaN. Metric only; training is unaffected.
-        buf["pixel_change"] = (
-            float(torch.abs(buf["obs"][1:] - buf["obs"][:-1]).mean())
-            if buf["obs"].shape[0] > 1
-            else 0.0
-        )
+        buf["pixel_change"] = _pixel_change(buf["obs"])
         # Per-episode sums, spanning-aware via carry accumulators.
         acc_e = getattr(self, "_ep_ext", 0.0)
         acc_i = getattr(self, "_ep_int", 0.0)
@@ -339,7 +438,7 @@ class PPOTrainer:
             buf["next_value"] = truncation_values[-1]
         else:
             buf["next_value"] = self.model(
-                torch.from_numpy(np.ascontiguousarray(obs, dtype=np.float32)).unsqueeze(0).to(self.device),
+                obs_tensor(obs).unsqueeze(0).to(self.device),
                 hidden,
             )[1].squeeze(0).cpu()
         # GAE's next-observation value per step. After a truncation the next
@@ -388,8 +487,7 @@ class PPOTrainer:
         hidden_traj = []  # post-step hidden (L,N,H) per step, pre-reset
         next_list = []  # true post-step frames per step, pre-reset
         for _ in range(rollout_steps):
-            t = torch.stack([torch.from_numpy(
-                np.ascontiguousarray(o, dtype=np.float32)) for o in obs_list]).to(self.device)
+            t = torch.stack([obs_tensor(o) for o in obs_list]).to(self.device)
             logits, value, hidden = self.model(t, hidden)
             dist = Categorical(logits=logits)
             actions = dist.sample()
@@ -401,8 +499,7 @@ class PPOTrainer:
             buf["logprobs"].append(logps.cpu())
             buf["values"].append(value.cpu())
             hidden_traj.append(hidden.clone())
-            next_list.append(torch.stack([torch.from_numpy(
-                np.ascontiguousarray(o, dtype=np.float32)) for o in step_obs]))
+            next_list.append(torch.stack([obs_tensor(o) for o in step_obs]))
             buf["ext"].append(torch.tensor([float(r) for r in rewards]))
             buf["terminated"].append(torch.tensor([bool(x) for x in terms]))
             buf["truncated"].append(torch.tensor([bool(x) for x in truncs]))
@@ -435,11 +532,7 @@ class PPOTrainer:
             int_raw = torch.zeros(rollout_steps * slots)
             buf["int_rewards"] = torch.zeros(rollout_steps, slots)
         buf["rewards"] = buf["ext"] + buf["int_rewards"]
-        buf["pixel_change"] = (
-            float(torch.abs(buf["obs"][1:] - buf["obs"][:-1]).mean())
-            if buf["obs"].shape[0] > 1
-            else 0.0
-        )
+        buf["pixel_change"] = _pixel_change(buf["obs"])
         acc_e = list(getattr(self, "_vacc_e", [0.0] * slots))
         acc_i = list(getattr(self, "_vacc_i", [0.0] * slots))
         acc_l = list(getattr(self, "_vacc_l", [0] * slots))
@@ -475,8 +568,7 @@ class PPOTrainer:
             if buf["truncated"][-1, e]:
                 next_value[e] = truncation_values[-1, e]
                 continue
-            bv_obs = torch.from_numpy(
-                np.ascontiguousarray(obs_list[e], dtype=np.float32)).unsqueeze(0).to(self.device)
+            bv_obs = obs_tensor(obs_list[e]).unsqueeze(0).to(self.device)
             bv_h = hidden[:, e, :].unsqueeze(1).to(self.device)
             next_value[e] = self.model(bv_obs, bv_h)[1].squeeze(0).cpu()
         buf["next_value"] = next_value
@@ -516,7 +608,8 @@ class PPOTrainer:
             adv_std = torch.ones(())  # single-sample rollout: center only
         advantages = (advantages - advantages.mean()) / (adv_std + 1e-8)
         old_logprobs = buf["logprobs"].float()
-        metrics: dict[str, list[float]] = {"policy_loss": [], "value_loss": [], "entropy": [], "predictor_loss": []}
+        metrics: dict[str, list[float]] = {"policy_loss": [], "value_loss": [], "entropy": [], "predictor_loss": [],
+                                           "approx_kl": [], "clipfrac": []}
         t0 = self.num_timesteps
         for _ in range(cfg.update_epochs):
             hidden = buf["h0"].to(self.device)  # (L,1,H): rollout-start state
@@ -549,6 +642,9 @@ class PPOTrainer:
                 logprobs = dist.log_prob(buf["actions"][start:end].to(self.device))
                 entropy = dist.entropy().mean()
                 ratio = torch.exp(logprobs - old_logprobs[start:end].to(self.device))
+                kl, cf = _ratio_stats(logprobs, old_logprobs[start:end].to(self.device), cfg.clip_range)
+                metrics["approx_kl"].append(kl)
+                metrics["clipfrac"].append(cf)
                 adv = advantages[start:end].to(self.device)
                 policy_loss = -torch.min(ratio * adv, torch.clamp(ratio, 1 - cfg.clip_range, 1 + cfg.clip_range) * adv).mean()
                 ret = returns[start:end].to(self.device)
@@ -571,6 +667,8 @@ class PPOTrainer:
         self.num_updates += 1
         out = {k: float(np.mean(v)) for k, v in metrics.items()}
         out["timesteps"] = t0
+        out["explained_variance"] = explained_variance(values, returns)
+        out["learning_rate"] = float(self.optimizer.param_groups[0]["lr"])
         return out
 
     def _update_vector(self, buf) -> dict[str, float]:
@@ -583,6 +681,8 @@ class PPOTrainer:
         carry (zeros after its dones), then pools every step of the time
         chunk into one loss. For one slot this reduces to the single path.
         """
+        if self.config.batched_update:
+            return self._update_vector_batched(buf)
         cfg = self.config
         slots = self._num_slots
         steps = int(buf["obs"].shape[0])
@@ -605,7 +705,8 @@ class PPOTrainer:
         flat_ret = returns.reshape(-1).to(self.device)
         flat_old_lp = buf["logprobs"].float().reshape(-1).to(self.device)
         flat_values = values.reshape(-1).to(self.device)
-        metrics: dict[str, list[float]] = {"policy_loss": [], "value_loss": [], "entropy": [], "predictor_loss": []}
+        metrics: dict[str, list[float]] = {"policy_loss": [], "value_loss": [], "entropy": [], "predictor_loss": [],
+                                           "approx_kl": [], "clipfrac": []}
         t0 = self.num_timesteps
         for _ in range(cfg.update_epochs):
             hidden = buf["h0"].to(self.device).clone()  # (L,N,H); slots mutated below
@@ -649,6 +750,9 @@ class PPOTrainer:
                 entropy = chunk_ent.mean()
                 idx = torch.arange(start * slots, end * slots, device=self.device)
                 ratio = torch.exp(chunk_lp - flat_old_lp[idx])
+                kl, cf = _ratio_stats(chunk_lp, flat_old_lp[idx], cfg.clip_range)
+                metrics["approx_kl"].append(kl)
+                metrics["clipfrac"].append(cf)
                 adv = flat_adv[idx]
                 policy_loss = -torch.min(ratio * adv, torch.clamp(ratio, 1 - cfg.clip_range, 1 + cfg.clip_range) * adv).mean()
                 ret = flat_ret[idx]
@@ -675,6 +779,97 @@ class PPOTrainer:
         self.num_updates += 1
         out = {k: float(np.mean(v)) for k, v in metrics.items()}
         out["timesteps"] = t0
+        out["explained_variance"] = explained_variance(values, returns)
+        out["learning_rate"] = float(self.optimizer.param_groups[0]["lr"])
+        return out
+
+    def _update_vector_batched(self, buf) -> dict[str, float]:
+        """``ppo.batched_update: true``: the vector update without the slot loop.
+
+        Same GAE, normalisation, chunking, losses and hidden-carry rules as
+        :meth:`_update_vector`; replay goes through
+        :meth:`ActorCritic.forward_masked_sequence`, one CNN pass per chunk
+        over every slot, with each slot's hidden zeroed after its own dones.
+        Results match the slot loop up to float rounding
+        (``tests/test_ppo_u1.py``).
+        """
+        cfg = self.config
+        slots = self._num_slots
+        steps = int(buf["obs"].shape[0])
+        values = buf["values"].float()  # (T, N)
+        flat = steps * slots
+        advantages = torch.zeros(steps, slots)
+        returns = torch.zeros(steps, slots)
+        for e in range(slots):
+            adv_e, ret_e = compute_gae(
+                buf["rewards"][:, e].float(), values[:, e],
+                buf["terminated"][:, e].float(),
+                buf["next_value"][e].float(), cfg.gamma, cfg.gae_lambda,
+                next_values=buf["next_values"][:, e].float())
+            advantages[:, e], returns[:, e] = adv_e, ret_e
+        adv_std = advantages.std()
+        if not torch.isfinite(adv_std):
+            adv_std = torch.ones(())  # single-sample rollout: center only
+        advantages = (advantages - advantages.mean()) / (adv_std + 1e-8)
+        flat_adv = advantages.reshape(-1).to(self.device)
+        flat_ret = returns.reshape(-1).to(self.device)
+        flat_old_lp = buf["logprobs"].float().reshape(-1).to(self.device)
+        flat_values = values.reshape(-1).to(self.device)
+        dones = buf["dones"].bool()
+        reset_before = torch.zeros_like(dones)
+        reset_before[1:] = dones[:-1]
+        metrics: dict[str, list[float]] = {"policy_loss": [], "value_loss": [], "entropy": [], "predictor_loss": [],
+                                           "approx_kl": [], "clipfrac": []}
+        t0 = self.num_timesteps
+        for _ in range(cfg.update_epochs):
+            hidden = buf["h0"].to(self.device).clone()  # (L,N,H)
+            for start in range(0, steps, cfg.minibatch_size):
+                end = min(start + cfg.minibatch_size, steps)
+                chunk_reset = reset_before[start:end].clone()
+                chunk_reset[0] = False  # the carry below is already zeroed for those slots
+                logits, v_tn, h_last = self.model.forward_masked_sequence(
+                    buf["obs"][start:end].to(self.device), hidden.detach(),
+                    chunk_reset.to(self.device))
+                dist = Categorical(logits=logits.reshape(-1, logits.shape[-1]))
+                chunk_lp = dist.log_prob(buf["actions"][start:end].reshape(-1).to(self.device))
+                entropy = dist.entropy().mean()
+                idx = torch.arange(start * slots, end * slots, device=self.device)
+                ratio = torch.exp(chunk_lp - flat_old_lp[idx])
+                kl, cf = _ratio_stats(chunk_lp, flat_old_lp[idx], cfg.clip_range)
+                metrics["approx_kl"].append(kl)
+                metrics["clipfrac"].append(cf)
+                adv = flat_adv[idx]
+                policy_loss = -torch.min(ratio * adv, torch.clamp(ratio, 1 - cfg.clip_range, 1 + cfg.clip_range) * adv).mean()
+                ret = flat_ret[idx]
+                v = v_tn.reshape(-1)
+                v_old = flat_values[idx]
+                v_clipped = v_old + torch.clamp(v - v_old, -cfg.clip_range, cfg.clip_range)
+                value_loss = 0.5 * torch.max((v - ret) ** 2, (v_clipped - ret) ** 2).mean()
+                loss = policy_loss + cfg.value_coef * value_loss - cfg.entropy_coef * entropy
+                self.optimizer.zero_grad()
+                loss.backward()
+                nn.utils.clip_grad_norm_(self.model.parameters(), cfg.max_grad_norm)
+                self.optimizer.step()
+                metrics["policy_loss"].append(policy_loss.item())
+                metrics["value_loss"].append(value_loss.item())
+                metrics["entropy"].append(entropy.item())
+                # Next chunk: a slot whose last step here ended an episode
+                # restarts from zeros, every other slot carries (detached).
+                keep = (~dones[end - 1]).to(self.device).float().view(1, slots, 1)
+                hidden = h_last.detach() * keep
+        pred_loss = 0.0
+        if self.curiosity is not None:
+            pred_loss = self.curiosity.update(
+                buf["obs"].reshape(flat, *buf["obs"].shape[2:]),
+                buf["actions"].reshape(flat),
+                buf["next_obs"].reshape(flat, *buf["next_obs"].shape[2:]),
+                (~buf["dones"]).reshape(flat))
+        metrics["predictor_loss"].append(pred_loss)
+        self.num_updates += 1
+        out = {k: float(np.mean(v)) for k, v in metrics.items()}
+        out["timesteps"] = t0
+        out["explained_variance"] = explained_variance(values, returns)
+        out["learning_rate"] = float(self.optimizer.param_groups[0]["lr"])
         return out
 
     # -- checkpoints -----------------------------------------------------
@@ -761,6 +956,8 @@ class PPOTrainer:
                 f"total_timesteps ({cfg.total_timesteps}) must be divisible by "
                 f"num_envs ({self._num_slots}) to train with vector environments."
             )
+        if cfg.torch_threads is not None:  # again here: resume swaps in a new config
+            torch.set_num_threads(cfg.torch_threads)
         ckpt_dir = Path(cfg.checkpoint_dir)
         # Created before the is_complete() early return so an already-finished
         # run still leaves a header-only CSV. None means disabled: no file,
@@ -781,6 +978,12 @@ class PPOTrainer:
                 print(f"kept existing final checkpoint {final}")
                 return self.history
         while self.num_timesteps < cfg.total_timesteps:
+            if cfg.anneal_lr:
+                # CleanRL anneal_lr: linear decay from learning_rate at step 0
+                # to 0 at total_timesteps, set before each rollout+update.
+                frac = 1.0 - self.num_timesteps / cfg.total_timesteps
+                for group in self.optimizer.param_groups:
+                    group["lr"] = frac * cfg.learning_rate
             buf, ep_rewards, ep_lengths, ep_ext, ep_int, ep_term = self.collect_rollout(
                 respect_budget=True
             )
@@ -826,6 +1029,11 @@ class PPOTrainer:
             steps = buf.get("comp_steps", cfg.rollout_length)
             self.history["components"].append(
                 {k: float(v) / steps for k, v in buf.get("comp_sums", {}).items()})
+            self.history["approx_kl"].append(stats.get("approx_kl", float("nan")))
+            self.history["clipfrac"].append(stats.get("clipfrac", float("nan")))
+            self.history["explained_variance"].append(stats.get("explained_variance"))
+            self.history["learning_rate"].append(stats.get(
+                "learning_rate", float(self.optimizer.param_groups[0]["lr"])))
             # One CSV row per completed update, straight from the history row
             # above: no duplicated metric math, nothing PPO reads back.
             if tel is not None:

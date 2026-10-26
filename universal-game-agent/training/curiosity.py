@@ -93,7 +93,10 @@ class FeatureEncoder(nn.Module):
         nn.init.zeros_(self.head.bias)
 
     def forward(self, obs: torch.Tensor) -> torch.Tensor:
-        return self.head(self.cnn(obs.float()))
+        # uint8 frames (env.obs_dtype: uint8) are scaled to [0, 1] like the
+        # policy's input; float frames are used as given (legacy).
+        x = obs.float().div_(255.0) if obs.dtype == torch.uint8 else obs.float()
+        return self.head(self.cnn(x))
 
 
 class ForwardModel(nn.Module):

@@ -39,7 +39,18 @@ FIELDNAMES: tuple[str, ...] = (
     "upd_mean_ext",
     "upd_mean_int",
     "upd_mean_total",
+    # U1 (2026-10-26): CleanRL-style update diagnostics, appended at the end.
+    "approx_kl",
+    "clipfrac",
+    "explained_variance",
+    "learning_rate",
 )
+
+#: Columns added after the original contract. A record (or history) that
+#: predates them still writes: the cell is left empty instead of raising, so
+#: only the original columns are mandatory.
+OPTIONAL_FIELDS: frozenset[str] = frozenset(
+    ("approx_kl", "clipfrac", "explained_variance", "learning_rate"))
 
 
 class PPOUpdateCSVWriter:
@@ -56,12 +67,21 @@ class PPOUpdateCSVWriter:
                 csv.DictWriter(fh, fieldnames=FIELDNAMES).writeheader()
 
     def append(self, record: Mapping) -> None:
-        """Append one update row. Missing columns raise ``KeyError``."""
+        """Append one update row.
+
+        A missing original column raises ``KeyError``; a missing
+        ``OPTIONAL_FIELDS`` column (or a ``None`` value) is an empty cell.
+        """
         self._ensure_header()
+        row = {}
+        for key in FIELDNAMES:
+            if key in OPTIONAL_FIELDS:
+                value = record.get(key)
+                row[key] = "" if value is None else value
+            else:
+                row[key] = record[key]
         with open(self.path, "a", newline="", encoding="utf-8") as fh:
-            csv.DictWriter(fh, fieldnames=FIELDNAMES, extrasaction="ignore").writerow(
-                {key: record[key] for key in FIELDNAMES}
-            )
+            csv.DictWriter(fh, fieldnames=FIELDNAMES, extrasaction="ignore").writerow(row)
 
     def write_history(self, history: Mapping) -> int:
         """Append every update in a ``PPOTrainer.history`` dict.
@@ -71,5 +91,6 @@ class PPOUpdateCSVWriter:
         self._ensure_header()
         updates = len(history.get("timesteps") or [])
         for index in range(updates):
-            self.append({key: history[key][index] for key in FIELDNAMES})
+            self.append({key: history[key][index] for key in FIELDNAMES
+                         if key not in OPTIONAL_FIELDS or key in history})
         return updates

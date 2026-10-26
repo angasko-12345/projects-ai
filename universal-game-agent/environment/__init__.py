@@ -35,10 +35,11 @@ __all__ = [
     "make_external_env_from_config",
     "ExternPongTermination",
     "SyncVectorEnv",
+    "AsyncVectorEnv",
 ]
 
 _TOY_PONG = {"ToyPongEnv", "NOOP", "LEFT", "RIGHT"}
-_VEC = {"SyncVectorEnv"}
+_VEC = {"SyncVectorEnv", "AsyncVectorEnv"}
 _PREPROCESSING = {"FrameStack", "PreprocessingWrapper", "preprocess_frame"}
 _EXTERN_PONG = {"ExternPongReward", "ExternPongTermination"}
 _REWARD = {"RewardProvider", "NullReward", "NullRewardProvider", "RewardResult",

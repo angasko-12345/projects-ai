@@ -32,6 +32,11 @@ def _record(update=1):
         "upd_mean_ext": 0.5,
         "upd_mean_int": 0.1,
         "upd_mean_total": 0.6,
+        # U1 trailing columns (appended to FIELDNAMES 2026-10-26).
+        "approx_kl": 0.001 * update,
+        "clipfrac": 0.1,
+        "explained_variance": 0.5,
+        "learning_rate": 2.5e-4,
     }
 
 

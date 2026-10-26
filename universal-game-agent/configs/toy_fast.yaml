@@ -1,0 +1,62 @@
+# Throughput-oriented toy Pong config (UGA U1, 2026-10-26). Opt-in: nothing
+# else reads this file, and configs/default.yaml stays the single baseline.
+# Copied from default.yaml (no inheritance exists); only the keys marked
+# "U1" differ. Measured numbers live in experiments/throughput_after.json.
+#
+#   python -m training.benchmark --env toy --config configs/toy_fast.yaml --num-envs 8
+#   python main.py train --config configs/toy_fast.yaml
+
+env:
+  width: 64
+  height: 48
+  max_steps: 500
+  obs_size: 84
+  num_stack: 4
+  skip: 1
+  vector_backend: async   # U1: one worker process per slot (spawn; works on Windows)
+  obs_dtype: uint8        # U1: uint8 frames, scaled to [0, 1] inside the model
+
+model:
+  in_channels: 4
+  frame_size: 84
+  feature_dim: 256
+  hidden_size: 128
+  num_layers: 1
+
+ppo:
+  total_timesteps: 20480  # divisible by num_envs
+  rollout_length: 128
+  minibatch_size: 32      # time steps per chunk: 128 / 32 = 4 minibatches of 32 x 8 = 256 samples
+  update_epochs: 4
+  learning_rate: 0.00025
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  entropy_coef: 0.01
+  value_coef: 0.5
+  max_grad_norm: 0.5
+  seed: 0
+  num_envs: 8             # U1
+  checkpoint_dir: "checkpoints/toy_fast"
+  checkpoint_every_updates: 10
+  adam_eps: 0.00001       # U1: CleanRL's Adam epsilon
+  anneal_lr: true         # U1: linear LR decay to 0
+  inference_mode: true    # U1: rollout under torch.inference_mode()
+  batched_update: true    # U1: one CNN pass per chunk over all slots
+  torch_threads: null     # U1: set to your physical core count if torch oversubscribes
+
+curiosity:
+  enabled: false
+  scale: 0.1
+  lr: 0.00025
+  feature_dim: 128
+  forward_hidden: 256
+  normalize: true
+  reward_clip: 5.0
+
+eval:
+  episodes: 20
+
+logging:
+  level: "INFO"
+  dir: "logs"

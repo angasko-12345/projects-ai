@@ -49,7 +49,7 @@ except ImportError:  # pragma: no cover - minimal installs
 SCREEN_SHAPE = (210, 160, 3)
 REWARD_TRANSFORMS = ("none", "sign")
 ACTION_SPACES = ("universal", "native")
-VECTOR_BACKENDS = ("sync", "ale")
+VECTOR_BACKENDS = ("sync", "ale", "async")
 
 
 def ale_available() -> bool:
@@ -163,7 +163,8 @@ class RewardTransform(_WrapperBase):
 
 def make_atari_factory(game: str, *, obs_size: int = 84, num_stack: int = 4, skip: int = 4,
                        sticky: float = 0.25, max_episode_frames: int = 108_000, noop_max: int = 30,
-                       reward_transform: str = "none", action_space: str = "universal"):
+                       reward_transform: str = "none", action_space: str = "universal",
+                       obs_dtype: str = "float32"):
     """Zero-argument factory: ALE game -> UGA pixel pipeline (-> UGA pad)."""
     from environment.preprocessing import PreprocessingWrapper
 
@@ -176,7 +177,7 @@ def make_atari_factory(game: str, *, obs_size: int = 84, num_stack: int = 4, ski
     def make():
         env = PreprocessingWrapper(
             AtariGame(game, sticky=sticky, max_episode_frames=max_episode_frames, noop_max=noop_max),
-            size=obs_size, num_stack=num_stack, skip=skip)
+            size=obs_size, num_stack=num_stack, skip=skip, obs_dtype=obs_dtype)
         if reward_transform != "none":
             env = RewardTransform(env, reward_transform)
         if action_space == "universal":
@@ -190,7 +191,7 @@ def make_atari_factory(game: str, *, obs_size: int = 84, num_stack: int = 4, ski
 
 
 _ATARI_KEYS = {"type", "game", "obs_size", "num_stack", "skip", "sticky", "max_episode_frames",
-               "noop_max", "reward_transform", "action_space", "vector_backend"}
+               "noop_max", "reward_transform", "action_space", "vector_backend", "obs_dtype"}
 
 
 def atari_kwargs(env_cfg: dict, *, train: bool = True) -> dict:
@@ -209,6 +210,7 @@ def atari_kwargs(env_cfg: dict, *, train: bool = True) -> dict:
         "noop_max": int(env_cfg.get("noop_max", 30)),
         "reward_transform": str(env_cfg.get("reward_transform", "none")) if train else "none",
         "action_space": str(env_cfg.get("action_space", "universal")),
+        "obs_dtype": str(env_cfg.get("obs_dtype", "float32")),
     }
 
 
@@ -270,7 +272,7 @@ class AtariVectorEnvAdapter(SyncVectorEnv):
     def __init__(self, game: str, num_envs: int, *, obs_size: int = 84, num_stack: int = 4,
                  skip: int = 4, sticky: float = 0.25, max_episode_frames: int = 108_000,
                  noop_max: int = 30, reward_transform: str = "none", action_space: str = "universal",
-                 num_threads: int = 0):
+                 num_threads: int = 0, obs_dtype: str = "float32"):
         from ale_py.vector_env import AtariVectorEnv
 
         self._vec = AtariVectorEnv(
@@ -280,6 +282,7 @@ class AtariVectorEnvAdapter(SyncVectorEnv):
             frameskip=skip, maxpool=True, noop_max=noop_max, episodic_life=False,
             reward_clipping=False, use_fire_reset=False)
         self._n = num_envs
+        self._uint8 = obs_dtype == "uint8"
         self._closed = False
         self._pending = [None] * num_envs
         self._reward_transform = reward_transform
@@ -301,7 +304,10 @@ class AtariVectorEnvAdapter(SyncVectorEnv):
             self._to_native = tuple(range(len(meanings)))
             n_actions = len(meanings)
         self._action_space = spaces.Discrete(n_actions)
-        self._obs_space = spaces.Box(0.0, 1.0, (num_stack, obs_size, obs_size), np.float32)
+        if self._uint8:  # ALE's frames are already uint8: shipped as-is, exact
+            self._obs_space = spaces.Box(0, 255, (num_stack, obs_size, obs_size), np.uint8)
+        else:
+            self._obs_space = spaces.Box(0.0, 1.0, (num_stack, obs_size, obs_size), np.float32)
         self._envs = []  # no per-slot python envs
 
     @property
@@ -316,8 +322,9 @@ class AtariVectorEnvAdapter(SyncVectorEnv):
     def single_observation_space(self):
         return self._obs_space
 
-    @staticmethod
-    def _f(obs) -> np.ndarray:
+    def _f(self, obs) -> np.ndarray:
+        if self._uint8:
+            return np.array(obs, dtype=np.uint8, copy=True)
         return np.asarray(obs, dtype=np.float32) / 255.0
 
     def reset(self, *, seeds=None):
