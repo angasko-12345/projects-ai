@@ -14,26 +14,26 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from collections.abc import Callable
 
-from .agent_run import AgentRun, AgentRunStatus, GitRunMetadataCollector
-from .artifacts import ArtifactError, ArtifactStore
-from .config import AppConfig, load_config
-from .finalize import (
+from ..agent_run import AgentRun, AgentRunStatus, GitRunMetadataCollector
+from ..artifacts import ArtifactError, ArtifactStore
+from ..config import AppConfig, load_config
+from ..finalize import (
     finalize_for_outcome,
     implementation_passed,
     record_worktree_provenance,
 )
-from .git import GitError, GitWorktreeManager, Worktree, WorktreeRef
-from .tasks import Task, Workflow
-from .logging import LogManager
-from .registry import AgentRegistry
-from .runner import AgentRunner, OperationCancelled
-from .state import StateStore
-from .verification import Verifier
-from .verification_kernel import VerificationKernel
-from .execution_model import assess_workflow_readiness
-from .failure import Failure
-from .verification_model import VerificationCheck, VerificationReport, VerificationRun
-from .workflow import WorkflowEngine, STANDARD_TASK_ROLES, verdict_summary_for_task
+from ..git import GitError, GitWorktreeManager, Worktree, WorktreeRef
+from ..tasks import Task, Workflow
+from ..logging import LogManager
+from ..registry import AgentRegistry
+from ..runner import AgentRunner, OperationCancelled
+from ..state import StateStore
+from ..verification import Verifier
+from ..verification_kernel import VerificationKernel
+from ..execution_model import assess_workflow_readiness
+from ..failure import Failure
+from ..verification_model import VerificationCheck, VerificationReport, VerificationRun
+from ..workflow import WorkflowEngine, STANDARD_TASK_ROLES, verdict_summary_for_task
 
 
 def serialize_failure(failure: Failure) -> dict[str, object]:
