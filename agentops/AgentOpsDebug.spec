@@ -7,6 +7,7 @@ the build does not depend on the current working directory and
 ``python scripts/build_windows_exe.py`` produces the same bundle from anywhere.
 """
 
+import glob
 import os
 
 ROOT = SPECPATH
@@ -17,10 +18,14 @@ ENTRY = os.path.join(ROOT, "agentops_gui.py")
 # component list passed there.
 DATA_FILES = [
     (os.path.join(ROOT, "agentops", "agents", "agents.yaml"), "agents"),
-    (os.path.join(ROOT, "agentops", "gui", "assets", "chevron-down.svg"), "agentops/gui/assets"),
+    # Every GUI asset ships: the combo chevron, the Lucide icons
+    # (lucide-*.svg) and their licence (LICENSE-lucide.txt). PyInstaller
+    # expands these globs, so a new icon needs no edit here.
+    (os.path.join(ROOT, "agentops", "gui", "assets", "*.svg"), "agentops/gui/assets"),
+    (os.path.join(ROOT, "agentops", "gui", "assets", "*.txt"), "agentops/gui/assets"),
 ]
 
-missing = [source for source, _ in DATA_FILES if not os.path.isfile(source)]
+missing = [source for source, _ in DATA_FILES if not glob.glob(source)]
 if missing:
     raise SystemExit("Missing bundled data: " + ", ".join(missing))
 
@@ -63,4 +68,4 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-)
+)

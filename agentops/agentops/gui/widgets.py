@@ -17,12 +17,13 @@ from PySide6.QtCore import (
     QModelIndex,
     QObject,
     QPropertyAnimation,
+    QRectF,
     QSortFilterProxyModel,
     Qt,
     QVariantAnimation,
     Signal,
 )
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QIcon, QPainter, QPixmap
+from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
@@ -43,8 +44,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .components import paint_pill, pill_text
 from .format import format_duration
-from .tokens import DARK, Theme, qcolor, qfont, status_colors, with_alpha
+from .tokens import DARK, Theme, qcolor, qfont, status_color, status_colors, with_alpha
 
 # Qt's QWIDGETSIZE_MAX (largest permitted widget maximumHeight); PySide6 does
 # not re-export it from QtWidgets on all versions.
@@ -624,37 +626,18 @@ class StatusPillDelegate(QStyledItemDelegate):
         if not text:
             super().paint(painter, option, index)
             return
-        font = QFont(option.font)
-        font.setPixelSize(self._theme.size_small)
-        font.setWeight(QFont.Weight.DemiBold)
-        metrics = QFontMetrics(font)
-        available = option.rect.adjusted(6, 5, -6, -5)
-        label = metrics.elidedText(
-            text.upper(), Qt.TextElideMode.ElideRight, max(0, available.width())
+        available = QRectF(option.rect.adjusted(6, 2, -6, -2))
+        selected = None
+        if option.state & QStyle.StateFlag.State_Selected:
+            selected = QColor(option.palette.highlightedText().color())
+        paint_pill(
+            painter,
+            available,
+            pill_text(text),
+            status_color(text, self._theme),
+            self._theme,
+            selected_text=selected,
         )
-        if not label:
-            super().paint(painter, option, index)
-            return
-        pill = metrics.boundingRect(label).adjusted(-8, -3, 8, 3)
-        pill.moveCenter(available.center())
-        foreground, background = status_colors(text.lower(), self._theme)
-        painter.save()
-        try:
-            painter.setFont(font)
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            if option.state & QStyle.StateFlag.State_Selected:
-                painter.setPen(Qt.PenStyle.NoPen)
-                painter.setBrush(qcolor(background, 0.30))
-                painter.drawRoundedRect(pill, 9, 9)
-                painter.setPen(QColor(option.palette.highlightedText().color()))
-            else:
-                painter.setPen(qcolor(foreground, 0.35))
-                painter.setBrush(qcolor(background, 0.16))
-                painter.drawRoundedRect(pill, 9, 9)
-                painter.setPen(QColor(foreground))
-            painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, label)
-        finally:
-            painter.restore()
 
 
 class TableModel(QAbstractTableModel):

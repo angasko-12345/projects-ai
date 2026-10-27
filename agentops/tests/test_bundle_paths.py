@@ -193,6 +193,12 @@ class BundledResourceTests(unittest.TestCase):
     def test_gui_asset_exists(self):
         self.assertTrue((ASSET_DIR / "chevron-down.svg").is_file(), ASSET_DIR)
 
+    def test_lucide_icon_and_licence_are_bundled_assets(self):
+        # The .spec files glob gui/assets/*.svg and *.txt; one icon and the
+        # ISC licence prove the Lucide set resolves through the same root.
+        self.assertTrue((ASSET_DIR / "lucide-layout-dashboard.svg").is_file(), ASSET_DIR)
+        self.assertTrue((ASSET_DIR / "LICENSE-lucide.txt").is_file(), ASSET_DIR)
+
     def test_both_resources_live_under_the_bundle_root(self):
         root = bundle_root()
         # ASSET_DIR is at agentops/gui/assets under the package root
