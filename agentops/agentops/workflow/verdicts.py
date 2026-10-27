@@ -4,9 +4,14 @@ from __future__ import annotations
 
 import re
 
-from ..agent_result import AgentResultStatus, coerce_agent_result, parse_agent_result
+from ..agent_result import (
+    AgentResultStatus,
+    _coerce_status,
+    coerce_agent_result,
+    parse_agent_result,
+)
 from ..logging import redact_text
-from ..verdict import parse_verdict
+from ..verdict import _extract_candidate_objects, parse_verdict
 
 
 def _requires_review_verdict(role: object) -> bool:
@@ -224,3 +229,75 @@ def _explicit_success_denied(result: object) -> bool:
         return any(_payload_denies_success(payload) for payload in payloads)
     except Exception:
         return False
+
+
+#: Verdict values that refuse the change, normalised to lower snake_case.
+_DENYING_VERDICTS = frozenset(
+    {
+        "reject",
+        "rejected",
+        "changes_requested",
+        "request_changes",
+        "needs_changes",
+        "deny",
+        "denied",
+        "fail",
+        "failed",
+    }
+)
+
+
+def _review_payload_denies_success(payload: object) -> bool:
+    """True when one top-level review-output object refuses the change.
+
+    Only the object's own top-level keys are read: a success flag, a status,
+    a verdict, or a non-empty ``blocking`` list next to a verdict. Nested
+    values (quoted tool output, sub-results) are never inspected, so a
+    reviewer reporting someone else's ``{"success": false}`` inside a field
+    does not deny its own verdict. Never raises.
+    """
+    try:
+        if not isinstance(payload, dict):
+            return False
+        if _payload_denies_success(payload):
+            return True
+        if "status" in payload and _coerce_status(payload["status"]) in (
+            AgentResultStatus.FAILURE,
+            AgentResultStatus.PARTIAL,
+        ):
+            return True
+        if "verdict" in payload:
+            verdict = payload["verdict"]
+            if isinstance(verdict, str):
+                normalized = "_".join(verdict.strip().lower().replace("-", " ").split())
+                if normalized in _DENYING_VERDICTS:
+                    return True
+            blocking = payload.get("blocking")
+            if isinstance(blocking, (list, tuple)) and blocking:
+                return True
+        return False
+    except Exception:
+        return False
+
+
+def _review_output_denies_success(stdout: object) -> bool:
+    """True when ANY structured object in review output refuses the change.
+
+    The review gate otherwise trusts only the final verdict object, so
+    ``{"success": false}`` or a REJECT followed by a final APPROVE used to
+    pass. This scans the same top-level objects the verdict parser reads
+    (whole-output object, ``json``/unlabelled fences, bare ``{...}`` lines;
+    other-language fences are illustrative and skipped) and fails closed if
+    any of them denies success, whatever follows it. On an internal error it
+    also fails closed (returns True): this helper only ever runs once an
+    approval has been parsed, so a crash must not read as "no denial".
+    """
+    try:
+        if not isinstance(stdout, str) or not stdout.strip():
+            return False
+        return any(
+            _review_payload_denies_success(payload)
+            for payload in _extract_candidate_objects(stdout)
+        )
+    except Exception:
+        return True

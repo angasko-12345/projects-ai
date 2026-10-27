@@ -33,6 +33,8 @@ from agentops.workflow import (
     _local_security_scan,
     _payload_denies_success,
     _requires_review_verdict,
+    _review_output_denies_success,
+    _review_payload_denies_success,
     _role_scope_text,
     _scrub_structured,
     _stdout_candidate_dicts,
@@ -299,6 +301,46 @@ class ExplicitSuccessDeniedTests(unittest.TestCase):
         self.assertFalse(_explicit_success_denied(SimpleNamespace()))
 
 
+class ReviewOutputDeniesSuccessTests(unittest.TestCase):
+    def test_top_level_denials(self):
+        for payload in (
+            {"success": False},
+            {"ok": "no"},
+            {"status": "failure"},
+            {"status": "error"},
+            {"status": "partial"},
+            {"verdict": "reject"},
+            {"verdict": "REJECT"},
+            {"verdict": "Changes Requested"},
+            {"verdict": "request-changes"},
+            {"verdict": "approve", "blocking": ["x"]},
+        ):
+            with self.subTest(payload=payload):
+                self.assertTrue(_review_payload_denies_success(payload))
+
+    def test_non_denials(self):
+        for payload in (
+            {"success": True},
+            {"status": "success"},
+            {"status": "running"},
+            {"verdict": "approve", "blocking": []},
+            {"tool": "x", "result": {"success": False}},
+            {"blocking": ["not a verdict object"]},
+            "success: false",
+            None,
+        ):
+            with self.subTest(payload=payload):
+                self.assertFalse(_review_payload_denies_success(payload))
+
+    def test_output_scan(self):
+        self.assertTrue(_review_output_denies_success('{"success": false}\n' + APPROVE))
+        self.assertTrue(_review_output_denies_success(REJECT + "\nlog\n" + APPROVE))
+        self.assertFalse(_review_output_denies_success("log line\n" + APPROVE))
+        self.assertFalse(_review_output_denies_success('```python\n{"ok": False}\n```\n'))
+        self.assertFalse(_review_output_denies_success(""))
+        self.assertFalse(_review_output_denies_success(None))
+
+
 class VerdictSummaryCharacterizationTests(unittest.TestCase):
     def test_missing_verdict_reads_as_not_approved(self):
         summary = verdict_summary_for_task(SimpleNamespace(role="review", result="looks good"))
@@ -467,12 +509,54 @@ class EngineSingleTaskGateTests(unittest.TestCase):
         task = self._run_task("review", [STATUS_SUCCESS + "\n" + APPROVE])
         self.assertEqual(task.status, TaskStatus.PASSED)
 
-    def test_review_success_false_line_before_a_final_approve_is_not_seen(self):
-        # Pinned as-is, not endorsed: the line scan keeps only the LAST JSON
-        # line, so an earlier {"success": false} line is invisible once a
-        # verdict line follows it. Reported as a follow-up; changing it is a
-        # behaviour change and out of scope for a pure refactor.
+    def test_review_success_false_line_before_a_final_approve_fails(self):
+        # Formerly pinned as "not endorsed" (it PASSED): only the last JSON
+        # line was checked. The gate now fails closed on contradictory output.
         task = self._run_task("review", ['{"success": false}\n' + APPROVE])
+        self.assertEqual(task.status, TaskStatus.FAILED)
+        self.assertIn("review output is contradictory", task.result or "")
+
+    def test_review_denial_then_later_approval_fails(self):
+        outputs = (
+            REJECT + "\n" + APPROVE,
+            STATUS_FAILURE + "\n" + APPROVE,
+            '{"status": "error"}\n' + APPROVE,
+            '{"success": false}\n{"success": true}\n' + APPROVE,
+            '{"verdict": "changes-requested"}\nfixed it myself\n' + APPROVE,
+            "```json\n" + REJECT + "\n```\n" + APPROVE,
+            '{"ok": false}\n```json\n' + APPROVE + "\n```\n",
+        )
+        for output in outputs:
+            with self.subTest(output=output):
+                task = self._run_task("review", [output])
+                self.assertEqual(task.status, TaskStatus.FAILED)
+
+    def test_review_nested_or_quoted_denials_do_not_block_an_approval(self):
+        outputs = (
+            # Nested tool output inside a top-level object is not inspected.
+            '{"tool": "pytest", "result": {"success": false}, "note": "pre-existing"}\n' + APPROVE,
+            # JSON quoted mid-line in prose is not a structured payload.
+            'The old CI run printed {"success": false}; fixed since.\n' + APPROVE,
+            # Illustrative content in a non-JSON fence is not a payload.
+            '```text\n{"success": false}\n```\n' + APPROVE,
+            # One whole-output object: its nested values are not candidates.
+            APPROVE[:-1] + ',"evidence":{"previous_run":{"success":false}}}',
+        )
+        for output in outputs:
+            with self.subTest(output=output):
+                task = self._run_task("review", [output])
+                self.assertEqual(task.status, TaskStatus.PASSED, task.result)
+
+    def test_security_denial_then_approval_fails_on_a_clean_tree(self):
+        for output in ('{"success": false}\n' + APPROVE, REJECT + "\n" + APPROVE):
+            with self.subTest(output=output):
+                task = self._run_task("security", [output])
+                self.assertEqual(task.status, TaskStatus.FAILED)
+
+    def test_implementation_role_is_unchanged_by_the_review_scan(self):
+        # The contradiction scan is a review/security gate only; non-review
+        # roles keep the existing last-line status behaviour.
+        task = self._run_task("implementation", ['{"success": false}\n' + STATUS_SUCCESS])
         self.assertEqual(task.status, TaskStatus.PASSED)
 
     def test_review_approve_with_success_false_in_one_object_fails(self):
@@ -544,6 +628,42 @@ class EngineVerificationRepairSecurityTests(unittest.TestCase):
         self.assertEqual(repaired_security[0].status, TaskStatus.FAILED)
 
 
+class EngineReviewRepairContradictionTests(unittest.TestCase):
+    """The review repair loop re-runs reviews through the same gate."""
+
+    def _run(self, review_outputs, security_outputs=None):
+        state = StateStore(":memory:")
+        self.addCleanup(state.close)
+        calls: list[str] = []
+        outputs = {"review": review_outputs}
+        if security_outputs is not None:
+            outputs["security"] = security_outputs
+        engine = _engine(
+            state,
+            _config(security_review=security_outputs is not None, max_review_rounds=1),
+            outputs,
+            calls=calls,
+        )
+        result = asyncio.run(engine.run_high_level("Fix the thing", _scratch_repo(self)))
+        return result, calls
+
+    def test_contradictory_re_review_is_not_ready(self):
+        contradictory = '{"success": false}\n' + APPROVE
+        result, calls = self._run([REJECT, contradictory])
+        self.assertFalse(result.ready, result.summary)
+        self.assertIn("debugging", calls)
+        self.assertEqual(calls.count("review"), 2)
+
+    def test_clean_re_review_is_ready(self):
+        result, _calls = self._run([REJECT, APPROVE])
+        self.assertTrue(result.ready, result.summary)
+
+    def test_contradictory_repair_security_is_not_ready(self):
+        result, calls = self._run([REJECT, APPROVE], [REJECT + "\n" + APPROVE])
+        self.assertFalse(result.ready, result.summary)
+        self.assertIn("security", calls)
+
+
 class ImportSurfaceTests(unittest.TestCase):
     """Every name callers import from ``agentops.workflow`` stays there."""
 
@@ -565,6 +685,8 @@ class ImportSurfaceTests(unittest.TestCase):
         "_local_security_scan",
         "_payload_denies_success",
         "_requires_review_verdict",
+        "_review_output_denies_success",
+        "_review_payload_denies_success",
         "_role_scope_text",
         "_safe_workflow_structured",
         "_scrub_structured",
