@@ -1,0 +1,14 @@
+{
+ "mode": "legacy",
+ "dashboard": 0.1166,
+ "tasks": 0.0793,
+ "workflows": 0.0025,
+ "agents": 0.1949,
+ "runs": 0.0827,
+ "verification": 0.0749,
+ "failures": 0.0893,
+ "worktrees": 0.2318,
+ "artifacts": 0.0481,
+ "settings": 0.0348,
+ "workflow-running": 0.0027
+}
