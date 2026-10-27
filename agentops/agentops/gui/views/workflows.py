@@ -438,7 +438,7 @@ class WorkflowsView(BaseView):
         repository = self.repository()
         if not repository:
             self._list.set_empty_state(
-                "No repository selected", "Pick a repository from the top bar."
+                "No repository selected", "Pick a repository in the sidebar."
             )
             return
 

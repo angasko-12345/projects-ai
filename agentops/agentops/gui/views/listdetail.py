@@ -99,7 +99,7 @@ class ListDetailView(BaseView):
             self._loaded = False
             self._table.set_empty_state(
                 "No repository chosen",
-                "Pick a repository from the top bar to begin.",
+                "Pick a repository in Workflows, or with Ctrl+K, to begin.",
             )
             if self._detail is not None:
                 self.fill_detail(None)

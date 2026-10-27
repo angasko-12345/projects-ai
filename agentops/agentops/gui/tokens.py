@@ -492,10 +492,15 @@ QLabel[role="chip"] {{
     font-size: {t.size_caption}px;
 }}
 
-/* ---- top bar ---- */
-QWidget#TopBar {{
-    background: {t.sidebar};
-    border-bottom: 1px solid {t.border};
+/* ---- sidebar repository scope (the "All repositories" combo) ---- */
+QComboBox[scope="true"] {{
+    background: transparent;
+    border: 1px solid transparent;
+    color: {t.text_muted};
+    padding: 2px {t.space_xs}px;
+}}
+QComboBox[scope="true"]:hover {{
+    background: {t.surface_hover};
 }}
 
 /* ---- recovery banner ---- */
@@ -505,6 +510,7 @@ QFrame#RecoveryBanner {{
 }}
 QFrame#RecoveryBanner QLabel[role="title"] {{
     color: {t.warning};
+    font-size: {t.size_body}px;
 }}
 
 /* ---- buttons ---- */
