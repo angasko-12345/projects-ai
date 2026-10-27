@@ -8,10 +8,11 @@
 # E9 and W are the E/W basics: import placement, statement layout, syntax
 # errors, and whitespace.
 #
-# E5 (line length) is deliberately not selected. No product configures a
-# formatter, most files are written to ~100 columns, and roughly 1,900 lines
-# exceed the 88-column default; wrapping them would bury the dead-code
-# findings this lint exists to surface. Add a formatter before adding E5.
+# E5 (line length) is deliberately not selected. `ruff format` (configured
+# below, line-length 100) now covers agentops, ai-token-tracker, mini-llm,
+# tools and the root scripts, but long strings and comments it does not wrap
+# still leave E501 findings at 100 columns, most of them in the products the
+# formatter excludes. Clear those before selecting E5.
 
 [tool.ruff]
 # Youngest interpreter any product supports (ai-token-tracker: 3.10+), so
