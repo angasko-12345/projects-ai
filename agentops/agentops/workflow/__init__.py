@@ -14,7 +14,7 @@ from pathlib import Path
 from time import monotonic, time as wall_clock
 from uuid import uuid4
 
-from .agent_run import (
+from ..agent_run import (
     AgentRun,
     AgentRunContext,
     AgentRunMetadata,
@@ -24,9 +24,9 @@ from .agent_run import (
     AgentRunStatus,
     GitRunMetadataCollector,
 )
-from .agent_result import AgentResultStatus, coerce_agent_result, parse_agent_result
-from .evidence import TaskEvidence, expected_evidence
-from .execution_model import (
+from ..agent_result import AgentResultStatus, coerce_agent_result, parse_agent_result
+from ..evidence import TaskEvidence, expected_evidence
+from ..execution_model import (
     StateTransitionError,
     WorkflowReadiness,
     assert_report_consistent,
@@ -34,7 +34,7 @@ from .execution_model import (
     assert_tasks_ready,
     assess_workflow_readiness,
 )
-from .failure import (
+from ..failure import (
     Failure,
     FailureCategory,
     FailureClassifier,
@@ -48,23 +48,23 @@ from .failure import (
     new_failure_id,
     parse_retry_after_seconds,
 )
-from .logging import redact_text
-from .persistence import DegradationRecorder, event_emitter
-from .security import findings_for_prompt, scan_many
-from .verdict import parse_verdict
-from .config import AppConfig
-from .headroom import REJECT, GateVerdict, HeadroomGate, format_utc, merge_verdicts
-from .headroom_source import build_headroom_gate
-from .events import Event, EventSeverity, EventType
-from .registry import AgentRegistry, DetectedAgent
-from .repo_inspection import RepositoryInspector
-from .routing import AgentRouter
-from .runner import AgentRunner, OperationCancelled, RunResult
-from .state import StateStore
-from .tasks import Task, TaskStatus, utc_now
-from .verification import Verifier
-from .verification_kernel import VerificationKernel
-from .verification_model import VerificationReportStatus
+from ..logging import redact_text
+from ..persistence import DegradationRecorder, event_emitter
+from ..security import findings_for_prompt, scan_many
+from ..verdict import parse_verdict
+from ..config import AppConfig
+from ..headroom import REJECT, GateVerdict, HeadroomGate, format_utc, merge_verdicts
+from ..headroom_source import build_headroom_gate
+from ..events import Event, EventSeverity, EventType
+from ..registry import AgentRegistry, DetectedAgent
+from ..repo_inspection import RepositoryInspector
+from ..routing import AgentRouter
+from ..runner import AgentRunner, OperationCancelled, RunResult
+from ..state import StateStore
+from ..tasks import Task, TaskStatus, utc_now
+from ..verification import Verifier
+from ..verification_kernel import VerificationKernel
+from ..verification_model import VerificationReportStatus
 
 
 def _scrub_structured(value: object) -> object:
