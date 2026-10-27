@@ -7,7 +7,7 @@
 # this file only makes `pip install .` / `uv sync` possible.
 
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=84.2.1"]
 build-backend = "setuptools.build_meta"
 
 [project]
