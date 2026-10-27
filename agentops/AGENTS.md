@@ -84,7 +84,9 @@ Console scripts: `agentops` -> `agentops.cli:main`, `agentops-gui` -> `agentops.
 
 - Entry points: `agentops/cli.py`, the `agentops.gui` package (console script
   `agentops-gui` -> `agentops.gui:main`, `main()` in `gui/__init__.py`), and threaded
-  `agentops/gui_controller.py`. `agentops_gui.py` is the package-aware PyInstaller
+  `agentops/gui_controller/` (package: `serializers.py`, per-concern controller mixins,
+  `controller.py` composing `AgentOpsController`; patch collaborators at
+  `agentops.gui_controller.NAME`, which the mixins resolve at call time). `agentops_gui.py` is the package-aware PyInstaller
   launcher; freezing the `agentops.gui` package modules directly breaks relative imports.
 - Onboarding: `agentops/init_config.py` (`agentops init`: evidence-only stack detection,
   writes `<repo>/.agentops/config.yaml`, never overwrites without `--force`) and
@@ -154,7 +156,7 @@ a task verified. Empty, interrupted, unknown, or all-skipped work is never succe
   them through `gui/bridge.py`, which runs the work on a worker pool and delivers results
   as Qt signals; long-running operations belong on controller or background threads.
 - Keep presentation boundaries explicit: `StateStore` returns DTOs and plain data to the
-  controller and CLI. GUI-facing serialization belongs in `gui_controller.py`, not in Qt
+  controller and CLI. GUI-facing serialization belongs in `gui_controller/serializers.py`, not in Qt
   widgets or raw SQLite row handling.
 - Normalize paths to `as_posix()` when crossing a UI or persistence boundary.
 - Preserve legacy behavior and compatibility unless the request changes it. Several
@@ -190,5 +192,5 @@ Recorded so they are not rediscovered as if new. Fix them deliberately, not inci
   reappears on build. Do not read version or entry-point data from it.
 - `tests/test_storage_dtos_worktree_refs.py` is named for a `storage_dtos.py` module that
   no longer exists; the DTO serializers it imports (`serialize_task`, `serialize_workflow`,
-  `serialize_worktree_ref`) live in `gui_controller.py`, and `WorktreeRef` lives in
+  `serialize_worktree_ref`) live in `gui_controller/serializers.py`, and `WorktreeRef` lives in
   `git.py`. The name is a fossil.

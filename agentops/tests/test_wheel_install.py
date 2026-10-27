@@ -100,6 +100,17 @@ class WheelInstallTests(unittest.TestCase):
             self.assertTrue(asset_files, "chevron-down.svg not found in wheel")
             self.assertIn("agentops/gui/assets/chevron-down.svg", asset_files)
 
+    def test_wheel_contains_every_gui_controller_module(self):
+        """gui_controller is a package: every module in it must ship."""
+        import zipfile
+
+        source = self.project_root / "agentops" / "gui_controller"
+        expected = {f"agentops/gui_controller/{path.name}" for path in source.glob("*.py")}
+        self.assertIn("agentops/gui_controller/__init__.py", expected)
+        with zipfile.ZipFile(self.wheel_path, "r") as zf:
+            shipped = {n for n in zf.namelist() if n.startswith("agentops/gui_controller/")}
+        self.assertEqual(expected - shipped, set())
+
     def test_clean_install_loads_default_config(self):
         """Install wheel in a clean venv and verify default config loads."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -138,6 +149,8 @@ assert 'opencode' in config.agents
 assert 'kilo' in config.agents
 assert config.systemd_run_enabled is False  # U2: bundled defaults are host-neutral
 import agentops.doctor, agentops.init_config  # U2 modules ship in the wheel
+from agentops.gui_controller import AgentOpsController, serialize_task  # package
+assert AgentOpsController().config is None and callable(serialize_task)
 """
             result = subprocess.run(
                 [str(python_exe), "-c", test_script],

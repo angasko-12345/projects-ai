@@ -225,8 +225,14 @@ class BothEntryPointsShareOneMergeRuleTests(unittest.TestCase):
         that would actually be a second implementation.
         """
         root = Path(__file__).resolve().parents[1] / "agentops"
-        for name in ("cli.py", "gui_controller.py"):
-            source = (root / name).read_text(encoding="utf-8")
+        # gui_controller is a package: scan every module in it, not one file.
+        sources = {"cli.py": (root / "cli.py").read_text(encoding="utf-8")}
+        sources["gui_controller/"] = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in sorted((root / "gui_controller").glob("*.py"))
+        )
+        self.assertIn("finalize_for_outcome(", sources["gui_controller/"])
+        for name, source in sources.items():
             # A second inline `if result.ready ... merge` would be the drift
             # this guards against. Delegating through any name is fine.
             self.assertNotIn("if result.ready or implementation_ok:", source)
