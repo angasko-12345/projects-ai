@@ -44,6 +44,7 @@ from .verdicts import (
     _requires_review_verdict,
     _structured_agent_status,
     _explicit_success_denied,
+    _review_output_denies_success,
 )
 from .security import _is_security_role
 from .planning import PlanningMixin
@@ -383,6 +384,15 @@ class WorkflowEngine(
                                 verdict_reason = f"review verdict rejected the change; blocking findings: {findings}"
                             else:
                                 verdict_reason = "review verdict rejected the change"
+                        elif _review_output_denies_success(result.stdout):
+                            # Fail closed on contradictory output: an earlier
+                            # success:false / failure status / REJECT anywhere
+                            # in the output is not overridden by a later approval.
+                            verdict_ok = False
+                            verdict_reason = (
+                                "review output is contradictory: a structured payload denies "
+                                "success, so the final approval does not count"
+                            )
                     self._record_review_verdict(task, verdict)
                     verdict_rejected = verdict is not None and not verdict.is_approved
                     task.status = (
