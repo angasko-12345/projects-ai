@@ -135,9 +135,9 @@ INSERT INTO events VALUES ('ev-old', 'wf-old', 'task-old', 'task-claimed', 'demo
 """
 
 # An interrupted early AgentRun migration left a partial agent_runs table.
-# It keeps the columns the agent_runs indexes name (workflow_id, task_id,
-# created_at, status): the index DDL runs before the column repair, so a
-# partial table without them fails to open today. That is pinned as-is.
+# This one keeps the columns the agent_runs indexes name (workflow_id,
+# task_id, created_at, status); the cases that lack one of them are built by
+# ``_partial_agent_runs`` below.
 PARTIAL_AGENT_RUNS = """
 CREATE TABLE agent_runs (
     id TEXT PRIMARY KEY, workflow_id TEXT, task_id TEXT, status TEXT NOT NULL,
@@ -145,6 +145,35 @@ CREATE TABLE agent_runs (
 );
 INSERT INTO agent_runs VALUES ('run-old', 'wf-old', 'task-old', 'completed', 't0', 't1');
 """
+
+AGENT_RUNS_INDEXES = {
+    "idx_agent_runs_workflow",
+    "idx_agent_runs_task",
+    "idx_agent_runs_status",
+}
+
+# The partial table's columns, each with the legacy row's value. The
+# migration repairs columns before it creates the agent_runs indexes, so a
+# table missing any indexed column now opens and is upgraded.
+_PARTIAL_COLUMNS = {
+    "id": ("TEXT PRIMARY KEY", "'run-old'"),
+    "workflow_id": ("TEXT", "'wf-old'"),
+    "task_id": ("TEXT", "'task-old'"),
+    "status": ("TEXT NOT NULL", "'completed'"),
+    "created_at": ("TEXT NOT NULL", "'t0'"),
+    "updated_at": ("TEXT NOT NULL", "'t1'"),
+}
+
+
+def _partial_agent_runs(missing: str, with_row: bool) -> str:
+    kept = {name: spec for name, spec in _PARTIAL_COLUMNS.items() if name != missing}
+    columns = ", ".join(f"{name} {spec[0]}" for name, spec in kept.items())
+    script = f"CREATE TABLE agent_runs ({columns});\n"
+    if with_row:
+        names = ", ".join(kept)
+        values = ", ".join(spec[1] for spec in kept.values())
+        script += f"INSERT INTO agent_runs ({names}) VALUES ({values});\n"
+    return script
 
 
 class SchemaCharacterizationTests(unittest.TestCase):
@@ -262,6 +291,118 @@ class OldSchemaMigrationTests(unittest.TestCase):
                 self.assertEqual(state.count_agent_runs(), 1)
             finally:
                 state.close()
+
+    def _assert_upgraded_and_idempotent(self, database: str) -> None:
+        fresh_columns, fresh_indexes = self._fresh_columns_and_indexes()
+        expected = {column[0] for column in fresh_columns["agent_runs"]}
+        for _ in range(2):  # the second open must be a no-op
+            state = StateStore(database)
+            try:
+                journal = state.connection.execute("PRAGMA journal_mode").fetchone()[0]
+                self.assertEqual(journal.lower(), "wal")
+                columns = _columns(state.connection)["agent_runs"]
+                self.assertEqual({column[0] for column in columns}, expected)
+                self.assertEqual(len(columns), len(expected))
+                self.assertEqual(_index_names(state.connection), fresh_indexes)
+                self.assertLessEqual(AGENT_RUNS_INDEXES, fresh_indexes)
+                self.assertEqual(_versions(state.connection), CURRENT_SCHEMA_VERSIONS)
+                self.assertEqual(
+                    state.connection.execute(
+                        "SELECT COUNT(*) FROM schema_migrations WHERE version = 1"
+                    ).fetchone()[0],
+                    1,
+                )
+            finally:
+                state.close()
+
+    def test_partial_agent_runs_missing_a_nullable_indexed_column_opens_and_keeps_rows(self):
+        for missing in ("workflow_id", "task_id"):
+            with self.subTest(missing=missing), tempfile.TemporaryDirectory() as directory:
+                database = self._build(
+                    directory, V0_SCHEMA + _partial_agent_runs(missing, with_row=True)
+                )
+                self._assert_upgraded_and_idempotent(database)
+                state = StateStore(database)
+                try:
+                    self.assertEqual(state.count_agent_runs(), 1)
+                    run = state.get_agent_run("run-old")
+                    self.assertEqual(run.status, AgentRunStatus.COMPLETED)
+                    self.assertEqual(run.created_at, "t0")
+                    self.assertEqual(run.attempt, 1)
+                    self.assertFalse(run.cancelled)
+                    self.assertEqual(run.relationship.value, "root")
+                    # The repaired column is NULL for the legacy row; the
+                    # surviving one keeps its value.
+                    kept = "task_id" if missing == "workflow_id" else "workflow_id"
+                    self.assertIsNone(getattr(run, missing))
+                    self.assertEqual(getattr(run, kept), _PARTIAL_COLUMNS[kept][1].strip("'"))
+                finally:
+                    state.close()
+
+    def test_partial_agent_runs_missing_a_not_null_indexed_column_opens_when_empty(self):
+        # status and created_at are TEXT NOT NULL with no default in both the
+        # fresh DDL and the repair map, so SQLite can add them only while the
+        # table has no rows. An empty partial table now opens and upgrades.
+        for missing in ("status", "created_at"):
+            with self.subTest(missing=missing), tempfile.TemporaryDirectory() as directory:
+                database = self._build(
+                    directory, V0_SCHEMA + _partial_agent_runs(missing, with_row=False)
+                )
+                self._assert_upgraded_and_idempotent(database)
+                state = StateStore(database)
+                try:
+                    run = state.create_agent_run(
+                        AgentRunContext(agent="demo", workflow_id="wf-old", task_id="task-old")
+                    )
+                    self.assertEqual(state.get_agent_run(run.id).status, AgentRunStatus.PENDING)
+                    self.assertEqual(state.count_agent_runs(), 1)
+                finally:
+                    state.close()
+
+    def test_partial_agent_runs_missing_a_not_null_column_with_rows_still_fails(self):
+        # Pinned limitation: the repair map has no default for status or
+        # created_at, and SQLite refuses ADD COLUMN ... NOT NULL without a
+        # default on a table with rows. The legacy row is left in place.
+        for missing in ("status", "created_at"):
+            with self.subTest(missing=missing), tempfile.TemporaryDirectory() as directory:
+                database = self._build(
+                    directory, V0_SCHEMA + _partial_agent_runs(missing, with_row=True)
+                )
+                with (
+                    unittest.mock.patch("agentops.state.time.sleep"),
+                    self.assertRaisesRegex(sqlite3.OperationalError, "NOT NULL column"),
+                ):
+                    StateStore(database)
+                connection = sqlite3.connect(database)
+                try:
+                    self.assertEqual(
+                        connection.execute("SELECT id FROM agent_runs").fetchall(),
+                        [("run-old",)],
+                    )
+                finally:
+                    connection.close()
+
+    def test_partial_agent_runs_repair_works_on_an_in_memory_database(self):
+        state = StateStore(":memory:")
+        try:
+            fresh_indexes = _index_names(state.connection)
+            expected = {column[0] for column in _columns(state.connection)["agent_runs"]}
+            state.connection.execute("PRAGMA foreign_keys = OFF")
+            state.connection.executescript(
+                "DROP TABLE agent_runs;\n" + _partial_agent_runs("task_id", with_row=True)
+            )
+            state.connection.execute("PRAGMA foreign_keys = ON")
+            for _ in range(2):  # idempotent
+                state._migrate_agent_runs()
+                state.connection.commit()
+                columns = {column[0] for column in _columns(state.connection)["agent_runs"]}
+                self.assertEqual(columns, expected)
+                self.assertEqual(_index_names(state.connection), fresh_indexes)
+            run = state.get_agent_run("run-old")
+            self.assertEqual(run.status, AgentRunStatus.COMPLETED)
+            self.assertIsNone(run.task_id)
+        finally:
+            state.close()
 
     def test_verification_columns_are_not_duplicated_when_already_present(self):
         state = StateStore(":memory:")
