@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-10-26T08:50:44+00:00",
-  "commit": "2e446098f18d9275b8379d0ea9c60a3629252704",
+  "generated_at": "2026-10-27T01:12:35+00:00",
+  "commit": "6803e9b0837de01471cbbaf964fde5452394de79",
   "python": "3.12.15",
   "platform": "Linux 6.12.110+ (aarch64)",
-  "measured_in": "a clean clone of 2e446098f18d",
+  "measured_in": "a clean clone of 6803e9b0837d",
   "clean_checkout": true,
   "command_note": "Every command runs from its own product directory with the interpreter that ran this script. There is no repository-wide test command and these products share no dependencies.",
   "excluded": {
@@ -14,7 +14,7 @@
     {
       "product": "agentops",
       "directory": "agentops",
-      "commit": "aa405a86707a9dbd58b950c9960ea622bf51efa7",
+      "commit": "6803e9b0837de01471cbbaf964fde5452394de79",
       "command": [
         "/usr/local/bin/python",
         "-m",
@@ -25,12 +25,12 @@
       ],
       "dirty_paths": [],
       "total": 1050,
-      "duration_seconds": 39.388,
+      "duration_seconds": 54.579,
       "skipped": 82,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 1050 tests in 39.388s",
+        "Ran 1050 tests in 54.579s",
         "OK (skipped=82)"
       ],
       "result": "pass"
@@ -62,7 +62,7 @@
     {
       "product": "small-projects/mini-llm",
       "directory": "small-projects/mini-llm",
-      "commit": "2e446098f18d9275b8379d0ea9c60a3629252704",
+      "commit": "6803e9b0837de01471cbbaf964fde5452394de79",
       "command": [
         "/workspace/work/venv/bin/python",
         "-m",
@@ -73,12 +73,12 @@
       ],
       "dirty_paths": [],
       "total": 332,
-      "duration_seconds": 37.351,
+      "duration_seconds": 126.247,
       "skipped": 4,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 332 tests in 37.351s",
+        "Ran 332 tests in 126.247s",
         "OK (skipped=4)"
       ],
       "result": "pass"
@@ -86,7 +86,7 @@
     {
       "product": "ai-token-tracker",
       "directory": "ai-token-tracker",
-      "commit": "c73620ac66d75dad03e70ac9f9d93e459af908b0",
+      "commit": "6803e9b0837de01471cbbaf964fde5452394de79",
       "command": [
         "/usr/local/bin/python",
         "-m",
@@ -97,12 +97,12 @@
       ],
       "dirty_paths": [],
       "total": 128,
-      "duration_seconds": 0.286,
+      "duration_seconds": 0.558,
       "skipped": 8,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 128 tests in 0.286s",
+        "Ran 128 tests in 0.558s",
         "OK (skipped=8)"
       ],
       "result": "pass"
