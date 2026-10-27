@@ -61,7 +61,7 @@ class ThemeContrastTest(unittest.TestCase):
         self.assert_aa("on_accent", "accent_strong")
 
     def test_status_colors_on_surface(self):
-        for status in ("success", "warning", "danger", "info", "accent"):
+        for status in ("success", "warning", "danger", "orange", "info", "accent"):
             with self.subTest(status=status):
                 self.assert_aa(status, "surface")
 

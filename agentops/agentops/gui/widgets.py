@@ -44,7 +44,7 @@ from PySide6.QtWidgets import (
 )
 
 from .format import format_duration
-from .tokens import DARK, Theme, qcolor, status_colors, with_alpha
+from .tokens import DARK, Theme, qcolor, qfont, status_colors, with_alpha
 
 # Qt's QWIDGETSIZE_MAX (largest permitted widget maximumHeight); PySide6 does
 # not re-export it from QtWidgets on all versions.
@@ -977,10 +977,7 @@ class LogText(QPlainTextEdit):
 
     def __init__(self, parent: QWidget | None = None, theme: Theme = DARK):
         super().__init__(parent)
-        font = QFont(theme.font_mono)
-        font.setStyleHint(QFont.StyleHint.Monospace)
-        font.setPixelSize(theme.size_base)
-        self.setFont(font)
+        self.setFont(qfont(theme, theme.size_base, mono=True))
         self.setReadOnly(True)
         self.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         self.setMinimumHeight(120)
