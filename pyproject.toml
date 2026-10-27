@@ -24,6 +24,12 @@ target-version = "py310"
 # Ruff's default exclude list.
 extend-exclude = [".agents"]
 
+# Most files are already written to ~100 columns; formatting to 100 rather than
+# the 88 default keeps the one-time `ruff format` commit (listed in
+# .git-blame-ignore-revs) as small as possible. Also the E501 limit if E5 is
+# ever selected.
+line-length = 100
+
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "W", "F", "B", "UP"]
 
@@ -45,3 +51,24 @@ select = ["E4", "E7", "E9", "W", "F", "B", "UP"]
 # pytest inserts the project root for tests; the fixture module follows the
 # same path bootstrap before importing the app package.
 "tiktok-slop-factory/tests/conftest.py" = ["E402"]
+
+[tool.ruff.format]
+# Formatted: agentops/, ai-token-tracker/, small-projects/mini-llm/, tools/ and
+# the root .py files. Not formatted yet, on purpose: universal-game-agent has a
+# draft PR stack in flight that a reformat would conflict with; qr-generator
+# and tiktok-slop-factory await a decision on where they live; the privacy
+# audit tool is out of this pass. Remove an entry here when that product is
+# formatted (as its own formatting-only commit, added to .git-blame-ignore-revs).
+exclude = [
+    "universal-game-agent/**",
+    "qr-generator/**",
+    "tiktok-slop-factory/**",
+    "small-projects/privacy_audit_tool/**",
+    # Python files only: leave code blocks in Markdown and the Kaggle
+    # notebook's JSON exactly as written.
+    "*.md",
+    "*.ipynb",
+]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
