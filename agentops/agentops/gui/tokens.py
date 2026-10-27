@@ -147,6 +147,44 @@ DARK = Theme(
     series_2="#6f9bff",
 )
 
+# Off by default: selected only through AppSettings.theme == "light" (no UI
+# yet). Widgets still bind DARK at import time, so only the palette and the
+# stylesheet follow it until the light theme is finished (Phase E).
+LIGHT = Theme(
+    name="light",
+    bg="#f6f7f9",
+    sidebar="#eef0f4",
+    surface="#ffffff",
+    surface_alt="#f1f3f6",
+    surface_hover="#e9ecf1",
+    selected="#e2e6ee",
+    border="#dfe3ea",
+    border_strong="#c9cfd9",
+    text="#1a1f29",
+    text_muted="#4f5968",
+    text_faint="#636c7b",
+    accent="#2f62dd",
+    accent_hover="#2753c0",
+    accent_strong="#2f62dd",
+    on_accent="#ffffff",
+    success="#1a7f37",
+    warning="#9a6700",
+    danger="#cf222e",
+    orange="#bc4c00",
+    info="#2f62dd",
+    navy_surface="#eef3ff",
+    navy_border="#c9d6f5",
+    series_1="#0f9488",
+    series_2="#2f62dd",
+)
+
+THEMES: dict[str, Theme] = {DARK.name: DARK, LIGHT.name: LIGHT}
+
+
+def theme_named(name: object) -> Theme:
+    """Theme for a settings value; anything unknown falls back to DARK."""
+    return THEMES.get(str(name or "").strip().lower(), DARK)
+
 
 def css_font_list(families: tuple[str, ...], generic: str) -> str:
     """``("A B", "C")`` -> ``"A B", "C", generic`` for a QSS font-family."""

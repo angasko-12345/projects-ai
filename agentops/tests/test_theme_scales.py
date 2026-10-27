@@ -1,4 +1,4 @@
-"""Theme scales and the single-colour status map.
+"""Theme scales, the single-colour status map, and the theme setting.
 
 Qt-free: tokens and settings are plain data, so these run without PySide6.
 """
@@ -8,12 +8,16 @@ from __future__ import annotations
 import dataclasses
 import unittest
 
+from agentops.gui.settings import AppSettings
 from agentops.gui.tokens import (
     DARK,
+    LIGHT,
     STATUS_COLOR,
+    THEMES,
     build_stylesheet,
     css_font_list,
     status_color,
+    theme_named,
 )
 
 
@@ -107,7 +111,27 @@ class StatusColorTest(unittest.TestCase):
         self.assertEqual(status_color(None), DARK.text_faint)
         self.assertEqual(status_color("brand-new-state"), DARK.text_faint)
         self.assertEqual(status_color("timed-out"), DARK.orange)
+        self.assertEqual(status_color("failed", LIGHT), LIGHT.danger)
         self.assertTrue(set(STATUS_COLOR.values()) <= {f.name for f in dataclasses.fields(DARK)})
+
+
+class ThemeSettingTest(unittest.TestCase):
+    def test_light_is_a_complete_theme_and_dark_stays_default(self):
+        self.assertEqual(THEMES, {"dark": DARK, "light": LIGHT})
+        self.assertIs(theme_named("dark"), DARK)
+        self.assertIs(theme_named(" LIGHT "), LIGHT)
+        self.assertIs(theme_named("system"), DARK)
+        self.assertIs(theme_named(None), DARK)
+        self.assertIn(LIGHT.bg, build_stylesheet(LIGHT))
+
+    def test_settings_theme_round_trips_and_old_files_load(self):
+        self.assertEqual(AppSettings().theme, "dark")
+        self.assertEqual(AppSettings.from_dict({"last_view": "tasks"}).theme, "dark")
+        self.assertEqual(AppSettings.from_dict({"theme": "Light"}).theme, "light")
+        self.assertEqual(AppSettings.from_dict({"theme": "neon"}).theme, "dark")
+        self.assertEqual(AppSettings.from_dict({"theme": 3}).theme, "dark")
+        settings = AppSettings(theme="light")
+        self.assertEqual(AppSettings.from_dict(settings.to_dict()).theme, "light")
 
 
 if __name__ == "__main__":

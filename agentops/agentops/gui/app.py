@@ -11,17 +11,19 @@ def run(config_path: str | Path | None = None) -> int:
     from PySide6.QtWidgets import QApplication
 
     from ..gui_controller import AgentOpsController
+    from .settings import load_settings
     from .shell import MainWindow
-    from .tokens import DARK, apply_theme
+    from .tokens import apply_theme, theme_named
 
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName("AgentOps")
     app.setOrganizationName("AgentOps")
-    apply_theme(app, DARK)
+    settings = load_settings()
+    apply_theme(app, theme_named(settings.theme))
     app.setQuitOnLastWindowClosed(True)
 
     controller = AgentOpsController(config_path=Path(config_path) if config_path else None)
-    window = MainWindow(controller)
+    window = MainWindow(controller, settings=settings)
     window.restore_geometry()
     window.show()
     return int(app.exec())
