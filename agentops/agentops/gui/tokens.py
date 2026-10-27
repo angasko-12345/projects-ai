@@ -6,6 +6,9 @@ default; every widget derives its colors from :data:`DARK` through
 :func:`build_stylesheet` and :func:`status_colors`, never from literals. A
 future light theme is a second :class:`Theme` instance plus a rebuild of the
 stylesheet.
+
+The Qt plumbing (:func:`build_palette`, :func:`apply_theme`) imports PySide6
+lazily inside the function body, so importing this module never needs Qt.
 """
 
 from __future__ import annotations
@@ -173,6 +176,71 @@ def status_tint(status: object, theme: Theme = DARK, alpha: float = 0.16) -> str
     return with_alpha(status_colors(status, theme)[1], alpha)
 
 
+def build_palette(theme: Theme = DARK):  # -> QPalette (lazy Qt import)
+    """QPalette carrying the theme, so unstyled surfaces stay on-theme.
+
+    Without it every surface the stylesheet does not reach (scroll-area
+    viewports, stacked pages) paints the platform's light Window colour behind
+    the theme's light text.
+    """
+    from PySide6.QtGui import QColor, QPalette
+
+    t = theme
+    palette = QPalette()
+    role = QPalette.ColorRole
+    active = {
+        role.Window: t.bg,
+        role.WindowText: t.text,
+        role.Base: t.surface,
+        role.AlternateBase: t.surface_alt,
+        role.Text: t.text,
+        role.PlaceholderText: t.text_faint,
+        role.Button: t.surface_alt,
+        role.ButtonText: t.text,
+        role.BrightText: t.danger,
+        role.Highlight: t.accent,
+        role.HighlightedText: t.text,
+        role.ToolTipBase: t.surface_alt,
+        role.ToolTipText: t.text,
+        role.Link: t.accent,
+        role.LinkVisited: t.accent,
+        role.Light: t.border_strong,
+        role.Midlight: t.border_strong,
+        role.Mid: t.border,
+        role.Dark: t.bg,
+        role.Shadow: t.bg,
+    }
+    for color_role, color in active.items():
+        palette.setColor(color_role, QColor(color))
+    disabled = QPalette.ColorGroup.Disabled
+    for color_role, color in {
+        role.WindowText: t.text_faint,
+        role.Text: t.text_faint,
+        role.ButtonText: t.text_faint,
+        role.PlaceholderText: t.text_faint,
+        role.Base: t.surface,
+        role.Button: t.surface,
+        role.Highlight: t.border_strong,
+        role.HighlightedText: t.text_muted,
+    }.items():
+        palette.setColor(disabled, color_role, QColor(color))
+    return palette
+
+
+def apply_theme(app, theme: Theme = DARK) -> None:
+    """Fusion style, theme palette, stylesheet and font on ``app``.
+
+    Fusion is the one built-in style that honours a custom palette on every
+    platform; the native Windows styles keep painting their own light chrome.
+    """
+    from PySide6.QtGui import QFont
+
+    app.setStyle("Fusion")
+    app.setPalette(build_palette(theme))
+    app.setFont(QFont(theme.font_family))
+    app.setStyleSheet(build_stylesheet(theme))
+
+
 def build_stylesheet(theme: Theme = DARK) -> str:
     """Full Qt stylesheet for the theme."""
     t = theme
@@ -188,6 +256,12 @@ QWidget {{
 }}
 QLabel {{
     background: transparent;
+}}
+/* Scroll areas, their content widget, and page stacks show the surface
+   behind them instead of painting the palette Window colour as a slab. */
+QScrollArea, QScrollArea > QWidget > QWidget, QStackedWidget {{
+    background: transparent;
+    border: none;
 }}
 QLabel[role="heading"] {{
     font-size: {t.size_heading}px;
