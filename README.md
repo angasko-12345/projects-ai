@@ -23,7 +23,7 @@ Everything here runs on your own machine: no accounts, no hosted backend, and no
 | [mini-llm](small-projects/mini-llm/) | A small GPT-style language model written from scratch in PyTorch: tokenizer, training loop, sampling. |
 | [Privacy Audit Tool](small-projects/privacy_audit_tool/) | A read-only Windows tool that finds your forgotten online accounts from mail exports, browser history and usernames. It deletes nothing and runs offline by default; its optional username checks contact external sites. |
 | [TikTok Slop Factory](tiktok-slop-factory/) | An experiment that turns short fictional scripts into vertical videos with one command. |
-| [quickscripts](small-projects/quickscripts/), [Cube Timer](small-projects/Cube%20Timer.html) | Small utilities. |
+| [quickscripts](archive/quickscripts/), [Cube Timer](archive/Cube%20Timer.html) | Small utilities, archived (not maintained). |
 
 ## Quick start
 
@@ -70,7 +70,8 @@ qr-generator/           Android QR app (Expo)
 ai-token-tracker/       Token usage dashboard
 universal-game-agent/   Pixel-based RL testbed
 tiktok-slop-factory/    Video generation experiment
-small-projects/         mini-llm, privacy audit tool, scripts
+small-projects/         mini-llm, privacy audit tool
+archive/                Unmaintained standalone files (Cube Timer, quickscripts)
 tools/evidence/         Verification-evidence tooling used by CI
 .agents/                Agent instructions, plans and verification records
 tasks/                  Active-task slot (or pointer) + after-task procedure; live queue: .agents/pending_tasks.md
