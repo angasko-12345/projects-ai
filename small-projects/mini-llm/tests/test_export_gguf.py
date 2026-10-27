@@ -45,6 +45,7 @@ from src.train import build_param_groups, save_checkpoint  # noqa: E402
 
 try:
     import gguf  # noqa: F401
+
     HAVE_GGUF = True
 except ImportError:
     HAVE_GGUF = False
@@ -53,9 +54,18 @@ REQUIRE_GGUF = os.environ.get("MINI_LLM_REQUIRE_GGUF") == "1"
 SHIPPED_TRAIN_BIN = os.path.join(ROOT, "data", "processed", "train.bin")
 SHIPPED_TOKENIZER = os.path.join(ROOT, "data", "tokenizer.json")
 TINY = dict(context_length=32, n_layers=2, n_heads=2, d_model=64, d_ff=256)
-PARITY_PROMPTS = ["The fox jumped", "Once upon a time", "The cat sat on the",
-                  "A small dog", "She said hello", "the quick brown fox", "In the garden",
-                  "It was a sunny day", "He ran to the", "One day"]
+PARITY_PROMPTS = [
+    "The fox jumped",
+    "Once upon a time",
+    "The cat sat on the",
+    "A small dog",
+    "She said hello",
+    "the quick brown fox",
+    "In the garden",
+    "It was a sunny day",
+    "He ran to the",
+    "One day",
+]
 TOKENIZE_SAMPLES = [
     "The fox jumped.",
     "Hello,\n\nworld!  two  spaces\ttab",
@@ -104,6 +114,7 @@ def numpy_gpt2_logits(tensors: dict, hp: dict, ids: list[int]) -> np.ndarray:
     """Logits of llama.cpp's gpt2 graph (src/models/gpt2.cpp), computed in float64
     from GGUF tensors only: fused qkv + bias, 1/sqrt(head_dim) scale, causal softmax,
     LayerNorm, GELU MLP, output = token_embd when output.weight is absent."""
+
     def t(name):
         return np.asarray(tensors[name], dtype=np.float64)
 
@@ -122,7 +133,7 @@ def numpy_gpt2_logits(tensors: dict, hp: dict, ids: list[int]) -> np.ndarray:
         b = f"blk.{i}."
         h = ln(x, t(b + "attn_norm.weight"), t(b + "attn_norm.bias"), eps)
         qkv = h @ t(b + "attn_qkv.weight").T + t(b + "attn_qkv.bias")
-        q, k, v = qkv[:, :d], qkv[:, d:2 * d], qkv[:, 2 * d:]
+        q, k, v = qkv[:, :d], qkv[:, d : 2 * d], qkv[:, 2 * d :]
         outs = []
         for j in range(nh):
             s = slice(j * hd, (j + 1) * hd)
@@ -190,8 +201,14 @@ class TestTokenizerFields(unittest.TestCase):
             tok = Tokenizer(BPE(unk_token="<unk>"))
             tok.pre_tokenizer = ByteLevel(add_prefix_space=False)
             tok.decoder = ByteLevelDecoder()
-            tok.train([corpus], BpeTrainer(vocab_size=300, min_frequency=1,
-                                           special_tokens=["<pad>", "<unk>", "<bos>", "<eos>"]))
+            tok.train(
+                [corpus],
+                BpeTrainer(
+                    vocab_size=300,
+                    min_frequency=1,
+                    special_tokens=["<pad>", "<unk>", "<bos>", "<eos>"],
+                ),
+            )
             path = os.path.join(tmp, "old.json")
             tok.save(path)
             fields = tokenizer_fields(path, n_vocab=tok.get_vocab_size())
@@ -227,9 +244,10 @@ class TestTensorMapping(unittest.TestCase):
             np.testing.assert_array_equal(tensors[f"blk.{i}.attn_qkv.bias"], np.zeros(3 * d))
             for h in range(nh):
                 for part, name in enumerate(("wq", "wk", "wv")):
-                    rows = qkv[part * d + h * hd: part * d + (h + 1) * hd]
+                    rows = qkv[part * d + h * hd : part * d + (h + 1) * hd]
                     np.testing.assert_array_equal(
-                        rows, sd[f"blocks.{i}.attn.heads.{h}.{name}.weight"].numpy())
+                        rows, sd[f"blocks.{i}.attn.heads.{h}.{name}.weight"].numpy()
+                    )
         self.assertNotIn("output.weight", tensors)  # tied head relies on llama.cpp fallback
 
     def test_untied_head_is_written_explicitly(self):
@@ -270,18 +288,30 @@ class TestExportReadBack(unittest.TestCase):
 
     def test_expected_tensors_shapes_and_dtypes(self):
         d, ff, v, ctx = TINY["d_model"], TINY["d_ff"], self.cfg.vocab_size, TINY["context_length"]
-        expected = {"token_embd.weight": (v, d), "position_embd.weight": (ctx, d),
-                    "output_norm.weight": (d,), "output_norm.bias": (d,)}
+        expected = {
+            "token_embd.weight": (v, d),
+            "position_embd.weight": (ctx, d),
+            "output_norm.weight": (d,),
+            "output_norm.bias": (d,),
+        }
         for i in range(TINY["n_layers"]):
             b = f"blk.{i}."
-            expected.update({
-                b + "attn_norm.weight": (d,), b + "attn_norm.bias": (d,),
-                b + "attn_qkv.weight": (3 * d, d), b + "attn_qkv.bias": (3 * d,),
-                b + "attn_output.weight": (d, d), b + "attn_output.bias": (d,),
-                b + "ffn_norm.weight": (d,), b + "ffn_norm.bias": (d,),
-                b + "ffn_up.weight": (ff, d), b + "ffn_up.bias": (ff,),
-                b + "ffn_down.weight": (d, ff), b + "ffn_down.bias": (d,),
-            })
+            expected.update(
+                {
+                    b + "attn_norm.weight": (d,),
+                    b + "attn_norm.bias": (d,),
+                    b + "attn_qkv.weight": (3 * d, d),
+                    b + "attn_qkv.bias": (3 * d,),
+                    b + "attn_output.weight": (d, d),
+                    b + "attn_output.bias": (d,),
+                    b + "ffn_norm.weight": (d,),
+                    b + "ffn_norm.bias": (d,),
+                    b + "ffn_up.weight": (ff, d),
+                    b + "ffn_up.bias": (ff,),
+                    b + "ffn_down.weight": (d, ff),
+                    b + "ffn_down.bias": (d,),
+                }
+            )
         T = self.gguf.GGMLQuantizationType
         for dtype in ("f32", "f16"):
             tensors = self.tensors(dtype)
@@ -331,9 +361,15 @@ class TestExportReadBack(unittest.TestCase):
         self.assertEqual(field(r, "tokenizer.ggml.merges"), expected["merges"])
 
     def _reference_vs_gguf(self, dtype):
-        tensors = {t.name: np.asarray(t.data, dtype=np.float32) for t in self.readers[dtype].tensors}
-        hp = dict(d_model=TINY["d_model"], n_heads=TINY["n_heads"], n_layers=TINY["n_layers"],
-                  eps=field(self.readers[dtype], "gpt2.attention.layer_norm_epsilon"))
+        tensors = {
+            t.name: np.asarray(t.data, dtype=np.float32) for t in self.readers[dtype].tensors
+        }
+        hp = dict(
+            d_model=TINY["d_model"],
+            n_heads=TINY["n_heads"],
+            n_layers=TINY["n_layers"],
+            eps=field(self.readers[dtype], "gpt2.attention.layer_norm_epsilon"),
+        )
         ids = [2, 40, 77, 5, 300, 12, 99, 256, 3, 18]
         ref = numpy_gpt2_logits(tensors, hp, ids)
         with torch.no_grad():
@@ -386,8 +422,10 @@ def _llama_bin(name):
     return None
 
 
-@unittest.skipUnless(HAVE_GGUF and _llama_bin("llama-server") and _llama_bin("llama-tokenize"),
-                     "set LLAMA_CPP_DIR to a llama.cpp build with llama-server and llama-tokenize")
+@unittest.skipUnless(
+    HAVE_GGUF and _llama_bin("llama-server") and _llama_bin("llama-tokenize"),
+    "set LLAMA_CPP_DIR to a llama.cpp build with llama-server and llama-tokenize",
+)
 class TestLlamaCppParity(unittest.TestCase):
     """Real llama.cpp vs mini-llm: tokenization and next-token top-10 probabilities."""
 
@@ -412,9 +450,21 @@ class TestLlamaCppParity(unittest.TestCase):
     def test_tokenization_matches(self):
         for text in TOKENIZE_SAMPLES:
             out = subprocess.run(
-                [_llama_bin("llama-tokenize"), "-m", self.gguf_path, "-p", text,
-                 "--ids", "--no-bos", "--log-disable"],
-                capture_output=True, text=True, timeout=60, check=True)
+                [
+                    _llama_bin("llama-tokenize"),
+                    "-m",
+                    self.gguf_path,
+                    "-p",
+                    text,
+                    "--ids",
+                    "--no-bos",
+                    "--log-disable",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=True,
+            )
             line = [ln for ln in out.stdout.splitlines() if ln.startswith("[")][-1]
             self.assertEqual(json.loads(line), self.tok.encode(text).ids, repr(text))
 
@@ -423,9 +473,22 @@ class TestLlamaCppParity(unittest.TestCase):
             s.bind(("127.0.0.1", 0))
             port = s.getsockname()[1]
         proc = subprocess.Popen(
-            [_llama_bin("llama-server"), "-m", self.gguf_path, "--host", "127.0.0.1",
-             "--port", str(port), "-c", str(self.cfg.context_length), "-t", "1"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            [
+                _llama_bin("llama-server"),
+                "-m",
+                self.gguf_path,
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(port),
+                "-c",
+                str(self.cfg.context_length),
+                "-t",
+                "1",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         self.addCleanup(proc.wait, 10)
         self.addCleanup(proc.terminate)
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -452,10 +515,12 @@ class TestLlamaCppParity(unittest.TestCase):
             if greedy < 4 or "\ufffd" in self.tok.decode([greedy]):
                 continue
             checked += 1
-            body = json.dumps({"prompt": prompt, "max_tokens": 1, "logprobs": self.TOP_K,
-                               "temperature": 0}).encode()
-            req = urllib.request.Request(base + "/v1/completions", data=body,
-                                         headers={"Content-Type": "application/json"})
+            body = json.dumps(
+                {"prompt": prompt, "max_tokens": 1, "logprobs": self.TOP_K, "temperature": 0}
+            ).encode()
+            req = urllib.request.Request(
+                base + "/v1/completions", data=body, headers={"Content-Type": "application/json"}
+            )
             resp = json.load(opener.open(req, timeout=60))
             top = resp["choices"][0]["logprobs"]["content"][0]["top_logprobs"]
             ours = list(np.argsort(-p)[: self.TOP_K])
@@ -466,9 +531,12 @@ class TestLlamaCppParity(unittest.TestCase):
                 self.assertLess(abs(p[a] - p[b]), self.MAX_DP, f"{prompt}: {ours} vs {theirs}")
             exact = theirs == ours
             dp = max(abs(math.exp(t["logprob"]) - p[t["id"]]) for t in top)
-            print(f"\n[llama.cpp parity] {prompt!r}: top-{self.TOP_K} "
-                  f"{'identical' if exact else 'same up to near-ties'}, "
-                  f"max |dp| = {dp:.2e}", file=sys.stderr)
+            print(
+                f"\n[llama.cpp parity] {prompt!r}: top-{self.TOP_K} "
+                f"{'identical' if exact else 'same up to near-ties'}, "
+                f"max |dp| = {dp:.2e}",
+                file=sys.stderr,
+            )
             self.assertLess(dp, self.MAX_DP, prompt)
         self.assertGreaterEqual(checked, 2, "too few prompts with a complete-UTF-8 greedy token")
 

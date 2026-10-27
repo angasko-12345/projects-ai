@@ -84,7 +84,9 @@ class UsageLimitConfig:
     def patterns_for(self, agent: str | None) -> tuple[str, ...]:
         from .failure import DEFAULT_USAGE_LIMIT_PATTERNS
 
-        combined = (DEFAULT_USAGE_LIMIT_PATTERNS if self.use_default_patterns else ()) + self.patterns
+        combined = (
+            DEFAULT_USAGE_LIMIT_PATTERNS if self.use_default_patterns else ()
+        ) + self.patterns
         if agent:
             combined += self.agent_patterns.get(agent, ())
         return tuple(dict.fromkeys(item.lower() for item in combined if item.strip()))
@@ -122,13 +124,17 @@ DEFAULT_CONFIG_PATH = resource_path("agents", "agents.yaml")
 def _default_config_text() -> str:
     """Read the default config text, works for wheel, source, and frozen."""
     import sys
+
     frozen_root = getattr(sys, "_MEIPASS", None)
     if frozen_root:
         return Path(frozen_root).joinpath("agents", "agents.yaml").read_text(encoding="utf-8")
     # Use importlib.resources for installed wheel / source checkout
     try:
         from importlib import resources
-        return resources.files("agentops.agents").joinpath("agents.yaml").read_text(encoding="utf-8")
+
+        return (
+            resources.files("agentops.agents").joinpath("agents.yaml").read_text(encoding="utf-8")
+        )
     except (ModuleNotFoundError, AttributeError, FileNotFoundError):
         # Fallback to filesystem path
         return DEFAULT_CONFIG_PATH.read_text(encoding="utf-8")
@@ -142,7 +148,9 @@ def _load_data(path: Path | None = None) -> dict[str, Any]:
         try:
             import yaml  # type: ignore[import-not-found]
         except ImportError as error:
-            raise ValueError("Configuration must be JSON-valid YAML unless PyYAML is installed.") from error
+            raise ValueError(
+                "Configuration must be JSON-valid YAML unless PyYAML is installed."
+            ) from error
         result = yaml.safe_load(text)
     if not isinstance(result, dict):
         raise ValueError("Configuration root must be a mapping.")
@@ -160,7 +168,9 @@ def _verification_check(value: Any, profile_name: str) -> VerificationCheckSpec:
         raise ValueError(f"verification.profiles.{profile_name}.checks must be a list of mappings.")
     name = value.get("name")
     if not isinstance(name, str) or not name.strip():
-        raise ValueError(f"verification.profiles.{profile_name}.checks need a non-empty string name.")
+        raise ValueError(
+            f"verification.profiles.{profile_name}.checks need a non-empty string name."
+        )
     check_class = value.get("class")
     try:
         parsed_class = VerificationCheckClass(check_class)
@@ -169,9 +179,13 @@ def _verification_check(value: Any, profile_name: str) -> VerificationCheckSpec:
         raise ValueError(
             f"verification.profiles.{profile_name}.checks.{name}.class must be one of: {allowed}."
         ) from error
-    command = _command(value.get("command"), f"verification.profiles.{profile_name}.checks.{name}.command")
+    command = _command(
+        value.get("command"), f"verification.profiles.{profile_name}.checks.{name}.command"
+    )
     working_directory = value.get("working_directory")
-    if working_directory is not None and (not isinstance(working_directory, str) or not working_directory.strip()):
+    if working_directory is not None and (
+        not isinstance(working_directory, str) or not working_directory.strip()
+    ):
         raise ValueError(
             f"verification.profiles.{profile_name}.checks.{name}.working_directory must be a non-empty string."
         )
@@ -192,7 +206,9 @@ def _verification_check(value: Any, profile_name: str) -> VerificationCheckSpec:
         raise ValueError(
             f"verification.profiles.{profile_name}.checks.{name}.policy must be 'sequential' or 'parallel'."
         ) from error
-    return VerificationCheckSpec(name, parsed_class, command, working_directory, timeout, required, parsed_policy)
+    return VerificationCheckSpec(
+        name, parsed_class, command, working_directory, timeout, required, parsed_policy
+    )
 
 
 def _verification_profile(name: Any, value: Any) -> VerificationProfile:
@@ -212,7 +228,9 @@ def _verification_profile(name: Any, value: Any) -> VerificationProfile:
         raise ValueError(f"verification.profiles.{name}.concurrency must be a positive integer.")
     default_timeout = value.get("default_timeout_seconds", 300)
     if not isinstance(default_timeout, int) or default_timeout <= 0:
-        raise ValueError(f"verification.profiles.{name}.default_timeout_seconds must be a positive integer.")
+        raise ValueError(
+            f"verification.profiles.{name}.default_timeout_seconds must be a positive integer."
+        )
     raw_checks = value.get("checks", [])
     if not isinstance(raw_checks, list) or not raw_checks:
         raise ValueError(f"verification.profiles.{name}.checks must be a non-empty list.")
@@ -236,16 +254,24 @@ def load_config(path: str | Path | None = None) -> AppConfig:
         if not isinstance(command, str) or not command:
             raise ValueError(f"agents.{name}.command must be a non-empty string.")
         args = raw.get("args", ["{prompt}"])
-        if not isinstance(args, list) or not args or not all(isinstance(item, str) for item in args):
+        if (
+            not isinstance(args, list)
+            or not args
+            or not all(isinstance(item, str) for item in args)
+        ):
             raise ValueError(f"agents.{name}.args must be a non-empty list of strings.")
         prompt_transport = raw.get("prompt_transport", "auto")
         from .prompt_transport import PROMPT_TRANSPORTS
+
         if not isinstance(prompt_transport, str) or prompt_transport not in PROMPT_TRANSPORTS:
             raise ValueError(
-                f"agents.{name}.prompt_transport must be one of: {', '.join(sorted(PROMPT_TRANSPORTS))}.")
+                f"agents.{name}.prompt_transport must be one of: {', '.join(sorted(PROMPT_TRANSPORTS))}."
+            )
         stdin_args = raw.get("stdin_args")
         if stdin_args is not None:
-            if not isinstance(stdin_args, list) or not all(isinstance(item, str) for item in stdin_args):
+            if not isinstance(stdin_args, list) or not all(
+                isinstance(item, str) for item in stdin_args
+            ):
                 raise ValueError(f"agents.{name}.stdin_args must be a list of strings.")
             if any("{prompt}" in item or "{prompt_file}" in item for item in stdin_args):
                 raise ValueError(f"agents.{name}.stdin_args must not contain a prompt placeholder.")
@@ -253,16 +279,26 @@ def load_config(path: str | Path | None = None) -> AppConfig:
         has_prompt = any("{prompt}" in item for item in args)
         has_prompt_file = any("{prompt_file}" in item for item in args)
         if prompt_transport == "file" and not has_prompt_file:
-            raise ValueError(f"agents.{name}.prompt_transport 'file' requires a '{{prompt_file}}' placeholder in args.")
+            raise ValueError(
+                f"agents.{name}.prompt_transport 'file' requires a '{{prompt_file}}' placeholder in args."
+            )
         if prompt_transport == "file" and has_prompt:
-            raise ValueError(f"agents.{name}.prompt_transport 'file' must not also pass '{{prompt}}' in args.")
+            raise ValueError(
+                f"agents.{name}.prompt_transport 'file' must not also pass '{{prompt}}' in args."
+            )
         if prompt_transport == "stdin" and stdin_args is None and (has_prompt or has_prompt_file):
             raise ValueError(
-                f"agents.{name}.prompt_transport 'stdin' needs stdin_args (args carries a prompt placeholder).")
+                f"agents.{name}.prompt_transport 'stdin' needs stdin_args (args carries a prompt placeholder)."
+            )
         if prompt_transport == "argv" and not has_prompt:
-            raise ValueError(f"agents.{name}.prompt_transport 'argv' requires a '{{prompt}}' placeholder in args.")
+            raise ValueError(
+                f"agents.{name}.prompt_transport 'argv' requires a '{{prompt}}' placeholder in args."
+            )
         if not has_prompt and not has_prompt_file and prompt_transport != "stdin":
-            warnings.warn(f"agents.{name}.args does not include '{{prompt}}'; the prompt will not be passed.", stacklevel=2)
+            warnings.warn(
+                f"agents.{name}.args does not include '{{prompt}}'; the prompt will not be passed.",
+                stacklevel=2,
+            )
         roles = raw.get("roles", [])
         if not isinstance(roles, list) or not all(isinstance(item, str) for item in roles):
             raise ValueError(f"agents.{name}.roles must be a list of strings.")
@@ -276,7 +312,9 @@ def load_config(path: str | Path | None = None) -> AppConfig:
         if model is not None and not isinstance(model, str):
             raise ValueError(f"agents.{name}.model must be a string when provided.")
         capabilities = raw.get("capabilities", [])
-        if (not isinstance(capabilities, list) or not all(isinstance(item, str) and item.strip() for item in capabilities)):
+        if not isinstance(capabilities, list) or not all(
+            isinstance(item, str) and item.strip() for item in capabilities
+        ):
             raise ValueError(f"agents.{name}.capabilities must be a list of non-empty strings.")
         # Normalize: strip whitespace (so " streaming " matches STREAMING)
         # and drop duplicates (harmless but polluting) — order preserved.
@@ -284,14 +322,21 @@ def load_config(path: str | Path | None = None) -> AppConfig:
         # Local import: agent_adapter owns the Capability vocabulary but
         # wraps AgentConfig, so a module-level import here would cycle.
         from .agent_adapter import KNOWN_CAPABILITIES
+
         for item in capabilities:
             if item not in KNOWN_CAPABILITIES:
                 warnings.warn(
                     f"agents.{name}.capabilities has unrecognized capability '{item}'; "
-                    "it will be passed through as-is.", stacklevel=2)
+                    "it will be passed through as-is.",
+                    stacklevel=2,
+                )
         display_name = raw.get("display_name")
-        if display_name is not None and (not isinstance(display_name, str) or not display_name.strip()):
-            raise ValueError(f"agents.{name}.display_name must be a non-empty string when provided.")
+        if display_name is not None and (
+            not isinstance(display_name, str) or not display_name.strip()
+        ):
+            raise ValueError(
+                f"agents.{name}.display_name must be a non-empty string when provided."
+            )
         priority = raw.get("priority", 0)
         if isinstance(priority, bool) or not isinstance(priority, int):
             raise ValueError(f"agents.{name}.priority must be an integer.")
@@ -300,37 +345,64 @@ def load_config(path: str | Path | None = None) -> AppConfig:
             raise ValueError(f"agents.{name}.metadata must be a mapping.")
         version_command = raw.get("version_command")
         if version_command is not None:
-            if (not isinstance(version_command, list) or not version_command or
-                    not all(isinstance(item, str) and item for item in version_command)):
-                raise ValueError(f"agents.{name}.version_command must be a non-empty list of strings.")
+            if (
+                not isinstance(version_command, list)
+                or not version_command
+                or not all(isinstance(item, str) and item for item in version_command)
+            ):
+                raise ValueError(
+                    f"agents.{name}.version_command must be a non-empty list of strings."
+                )
             version_command = tuple(version_command)
         boolean_fields: dict[str, object] = {}
         for field_name in (
-            "structured_output", "cancellation_support", "timeout_support",
-            "interactive_support", "noninteractive_support",
+            "structured_output",
+            "cancellation_support",
+            "timeout_support",
+            "interactive_support",
+            "noninteractive_support",
         ):
             value = raw.get(field_name)
             if value is not None and not isinstance(value, bool):
                 raise ValueError(f"agents.{name}.{field_name} must be a boolean when provided.")
             boolean_fields[field_name] = value
         agents[name] = AgentConfig(
-            name, command, tuple(args), tuple(roles), timeout, enabled, model,
-            capabilities, display_name, priority, metadata, version_command,
-            boolean_fields["structured_output"], boolean_fields["cancellation_support"],
-            boolean_fields["timeout_support"], boolean_fields["interactive_support"],
+            name,
+            command,
+            tuple(args),
+            tuple(roles),
+            timeout,
+            enabled,
+            model,
+            capabilities,
+            display_name,
+            priority,
+            metadata,
+            version_command,
+            boolean_fields["structured_output"],
+            boolean_fields["cancellation_support"],
+            boolean_fields["timeout_support"],
+            boolean_fields["interactive_support"],
             boolean_fields["noninteractive_support"],
-            prompt_transport, stdin_args,
+            prompt_transport,
+            stdin_args,
         )
     roles_raw = data.get("role_preferences", {})
     if not isinstance(roles_raw, dict):
         raise ValueError("role_preferences must be a mapping.")
     role_preferences: dict[str, tuple[str, ...]] = {}
     for role, preferences in roles_raw.items():
-        if not isinstance(role, str) or not isinstance(preferences, list) or not all(isinstance(item, str) for item in preferences):
+        if (
+            not isinstance(role, str)
+            or not isinstance(preferences, list)
+            or not all(isinstance(item, str) for item in preferences)
+        ):
             raise ValueError("role preferences must map strings to lists of strings.")
         unknown = [item for item in preferences if item not in agents]
         if unknown:
-            raise ValueError(f"role_preferences.{role} references unknown agents: {', '.join(unknown)}")
+            raise ValueError(
+                f"role_preferences.{role} references unknown agents: {', '.join(unknown)}"
+            )
         role_preferences[role] = tuple(preferences)
     verification = data.get("verification", {})
     if not isinstance(verification, dict):
@@ -338,7 +410,9 @@ def load_config(path: str | Path | None = None) -> AppConfig:
     verification_raw = verification.get("commands", [])
     if not isinstance(verification_raw, list):
         raise ValueError("verification.commands must be a list.")
-    verification_commands = tuple(_command(command, "verification.commands item") for command in verification_raw)
+    verification_commands = tuple(
+        _command(command, "verification.commands item") for command in verification_raw
+    )
     profiles_raw = verification.get("profiles", {})
     if not isinstance(profiles_raw, dict):
         raise ValueError("verification.profiles must be a mapping.")
@@ -353,9 +427,13 @@ def load_config(path: str | Path | None = None) -> AppConfig:
             if len(verification_profiles) == 1:
                 default_profile = next(iter(verification_profiles))
             else:
-                raise ValueError("verification.default_profile is required when multiple profiles are configured.")
+                raise ValueError(
+                    "verification.default_profile is required when multiple profiles are configured."
+                )
         if default_profile not in verification_profiles:
-            raise ValueError(f"verification.default_profile references unknown profile: {default_profile}.")
+            raise ValueError(
+                f"verification.default_profile references unknown profile: {default_profile}."
+            )
     elif default_profile is not None:
         raise ValueError("verification.default_profile requires verification.profiles.")
     runtime = data.get("runtime", {})
@@ -388,7 +466,10 @@ def load_config(path: str | Path | None = None) -> AppConfig:
         raise ValueError("runtime.concurrency must be at least one.")
     if not isinstance(max_repair_cycles, int) or max_repair_cycles < 0:
         raise ValueError("runtime.max_repair_cycles must be zero or greater.")
-    for label, value in (("backoff_base_seconds", backoff_base), ("backoff_max_seconds", backoff_max)):
+    for label, value in (
+        ("backoff_base_seconds", backoff_base),
+        ("backoff_max_seconds", backoff_max),
+    ):
         if not isinstance(value, (int, float)) or value < 0:
             raise ValueError(f"runtime.{label} must be a non-negative number.")
     if not isinstance(backoff_factor, (int, float)) or backoff_factor < 1.0:
@@ -399,7 +480,9 @@ def load_config(path: str | Path | None = None) -> AppConfig:
     prefixes = pass_env.get("prefixes", [])
     if not isinstance(names, list) or not all(isinstance(item, str) and item for item in names):
         raise ValueError("runtime.pass_env.names must be a list of non-empty strings.")
-    if not isinstance(prefixes, list) or not all(isinstance(item, str) and item for item in prefixes):
+    if not isinstance(prefixes, list) or not all(
+        isinstance(item, str) and item for item in prefixes
+    ):
         raise ValueError("runtime.pass_env.prefixes must be a list of non-empty strings.")
     workflows = data.get("workflows", {})
     if not isinstance(workflows, dict):
@@ -408,21 +491,41 @@ def load_config(path: str | Path | None = None) -> AppConfig:
     if not isinstance(security_review, bool):
         raise ValueError("workflows.security_review must be a boolean.")
     max_review_rounds = workflows.get("max_review_rounds", 2)
-    if isinstance(max_review_rounds, bool) or not isinstance(max_review_rounds, int) or max_review_rounds < 0:
+    if (
+        isinstance(max_review_rounds, bool)
+        or not isinstance(max_review_rounds, int)
+        or max_review_rounds < 0
+    ):
         raise ValueError("workflows.max_review_rounds must be zero or greater.")
     headroom = _headroom_config(data.get("headroom"), agents, Path(path) if path else None)
     usage_limits = _usage_limit_config(data.get("usage_limits"), agents)
     if (headroom is not None or usage_limits is not None) and not routing_enabled:
         warnings.warn(
             "headroom / usage_limits cooldowns act through the router; with routing disabled "
-            "they will not affect agent selection.", stacklevel=2)
-    return AppConfig(agents, role_preferences, verification_commands, max_attempts, concurrency,
-                     max_repair_cycles, tuple(names), tuple(prefixes),
-                     verification_profiles, default_profile,
-                     float(backoff_base), float(backoff_max), float(backoff_factor),
-                     routing_enabled, systemd_run_enabled,
-                     security_review, max_review_rounds,
-                     headroom=headroom, usage_limits=usage_limits)
+            "they will not affect agent selection.",
+            stacklevel=2,
+        )
+    return AppConfig(
+        agents,
+        role_preferences,
+        verification_commands,
+        max_attempts,
+        concurrency,
+        max_repair_cycles,
+        tuple(names),
+        tuple(prefixes),
+        verification_profiles,
+        default_profile,
+        float(backoff_base),
+        float(backoff_max),
+        float(backoff_factor),
+        routing_enabled,
+        systemd_run_enabled,
+        security_review,
+        max_review_rounds,
+        headroom=headroom,
+        usage_limits=usage_limits,
+    )
 
 
 def _positive_number(value: Any, label: str) -> float:
@@ -438,12 +541,16 @@ def _percent(value: Any, label: str) -> float:
 
 
 def _string_list(value: Any, label: str) -> tuple[str, ...]:
-    if not isinstance(value, list) or not all(isinstance(item, str) and item.strip() for item in value):
+    if not isinstance(value, list) or not all(
+        isinstance(item, str) and item.strip() for item in value
+    ):
         raise ValueError(f"{label} must be a list of non-empty strings.")
     return tuple(item.strip() for item in value)
 
 
-def _headroom_config(raw: Any, agents: dict[str, AgentConfig], config_path: Path | None) -> HeadroomConfig | None:
+def _headroom_config(
+    raw: Any, agents: dict[str, AgentConfig], config_path: Path | None
+) -> HeadroomConfig | None:
     """Parse the opt-in ``headroom`` section; absent means no gate."""
     if raw is None:
         return None
@@ -499,9 +606,12 @@ def _headroom_config(raw: Any, agents: dict[str, AgentConfig], config_path: Path
         file=file_path,
         command=command,
         command_timeout_seconds=_positive_number(
-            raw.get("command_timeout_seconds", 30.0), "headroom.command_timeout_seconds"),
+            raw.get("command_timeout_seconds", 30.0), "headroom.command_timeout_seconds"
+        ),
         cache_seconds=_positive_number(raw.get("cache_seconds", 60.0), "headroom.cache_seconds"),
-        max_age_seconds=_positive_number(raw.get("max_age_seconds", 900.0), "headroom.max_age_seconds"),
+        max_age_seconds=_positive_number(
+            raw.get("max_age_seconds", 900.0), "headroom.max_age_seconds"
+        ),
         reject_at_percent=reject_at,
         deprioritize_at_percent=deprioritize_at,
         unknown_policy=unknown_policy,
@@ -534,11 +644,15 @@ def _usage_limit_config(raw: Any, agents: dict[str, AgentConfig]) -> UsageLimitC
     if not use_defaults and not patterns and not agent_patterns:
         raise ValueError("usage_limits needs patterns when use_default_patterns is false.")
     default_cooldown = _positive_number(
-        raw.get("default_cooldown_seconds", 3600.0), "usage_limits.default_cooldown_seconds")
+        raw.get("default_cooldown_seconds", 3600.0), "usage_limits.default_cooldown_seconds"
+    )
     max_cooldown = _positive_number(
-        raw.get("max_cooldown_seconds", 86400.0), "usage_limits.max_cooldown_seconds")
+        raw.get("max_cooldown_seconds", 86400.0), "usage_limits.max_cooldown_seconds"
+    )
     if default_cooldown > max_cooldown:
-        raise ValueError("usage_limits.default_cooldown_seconds must not exceed max_cooldown_seconds.")
+        raise ValueError(
+            "usage_limits.default_cooldown_seconds must not exceed max_cooldown_seconds."
+        )
     return UsageLimitConfig(use_defaults, patterns, agent_patterns, default_cooldown, max_cooldown)
 
 

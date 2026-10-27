@@ -41,15 +41,17 @@ class OffTreeWorkingDirectoryRegressionTests(unittest.TestCase):
             self.assertTrue(workdir.is_dir(), f"{workdir} must exist to be a cwd")
             completed = subprocess.run(
                 [sys.executable, "-c", "print('started')"],
-                cwd=str(workdir), capture_output=True, text=True)
+                cwd=str(workdir),
+                capture_output=True,
+                text=True,
+            )
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertIn("started", completed.stdout)
 
     def test_the_off_tree_directory_is_not_the_source_checkout(self):
         checkout = Path(__file__).resolve().parent.parent
         with tempfile.TemporaryDirectory() as tmpdir:
-            self.assertNotEqual(off_tree_directory(tmpdir).resolve(),
-                                checkout.resolve())
+            self.assertNotEqual(off_tree_directory(tmpdir).resolve(), checkout.resolve())
 
 
 class WheelInstallTests(unittest.TestCase):

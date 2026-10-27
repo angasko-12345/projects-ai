@@ -30,8 +30,7 @@ class ShortIdRegressions(unittest.TestCase):
     def test_tail_mode_keeps_the_distinguishing_suffix(self):
         # ``failure-`` prefixed ids all share a head; the unique part is the
         # tail, so failure tables render the trailing characters instead.
-        self.assertEqual(
-            short_id("failure-71f34b4e9d2a", 8, tail=True), "4b4e9d2a")
+        self.assertEqual(short_id("failure-71f34b4e9d2a", 8, tail=True), "4b4e9d2a")
         self.assertEqual(short_id("abc", 8, tail=True), "abc")
         self.assertEqual(short_id("", 8, tail=True), "")
 

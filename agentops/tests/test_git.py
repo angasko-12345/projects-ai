@@ -75,8 +75,10 @@ class GitWorktreeTests(unittest.TestCase):
                 # `.agentops` is still untracked, so continuing is unusable.
                 subprocess.CompletedProcess([], 0, "?? .agentops/\n", ""),
             ]
-            with patch.object(Path, "open", side_effect=OSError("read-only fs")), \
-                 patch("agentops.git.Path.mkdir"):
+            with (
+                patch.object(Path, "open", side_effect=OSError("read-only fs")),
+                patch("agentops.git.Path.mkdir"),
+            ):
                 with self.assertRaises(GitError) as caught:
                     GitWorktreeManager().create("C:/repo", "Add dark mode")
             message = str(caught.exception)
@@ -96,8 +98,10 @@ class GitWorktreeTests(unittest.TestCase):
                 subprocess.CompletedProcess([], 0, "", ""),  # already ignored
                 subprocess.CompletedProcess([], 0, "", ""),  # worktree add
             ]
-            with patch.object(Path, "open", side_effect=OSError("read-only fs")), \
-                 patch("agentops.git.Path.mkdir"):
+            with (
+                patch.object(Path, "open", side_effect=OSError("read-only fs")),
+                patch("agentops.git.Path.mkdir"),
+            ):
                 worktree = GitWorktreeManager().create("C:/repo", "Add dark mode")
             self.assertTrue(worktree.branch.startswith("agentops/add-dark-mode-"))
 
@@ -210,14 +214,22 @@ class GitWorktreeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
-            subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=root, check=True)
+            subprocess.run(
+                ["git", "config", "user.email", "test@example.com"], cwd=root, check=True
+            )
             subprocess.run(["git", "config", "user.name", "AgentOps Test"], cwd=root, check=True)
             (root / "file.txt").write_text("base\n", encoding="utf-8")
             subprocess.run(["git", "add", "-A"], cwd=root, check=True, capture_output=True)
-            subprocess.run(["git", "commit", "-m", "base"], cwd=root, check=True, capture_output=True)
+            subprocess.run(
+                ["git", "commit", "-m", "base"], cwd=root, check=True, capture_output=True
+            )
             worktree = manager.create(root, "lifecycle check")
             try:
-                listed = [info for info in manager.list_worktrees(root) if info.path == worktree.path.resolve()]
+                listed = [
+                    info
+                    for info in manager.list_worktrees(root)
+                    if info.path == worktree.path.resolve()
+                ]
                 self.assertEqual(len(listed), 1)
                 self.assertTrue(listed[0].managed)
                 inspected = manager.inspect_worktree(root, worktree.path)
@@ -239,6 +251,7 @@ class GitWorktreeTests(unittest.TestCase):
 class NoWindowSpawnTests(unittest.TestCase):
     def test_git_spawns_hide_consoles(self):
         import sys
+
         completed = subprocess.CompletedProcess(args=["git"], returncode=0, stdout="", stderr="")
         with patch("agentops.git.subprocess.run", return_value=completed) as run:
             GitWorktreeManager()._run(Path.cwd(), "status", "--porcelain")

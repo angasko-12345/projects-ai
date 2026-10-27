@@ -26,17 +26,21 @@ class AgentRunStatus(StrEnum):
     TERMINATED = "terminated"
 
 
-TERMINAL_STATUSES = frozenset({
-    AgentRunStatus.COMPLETED,
-    AgentRunStatus.FAILED,
-    AgentRunStatus.CANCELLED,
-    AgentRunStatus.TIMED_OUT,
-    AgentRunStatus.TERMINATED,
-})
+TERMINAL_STATUSES = frozenset(
+    {
+        AgentRunStatus.COMPLETED,
+        AgentRunStatus.FAILED,
+        AgentRunStatus.CANCELLED,
+        AgentRunStatus.TIMED_OUT,
+        AgentRunStatus.TERMINATED,
+    }
+)
 
 
 def is_terminal(status: AgentRunStatus | str) -> bool:
-    return (status if isinstance(status, AgentRunStatus) else AgentRunStatus(status)) in TERMINAL_STATUSES
+    return (
+        status if isinstance(status, AgentRunStatus) else AgentRunStatus(status)
+    ) in TERMINAL_STATUSES
 
 
 class AgentRunRelationship(StrEnum):

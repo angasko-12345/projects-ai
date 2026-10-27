@@ -24,15 +24,15 @@ class ViewContext:
     """Everything a view or panel may touch outside its own widgets."""
 
     bridge: ControllerBridge
-    repository: Callable[[], str]                    # current repository path
-    navigate: Callable[[str], None]                  # switch shell view by id
-    toast: Callable[..., None]                       # toast(title, message="", kind="info")
-    settings: Callable[[], AppSettings]              # latest persisted settings snapshot
-    open_task: Callable[[str, str], None]            # workflow_id, task_id -> task detail
-    open_run: Callable[[str], None]                  # run_id -> run detail
-    operation_active: Callable[[], bool]             # shell-level background op state
-    update_settings: Callable[[dict], None]          # partial settings update + persist
-    new_task: Callable[..., None] | None = None       # (description, agent?) -> task dialog
+    repository: Callable[[], str]  # current repository path
+    navigate: Callable[[str], None]  # switch shell view by id
+    toast: Callable[..., None]  # toast(title, message="", kind="info")
+    settings: Callable[[], AppSettings]  # latest persisted settings snapshot
+    open_task: Callable[[str, str], None]  # workflow_id, task_id -> task detail
+    open_run: Callable[[str], None]  # run_id -> run detail
+    operation_active: Callable[[], bool]  # shell-level background op state
+    update_settings: Callable[[dict], None]  # partial settings update + persist
+    new_task: Callable[..., None] | None = None  # (description, agent?) -> task dialog
 
     @property
     def controller(self) -> object:
@@ -114,4 +114,3 @@ class AsyncMixin:
             return int(token.rsplit(":", 1)[-1])
         except ValueError:
             return -1
-

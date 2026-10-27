@@ -30,11 +30,14 @@ class TimeoutTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "verification.json"
             stderr = io.StringIO()
-            with mock.patch.object(generate.subprocess, "run", side_effect=fake_run), \
-                    contextlib.redirect_stdout(io.StringIO()), \
-                    contextlib.redirect_stderr(stderr):
-                code = generate.main(["--in-place", "--timeout", "5",
-                                      "--output", str(output), "ai-token-tracker"])
+            with (
+                mock.patch.object(generate.subprocess, "run", side_effect=fake_run),
+                contextlib.redirect_stdout(io.StringIO()),
+                contextlib.redirect_stderr(stderr),
+            ):
+                code = generate.main(
+                    ["--in-place", "--timeout", "5", "--output", str(output), "ai-token-tracker"]
+                )
             self.assertEqual(code, 1)
             self.assertFalse(output.exists(), "a timed-out run must write no evidence")
             self.assertIn("exceeded 5s", stderr.getvalue())

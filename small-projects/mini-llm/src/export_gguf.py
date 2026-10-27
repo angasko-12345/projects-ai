@@ -169,7 +169,9 @@ def tokenizer_fields(tokenizer_path: str, n_vocab: int) -> dict:
     for key, name in SPECIAL_TOKEN_NAMES.items():
         tid = model["vocab"].get(name)
         if tid is None:
-            tid = next((a["id"] for a in spec.get("added_tokens") or [] if a["content"] == name), None)
+            tid = next(
+                (a["id"] for a in spec.get("added_tokens") or [] if a["content"] == name), None
+            )
         if tid is None:
             raise ValueError(f"{tokenizer_path}: special token {name} is missing")
         ids[key] = tid
@@ -247,7 +249,9 @@ def write_gguf(
     for name, arr in tensors:
         # Matrices go to f16 on request; 1-D norms/biases stay f32, the llama.cpp
         # convention (MOSTLY_F16 means "except 1d tensors").
-        data = arr.astype(np.float16) if dtype == "f16" and arr.ndim == 2 else arr.astype(np.float32)
+        data = (
+            arr.astype(np.float16) if dtype == "f16" and arr.ndim == 2 else arr.astype(np.float32)
+        )
         w.add_tensor(name, np.ascontiguousarray(data))
 
     w.write_header_to_file()
@@ -256,8 +260,9 @@ def write_gguf(
     w.close()
 
 
-def export_checkpoint(checkpoint: str, out_path: str, tokenizer_path: str | None = None,
-                      dtype: str = "f32") -> dict:
+def export_checkpoint(
+    checkpoint: str, out_path: str, tokenizer_path: str | None = None, dtype: str = "f32"
+) -> dict:
     """Read a checkpoint (validated, provenance-checked tokenizer) and write a GGUF.
 
     Returns a summary dict (paths, sizes, warnings) for the CLI and tests.
@@ -300,8 +305,11 @@ def export_checkpoint(checkpoint: str, out_path: str, tokenizer_path: str | None
         "tokenizer_sha256": recorded.get("tokenizer_sha256") or file_sha256(tok_path),
     }
     hparams = {
-        "context_length": cfg.context_length, "d_model": cfg.d_model, "d_ff": cfg.d_ff,
-        "n_layers": cfg.n_layers, "n_heads": cfg.n_heads,
+        "context_length": cfg.context_length,
+        "d_model": cfg.d_model,
+        "d_ff": cfg.d_ff,
+        "n_layers": cfg.n_layers,
+        "n_heads": cfg.n_heads,
     }
     out_dir = os.path.dirname(os.path.abspath(out_path))
     os.makedirs(out_dir, exist_ok=True)
@@ -320,20 +328,29 @@ def export_checkpoint(checkpoint: str, out_path: str, tokenizer_path: str | None
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
-        description="Export a mini-llm checkpoint to GGUF (llama.cpp arch gpt2)")
+        description="Export a mini-llm checkpoint to GGUF (llama.cpp arch gpt2)"
+    )
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--out", required=True, help="output .gguf path")
-    parser.add_argument("--tokenizer", default=None,
-                        help="defaults to the tokenizer path stored in the checkpoint; "
-                             "verified against the digest the checkpoint recorded")
-    parser.add_argument("--dtype", choices=DTYPES, default="f32",
-                        help="f32 (default, exact) or f16 (matrices only; norms and "
-                             "biases stay f32)")
+    parser.add_argument(
+        "--tokenizer",
+        default=None,
+        help="defaults to the tokenizer path stored in the checkpoint; "
+        "verified against the digest the checkpoint recorded",
+    )
+    parser.add_argument(
+        "--dtype",
+        choices=DTYPES,
+        default="f32",
+        help="f32 (default, exact) or f16 (matrices only; norms and biases stay f32)",
+    )
     args = parser.parse_args(argv)
     summary = export_checkpoint(args.checkpoint, args.out, args.tokenizer, args.dtype)
-    print(f"wrote {summary['out']} ({summary['bytes']} bytes, {summary['dtype']}, "
-          f"{summary['tensors']} tensors, vocab {summary['n_vocab']}, "
-          f"context {summary['context_length']})")
+    print(
+        f"wrote {summary['out']} ({summary['bytes']} bytes, {summary['dtype']}, "
+        f"{summary['tensors']} tensors, vocab {summary['n_vocab']}, "
+        f"context {summary['context_length']})"
+    )
     print(f"run it: llama-server -m {summary['out']} -c {summary['context_length']} --port 9931")
 
 

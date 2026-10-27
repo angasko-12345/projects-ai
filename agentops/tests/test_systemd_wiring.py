@@ -21,8 +21,11 @@ from agentops.gui_controller import AgentOpsController
 
 def _config(enabled: bool) -> AppConfig:
     roles = ("architecture", "implementation", "review", "debugging")
-    config = AppConfig({"fb": AgentConfig("fb", "fake", ("{prompt}",), roles)},
-                       {role: ("fb",) for role in roles}, ())
+    config = AppConfig(
+        {"fb": AgentConfig("fb", "fake", ("{prompt}",), roles)},
+        {role: ("fb",) for role in roles},
+        (),
+    )
     return replace(config, systemd_run_enabled=enabled)
 
 
@@ -38,12 +41,17 @@ class GuiControllerWiringTests(unittest.TestCase):
             with self.subTest(enabled=enabled), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 controller = self._controller(enabled, root)
-                with patch("agentops.gui_controller.AgentRegistry"), \
-                        patch("agentops.gui_controller.AgentRunner") as runner_cls, \
-                        patch("agentops.gui_controller.asyncio.run",
-                              side_effect=RuntimeError("stop after wiring")):
-                    controller._run_agent_operation("fb", "prompt", root,
-                                                    threading.Event(), lambda _e: None)
+                with (
+                    patch("agentops.gui_controller.AgentRegistry"),
+                    patch("agentops.gui_controller.AgentRunner") as runner_cls,
+                    patch(
+                        "agentops.gui_controller.asyncio.run",
+                        side_effect=RuntimeError("stop after wiring"),
+                    ),
+                ):
+                    controller._run_agent_operation(
+                        "fb", "prompt", root, threading.Event(), lambda _e: None
+                    )
                 self.assertEqual(runner_cls.call_args.kwargs["systemd_run_enabled"], enabled)
 
     def test_task_run_passes_configured_value_to_every_owner(self):
@@ -51,17 +59,19 @@ class GuiControllerWiringTests(unittest.TestCase):
             with self.subTest(enabled=enabled), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 controller = self._controller(enabled, root)
-                with patch("agentops.gui_controller.AgentRunner") as runner_cls, \
-                        patch("agentops.gui_controller.Verifier") as verifier_cls, \
-                        patch("agentops.gui_controller.VerificationKernel") as kernel_cls, \
-                        patch("agentops.gui_controller.WorkflowEngine"), \
-                        patch("agentops.gui_controller.GitWorktreeManager") as manager_cls:
+                with (
+                    patch("agentops.gui_controller.AgentRunner") as runner_cls,
+                    patch("agentops.gui_controller.Verifier") as verifier_cls,
+                    patch("agentops.gui_controller.VerificationKernel") as kernel_cls,
+                    patch("agentops.gui_controller.WorkflowEngine"),
+                    patch("agentops.gui_controller.GitWorktreeManager") as manager_cls,
+                ):
                     manager_cls.return_value.create.side_effect = RuntimeError("stop after wiring")
-                    controller._run_task_operation("task", root, threading.Event(),
-                                                   lambda _e: None)
+                    controller._run_task_operation("task", root, threading.Event(), lambda _e: None)
                 for factory in (runner_cls, verifier_cls, kernel_cls):
-                    self.assertEqual(factory.call_args.kwargs["systemd_run_enabled"], enabled,
-                                     factory)
+                    self.assertEqual(
+                        factory.call_args.kwargs["systemd_run_enabled"], enabled, factory
+                    )
 
 
 class CliWiringTests(unittest.TestCase):
@@ -71,10 +81,16 @@ class CliWiringTests(unittest.TestCase):
             manager = MagicMock()
             manager.return_value.create.side_effect = RuntimeError("stop after wiring")
             services = CliServices(
-                config=_config(True), state_store=MagicMock(), log_manager=MagicMock(),
-                agent_registry=MagicMock(), agent_runner=runner, verifier=verifier,
-                verification_kernel=kernel, workflow_engine=MagicMock(),
-                worktree_manager=manager)
+                config=_config(True),
+                state_store=MagicMock(),
+                log_manager=MagicMock(),
+                agent_registry=MagicMock(),
+                agent_runner=runner,
+                verifier=verifier,
+                verification_kernel=kernel,
+                workflow_engine=MagicMock(),
+                worktree_manager=manager,
+            )
             with patch("agentops.cli.Path.cwd", return_value=Path(directory)):
                 try:
                     cli_main(["task", "do it", "--cwd", directory], services=services)

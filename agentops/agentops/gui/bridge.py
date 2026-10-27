@@ -21,9 +21,9 @@ from PySide6.QtCore import QObject, Signal
 class ControllerBridge(QObject):
     """Runs controller work off the GUI thread and delivers results by signal."""
 
-    result_ready = Signal(str, object)   # request token -> value
-    error_ready = Signal(str, str)       # request token -> error message
-    operation_event = Signal(object)     # controller event dict (run/task lifecycle)
+    result_ready = Signal(str, object)  # request token -> value
+    error_ready = Signal(str, str)  # request token -> error message
+    operation_event = Signal(object)  # controller event dict (run/task lifecycle)
 
     def __init__(self, controller: object, parent: QObject | None = None, max_workers: int = 4):
         super().__init__(parent)

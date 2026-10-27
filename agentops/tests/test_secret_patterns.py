@@ -138,9 +138,7 @@ class DetectorCoversTokenFamilies(unittest.TestCase):
                 self.assertTrue(_patterns_found(sample), f"no finding for {sample!r}")
 
     def test_json_authorization_is_detected_as_bearer(self):
-        sample = next(
-            text for label, text, _ in JSON_FORMS if label == "json-authorization-bearer"
-        )
+        sample = next(text for label, text, _ in JSON_FORMS if label == "json-authorization-bearer")
         self.assertIn("bearer-token", _patterns_found(sample))
 
     def test_github_classic_prefixes_are_detected(self):
@@ -158,9 +156,7 @@ class DetectorCoversTokenFamilies(unittest.TestCase):
     def test_findings_never_carry_the_value(self):
         for label, sample, value, _ in TOKEN_FAMILIES:
             with self.subTest(family=label):
-                rendered = " ".join(
-                    finding.describe() for finding in scan_text(sample, "test")
-                )
+                rendered = " ".join(finding.describe() for finding in scan_text(sample, "test"))
                 self.assertNotIn(value, rendered)
 
 
@@ -181,9 +177,7 @@ class RedactorCoversTokenFamilies(unittest.TestCase):
 
     def test_redaction_keeps_the_assignment_context(self):
         self.assertEqual("API_KEY=[REDACTED]", redact_text("API_KEY=FAKEvalue1234"))
-        self.assertEqual(
-            '  "api_key": "[REDACTED]",', redact_text('  "api_key": "FAKEvalue1234",')
-        )
+        self.assertEqual('  "api_key": "[REDACTED]",', redact_text('  "api_key": "FAKEvalue1234",'))
 
 
 class LayersShareOneTable(unittest.TestCase):

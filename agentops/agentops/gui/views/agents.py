@@ -11,28 +11,44 @@ from .listdetail import ListDetailView
 
 _COLUMNS = (
     TableColumn("display_name", "Agent", 170),
-    TableColumn("availability", "Availability", 110,
-                format=lambda value: "available" if value else "unavailable"),
-    TableColumn("configured_priority", "Priority", 80,
-                sort=lambda value: float(value) if isinstance(value, (int, float)) else 1e9),
-    TableColumn("detected_version", "Version", 110,
-                format=lambda value: str(value or "") or "—"),
     TableColumn(
-        "metadata", "Model", 130,
-        format=lambda value: str((value or {}).get("model") or "") or "—"
-        if isinstance(value, dict) else "—",
+        "availability",
+        "Availability",
+        110,
+        format=lambda value: "available" if value else "unavailable",
     ),
-    TableColumn("roles", "Roles", 200,
-                format=lambda value: ", ".join(str(v) for v in value or [])),
-    TableColumn("capabilities", "Capabilities", 240,
-                format=lambda value: elide(
-                    ", ".join(str(v) for v in value or []), 48)),
-    TableColumn("cancellation_support", "Cancel", 80,
-                format=lambda value: "yes" if value else "no"),
-    TableColumn("timeout_support", "Timeout", 80,
-                format=lambda value: "yes" if value else "no"),
-    TableColumn("executable_path", "Executable", 260,
-                format=lambda value: elide(str(value or ""), 64) or "—"),
+    TableColumn(
+        "configured_priority",
+        "Priority",
+        80,
+        sort=lambda value: float(value) if isinstance(value, (int, float)) else 1e9,
+    ),
+    TableColumn("detected_version", "Version", 110, format=lambda value: str(value or "") or "—"),
+    TableColumn(
+        "metadata",
+        "Model",
+        130,
+        format=lambda value: (
+            str((value or {}).get("model") or "") or "—" if isinstance(value, dict) else "—"
+        ),
+    ),
+    TableColumn("roles", "Roles", 200, format=lambda value: ", ".join(str(v) for v in value or [])),
+    TableColumn(
+        "capabilities",
+        "Capabilities",
+        240,
+        format=lambda value: elide(", ".join(str(v) for v in value or []), 48),
+    ),
+    TableColumn(
+        "cancellation_support", "Cancel", 80, format=lambda value: "yes" if value else "no"
+    ),
+    TableColumn("timeout_support", "Timeout", 80, format=lambda value: "yes" if value else "no"),
+    TableColumn(
+        "executable_path",
+        "Executable",
+        260,
+        format=lambda value: elide(str(value or ""), 64) or "—",
+    ),
 )
 
 
@@ -69,8 +85,7 @@ class AgentsView(ListDetailView):
 
         def done(result: object) -> None:
             detected = len(result.get("profiles", [])) if isinstance(result, dict) else 0
-            self.ctx.toast("Detection finished",
-                           f"{detected} agent(s) found.", "success")
+            self.ctx.toast("Detection finished", f"{detected} agent(s) found.", "success")
             self.refresh()
 
         self.submit("detect", controller.detect_agents, done)

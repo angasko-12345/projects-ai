@@ -64,9 +64,19 @@ class ParseValidJsonTests(unittest.TestCase):
         result = parse_agent_result(json.dumps(_envelope())).result
         data = result.to_dict()
         for key in (
-            "status", "summary", "files_changed", "tests_run", "tests_passed",
-            "tests_failed", "verification_results", "review_findings",
-            "requested_followup", "confidence", "errors", "warnings", "metadata",
+            "status",
+            "summary",
+            "files_changed",
+            "tests_run",
+            "tests_passed",
+            "tests_failed",
+            "verification_results",
+            "review_findings",
+            "requested_followup",
+            "confidence",
+            "errors",
+            "warnings",
+            "metadata",
         ):
             self.assertIn(key, data)
         self.assertEqual(data["schema_version"], 1)
@@ -99,8 +109,13 @@ class ParseDegradedTests(unittest.TestCase):
         self.assertIn("foo.py", parsed.result.summary or "")
 
     def test_wrong_types_coerced_not_crash(self):
-        payload = _envelope(tests_run="three", confidence="high", files_changed="a.py",
-                            verification_results={"check": "tests"}, status="COMPLETED")
+        payload = _envelope(
+            tests_run="three",
+            confidence="high",
+            files_changed="a.py",
+            verification_results={"check": "tests"},
+            status="COMPLETED",
+        )
         parsed = parse_agent_result(json.dumps(payload))
         self.assertEqual(parsed.result.status, AgentResultStatus.SUCCESS)  # alias
         self.assertIsNone(parsed.result.tests_run)
@@ -116,6 +131,7 @@ class ParseDegradedTests(unittest.TestCase):
         class BadStr:
             def __str__(self):
                 raise RuntimeError("nope")
+
         parsed = parse_agent_result(BadStr())
         self.assertEqual(parsed.result.status, AgentResultStatus.UNKNOWN)
         # Non-string garbage also safe
@@ -167,55 +183,90 @@ class BackwardCompatTests(unittest.TestCase):
 
 class OutcomeDistinctionTests(unittest.TestCase):
     def test_all_signals_required_for_merge(self):
-        full = evaluate_execution(process_success=True, agent_status="success",
-                                  verification_success=True, review_approved=True)
+        full = evaluate_execution(
+            process_success=True,
+            agent_status="success",
+            verification_success=True,
+            review_approved=True,
+        )
         self.assertTrue(full.merge_eligible)
         self.assertEqual(full.reasons, ())
 
     def test_process_success_alone_not_mergeable(self):
-        outcome = evaluate_execution(process_success=True, agent_status="unknown",
-                                     verification_success=None, review_approved=None)
+        outcome = evaluate_execution(
+            process_success=True,
+            agent_status="unknown",
+            verification_success=None,
+            review_approved=None,
+        )
         self.assertTrue(outcome.process_success)
         self.assertFalse(outcome.merge_eligible)
 
     def test_agent_success_without_verification_not_mergeable(self):
-        outcome = evaluate_execution(process_success=True, agent_status="success",
-                                     verification_success=False, review_approved=True)
+        outcome = evaluate_execution(
+            process_success=True,
+            agent_status="success",
+            verification_success=False,
+            review_approved=True,
+        )
         self.assertFalse(outcome.merge_eligible)
         self.assertIn("verification did not pass", outcome.reasons)
 
     def test_process_failure(self):
-        outcome = evaluate_execution(process_success=False, agent_status="success",
-                                     verification_success=True, review_approved=True)
+        outcome = evaluate_execution(
+            process_success=False,
+            agent_status="success",
+            verification_success=True,
+            review_approved=True,
+        )
         self.assertFalse(outcome.merge_eligible)
         self.assertIn("process did not succeed", outcome.reasons)
 
     def test_verification_failure(self):
-        outcome = evaluate_execution(process_success=True, agent_status="success",
-                                     verification_success=False, review_approved=True)
+        outcome = evaluate_execution(
+            process_success=True,
+            agent_status="success",
+            verification_success=False,
+            review_approved=True,
+        )
         self.assertFalse(outcome.merge_eligible)
 
     def test_reviewer_rejection(self):
-        outcome = evaluate_execution(process_success=True, agent_status="success",
-                                     verification_success=True, review_approved=False)
+        outcome = evaluate_execution(
+            process_success=True,
+            agent_status="success",
+            verification_success=True,
+            review_approved=False,
+        )
         self.assertFalse(outcome.merge_eligible)
         self.assertIn("review did not approve", outcome.reasons)
 
     def test_signals_not_equivalent(self):
         # Each signal can be true while the verdict is still False.
         cases = [
-            evaluate_execution(process_success=True, agent_status="failure",
-                               verification_success=False, review_approved=False),
-            evaluate_execution(process_success=False, agent_status="success",
-                               verification_success=True, review_approved=True),
+            evaluate_execution(
+                process_success=True,
+                agent_status="failure",
+                verification_success=False,
+                review_approved=False,
+            ),
+            evaluate_execution(
+                process_success=False,
+                agent_status="success",
+                verification_success=True,
+                review_approved=True,
+            ),
         ]
         for outcome in cases:
             self.assertFalse(outcome.merge_eligible)
 
     def test_agent_result_status_enum_accepted(self):
-        outcome = evaluate_execution(process_success=True,
-                                     agent_status=AgentResultStatus.SUCCESS,
-                                     verification_success=True, review_approved=True)
+        outcome = evaluate_execution(
+            process_success=True,
+            agent_status=AgentResultStatus.SUCCESS,
+            verification_success=True,
+            review_approved=True,
+        )
         self.assertTrue(outcome.merge_eligible)
 
 
@@ -260,9 +311,12 @@ class ReviewFindingRegressionTests(unittest.TestCase):
         self.assertIsNone(coerce_agent_result("not json at all"))
 
     def test_process_success_string_false_not_mergeable(self):
-        outcome = evaluate_execution(process_success="false",  # type: ignore[arg-type]
-                                     agent_status="success",
-                                     verification_success=True, review_approved=True)
+        outcome = evaluate_execution(
+            process_success="false",  # type: ignore[arg-type]
+            agent_status="success",
+            verification_success=True,
+            review_approved=True,
+        )
         self.assertFalse(outcome.process_success)
         self.assertFalse(outcome.merge_eligible)
 
@@ -274,6 +328,7 @@ class ReviewFindingRegressionTests(unittest.TestCase):
 
     def test_runner_helper_preserves_warnings_and_mode(self):
         from agentops.runner import _safe_structured_result
+
         stored = _safe_structured_result(json.dumps(_envelope(schema_version=99, status="success")))
         self.assertIsInstance(stored, dict)
         assert isinstance(stored, dict)
@@ -287,16 +342,19 @@ class ReviewFindingRegressionTests(unittest.TestCase):
         class Hostile:
             def __str__(self):
                 raise RuntimeError("boom")
+
             def __repr__(self):
                 raise RuntimeError("boom")
 
         # Must never raise, regardless of payload hostility.
-        result, warnings = agent_result_from_dict({
-            "status": Hostile(),
-            "summary": Hostile(),
-            "files_changed": [Hostile()],
-            "schema_version": Hostile(),
-        })
+        result, warnings = agent_result_from_dict(
+            {
+                "status": Hostile(),
+                "summary": Hostile(),
+                "files_changed": [Hostile()],
+                "schema_version": Hostile(),
+            }
+        )
         self.assertEqual(result.status, AgentResultStatus.UNKNOWN)
         self.assertTrue(warnings)
 

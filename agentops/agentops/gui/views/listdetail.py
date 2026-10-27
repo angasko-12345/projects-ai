@@ -186,8 +186,7 @@ class ListDetailView(BaseView):
             self._count.setText(f"{visible} of {total} rows")
 
     # -- delete --------------------------------------------------------
-    def delete_selected(self, entity: str, delete, detail: str = "",
-                        extra: str = "") -> None:
+    def delete_selected(self, entity: str, delete, detail: str = "", extra: str = "") -> None:
         """Confirm and delete the selected row through ``delete``.
 
         ``delete(repository, id)`` runs off-thread (a controller delete);
@@ -217,6 +216,5 @@ class ListDetailView(BaseView):
             f"delete-{entity}",
             lambda: delete(repository, item_id),
             done,
-            lambda message: self.ctx.toast(
-                "Delete failed", message, "error"),
+            lambda message: self.ctx.toast("Delete failed", message, "error"),
         )

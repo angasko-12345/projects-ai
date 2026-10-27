@@ -1,0 +1,28 @@
+# Dependency metadata for mini-llm. Mirrors requirements.txt (runtime) and
+# requirements-gguf.txt (the optional GGUF export), which stay the files CI and
+# the README install from.
+#
+# mini-llm is run from this directory (`python prepare_data.py`,
+# `python -m src.train`), not installed, so no package is declared: `pip
+# install .` installs the dependencies only. The Python floor matches the repo's
+# Ruff target (py310); CI runs 3.11.
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mini-llm"
+version = "0.1.0"
+description = "Small from-scratch decoder-only language model (CPU/GPU training, GGUF export)"
+requires-python = ">=3.10"
+dependencies = ["torch", "tokenizers", "numpy"]
+
+[project.optional-dependencies]
+gguf = ["gguf"]
+
+[tool.setuptools]
+packages = []
+
+[tool.uv]
+package = false

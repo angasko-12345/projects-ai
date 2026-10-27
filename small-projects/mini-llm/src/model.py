@@ -51,7 +51,9 @@ class CausalSelfAttention(nn.Module):
         # Dropout is applied to the attention weights, matching self.drop(weights)
         # in the manual path; eval mode passes 0.0, so inference stays exact.
         return F.scaled_dot_product_attention(
-            q, k, v,
+            q,
+            k,
+            v,
             dropout_p=self.drop.p if self.training else 0.0,
             is_causal=True,
         )
@@ -173,8 +175,10 @@ class MiniGPT(nn.Module):
         def chunk_cross_entropy(h_chunk, t_chunk):
             logits = self.lm_head(h_chunk)
             return F.cross_entropy(
-                logits.reshape(-1, vocab), t_chunk.reshape(-1),
-                ignore_index=_IGNORE_INDEX, reduction="sum",
+                logits.reshape(-1, vocab),
+                t_chunk.reshape(-1),
+                ignore_index=_IGNORE_INDEX,
+                reduction="sum",
             )
 
         loss_sum = 0.0
@@ -182,7 +186,9 @@ class MiniGPT(nn.Module):
         for start in range(0, t, chunk_size):
             end = min(start + chunk_size, t)
             loss_sum = loss_sum + checkpoint(
-                chunk_cross_entropy, hidden[:, start:end, :], targets[:, start:end],
+                chunk_cross_entropy,
+                hidden[:, start:end, :],
+                targets[:, start:end],
                 use_reentrant=False,
             )
         return loss_sum / max(counted, 1)

@@ -138,12 +138,20 @@ def merge_verdicts(*sources: Mapping[str, GateVerdict] | None) -> dict[str, Gate
             if held is None:
                 merged[agent] = verdict
                 continue
-            action = verdict.action if _ACTION_RANK[verdict.action] > _ACTION_RANK[held.action] else held.action
-            merged[agent] = GateVerdict(action, tuple(dict.fromkeys((*held.reasons, *verdict.reasons))))
+            action = (
+                verdict.action
+                if _ACTION_RANK[verdict.action] > _ACTION_RANK[held.action]
+                else held.action
+            )
+            merged[agent] = GateVerdict(
+                action, tuple(dict.fromkeys((*held.reasons, *verdict.reasons)))
+            )
     return merged
 
 
-def parse_snapshot(text: str | bytes | None, now: float, max_age_seconds: float) -> HeadroomSnapshot:
+def parse_snapshot(
+    text: str | bytes | None, now: float, max_age_seconds: float
+) -> HeadroomSnapshot:
     """Validate one headroom document.  Anything but a fresh v1 doc is unusable."""
     if text is None:
         return HeadroomSnapshot(SNAPSHOT_MISSING, "no headroom document")
@@ -175,10 +183,12 @@ def parse_snapshot(text: str | bytes | None, now: float, max_age_seconds: float)
             SNAPSHOT_STALE,
             f"headroom document generated {format_utc(generated)} is {int(age)}s old "
             f"(max {int(max_age_seconds)}s)",
-            None, generated,
+            None,
+            generated,
         )
-    return HeadroomSnapshot(SNAPSHOT_OK, f"headroom document generated {format_utc(generated)}",
-                            document, generated)
+    return HeadroomSnapshot(
+        SNAPSHOT_OK, f"headroom document generated {format_utc(generated)}", document, generated
+    )
 
 
 def _provider_entry(document: Mapping[str, object], provider: str) -> Mapping[str, object] | None:
@@ -217,7 +227,9 @@ def evaluate_agent(
     if entry is None:
         return _unknown(policy, f"headroom: provider {binding.provider} not in the document")
     status = entry.get("status")
-    windows = [w for w in (entry.get("windows") or ()) if isinstance(w, Mapping) and binding.selects(w)]
+    windows = [
+        w for w in (entry.get("windows") or ()) if isinstance(w, Mapping) and binding.selects(w)
+    ]
     if status != "ok" or not windows:
         detail = entry.get("detail")
         why = f"status {status}" + (f": {detail}" if isinstance(detail, str) and detail else "")
@@ -235,21 +247,31 @@ def evaluate_agent(
         freshness = window.get("freshness")
         pct = _num(window.get("used_percent"))
         resets = parse_utc(window.get("resets_at"))
-        reset_text = f", resets {format_utc(resets)}" if resets is not None else ", reset time not reported"
+        reset_text = (
+            f", resets {format_utc(resets)}" if resets is not None else ", reset time not reported"
+        )
         # usage inside a window only rises until the reset, so a stale high
         # reading is still a valid lower bound; an expired one is not.
-        high = state == "exhausted" or bool(window.get("reached")) or (
-            pct is not None and pct >= policy.reject_at_percent
+        high = (
+            state == "exhausted"
+            or bool(window.get("reached"))
+            or (pct is not None and pct >= policy.reject_at_percent)
         )
         if high and state != "unknown" and freshness != "expired":
             label = "exhausted" if state == "exhausted" or window.get("reached") else state
             rejects.append(f"headroom: {name} {_usage_text(window)} ({label}){reset_text}")
             continue
         if state == "unknown" or freshness in ("expired", "unknown") or freshness == "stale":
-            unknowns.append(f"headroom: {name} reading is {freshness or 'unknown'} ({_usage_text(window)})")
+            unknowns.append(
+                f"headroom: {name} reading is {freshness or 'unknown'} ({_usage_text(window)})"
+            )
             continue
         trusted = True
-        if policy.deprioritize_at_percent is not None and pct is not None and pct >= policy.deprioritize_at_percent:
+        if (
+            policy.deprioritize_at_percent is not None
+            and pct is not None
+            and pct >= policy.deprioritize_at_percent
+        ):
             lows.append(f"headroom: {name} {_usage_text(window)} ({state}){reset_text}")
     if rejects:
         return GateVerdict(REJECT, tuple(rejects))
@@ -265,8 +287,11 @@ def evaluate_agent(
 
 def _unknown(policy: HeadroomPolicy, *reasons: str) -> GateVerdict:
     action = policy.unknown_policy if policy.unknown_policy in UNKNOWN_POLICIES else DEPRIORITIZE
-    suffix = {ALLOW: "allowed by unknown_policy", DEPRIORITIZE: "deprioritized by unknown_policy",
-              REJECT: "rejected by unknown_policy"}[action]
+    suffix = {
+        ALLOW: "allowed by unknown_policy",
+        DEPRIORITIZE: "deprioritized by unknown_policy",
+        REJECT: "rejected by unknown_policy",
+    }[action]
     return GateVerdict(action, tuple(f"{reason}; {suffix}" for reason in reasons))
 
 
@@ -305,15 +330,21 @@ class HeadroomGate:
     bindings: Mapping[str, HeadroomBinding]
     policy: HeadroomPolicy = field(default_factory=HeadroomPolicy)
 
-    def check(self, now: float, agents: Iterable[str] | None = None) -> tuple[dict[str, GateVerdict], HeadroomSnapshot]:
+    def check(
+        self, now: float, agents: Iterable[str] | None = None
+    ) -> tuple[dict[str, GateVerdict], HeadroomSnapshot]:
         try:
             snapshot = self.reader(now)
         except Exception as error:  # noqa: BLE001 - the gate must fail open
-            snapshot = HeadroomSnapshot(SNAPSHOT_UNREADABLE, f"headroom reader failed: {type(error).__name__}")
+            snapshot = HeadroomSnapshot(
+                SNAPSHOT_UNREADABLE, f"headroom reader failed: {type(error).__name__}"
+            )
         try:
             verdicts = evaluate(snapshot, self.bindings, self.policy, agents)
         except Exception as error:  # noqa: BLE001
-            snapshot = HeadroomSnapshot(SNAPSHOT_INVALID, f"headroom evaluation failed: {type(error).__name__}")
+            snapshot = HeadroomSnapshot(
+                SNAPSHOT_INVALID, f"headroom evaluation failed: {type(error).__name__}"
+            )
             verdicts = {}
         return verdicts, snapshot
 
@@ -326,7 +357,20 @@ class HeadroomGate:
 
 
 __all__ = [
-    "ALLOW", "DEPRIORITIZE", "REJECT", "SCHEMA", "SCHEMA_VERSION",
-    "GateVerdict", "HeadroomBinding", "HeadroomGate", "HeadroomPolicy", "HeadroomSnapshot",
-    "evaluate", "evaluate_agent", "format_utc", "merge_verdicts", "parse_snapshot", "parse_utc",
+    "ALLOW",
+    "DEPRIORITIZE",
+    "REJECT",
+    "SCHEMA",
+    "SCHEMA_VERSION",
+    "GateVerdict",
+    "HeadroomBinding",
+    "HeadroomGate",
+    "HeadroomPolicy",
+    "HeadroomSnapshot",
+    "evaluate",
+    "evaluate_agent",
+    "format_utc",
+    "merge_verdicts",
+    "parse_snapshot",
+    "parse_utc",
 ]

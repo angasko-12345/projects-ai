@@ -88,7 +88,9 @@ class LogManager:
         if not isinstance(max_bytes, int) or max_bytes < 1:
             raise ValueError("Log read size must be a positive integer.")
         root = self.root.resolve()
-        target = (root / Path(path)).resolve() if not Path(path).is_absolute() else Path(path).resolve()
+        target = (
+            (root / Path(path)).resolve() if not Path(path).is_absolute() else Path(path).resolve()
+        )
         if not target.is_relative_to(root):
             raise ValueError(f"Refusing to read a log outside {root}: {path}")
         if not target.is_file():

@@ -14,14 +14,14 @@ from that product's directory. There is no repository-wide test command.
 | `agentops.yml` | `agentops/` | `python -m unittest discover -s tests`, then `python acceptance_test.py` from the repository root (the Issue #4 end-to-end scenarios) | none (stdlib only) |
 | `universal-game-agent.yml` | `universal-game-agent/` | `python -m unittest discover -s tests` | `pip install -r requirements.txt` |
 | `mini-llm.yml` | `small-projects/mini-llm/` | `python -m unittest discover -s tests` (with `MINI_LLM_REQUIRE_GGUF=1`) | `pip install -r requirements.txt`, then `pip install -r requirements-gguf.txt` (the optional `gguf` package, so the GGUF export tests run instead of skipping) |
-| `ai-token-tracker.yml` | `ai-token-tracker/` | `python -m unittest discover -s tests -v` | none (stdlib only) |
+| `ai-token-tracker.yml` | `ai-token-tracker/` | `python -m unittest discover -s tests -v`, on Python 3.10 (the declared floor) and 3.11 | none (stdlib only) |
 | `privacy-audit.yml` | `small-projects/privacy_audit_tool/` | `python -m unittest discover -s tests` | none (stdlib only; `maigret` is optional, online-scan-only, and deliberately not installed) |
 | `qr-generator.yml` | `qr-generator/` | `npm run typecheck`, `npm run lint`, `npm test` | `npm ci` (installs from the lockfile); Node 24 |
 | `tiktok-slop-factory.yml` | `tiktok-slop-factory/` | `python -m pytest tests -q` (pytest, not unittest) | `pip install -r requirements.txt` and the optional `requirements-qc.txt` (numpy, so clipcheck's logo tests run instead of skipping); `ffmpeg` apt-installed; ~10-minute suite; no key, see below |
 | `evidence.yml` | repository root | `python tools/evidence/check.py` | none (stdlib only); needs full history |
 
 All jobs run on `ubuntu-latest` on CPU. The four measured Python products use
-Python 3.11 (the lowest supported version). The `privacy-audit` job also uses
+Python 3.11; `ai-token-tracker` also runs on 3.10, its declared floor. The `privacy-audit` job also uses
 Python 3.11, matching the other Python product jobs; the product itself
 declares `requires-python = ">=3.10"`, so that declared floor is not the
 version CI runs. The `qr-generator` job uses Node 24,

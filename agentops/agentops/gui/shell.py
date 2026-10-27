@@ -81,8 +81,12 @@ def _app_icon() -> QIcon:
 class MainWindow(QMainWindow, AsyncMixin):
     """Persistent shell hosting the sidebar, top bar, and stacked views."""
 
-    def __init__(self, controller: object, settings: AppSettings | None = None,
-                 settings_file: Path | None = None):
+    def __init__(
+        self,
+        controller: object,
+        settings: AppSettings | None = None,
+        settings_file: Path | None = None,
+    ):
         super().__init__()
         self.setObjectName("MainWindow")
         self.setWindowTitle("AgentOps")
@@ -222,8 +226,7 @@ class MainWindow(QMainWindow, AsyncMixin):
         self._sidebar.setObjectName("Sidebar")
         self._sidebar.setFixedWidth(216)
         side = QVBoxLayout(self._sidebar)
-        side.setContentsMargins(DARK.space_sm, DARK.space_md,
-                                DARK.space_sm, DARK.space_sm)
+        side.setContentsMargins(DARK.space_sm, DARK.space_md, DARK.space_sm, DARK.space_sm)
         side.setSpacing(2)
 
         brand_row = QHBoxLayout()
@@ -320,8 +323,9 @@ class MainWindow(QMainWindow, AsyncMixin):
         menu.addAction(quit_action)
         self._tray.setContextMenu(menu)
         self._tray.activated.connect(
-            lambda reason: self._show_window()
-            if reason == QSystemTrayIcon.ActivationReason.Trigger else None
+            lambda reason: (
+                self._show_window() if reason == QSystemTrayIcon.ActivationReason.Trigger else None
+            )
         )
         self._tray.show()
 
@@ -412,9 +416,7 @@ class MainWindow(QMainWindow, AsyncMixin):
         self._check_interrupted_work()
 
     def choose_repository(self) -> None:
-        chosen = QFileDialog.getExistingDirectory(
-            self, "Choose repository", self._repository or ""
-        )
+        chosen = QFileDialog.getExistingDirectory(self, "Choose repository", self._repository or "")
         if chosen:
             self.set_repository(chosen)
 
@@ -550,9 +552,11 @@ class MainWindow(QMainWindow, AsyncMixin):
         """Human summary of interrupted-work counts, e.g. "2 runs require recovery"."""
         parts: list[str] = []
         total = 0
-        for key, singular in (("agent_runs", "run"),
-                              ("verification_runs", "verification run"),
-                              ("tasks", "task")):
+        for key, singular in (
+            ("agent_runs", "run"),
+            ("verification_runs", "verification run"),
+            ("tasks", "task"),
+        ):
             count = int(counts.get(key) or 0)
             total += count
             if count:
@@ -612,13 +616,14 @@ class MainWindow(QMainWindow, AsyncMixin):
     def recover_interrupted_work(self) -> None:
         """Palette/banner action: confirm and run the existing recovery passes."""
         if self._active:
-            self.toast("Operation in progress",
-                       "Wait for the running operation to finish before recovering.",
-                       "warning")
+            self.toast(
+                "Operation in progress",
+                "Wait for the running operation to finish before recovering.",
+                "warning",
+            )
             return
         if not self._repository:
-            self.toast("No repository", "Choose a repository before recovering.",
-                       "warning")
+            self.toast("No repository", "Choose a repository before recovering.", "warning")
             return
         directory = self._repository
         self.submit(
@@ -631,11 +636,11 @@ class MainWindow(QMainWindow, AsyncMixin):
         if directory != self._repository or self._active or not isinstance(counts, dict):
             return
         if int(counts.get("total") or 0) <= 0:
-            self.toast("Nothing to recover",
-                       "No interrupted work in this repository.", "info")
+            self.toast("Nothing to recover", "No interrupted work in this repository.", "info")
             return
         answer = QMessageBox.question(
-            self, "Recover interrupted work",
+            self,
+            "Recover interrupted work",
             f"{self._recovery_summary(counts)}.\n\n"
             "Mark interrupted runs, verification runs, and tasks as terminated "
             "so the queue can proceed? Interrupted work never counts as success "
@@ -654,8 +659,9 @@ class MainWindow(QMainWindow, AsyncMixin):
         if directory != self._repository:
             return
         counts = summary if isinstance(summary, dict) else {}
-        recovered = sum(int(counts.get(key) or 0)
-                        for key in ("agent_runs", "verification_runs", "tasks"))
+        recovered = sum(
+            int(counts.get(key) or 0) for key in ("agent_runs", "verification_runs", "tasks")
+        )
         if recovered:
             self.toast("Recovery applied", self._recovery_summary(counts), "success")
         else:
@@ -674,54 +680,93 @@ class MainWindow(QMainWindow, AsyncMixin):
             if view_id == "settings":
                 continue  # exposed as the standalone "Settings" command below
             digit = (index + 1) % 10
-            commands.append(Command(
-                title=f"Open {title}",
-                run=lambda vid=view_id: self.navigate(vid),
-                keywords=f"view open navigate {view_id}",
-                shortcut=f"Ctrl+{digit}",
-                group="Navigation",
-            ))
-        commands.extend([
-            Command("New Task...", self.open_new_task,
-                    keywords="create start task workflow", shortcut="Ctrl+N",
-                    group="Actions"),
-            Command("Recover Interrupted Work", self.recover_interrupted_work,
+            commands.append(
+                Command(
+                    title=f"Open {title}",
+                    run=lambda vid=view_id: self.navigate(vid),
+                    keywords=f"view open navigate {view_id}",
+                    shortcut=f"Ctrl+{digit}",
+                    group="Navigation",
+                )
+            )
+        commands.extend(
+            [
+                Command(
+                    "New Task...",
+                    self.open_new_task,
+                    keywords="create start task workflow",
+                    shortcut="Ctrl+N",
+                    group="Actions",
+                ),
+                Command(
+                    "Recover Interrupted Work",
+                    self.recover_interrupted_work,
                     keywords="recovery interrupted crashed stranded restore",
-                    group="Actions"),
-            Command("Refresh", self.refresh_active,
-                    keywords="reload update sync", shortcut="F5", group="Actions"),
-            Command("Settings", lambda: self.navigate("settings"),
-                    keywords="preferences configure options", shortcut="Ctrl+0",
-                    group="Actions"),
-            Command("Toggle sidebar", self.toggle_sidebar,
-                    keywords="navigation panel", shortcut="Ctrl+B",
-                    group="Actions"),
-            Command("Change repository...", self.choose_repository,
-                    keywords="repo folder path switch", group="Actions"),
-        ])
+                    group="Actions",
+                ),
+                Command(
+                    "Refresh",
+                    self.refresh_active,
+                    keywords="reload update sync",
+                    shortcut="F5",
+                    group="Actions",
+                ),
+                Command(
+                    "Settings",
+                    lambda: self.navigate("settings"),
+                    keywords="preferences configure options",
+                    shortcut="Ctrl+0",
+                    group="Actions",
+                ),
+                Command(
+                    "Toggle sidebar",
+                    self.toggle_sidebar,
+                    keywords="navigation panel",
+                    shortcut="Ctrl+B",
+                    group="Actions",
+                ),
+                Command(
+                    "Change repository...",
+                    self.choose_repository,
+                    keywords="repo folder path switch",
+                    group="Actions",
+                ),
+            ]
+        )
         if self._active:
-            commands.append(Command(
-                "Cancel active operation", self.cancel_operation,
-                keywords="stop abort kill"))
+            commands.append(
+                Command(
+                    "Cancel active operation", self.cancel_operation, keywords="stop abort kill"
+                )
+            )
         for path in self._settings.recent_repositories:
-            commands.append(Command(
-                title=f"Open repository {path}",
-                run=lambda p=path: self.set_repository(p),
-                keywords="repo recent open",
-                group="Repositories",
-            ))
+            commands.append(
+                Command(
+                    title=f"Open repository {path}",
+                    run=lambda p=path: self.set_repository(p),
+                    keywords="repo recent open",
+                    group="Repositories",
+                )
+            )
         self._palette.set_commands(commands)
         self._palette.open_centered()
 
-    def open_new_task(self, initial_description: str = "",
-                      initial_agent: str | None = None) -> None:
+    def open_new_task(
+        self, initial_description: str = "", initial_agent: str | None = None
+    ) -> None:
         if self._active:
-            self.toast("Operation in progress",
-                       "Cancel the running task before starting another.", "warning")
+            self.toast(
+                "Operation in progress",
+                "Cancel the running task before starting another.",
+                "warning",
+            )
             return
-        dialog = NewTaskDialog(self._views_ctx, self,
-                               initial_description=initial_description,
-                               initial_agent=initial_agent)
+        dialog = NewTaskDialog(
+            self._views_ctx,
+            self,
+            initial_description=initial_description,
+            initial_agent=initial_agent,
+        )
         if dialog.exec():
             values = dialog.values()
             self.start_task(
@@ -735,12 +780,16 @@ class MainWindow(QMainWindow, AsyncMixin):
     # ------------------------------------------------------------------
     # task lifecycle
     # ------------------------------------------------------------------
-    def start_task(self, description: str, repository: object = None,
-                   agent: object = None, verification_profile: object = None) -> bool:
+    def start_task(
+        self,
+        description: str,
+        repository: object = None,
+        agent: object = None,
+        verification_profile: object = None,
+    ) -> bool:
         target = str(repository or self._repository).strip()
         if not target:
-            self.toast("No repository", "Choose a repository before starting a task.",
-                       "error")
+            self.toast("No repository", "Choose a repository before starting a task.", "error")
             return False
         description = str(description).strip()
         if not description:
@@ -761,8 +810,11 @@ class MainWindow(QMainWindow, AsyncMixin):
             self._pre_workflow_id = str(pre_id) if pre_id else None
             try:
                 self._controller.run_task(
-                    description, directory, self._bridge.operation_callback(),
-                    agent=agent_name, verification_profile=profile,
+                    description,
+                    directory,
+                    self._bridge.operation_callback(),
+                    agent=agent_name,
+                    verification_profile=profile,
                 )
             except Exception as error:  # noqa: BLE001 - surface start failures
                 self._set_status_idle()
@@ -771,8 +823,7 @@ class MainWindow(QMainWindow, AsyncMixin):
             self._follow_enabled = True
             self._mark_operation(True, "Starting task...")
 
-        self.submit("start-task", preflight, launch,
-                    lambda message: launch(None))
+        self.submit("start-task", preflight, launch, lambda message: launch(None))
         return True
 
     def cancel_operation(self) -> None:
@@ -801,8 +852,7 @@ class MainWindow(QMainWindow, AsyncMixin):
         if kind == "workflow-started":
             self._mark_operation(True, "Task running...")
             worktree = str(event.get("worktree") or "")
-            self.toast("Workflow started",
-                       Path(worktree).name if worktree else "", "success")
+            self.toast("Workflow started", Path(worktree).name if worktree else "", "success")
             self.navigate("workflows")
         elif kind == "workflow-result":
             self._follow_enabled = False
@@ -810,12 +860,10 @@ class MainWindow(QMainWindow, AsyncMixin):
             merged = bool(event.get("merged"))
             ready = bool(event.get("ready"))
             if ready and merged:
-                self.toast("Workflow finished", "Changes merged into the base branch.",
-                           "success")
+                self.toast("Workflow finished", "Changes merged into the base branch.", "success")
                 self._notify_tray("AgentOps", "Workflow merged into the base branch")
             elif ready:
-                self.toast("Workflow finished", "Ready, but nothing was merged.",
-                           "warning")
+                self.toast("Workflow finished", "Ready, but nothing was merged.", "warning")
                 self._notify_tray("AgentOps", "Workflow finished; nothing was merged")
             else:
                 self._notify_incomplete_workflow(workflow_id)
@@ -842,8 +890,7 @@ class MainWindow(QMainWindow, AsyncMixin):
                 "success" if succeeded else "error",
             )
             if not succeeded:
-                self._notify_tray("Agent run failed",
-                                  str(event.get("agent") or ""))
+                self._notify_tray("Agent run failed", str(event.get("agent") or ""))
         elif kind == "thread-finished":
             self._follow_enabled = False
             self._set_status_idle()
@@ -958,7 +1005,8 @@ class MainWindow(QMainWindow, AsyncMixin):
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt API
         if self._active:
             answer = QMessageBox.question(
-                self, "Operation in progress",
+                self,
+                "Operation in progress",
                 "A background operation is still running. Quit anyway?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )

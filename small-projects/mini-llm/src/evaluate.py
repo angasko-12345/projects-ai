@@ -56,8 +56,11 @@ def _byte_decoder() -> dict[str, int]:
     The `tokenizers` ByteLevel pre-tokenizer uses this exact table; a test checks
     that its alphabet() is the same 256 symbols.
     """
-    bs = (list(range(ord("!"), ord("~") + 1)) + list(range(ord("¡"), ord("¬") + 1))
-          + list(range(ord("®"), ord("ÿ") + 1)))
+    bs = (
+        list(range(ord("!"), ord("~") + 1))
+        + list(range(ord("¡"), ord("¬") + 1))
+        + list(range(ord("®"), ord("ÿ") + 1))
+    )
     cs = bs[:]
     n = 0
     for b in range(256):
@@ -79,8 +82,9 @@ def token_byte_lengths(tok, vocab_size: int | None = None) -> torch.Tensor:
     decoder = _byte_decoder()
     vocab = tok.get_vocab(with_added_tokens=False)
     special_ids = set()
-    for added in tok.get_added_tokens_decoder().values() if hasattr(
-            tok, "get_added_tokens_decoder") else ():
+    for added in (
+        tok.get_added_tokens_decoder().values() if hasattr(tok, "get_added_tokens_decoder") else ()
+    ):
         special_ids.add(tok.token_to_id(added.content))
     size = vocab_size if vocab_size is not None else tok.get_vocab_size(with_added_tokens=True)
     lengths = torch.zeros(size, dtype=torch.long)
@@ -109,9 +113,15 @@ def _null_context():
 
 
 @torch.no_grad()
-def evaluate_stats(model, loader, batches: int, device: torch.device,
-                   chunk_size: int = 0, byte_lengths: torch.Tensor | None = None,
-                   autocast=None) -> dict:
+def evaluate_stats(
+    model,
+    loader,
+    batches: int,
+    device: torch.device,
+    chunk_size: int = 0,
+    byte_lengths: torch.Tensor | None = None,
+    autocast=None,
+) -> dict:
     """Token-weighted val loss over the first `batches` batches, plus bytes/bpb.
 
     The loss arithmetic is exactly what train.evaluate() has always done (it now
@@ -178,18 +188,22 @@ def sample_sheet(model, tok, device: torch.device, autocast=None) -> list[dict]:
         idx = torch.tensor([ids], dtype=torch.long, device=device)
         row = {"prompt": prompt}
         with ctx():
-            greedy = generate_tokens(model, idx, SAMPLE_TOKENS, temperature=0.0,
-                                     eos_id=eos)
+            greedy = generate_tokens(model, idx, SAMPLE_TOKENS, temperature=0.0, eos_id=eos)
             # fork_rng restores the caller's CPU (and CUDA) RNG afterwards, so the
             # sheet neither depends on nor disturbs any other random stream.
             cuda_devices = [device] if device.type == "cuda" else []
             with torch.random.fork_rng(devices=cuda_devices):
                 torch.manual_seed(SAMPLE_SEED + i)
-                sampled = generate_tokens(model, idx, SAMPLE_TOKENS,
-                                          temperature=SAMPLE_TEMPERATURE,
-                                          top_k=SAMPLE_TOP_K, eos_id=eos)
-        row["greedy"] = decode(tok, greedy[0, len(ids):].tolist())
-        row["sampled"] = decode(tok, sampled[0, len(ids):].tolist())
+                sampled = generate_tokens(
+                    model,
+                    idx,
+                    SAMPLE_TOKENS,
+                    temperature=SAMPLE_TEMPERATURE,
+                    top_k=SAMPLE_TOP_K,
+                    eos_id=eos,
+                )
+        row["greedy"] = decode(tok, greedy[0, len(ids) :].tolist())
+        row["sampled"] = decode(tok, sampled[0, len(ids) :].tolist())
         sheet.append(row)
     model.train()
     return sheet
@@ -200,27 +214,45 @@ def main(argv: list[str] | None = None) -> dict:
     from src.dataset import build_dataloader
     from src.generate import check_tokenizer_provenance
     from src.tokenizer import load_tokenizer
-    from src.train import (amp_autocast_factory, load_model, read_checkpoint,
-                           resolve_amp, resolve_device)
+    from src.train import (
+        amp_autocast_factory,
+        load_model,
+        read_checkpoint,
+        resolve_amp,
+        resolve_device,
+    )
 
     parser = argparse.ArgumentParser(description="Validation bits-per-byte + sample sheet")
     parser.add_argument("--checkpoint", required=True)
-    parser.add_argument("--val-bin", default=None,
-                        help="defaults to the val .bin the checkpoint recorded")
-    parser.add_argument("--tokenizer", default=None,
-                        help="defaults to the tokenizer the checkpoint recorded; "
-                             "verified against its digest")
+    parser.add_argument(
+        "--val-bin", default=None, help="defaults to the val .bin the checkpoint recorded"
+    )
+    parser.add_argument(
+        "--tokenizer",
+        default=None,
+        help="defaults to the tokenizer the checkpoint recorded; verified against its digest",
+    )
     parser.add_argument("--batch-size", type=int, default=None)
-    parser.add_argument("--batches", type=int, default=None,
-                        help="val batches to score (default: all of them)")
-    parser.add_argument("--stride", type=int, default=None,
-                        help="val window stride (default: context_length, i.e. "
-                             "non-overlapping windows, so every val token is scored once)")
+    parser.add_argument(
+        "--batches", type=int, default=None, help="val batches to score (default: all of them)"
+    )
+    parser.add_argument(
+        "--stride",
+        type=int,
+        default=None,
+        help="val window stride (default: context_length, i.e. "
+        "non-overlapping windows, so every val token is scored once)",
+    )
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
-    parser.add_argument("--amp", choices=("off", "fp16", "bf16"), default="off",
-                        help="autocast the forward pass (fp16 needs CUDA); off is fp32")
-    parser.add_argument("--samples", action="store_true",
-                        help="also print the fixed seeded sample sheet")
+    parser.add_argument(
+        "--amp",
+        choices=("off", "fp16", "bf16"),
+        default="off",
+        help="autocast the forward pass (fp16 needs CUDA); off is fp32",
+    )
+    parser.add_argument(
+        "--samples", action="store_true", help="also print the fixed seeded sample sheet"
+    )
     parser.add_argument("--json-out", default=None, help="write the results as JSON")
     args = parser.parse_args(argv)
 
@@ -236,12 +268,18 @@ def main(argv: list[str] | None = None) -> dict:
 
     val_bin = args.val_bin or cfg.val_bin
     stride = args.stride or cfg.context_length
-    loader = build_dataloader(val_bin, cfg.context_length, args.batch_size or cfg.batch_size,
-                              shuffle=False, stride=stride)
+    loader = build_dataloader(
+        val_bin, cfg.context_length, args.batch_size or cfg.batch_size, shuffle=False, stride=stride
+    )
     batches = args.batches or len(loader)
-    stats = evaluate_stats(model, loader, batches, device,
-                           byte_lengths=token_byte_lengths(tok, cfg.vocab_size),
-                           autocast=autocast)
+    stats = evaluate_stats(
+        model,
+        loader,
+        batches,
+        device,
+        byte_lengths=token_byte_lengths(tok, cfg.vocab_size),
+        autocast=autocast,
+    )
     result = {
         "checkpoint": os.path.abspath(args.checkpoint),
         "step": int(ckpt["step"]),
@@ -254,8 +292,10 @@ def main(argv: list[str] | None = None) -> dict:
         "val_tokens": stats["tokens"],
         "val_bytes": stats["bytes"],
     }
-    print(f"val_loss {stats['loss']:.4f} val_bpb {stats['bpb']:.4f} "
-          f"({stats['tokens']} target tokens, {stats['bytes']} bytes, stride {stride})")
+    print(
+        f"val_loss {stats['loss']:.4f} val_bpb {stats['bpb']:.4f} "
+        f"({stats['tokens']} target tokens, {stats['bytes']} bytes, stride {stride})"
+    )
     if args.samples:
         result["samples"] = sample_sheet(model, tok, device, autocast)
         for row in result["samples"]:

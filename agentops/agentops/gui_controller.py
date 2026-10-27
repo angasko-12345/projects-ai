@@ -18,7 +18,8 @@ from .agent_run import AgentRun, AgentRunStatus, GitRunMetadataCollector
 from .artifacts import ArtifactError, ArtifactStore
 from .config import AppConfig, load_config
 from .finalize import (
-    finalize_for_outcome, implementation_passed,
+    finalize_for_outcome,
+    implementation_passed,
     record_worktree_provenance,
 )
 from .git import GitError, GitWorktreeManager, Worktree, WorktreeRef
@@ -42,18 +43,28 @@ def serialize_failure(failure: Failure) -> dict[str, object]:
         "task_id": failure.task_id,
         "agent_run_id": failure.agent_run_id,
         "source": failure.source.value if hasattr(failure.source, "value") else str(failure.source),
-        "category": failure.category.value if hasattr(failure.category, "value") else str(failure.category),
-        "severity": failure.severity.value if hasattr(failure.severity, "value") else str(failure.severity),
+        "category": failure.category.value
+        if hasattr(failure.category, "value")
+        else str(failure.category),
+        "severity": failure.severity.value
+        if hasattr(failure.severity, "value")
+        else str(failure.severity),
         "retryable": failure.retryable,
         "repairable": failure.repairable,
         "evidence": failure.evidence,
         "primary_error": failure.primary_error,
         "verification_run_id": failure.verification_run_id,
-        "recommended_action": failure.recommended_action.value if hasattr(failure.recommended_action, "value") else str(failure.recommended_action),
+        "recommended_action": failure.recommended_action.value
+        if hasattr(failure.recommended_action, "value")
+        else str(failure.recommended_action),
         "attempt": failure.attempt,
         "repair_cycle": failure.repair_cycle,
-        "recovery_state": failure.recovery_state.value if failure.recovery_state and hasattr(failure.recovery_state, "value") else failure.recovery_state,
-        "structured_evidence": dict(failure.structured_evidence) if failure.structured_evidence else None,
+        "recovery_state": failure.recovery_state.value
+        if failure.recovery_state and hasattr(failure.recovery_state, "value")
+        else failure.recovery_state,
+        "structured_evidence": dict(failure.structured_evidence)
+        if failure.structured_evidence
+        else None,
         "created_at": failure.created_at,
         "updated_at": failure.updated_at,
     }
@@ -94,7 +105,9 @@ def serialize_workflow(workflow: Workflow) -> dict[str, object]:
     return {
         "id": workflow.id,
         "description": workflow.description,
-        "status": workflow.status.value if hasattr(workflow.status, "value") else str(workflow.status),
+        "status": workflow.status.value
+        if hasattr(workflow.status, "value")
+        else str(workflow.status),
         "created_at": workflow.created_at,
         "updated_at": workflow.updated_at,
     }
@@ -337,15 +350,22 @@ class AgentOpsController:
             for run in verifications:
                 key = str(run.get("overall_status") or run.get("status") or "unknown")
                 verification_status[key] = verification_status.get(key, 0) + 1
-            failures = [serialize_failure(failure) for failure in state.list_failures(limit=failure_limit)]
+            failures = [
+                serialize_failure(failure) for failure in state.list_failures(limit=failure_limit)
+            ]
             needs_attention = [
-                failure for failure in failures
-                if failure.get("retryable") or failure.get("repairable") or failure.get("recovery_state")
+                failure
+                for failure in failures
+                if failure.get("retryable")
+                or failure.get("repairable")
+                or failure.get("recovery_state")
             ]
             total_events = state.count_events()
             events = [
                 event.to_dict()
-                for event in state.query_events(limit=event_limit, offset=max(0, total_events - event_limit))
+                for event in state.query_events(
+                    limit=event_limit, offset=max(0, total_events - event_limit)
+                )
             ]
             events.reverse()  # newest first for the activity feed
             return {
@@ -373,8 +393,12 @@ class AgentOpsController:
         callback: EventCallback,
     ) -> None:
         event = self._begin_operation()
-        threading.Thread(target=self._run_agent_operation, args=(agent_name, prompt, Path(directory), event, callback),
-                         daemon=True, name="agentops-agent-run").start()
+        threading.Thread(
+            target=self._run_agent_operation,
+            args=(agent_name, prompt, Path(directory), event, callback),
+            daemon=True,
+            name="agentops-agent-run",
+        ).start()
 
     def _run_agent_operation(
         self,
@@ -399,31 +423,42 @@ class AgentOpsController:
                 state = None
                 observer = None
             try:
-                runner = AgentRunner(logs, config.pass_env_names, config.pass_env_prefixes,
-                                     run_observer=observer,
-                                     systemd_run_enabled=config.systemd_run_enabled)
-                result = asyncio.run(runner.run_agent(agent, prompt, directory, cancel_event=cancel_event))
+                runner = AgentRunner(
+                    logs,
+                    config.pass_env_names,
+                    config.pass_env_prefixes,
+                    run_observer=observer,
+                    systemd_run_enabled=config.systemd_run_enabled,
+                )
+                result = asyncio.run(
+                    runner.run_agent(agent, prompt, directory, cancel_event=cancel_event)
+                )
             finally:
                 if state is not None:
                     state.close()
-            callback({
-                "kind": "result",
-                "agent": result.agent,
-                "succeeded": result.succeeded,
-                "timed_out": result.timed_out,
-                "exit_code": result.exit_code,
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-                "duration_seconds": result.duration_seconds,
-                "log_path": str(result.log_path),
-                "run_id": result.run_id,
-                "run_status": (
-                    AgentRunStatus.COMPLETED.value if result.succeeded
-                    else AgentRunStatus.TIMED_OUT.value if result.timed_out
-                    else AgentRunStatus.TERMINATED.value if result.terminated
-                    else AgentRunStatus.FAILED.value
-                ),
-            })
+            callback(
+                {
+                    "kind": "result",
+                    "agent": result.agent,
+                    "succeeded": result.succeeded,
+                    "timed_out": result.timed_out,
+                    "exit_code": result.exit_code,
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                    "duration_seconds": result.duration_seconds,
+                    "log_path": str(result.log_path),
+                    "run_id": result.run_id,
+                    "run_status": (
+                        AgentRunStatus.COMPLETED.value
+                        if result.succeeded
+                        else AgentRunStatus.TIMED_OUT.value
+                        if result.timed_out
+                        else AgentRunStatus.TERMINATED.value
+                        if result.terminated
+                        else AgentRunStatus.FAILED.value
+                    ),
+                }
+            )
         except OperationCancelled:
             callback({"kind": "cancelled"})
         except Exception as error:
@@ -456,7 +491,9 @@ class AgentOpsController:
         threading.Thread(
             target=self._run_task_operation,
             args=(description, Path(directory), event, callback, agent, verification_profile),
-            daemon=True, name="agentops-task-run").start()
+            daemon=True,
+            name="agentops-task-run",
+        ).start()
 
     def _run_task_operation(
         self,
@@ -477,20 +514,26 @@ class AgentOpsController:
             config = self._load_config()
             if agent is not None:
                 pinned_roles = set(config.role_preferences) | set(STANDARD_TASK_ROLES)
-                config = replace(config, role_preferences={
-                    role: (agent,) for role in pinned_roles
-                })
+                config = replace(config, role_preferences={role: (agent,) for role in pinned_roles})
             root = self._operation_root(directory)
             logs = LogManager(root / ".agentops" / "logs")
             state = StateStore(self._state_path(root))
             registry = AgentRegistry(config)
             run_observer = state.agent_run_observer()
-            runner = AgentRunner(logs, config.pass_env_names, config.pass_env_prefixes,
-                                 run_observer=run_observer, metadata_collector=GitRunMetadataCollector(),
-                                 systemd_run_enabled=config.systemd_run_enabled)
-            verifier = Verifier(config.verification_commands, pass_env_names=config.pass_env_names,
-                                pass_env_prefixes=config.pass_env_prefixes,
-                                systemd_run_enabled=config.systemd_run_enabled)
+            runner = AgentRunner(
+                logs,
+                config.pass_env_names,
+                config.pass_env_prefixes,
+                run_observer=run_observer,
+                metadata_collector=GitRunMetadataCollector(),
+                systemd_run_enabled=config.systemd_run_enabled,
+            )
+            verifier = Verifier(
+                config.verification_commands,
+                pass_env_names=config.pass_env_names,
+                pass_env_prefixes=config.pass_env_prefixes,
+                systemd_run_enabled=config.systemd_run_enabled,
+            )
             verification_kernel = VerificationKernel(
                 profiles=config.verification_profiles,
                 default_profile=(
@@ -505,19 +548,31 @@ class AgentOpsController:
                 state=state,
                 systemd_run_enabled=config.systemd_run_enabled,
             )
-            engine = WorkflowEngine(config, state, registry, runner, verifier,
-                                    run_observer=run_observer,
-                                    metadata_collector=GitRunMetadataCollector(),
-                                    verification_kernel=verification_kernel)
+            engine = WorkflowEngine(
+                config,
+                state,
+                registry,
+                runner,
+                verifier,
+                run_observer=run_observer,
+                metadata_collector=GitRunMetadataCollector(),
+                verification_kernel=verification_kernel,
+            )
             manager = GitWorktreeManager()
             worktree = manager.create(root, description)
-            callback({"kind": "workflow-started", "worktree": str(worktree.path),
-                      "base_branch": worktree.base_branch})
-            result = asyncio.run(engine.run_high_level(description, worktree.path, cancel_event=cancel_event))
+            callback(
+                {
+                    "kind": "workflow-started",
+                    "worktree": str(worktree.path),
+                    "base_branch": worktree.base_branch,
+                }
+            )
+            result = asyncio.run(
+                engine.run_high_level(description, worktree.path, cancel_event=cancel_event)
+            )
             # Phase 3: persist provenance against the real workflow id so
             # retry/merge validate against stored base even after restart.
-            record_worktree_provenance(state, worktree, result.workflow_id,
-                                       engine.degradation)
+            record_worktree_provenance(state, worktree, result.workflow_id, engine.degradation)
             if cancel_event.is_set():
                 raise OperationCancelled
             changed = False
@@ -528,17 +583,36 @@ class AgentOpsController:
                 # implementation-passed, so identical work was finalized
                 # differently depending on the entry point.
                 finalization = finalize_for_outcome(
-                    manager, state, worktree, description, result.workflow_id,
-                    config.max_attempts, ready=result.ready)
+                    manager,
+                    state,
+                    worktree,
+                    description,
+                    result.workflow_id,
+                    config.max_attempts,
+                    ready=result.ready,
+                )
                 if finalization.conflict_error is not None:
-                    callback({"kind": "conflict", "error": finalization.conflict_error,
-                              "worktree": str(worktree.path), "workflow_id": result.workflow_id})
+                    callback(
+                        {
+                            "kind": "conflict",
+                            "error": finalization.conflict_error,
+                            "worktree": str(worktree.path),
+                            "workflow_id": result.workflow_id,
+                        }
+                    )
                     return
                 changed = finalization.merged
                 remove_worktree = result.ready
-            callback({"kind": "workflow-result", "result": result, "ready": result.ready,
-                      "workflow_id": result.workflow_id, "worktree": str(worktree.path),
-                      "merged": changed})
+            callback(
+                {
+                    "kind": "workflow-result",
+                    "result": result,
+                    "ready": result.ready,
+                    "workflow_id": result.workflow_id,
+                    "worktree": str(worktree.path),
+                    "merged": changed,
+                }
+            )
         except OperationCancelled:
             callback({"kind": "cancelled"})
         except Exception as error:
@@ -573,11 +647,13 @@ class AgentOpsController:
             tasks = state.list_tasks(workflow_id)
             if status is not None:
                 tasks = [
-                    task for task in tasks
-                    if (task.status.value if hasattr(task.status, "value") else str(task.status)) == status
+                    task
+                    for task in tasks
+                    if (task.status.value if hasattr(task.status, "value") else str(task.status))
+                    == status
                 ]
             tasks.reverse()
-            return [serialize_task(task) for task in tasks[offset:offset + limit]]
+            return [serialize_task(task) for task in tasks[offset : offset + limit]]
         finally:
             state.close()
 
@@ -592,8 +668,9 @@ class AgentOpsController:
         status = task.status
         return str(getattr(status, "value", status))
 
-    def rename_task(self, directory: str | Path, task_id: str,
-                    description: str) -> dict[str, object]:
+    def rename_task(
+        self, directory: str | Path, task_id: str, description: str
+    ) -> dict[str, object]:
         """Replace a task's description (its display name everywhere)."""
         text = str(description or "").strip()
         if not text:
@@ -611,14 +688,13 @@ class AgentOpsController:
         finally:
             state.close()
 
-    def recategorize_task(self, directory: str | Path, task_id: str,
-                          role: str) -> dict[str, object]:
+    def recategorize_task(
+        self, directory: str | Path, task_id: str, role: str
+    ) -> dict[str, object]:
         """Move a task to another role (its category in the pipeline)."""
         wanted = str(role or "").strip().lower()
         if wanted not in self.TASK_ROLES:
-            raise ValueError(
-                f"Unknown role {role!r}; choose one of "
-                f"{', '.join(self.TASK_ROLES)}.")
+            raise ValueError(f"Unknown role {role!r}; choose one of {', '.join(self.TASK_ROLES)}.")
         root = self._operation_root(directory)
         state = StateStore(self._state_path(root))
         try:
@@ -626,8 +702,8 @@ class AgentOpsController:
             status = self._task_status(task)
             if status not in ("pending", "blocked", "failed"):
                 raise ValueError(
-                    f"Only pending, blocked, or failed tasks can change role "
-                    f"(task is {status}).")
+                    f"Only pending, blocked, or failed tasks can change role (task is {status})."
+                )
             task.role = wanted
             state.update_task(task)
             state.refresh_workflow_status(task.workflow_id)
@@ -655,8 +731,7 @@ class AgentOpsController:
             if not removed:
                 raise KeyError(f"Unknown task: {task_id}")
             state.refresh_workflow_status(task.workflow_id)
-            return {"id": task.id, "workflow_id": task.workflow_id,
-                    "description": task.description}
+            return {"id": task.id, "workflow_id": task.workflow_id, "description": task.description}
         finally:
             state.close()
 
@@ -665,8 +740,9 @@ class AgentOpsController:
         status = getattr(record, "status", "")
         return str(getattr(status, "value", status))
 
-    def rename_workflow(self, directory: str | Path, workflow_id: str,
-                        description: str) -> dict[str, object]:
+    def rename_workflow(
+        self, directory: str | Path, workflow_id: str, description: str
+    ) -> dict[str, object]:
         """Replace a workflow's description (its display name everywhere)."""
         text = str(description or "").strip()
         if not text:
@@ -684,8 +760,7 @@ class AgentOpsController:
         finally:
             state.close()
 
-    def delete_workflow(self, directory: str | Path,
-                        workflow_id: str) -> dict[str, object]:
+    def delete_workflow(self, directory: str | Path, workflow_id: str) -> dict[str, object]:
         """Remove a workflow and every record that belongs to it.
 
         Refuses live work (a running workflow or any running task). The
@@ -701,7 +776,8 @@ class AgentOpsController:
             if self._record_status(workflow) == "running":
                 raise ValueError("A running workflow cannot be deleted.")
             live = [
-                task.id for task in state.list_tasks(workflow.id)
+                task.id
+                for task in state.list_tasks(workflow.id)
                 if self._task_status(task) == "running"
             ]
             if live:
@@ -722,13 +798,11 @@ class AgentOpsController:
             removed = state.delete_workflow(workflow.id)
             if not removed.get("workflows"):
                 raise KeyError(f"Unknown workflow: {workflow_id}")
-            return {"id": workflow.id, "description": workflow.description,
-                    "removed": removed}
+            return {"id": workflow.id, "description": workflow.description, "removed": removed}
         finally:
             state.close()
 
-    def delete_agent_run(self, directory: str | Path,
-                         run_id: str) -> dict[str, object]:
+    def delete_agent_run(self, directory: str | Path, run_id: str) -> dict[str, object]:
         """Remove an agent run with its linked verification runs.
 
         Failure rows keep plain-text references and stay readable. Refuses
@@ -741,15 +815,12 @@ class AgentOpsController:
             if self._record_status(run) in ("pending", "starting", "running"):
                 raise ValueError("A live agent run cannot be deleted.")
             if not state.delete_agent_run(run.id):
-                raise ValueError(
-                    "This run has follow-up runs; delete those first.")
-            return {"id": run.id, "workflow_id": run.workflow_id,
-                    "task_id": run.task_id}
+                raise ValueError("This run has follow-up runs; delete those first.")
+            return {"id": run.id, "workflow_id": run.workflow_id, "task_id": run.task_id}
         finally:
             state.close()
 
-    def delete_verification_run(self, directory: str | Path,
-                                run_id: str) -> dict[str, object]:
+    def delete_verification_run(self, directory: str | Path, run_id: str) -> dict[str, object]:
         """Remove a verification run with its checks and report."""
         root = self._operation_root(directory)
         state = StateStore(self._state_path(root))
@@ -759,13 +830,11 @@ class AgentOpsController:
                 raise ValueError("A live verification run cannot be deleted.")
             if not state.delete_verification_run(run.id):
                 raise KeyError(f"Unknown verification run: {run_id}")
-            return {"id": run.id, "workflow_id": run.workflow_id,
-                    "task_id": run.task_id}
+            return {"id": run.id, "workflow_id": run.workflow_id, "task_id": run.task_id}
         finally:
             state.close()
 
-    def delete_failure(self, directory: str | Path,
-                       failure_id: str) -> dict[str, object]:
+    def delete_failure(self, directory: str | Path, failure_id: str) -> dict[str, object]:
         """Remove one failure record."""
         root = self._operation_root(directory)
         state = StateStore(self._state_path(root))
@@ -776,8 +845,7 @@ class AgentOpsController:
         finally:
             state.close()
 
-    def delete_artifact(self, directory: str | Path,
-                        artifact_id: str) -> dict[str, object]:
+    def delete_artifact(self, directory: str | Path, artifact_id: str) -> dict[str, object]:
         """Remove an artifact's file and its metadata row together."""
         root = self._operation_root(directory)
         state = StateStore(self._state_path(root))
@@ -794,8 +862,6 @@ class AgentOpsController:
             return {"id": artifact.id, "name": artifact.name}
         finally:
             state.close()
-
-
 
     def list_workflows(
         self,
@@ -838,13 +904,15 @@ class AgentOpsController:
                 summary = None
             if summary is not None:
                 review_verdicts.append({"task_id": task.id, **summary})
-        payload.update({
-            "task_count": len(tasks),
-            "task_counts": counts,
-            "run_count": len(runs),
-            "run_counts": run_counts,
-            "review_verdicts": review_verdicts,
-        })
+        payload.update(
+            {
+                "task_count": len(tasks),
+                "task_counts": counts,
+                "run_count": len(runs),
+                "run_counts": run_counts,
+                "review_verdicts": review_verdicts,
+            }
+        )
         return payload
 
     def get_workflow(self, directory: str | Path, workflow_id: str) -> dict[str, object] | None:
@@ -856,7 +924,9 @@ class AgentOpsController:
             if workflow is None:
                 return None
             tasks = [serialize_task(task) for task in state.list_tasks(workflow.id)]
-            runs = [serialize_agent_run(run) for run in state.list_agent_runs(workflow.id, limit=200)]
+            runs = [
+                serialize_agent_run(run) for run in state.list_agent_runs(workflow.id, limit=200)
+            ]
             verifications = [
                 serialize_verification_run(run)
                 for run in state.list_verification_runs(workflow.id, limit=50)
@@ -864,15 +934,20 @@ class AgentOpsController:
             failures = [serialize_failure(f) for f in state.list_failures(workflow.id, limit=50)]
             ref = state.get_worktree_ref(workflow.id)
             payload = serialize_workflow(workflow)
-            payload.update({
-                "tasks": tasks, "runs": runs,
-                "verifications": verifications, "failures": failures,
-                "worktree_ref": serialize_worktree_ref(ref) if ref is not None else None,
-                "review_verdicts": [
-                    dict(task["review_verdict"], task_id=task["id"])
-                    for task in tasks if task.get("review_verdict") is not None
-                ],
-            })
+            payload.update(
+                {
+                    "tasks": tasks,
+                    "runs": runs,
+                    "verifications": verifications,
+                    "failures": failures,
+                    "worktree_ref": serialize_worktree_ref(ref) if ref is not None else None,
+                    "review_verdicts": [
+                        dict(task["review_verdict"], task_id=task["id"])
+                        for task in tasks
+                        if task.get("review_verdict") is not None
+                    ],
+                }
+            )
             return payload
         finally:
             state.close()
@@ -947,7 +1022,9 @@ class AgentOpsController:
         try:
             return [
                 serialize_verification_run(run)
-                for run in state.list_verification_runs(workflow_id, task_id, limit=limit, offset=offset)
+                for run in state.list_verification_runs(
+                    workflow_id, task_id, limit=limit, offset=offset
+                )
             ]
         finally:
             state.close()
@@ -1053,11 +1130,15 @@ class AgentOpsController:
         try:
             # Every pass must honour workflow_id: scoping only the task pass
             # would terminate another workflow's live rows.
-            return dict(state.recover_all() if workflow_id is None else {
-                "agent_runs": len(state.recover_agent_runs(workflow_id)),
-                "verification_runs": len(state.recover_verification_runs(workflow_id)),
-                "tasks": len(state.recover_tasks(workflow_id)),
-            })
+            return dict(
+                state.recover_all()
+                if workflow_id is None
+                else {
+                    "agent_runs": len(state.recover_agent_runs(workflow_id)),
+                    "verification_runs": len(state.recover_verification_runs(workflow_id)),
+                    "tasks": len(state.recover_tasks(workflow_id)),
+                }
+            )
         finally:
             state.close()
 
@@ -1136,19 +1217,28 @@ class AgentOpsController:
                 stat = path.stat()
             except OSError:
                 continue
-            entries.append({
-                "path": str(path),
-                "name": path.relative_to(logs.root).as_posix(),
-                "size": stat.st_size,
-                "modified": stat.st_mtime,
-            })
+            entries.append(
+                {
+                    "path": str(path),
+                    "name": path.relative_to(logs.root).as_posix(),
+                    "size": stat.st_size,
+                    "modified": stat.st_mtime,
+                }
+            )
         return entries
 
-    def read_log(self, directory: str | Path, name: str | Path, max_bytes: int = 65536) -> dict[str, object]:
+    def read_log(
+        self, directory: str | Path, name: str | Path, max_bytes: int = 65536
+    ) -> dict[str, object]:
         root = self._operation_root(directory)
         logs = LogManager(root / ".agentops" / "logs")
         text, truncated = logs.read_tail(name, max_bytes)
-        return {"name": str(name), "path": str((logs.root / name).resolve()), "truncated": truncated, "text": text}
+        return {
+            "name": str(name),
+            "path": str((logs.root / name).resolve()),
+            "truncated": truncated,
+            "text": text,
+        }
 
     def list_worktrees(self, directory: str | Path) -> list[dict[str, object]]:
         root = self._operation_root(directory)
@@ -1159,14 +1249,16 @@ class AgentOpsController:
                 status = manager.worktree_status(info.path)
             except GitError:
                 status = "(status unavailable)"
-            entries.append({
-                "repository": str(info.repository),
-                "path": str(info.path),
-                "branch": info.branch,
-                "head": info.head,
-                "managed": info.managed,
-                "status": status,
-            })
+            entries.append(
+                {
+                    "repository": str(info.repository),
+                    "path": str(info.path),
+                    "branch": info.branch,
+                    "head": info.head,
+                    "managed": info.managed,
+                    "status": status,
+                }
+            )
         return entries
 
     def inspect_worktree(self, directory: str | Path, path: str | Path) -> dict[str, object]:
@@ -1212,19 +1304,27 @@ class AgentOpsController:
         if stored is not None:
             # Stored provenance wins: the retry must target the original base
             # branch/commit, not whatever HEAD happens to be now.
-            worktree = Worktree(root, Path(str(info["path"])), stored.branch,
-                                stored.base_branch, stored.base_commit)
+            worktree = Worktree(
+                root, Path(str(info["path"])), stored.branch, stored.base_branch, stored.base_commit
+            )
         else:
-            worktree = Worktree(root, Path(str(info["path"])), branch,
-                                manager.current_branch(root), manager.current_commit(root))
+            worktree = Worktree(
+                root,
+                Path(str(info["path"])),
+                branch,
+                manager.current_branch(root),
+                manager.current_commit(root),
+            )
         manager.merge(worktree)
-        return {"merged": True, "path": str(info["path"]), "branch": worktree.branch,
-                "base_branch": worktree.base_branch,
-                "used_stored_provenance": stored is not None}
+        return {
+            "merged": True,
+            "path": str(info["path"]),
+            "branch": worktree.branch,
+            "base_branch": worktree.base_branch,
+            "used_stored_provenance": stored is not None,
+        }
 
-    def workflow_readiness(
-        self, directory: str | Path, workflow_id: str
-    ) -> dict[str, object]:
+    def workflow_readiness(self, directory: str | Path, workflow_id: str) -> dict[str, object]:
         """READY assessment for one workflow, as read by the GUI.
 
         A read-only projection of the single READY contract in
@@ -1277,17 +1377,23 @@ class AgentOpsController:
             if workflow is None:
                 return None
             tasks = [serialize_task(task) for task in state.list_tasks(workflow.id)]
-            runs = [serialize_agent_run(run) for run in state.list_agent_runs(workflow.id, limit=200)]
+            runs = [
+                serialize_agent_run(run) for run in state.list_agent_runs(workflow.id, limit=200)
+            ]
             verifications = [
                 serialize_verification_run(run)
                 for run in state.list_verification_runs(workflow.id, limit=50)
             ]
             ref = state.get_worktree_ref(workflow.id)
             payload = serialize_workflow(workflow)
-            payload.update({
-                "tasks": tasks, "runs": runs, "verifications": verifications,
-                "worktree_ref": serialize_worktree_ref(ref) if ref is not None else None,
-            })
+            payload.update(
+                {
+                    "tasks": tasks,
+                    "runs": runs,
+                    "verifications": verifications,
+                    "worktree_ref": serialize_worktree_ref(ref) if ref is not None else None,
+                }
+            )
             return payload
         finally:
             state.close()

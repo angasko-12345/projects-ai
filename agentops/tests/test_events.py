@@ -20,22 +20,44 @@ from agentops.state import StateStore
 class EventSchemaTests(unittest.TestCase):
     def test_all_spec_types_exist(self):
         expected = {
-            "workflow.created", "workflow.started", "task.claimed", "task.started",
-            "task.completed", "task.failed", "agent.selected", "agent.started",
-            "agent.finished", "verification.started", "verification.completed",
-            "verification.failed", "failure.classified", "repair.started",
-            "repair.completed", "review.started", "review.completed",
-            "policy.evaluated", "approval.requested", "approval.completed",
-            "worktree.created", "worktree.cleaned", "merge.started",
-            "merge.completed", "merge.conflict", "workflow.cancelled",
+            "workflow.created",
+            "workflow.started",
+            "task.claimed",
+            "task.started",
+            "task.completed",
+            "task.failed",
+            "agent.selected",
+            "agent.started",
+            "agent.finished",
+            "verification.started",
+            "verification.completed",
+            "verification.failed",
+            "failure.classified",
+            "repair.started",
+            "repair.completed",
+            "review.started",
+            "review.completed",
+            "policy.evaluated",
+            "approval.requested",
+            "approval.completed",
+            "worktree.created",
+            "worktree.cleaned",
+            "merge.started",
+            "merge.completed",
+            "merge.conflict",
+            "workflow.cancelled",
         }
         self.assertTrue(expected.issubset({member.value for member in EventType}))
 
     def test_round_trip(self):
         event = Event(
-            workflow_id="w", task_id="t", agent_run_id="r",
-            type=EventType.TASK_FAILED, severity=EventSeverity.ERROR,
-            message="boom", payload={"exit": 1},
+            workflow_id="w",
+            task_id="t",
+            agent_run_id="r",
+            type=EventType.TASK_FAILED,
+            severity=EventSeverity.ERROR,
+            message="boom",
+            payload={"exit": 1},
         )
         restored = coerce_event(event.to_dict())
         self.assertIsNotNone(restored)
@@ -149,10 +171,16 @@ class EventStoreTests(unittest.TestCase):
         self.state.close()
 
     def test_record_and_query(self):
-        event = self.state.record_typed_event(Event(
-            workflow_id="w", task_id="t", type=EventType.TASK_FAILED,
-            severity=EventSeverity.ERROR, message="x", payload={"k": "v"},
-        ))
+        event = self.state.record_typed_event(
+            Event(
+                workflow_id="w",
+                task_id="t",
+                type=EventType.TASK_FAILED,
+                severity=EventSeverity.ERROR,
+                message="x",
+                payload={"k": "v"},
+            )
+        )
         found = self.state.query_events(workflow_id="w")
         self.assertEqual(len(found), 1)
         self.assertEqual(found[0].id, event.id)
@@ -160,17 +188,18 @@ class EventStoreTests(unittest.TestCase):
 
     def test_chronological_pagination_and_filters(self):
         for index in range(5):
-            self.state.record_typed_event(Event(
-                workflow_id="w", task_id="t1" if index % 2 else "t2",
-                agent_run_id="r1" if index < 3 else "r2",
-                type=EventType.TASK_STARTED if index % 2 else EventType.TASK_FAILED,
-            ))
+            self.state.record_typed_event(
+                Event(
+                    workflow_id="w",
+                    task_id="t1" if index % 2 else "t2",
+                    agent_run_id="r1" if index < 3 else "r2",
+                    type=EventType.TASK_STARTED if index % 2 else EventType.TASK_FAILED,
+                )
+            )
         self.assertEqual(len(self.state.query_events(workflow_id="w")), 5)
         self.assertEqual(len(self.state.query_events(task_id="t1")), 2)
         self.assertEqual(len(self.state.query_events(agent_run_id="r2")), 2)
-        self.assertEqual(
-            len(self.state.query_events(event_type=EventType.TASK_FAILED)), 3
-        )
+        self.assertEqual(len(self.state.query_events(event_type=EventType.TASK_FAILED)), 3)
         page = self.state.query_events(workflow_id="w", limit=2, offset=2)
         self.assertEqual(len(page), 2)
         stamps = [event.timestamp for event in self.state.query_events(workflow_id="w")]
@@ -196,10 +225,14 @@ class EventStoreTests(unittest.TestCase):
         self.assertEqual(rows[0]["kind"], "task-claimed")
 
     def test_typed_events_mirror_into_legacy_table(self):
-        self.state.record_typed_event(Event(
-            workflow_id="w", task_id="t",
-            type=EventType.TASK_FAILED, message="boom",
-        ))
+        self.state.record_typed_event(
+            Event(
+                workflow_id="w",
+                task_id="t",
+                type=EventType.TASK_FAILED,
+                message="boom",
+            )
+        )
         rows = self.state.list_events("w")
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["kind"], "task.failed")
@@ -222,11 +255,13 @@ class EventStoreTests(unittest.TestCase):
             def __repr__(self) -> str:
                 raise RuntimeError("boom")
 
-        event = self.state.record_typed_event(Event(
-            workflow_id="w",
-            type=EventType.TASK_FAILED,
-            payload={"items": {1, 2}, "blob": b"x", "obj": Hostile()},  # type: ignore[dict-item]
-        ))
+        event = self.state.record_typed_event(
+            Event(
+                workflow_id="w",
+                type=EventType.TASK_FAILED,
+                payload={"items": {1, 2}, "blob": b"x", "obj": Hostile()},  # type: ignore[dict-item]
+            )
+        )
         found = self.state.query_events(workflow_id="w")
         self.assertEqual(len(found), 1)
         self.assertEqual(found[0].id, event.id)

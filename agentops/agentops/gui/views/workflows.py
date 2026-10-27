@@ -43,8 +43,9 @@ from .base import BaseView
 _WORKFLOW_COLUMNS = (
     TableColumn("status", "Status", 100),
     TableColumn("id", "Workflow", 90, format=lambda v: short_id(v, 8)),
-    TableColumn("description", "Description", 300, stretch=True,
-                format=lambda v: elide(str(v or ""), 60)),
+    TableColumn(
+        "description", "Description", 300, stretch=True, format=lambda v: elide(str(v or ""), 60)
+    ),
     TableColumn("created_at", "Created", 140, format=format_timestamp),
 )
 
@@ -53,12 +54,12 @@ _TASK_COLUMNS = (
     TableColumn("role", "Role", 120),
     TableColumn("assigned_agent", "Agent", 120),
     TableColumn("attempts", "Attempts", 80),
-    TableColumn("verified", "Verified", 80,
-                format=lambda v: "yes" if v else "no"),
+    TableColumn("verified", "Verified", 80, format=lambda v: "yes" if v else "no"),
     # Stretch the widest text column so the table fills its pane instead of
     # leaving an unstyled strip of viewport beside the last section.
-    TableColumn("description", "Description", 260, stretch=True,
-                format=lambda v: elide(str(v or ""), 56)),
+    TableColumn(
+        "description", "Description", 260, stretch=True, format=lambda v: elide(str(v or ""), 56)
+    ),
     TableColumn("id", "Task", 90, format=lambda v: short_id(v, 8)),
 )
 
@@ -88,20 +89,22 @@ _CHECK_COLUMNS = (
     TableColumn("check_class", "Class", 120),
     TableColumn("required", "Required", 80, format=lambda v: "yes" if v else "no"),
     TableColumn("exit_code", "Exit", 60),
-    TableColumn("failure_reason", "Reason", 240, stretch=True,
-                format=lambda v: elide(str(v or ""), 70)),
+    TableColumn(
+        "failure_reason", "Reason", 240, stretch=True, format=lambda v: elide(str(v or ""), 70)
+    ),
 )
 
 _FAILURE_COLUMNS = (
     TableColumn("severity", "Severity", 100),
-    TableColumn("category", "Category", 150,
-                format=lambda v: str(v or "").replace("_", " ")),
-    TableColumn("recommended_action", "Action", 160,
-                format=lambda v: str(v or "").replace("_", " ")),
+    TableColumn("category", "Category", 150, format=lambda v: str(v or "").replace("_", " ")),
+    TableColumn(
+        "recommended_action", "Action", 160, format=lambda v: str(v or "").replace("_", " ")
+    ),
     TableColumn("retryable", "Retryable", 90, format=lambda v: "yes" if v else "no"),
     TableColumn("repairable", "Repairable", 90, format=lambda v: "yes" if v else "no"),
-    TableColumn("primary_error", "Error", 260, stretch=True,
-                format=lambda v: elide(str(v or ""), 60)),
+    TableColumn(
+        "primary_error", "Error", 260, stretch=True, format=lambda v: elide(str(v or ""), 60)
+    ),
 )
 
 _ARTIFACT_COLUMNS = (
@@ -110,6 +113,8 @@ _ARTIFACT_COLUMNS = (
     TableColumn("size_bytes", "Size", 90, format=format_size),
     TableColumn("created_at", "Created", 140, format=format_timestamp),
 )
+
+
 class _Pane(QWidget):
     """Framed container so QSplitter children paint the card surface."""
 
@@ -132,8 +137,7 @@ class WorkflowsView(BaseView):
         root.setContentsMargins(18, 18, 18, 18)
         root.setSpacing(12)
 
-        self._page_header = PageHeader(
-            self.title, "Live stages, tasks, runs, and merge readiness")
+        self._page_header = PageHeader(self.title, "Live stages, tasks, runs, and merge readiness")
         self._status_badge = Badge()
         self._page_header.add_action(self._status_badge)
         self._cancel = danger_button("Cancel run")
@@ -158,8 +162,16 @@ class WorkflowsView(BaseView):
         list_toolbar.addWidget(self._wf_search, stretch=1)
         self._wf_status = QComboBox()
         self._wf_status.addItem("All statuses", None)
-        for status in ("pending", "running", "passed", "failed", "blocked",
-                       "completed", "merged", "cancelled"):
+        for status in (
+            "pending",
+            "running",
+            "passed",
+            "failed",
+            "blocked",
+            "completed",
+            "merged",
+            "cancelled",
+        ):
             self._wf_status.addItem(status.title(), status)
         list_toolbar.addWidget(self._wf_status)
         self._wf_status.currentIndexChanged.connect(self._apply_list_filters)
@@ -167,16 +179,15 @@ class WorkflowsView(BaseView):
 
         splitter = QSplitter()
         self._list = TablePanel(
-            _WORKFLOW_COLUMNS, "No workflows yet",
-            "Start a task to see a workflow here.")
+            _WORKFLOW_COLUMNS, "No workflows yet", "Start a task to see a workflow here."
+        )
         self._list.selection_changed.connect(self._pick_workflow)
         self._list.activated.connect(self._pick_workflow)
         splitter.addWidget(self._list)
 
         self._body = _Pane()
         body = QVBoxLayout(self._body)
-        body.setContentsMargins(DARK.space_md, DARK.space_md,
-                                DARK.space_md, DARK.space_md)
+        body.setContentsMargins(DARK.space_md, DARK.space_md, DARK.space_md, DARK.space_md)
         body.setSpacing(DARK.space_md)
         self._build_body(body)
         splitter.addWidget(self._body)
@@ -220,19 +231,18 @@ class WorkflowsView(BaseView):
         self._tabs.addTab(self._build_worktree_tab(), "Worktree")
         layout.addWidget(self._tabs)
 
-    def _retitle_tabs(self, tasks: list, runs: list,
-                      verifications: list, failures: list) -> None:
+    def _retitle_tabs(self, tasks: list, runs: list, verifications: list, failures: list) -> None:
         """Show live record counts on the tab labels (e.g. ``Tasks (3)``)."""
-        for index, (name, rows) in enumerate(zip(
-                self._tab_names, (tasks, runs, verifications, failures), strict=False)):
+        for index, (name, rows) in enumerate(
+            zip(self._tab_names, (tasks, runs, verifications, failures), strict=False)
+        ):
             self._tabs.setTabText(index, f"{name} ({len(rows)})")
 
     def _build_tasks_tab(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
-        self._tasks = TablePanel(_TASK_COLUMNS, "No tasks",
-                                  "This workflow has no tasks yet.")
+        self._tasks = TablePanel(_TASK_COLUMNS, "No tasks", "This workflow has no tasks yet.")
         self._tasks.selection_changed.connect(self._pick_task)
         self._tasks.activated.connect(self._pick_task)
         layout.addWidget(self._tasks, stretch=1)
@@ -244,8 +254,9 @@ class WorkflowsView(BaseView):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
-        self._runs = TablePanel(_RUN_COLUMNS, "No agent runs",
-                                "Runs appear here as agents execute tasks.")
+        self._runs = TablePanel(
+            _RUN_COLUMNS, "No agent runs", "Runs appear here as agents execute tasks."
+        )
         self._runs.selection_changed.connect(self._pick_run)
         self._runs.activated.connect(self._pick_run)
         layout.addWidget(self._runs, stretch=1)
@@ -261,13 +272,16 @@ class WorkflowsView(BaseView):
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
         self._verifications = TablePanel(
-            _VERIFICATION_COLUMNS, "No verification runs",
-            "Verification runs when a verification task executes.")
+            _VERIFICATION_COLUMNS,
+            "No verification runs",
+            "Verification runs when a verification task executes.",
+        )
         self._verifications.selection_changed.connect(self._pick_verification)
         self._verifications.activated.connect(self._pick_verification)
         layout.addWidget(self._verifications, stretch=1)
-        self._checks = TablePanel(_CHECK_COLUMNS, "Select a verification run",
-                                  "Individual checks appear here.")
+        self._checks = TablePanel(
+            _CHECK_COLUMNS, "Select a verification run", "Individual checks appear here."
+        )
         layout.addWidget(self._checks, stretch=1)
         return page
 
@@ -275,8 +289,9 @@ class WorkflowsView(BaseView):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
-        self._failures = TablePanel(_FAILURE_COLUMNS, "No failures",
-                                    "No failure was recorded for this workflow.")
+        self._failures = TablePanel(
+            _FAILURE_COLUMNS, "No failures", "No failure was recorded for this workflow."
+        )
         self._failures.selection_changed.connect(self._pick_failure)
         self._failures.activated.connect(self._pick_failure)
         layout.addWidget(self._failures, stretch=1)
@@ -308,8 +323,9 @@ class WorkflowsView(BaseView):
         self._open_worktree.clicked.connect(self._open_worktree_folder)
         action_row.addWidget(self._open_worktree)
         layout.addWidget(actions)
-        self._artifacts = TablePanel(_ARTIFACT_COLUMNS, "No artifacts",
-                                     "Artifacts appear here as stages produce them.")
+        self._artifacts = TablePanel(
+            _ARTIFACT_COLUMNS, "No artifacts", "Artifacts appear here as stages produce them."
+        )
         layout.addWidget(self._artifacts, stretch=1)
         return page
 
@@ -332,13 +348,12 @@ class WorkflowsView(BaseView):
     def _rename_workflow(self) -> None:
         row = self._current_row()
         if not row:
-            self.ctx.toast("No workflow selected",
-                           "Pick a workflow to rename it.", "warning")
+            self.ctx.toast("No workflow selected", "Pick a workflow to rename it.", "warning")
             return
         workflow_id = str(row.get("id") or "")
         text, accepted = QInputDialog.getText(
-            self, "Rename workflow", "Description:",
-            text=str(row.get("description") or ""))
+            self, "Rename workflow", "Description:", text=str(row.get("description") or "")
+        )
         if not accepted:
             return
         repository = self.repository()
@@ -350,8 +365,7 @@ class WorkflowsView(BaseView):
 
         self.submit(
             "rename-workflow",
-            lambda: self.ctx.controller.rename_workflow(
-                repository, workflow_id, text),
+            lambda: self.ctx.controller.rename_workflow(repository, workflow_id, text),
             done,
             lambda message: self.ctx.toast("Rename failed", message, "error"),
         )
@@ -359,21 +373,25 @@ class WorkflowsView(BaseView):
     def _delete_workflow(self) -> None:
         row = self._current_row()
         if not row:
-            self.ctx.toast("No workflow selected",
-                           "Pick a workflow to delete it.", "warning")
+            self.ctx.toast("No workflow selected", "Pick a workflow to delete it.", "warning")
             return
         workflow_id = str(row.get("id") or "")
         counts = self._payload if self._payload.get("workflow", {}).get("id") == workflow_id else {}
         parts = []
-        for key, label in (("tasks", "tasks"), ("runs", "runs"),
-                           ("verifications", "verification runs"),
-                           ("failures", "failures"), ("artifacts", "artifacts")):
+        for key, label in (
+            ("tasks", "tasks"),
+            ("runs", "runs"),
+            ("verifications", "verification runs"),
+            ("failures", "failures"),
+            ("artifacts", "artifacts"),
+        ):
             total = len(counts.get(key) or [])
             if total:
                 parts.append(f"{total} {label}")
         detail = f"\n\nRemoves {', '.join(parts)}." if parts else ""
         answer = QMessageBox.question(
-            self, "Delete workflow",
+            self,
+            "Delete workflow",
             f"Delete this workflow?\n\n{elide(row.get('description'), 80)}"
             f"{detail}\n\nOn-disk worktrees are left alone.",
         )
@@ -399,7 +417,8 @@ class WorkflowsView(BaseView):
         repository = self.repository()
         if not repository:
             self._list.set_empty_state(
-                "No repository selected", "Pick a repository from the top bar.")
+                "No repository selected", "Pick a repository from the top bar."
+            )
             return
 
         def load() -> object:
@@ -415,8 +434,9 @@ class WorkflowsView(BaseView):
             elif self._current_id:
                 self._load_current()
 
-        self.submit("workflows", load, done,
-                    lambda message: self.ctx.toast("Load failed", message, "error"))
+        self.submit(
+            "workflows", load, done, lambda message: self.ctx.toast("Load failed", message, "error")
+        )
 
     def show_workflow(self, workflow_id: str, task_id: str | None = None) -> None:
         """Open one workflow, keeping the selection across refreshes.
@@ -467,24 +487,33 @@ class WorkflowsView(BaseView):
 
         def records(key: str) -> list:
             value = payload.get(key)
-            return [row for row in value if isinstance(row, dict)] if isinstance(value, list) else []
+            return (
+                [row for row in value if isinstance(row, dict)] if isinstance(value, list) else []
+            )
 
         workflow = records("workflow")[0] if records("workflow") else {}
         tasks, runs = records("tasks"), records("runs")
         verifications, failures = records("verifications"), records("failures")
         artifacts = [row for row in (data.get("artifacts") or []) if isinstance(row, dict)]
         self._payload = {
-            "workflow": workflow, "tasks": tasks, "runs": runs,
-            "verifications": verifications, "failures": failures, "artifacts": artifacts,
-            "worktree_ref": payload.get("worktree_ref") if isinstance(
-                payload.get("worktree_ref"), dict) else {},
+            "workflow": workflow,
+            "tasks": tasks,
+            "runs": runs,
+            "verifications": verifications,
+            "failures": failures,
+            "artifacts": artifacts,
+            "worktree_ref": payload.get("worktree_ref")
+            if isinstance(payload.get("worktree_ref"), dict)
+            else {},
         }
 
         live = projection.build_live_panel(
-            workflow, tasks, runs, verifications, failures, events=data.get("events"))
+            workflow, tasks, runs, verifications, failures, events=data.get("events")
+        )
         self._apply_state(
-            projection.cancellation_state(live, self._cancel_requested,
-                                          self.ctx.operation_active()),
+            projection.cancellation_state(
+                live, self._cancel_requested, self.ctx.operation_active()
+            ),
             workflow,
         )
         self._live.set_live(live)
@@ -503,26 +532,29 @@ class WorkflowsView(BaseView):
         self._apply_worktree(data.get("readiness"))
         self._select_by_id(self._tasks, self._selected_task_id or "")
 
-    def _apply_tally(self, tasks: list, runs: list, verifications: list,
-                     failures: list) -> None:
+    def _apply_tally(self, tasks: list, runs: list, verifications: list, failures: list) -> None:
         counts: dict[str, int] = {}
         for row in tasks:
             key = str(row.get("status") or "pending")
             counts[key] = counts.get(key, 0) + 1
         verification_totals = projection.verification_totals(verifications)
-        self._tally.set_items([
-            ("Tasks", len(tasks), "active"),
-            ("Passed", counts.get("passed", 0), "passed"),
-            ("Running", counts.get("running", 0), "running"),
-            ("Failed", counts.get("failed", 0) + counts.get("blocked", 0), "failed"),
-            ("Runs", len(runs), "active"),
-            ("Failures", len(failures), "failed" if failures else "pending"),
-        ])
-        self._checks_tally.set_items([
-            ("Checks passed", int(verification_totals["passed"]), "passed"),
-            ("Checks failed", int(verification_totals["failed"]), "failed"),
-            ("Checks skipped", int(verification_totals["skipped"]), "skipped"),
-        ])
+        self._tally.set_items(
+            [
+                ("Tasks", len(tasks), "active"),
+                ("Passed", counts.get("passed", 0), "passed"),
+                ("Running", counts.get("running", 0), "running"),
+                ("Failed", counts.get("failed", 0) + counts.get("blocked", 0), "failed"),
+                ("Runs", len(runs), "active"),
+                ("Failures", len(failures), "failed" if failures else "pending"),
+            ]
+        )
+        self._checks_tally.set_items(
+            [
+                ("Checks passed", int(verification_totals["passed"]), "passed"),
+                ("Checks failed", int(verification_totals["failed"]), "failed"),
+                ("Checks skipped", int(verification_totals["skipped"]), "skipped"),
+            ]
+        )
 
     def _apply_state(self, state: dict, workflow: dict) -> None:
         """Reflect run/cancel state everywhere it changes what is possible.
@@ -534,11 +566,11 @@ class WorkflowsView(BaseView):
         status = str(workflow.get("status") or "pending")
         self._cancellation = state
         self._status_badge.set_status(state.get("state") or status)
-        self._cancel.setVisible(bool(state.get("cancellable"))
-                                or bool(state.get("cancel_requested")))
+        self._cancel.setVisible(
+            bool(state.get("cancellable")) or bool(state.get("cancel_requested"))
+        )
         self._cancel.setEnabled(bool(state.get("cancellable")))
-        self._cancel.setText(
-            "Cancelling" if state.get("cancel_requested") else "Cancel run")
+        self._cancel.setText("Cancelling" if state.get("cancel_requested") else "Cancel run")
         self._recover.setVisible(not state.get("running"))
 
     def _apply_worktree(self, readiness: object) -> None:
@@ -552,7 +584,8 @@ class WorkflowsView(BaseView):
         self._worktree_grid.add_row("Branch", worktree.get("branch") or "none")
         self._worktree_grid.add_row("Base branch", worktree.get("base_branch"))
         self._worktree_grid.add_row(
-            "Base commit", short_id(worktree.get("base_commit"), 10), mono_value=True)
+            "Base commit", short_id(worktree.get("base_commit"), 10), mono_value=True
+        )
         self._worktree_grid.add_row("Path", worktree.get("path") or "none", mono_value=True)
         self._worktree_grid.add_row(
             "Changed files",
@@ -560,18 +593,26 @@ class WorkflowsView(BaseView):
             + ("  (working tree dirty)" if worktree.get("dirty") else ""),
         )
         self._worktree_grid.add_row(
-            "Merge readiness", str(merge.get("label") or "unknown"),
+            "Merge readiness",
+            str(merge.get("label") or "unknown"),
             mono_value=bool(merge.get("ready")),
         )
         reasons = merge.get("reasons") or []
         self._worktree_grid.add_row(
-            "Blocked by", "; ".join(str(reason) for reason in reasons) or "nothing")
+            "Blocked by", "; ".join(str(reason) for reason in reasons) or "nothing"
+        )
         self._worktree_grid.add_row("Diff", worktree.get("diff_stat"), mono_value=True)
-        self._readiness.set_items([
-            ("Ready to merge", 1 if merge.get("ready") else 0, str(merge.get("state") or "blocked")),
-            ("Changed files", int(worktree.get("changed_count") or 0), "active"),
-            ("Blocking reasons", len(reasons), "failed" if reasons else "passed"),
-        ])
+        self._readiness.set_items(
+            [
+                (
+                    "Ready to merge",
+                    1 if merge.get("ready") else 0,
+                    str(merge.get("state") or "blocked"),
+                ),
+                ("Changed files", int(worktree.get("changed_count") or 0), "active"),
+                ("Blocking reasons", len(reasons), "failed" if reasons else "passed"),
+            ]
+        )
         # A worktree must not be merged or cleaned out from under a live run, so
         # those actions wait on the recorded cancellation state, not on whether
         # a button happens to be enabled at this instant.
@@ -615,8 +656,10 @@ class WorkflowsView(BaseView):
     def _pick_task(self, row: object) -> None:
         detail = projection.task_detail(
             row if isinstance(row, dict) else {},
-            self._payload.get("runs"), self._payload.get("verifications"),
-            self._payload.get("failures"), self._payload.get("artifacts"),
+            self._payload.get("runs"),
+            self._payload.get("verifications"),
+            self._payload.get("failures"),
+            self._payload.get("artifacts"),
         )
         self._selected_task_id = detail.get("id") or None
         self._task_detail.clear()
@@ -625,24 +668,23 @@ class WorkflowsView(BaseView):
         self._task_detail.add_row("Agent", detail.get("agent") or "unassigned")
         self._task_detail.add_row("Status", detail.get("status"))
         self._task_detail.add_row("Attempts", detail.get("attempts"))
-        self._task_detail.add_row(
-            "Dependencies", ", ".join(detail["dependencies"]) or "none")
+        self._task_detail.add_row("Dependencies", ", ".join(detail["dependencies"]) or "none")
         self._task_detail.add_row(
             "Verification",
             f"{detail.get('verification')}  (verified: "
-            f"{'yes' if detail.get('verified') else 'no'})")
+            f"{'yes' if detail.get('verified') else 'no'})",
+        )
         self._task_detail.add_row("Created", format_timestamp(detail.get("created_at")))
         self._task_detail.add_row("Started", format_timestamp(detail.get("started_at")))
         self._task_detail.add_row("Finished", format_timestamp(detail.get("finished_at")))
         self._task_detail.add_row(
-            "Related runs", f"{len(detail['runs'])}",
+            "Related runs",
+            f"{len(detail['runs'])}",
         )
-        self._task_detail.add_row(
-            "Related verifications", f"{len(detail['verifications'])}")
+        self._task_detail.add_row("Related verifications", f"{len(detail['verifications'])}")
         self._task_detail.add_row("Related failures", f"{len(detail['failures'])}")
         self._task_detail.add_row("Related artifacts", f"{len(detail['artifacts'])}")
-        self._task_detail.add_row("Result", elide(detail.get("result"), 400),
-                                  mono_value=True)
+        self._task_detail.add_row("Result", elide(detail.get("result"), 400), mono_value=True)
 
     def _pick_run(self, row: object) -> None:
         detail = projection.run_detail(row if isinstance(row, dict) else {})
@@ -658,8 +700,7 @@ class WorkflowsView(BaseView):
         self._run_detail.add_row("Ended", format_timestamp(detail.get("ended_at")))
         self._run_detail.add_row("Worktree", detail.get("worktree"), mono_value=True)
         self._run_detail.add_row("Relationship", detail.get("relationship"))
-        self._run_detail.add_row(
-            "Changed files", ", ".join(detail["files_changed"]) or "none")
+        self._run_detail.add_row("Changed files", ", ".join(detail["files_changed"]) or "none")
         self._run_detail.add_row("Diff", detail.get("diff_stat"), mono_value=True)
         self._run_detail.add_row("Error", elide(detail.get("error"), 200))
         self._run_detail.add_row(
@@ -688,8 +729,9 @@ class WorkflowsView(BaseView):
     def _pick_verification(self, row: object) -> None:
         if not isinstance(row, dict):
             self._checks.set_rows([])
-            self._checks.set_empty_state("Select a verification run",
-                                         "Individual checks appear here.")
+            self._checks.set_empty_state(
+                "Select a verification run", "Individual checks appear here."
+            )
             return
         run_id = str(row.get("id") or "")
         repository = self.repository()
@@ -704,30 +746,35 @@ class WorkflowsView(BaseView):
             totals = projection.verification_totals([], rows)
             self._checks.set_empty_state(
                 str(totals["summary"]) if rows else "No checks recorded",
-                "" if rows else "This verification run recorded no individual checks.")
+                "" if rows else "This verification run recorded no individual checks.",
+            )
 
-        self.submit("checks", load, done,
-                    lambda message: self.ctx.toast("Checks unavailable", message, "error"))
+        self.submit(
+            "checks",
+            load,
+            done,
+            lambda message: self.ctx.toast("Checks unavailable", message, "error"),
+        )
 
     def _pick_failure(self, row: object) -> None:
         detail = projection.failure_summary(
             row if isinstance(row, dict) else {},
-            self._payload.get("runs"), self._payload.get("tasks"),
+            self._payload.get("runs"),
+            self._payload.get("tasks"),
         )
         self._failure_grid.clear()
         self._failure_grid.add_row("Category", detail.get("category"))
         self._failure_grid.add_row("Severity", detail.get("severity"))
         self._failure_grid.add_row("Recommended action", detail.get("action"))
-        self._failure_grid.add_row(
-            "Retryable", "yes" if detail.get("retryable") else "no")
-        self._failure_grid.add_row(
-            "Repairable", "yes" if detail.get("repairable") else "no")
+        self._failure_grid.add_row("Retryable", "yes" if detail.get("retryable") else "no")
+        self._failure_grid.add_row("Repairable", "yes" if detail.get("repairable") else "no")
         self._failure_grid.add_row("Recovery", detail.get("recovery_state") or "none")
         self._failure_grid.add_row("Task", detail.get("task_label"))
         self._failure_grid.add_row("Run", detail.get("run_label") or "none")
         self._failure_grid.add_row("Created", format_timestamp(detail.get("created_at")))
         evidence = "\n".join(
-            part for part in (str(detail.get("error") or ""), str(detail.get("evidence") or ""))
+            part
+            for part in (str(detail.get("error") or ""), str(detail.get("evidence") or ""))
             if part
         )
         self._failure_error.set_log(evidence)
@@ -752,8 +799,9 @@ class WorkflowsView(BaseView):
         self._cancel.setEnabled(False)
         self._cancel.setText("Cancelling")
         self._status_badge.set_status("cancelling")
-        self.ctx.toast("Cancellation requested",
-                       "The running operation will stop shortly.", "warning")
+        self.ctx.toast(
+            "Cancellation requested", "The running operation will stop shortly.", "warning"
+        )
         self.refresh()
 
     def _recover_workflow(self) -> None:
@@ -777,9 +825,11 @@ class WorkflowsView(BaseView):
             self.ctx.toast("Recovery applied", counts, "success")
             self.refresh()
 
-        self.submit("recover",
-                    lambda: self.ctx.controller.recover_interrupted(repository, workflow_id),
-                    done)
+        self.submit(
+            "recover",
+            lambda: self.ctx.controller.recover_interrupted(repository, workflow_id),
+            done,
+        )
 
     def _worktree_path(self) -> str:
         return str((self._payload.get("worktree_ref") or {}).get("path") or "")
@@ -788,22 +838,21 @@ class WorkflowsView(BaseView):
         path = self._worktree_path()
         if not path:
             return
-        if not _confirm("Retry merge",
-                        f"Merge this managed worktree branch into the current base "
-                        f"branch now?\n\n{path}"):
+        if not _confirm(
+            "Retry merge",
+            f"Merge this managed worktree branch into the current base branch now?\n\n{path}",
+        ):
             return
         repository = self.repository()
 
         def done(result: object) -> None:
             payload = result if isinstance(result, dict) else {}
             self.ctx.toast(
-                "Merged",
-                f"{payload.get('branch')} -> {payload.get('base_branch')}",
-                "success")
+                "Merged", f"{payload.get('branch')} -> {payload.get('base_branch')}", "success"
+            )
             self.refresh()
 
-        self.submit("merge",
-                    lambda: self.ctx.controller.retry_merge(repository, path), done)
+        self.submit("merge", lambda: self.ctx.controller.retry_merge(repository, path), done)
 
     def _cleanup_worktree(self) -> None:
         path = self._worktree_path()
@@ -819,13 +868,15 @@ class WorkflowsView(BaseView):
 
         def done(result: object) -> None:
             payload = result if isinstance(result, dict) else {}
-            detail = ("Its branch was deleted." if payload.get("deleted_branch")
-                      else "The branch was preserved.")
+            detail = (
+                "Its branch was deleted."
+                if payload.get("deleted_branch")
+                else "The branch was preserved."
+            )
             self.ctx.toast("Worktree removed", detail, "success")
             self.refresh()
 
-        self.submit("cleanup",
-                    lambda: self.ctx.controller.cleanup_worktree(repository, path), done)
+        self.submit("cleanup", lambda: self.ctx.controller.cleanup_worktree(repository, path), done)
 
     def _open_worktree_folder(self) -> None:
         path = self._worktree_path()
@@ -838,8 +889,15 @@ class WorkflowsView(BaseView):
 
     def on_operation_event(self, event: dict[str, object]) -> None:
         kind = str(event.get("kind") or "")
-        if kind not in ("workflow-started", "workflow-result", "result",
-                        "thread-finished", "cancelled", "error", "conflict"):
+        if kind not in (
+            "workflow-started",
+            "workflow-result",
+            "result",
+            "thread-finished",
+            "cancelled",
+            "error",
+            "conflict",
+        ):
             return
         if kind in ("thread-finished", "workflow-result"):
             self._cancel_requested = False

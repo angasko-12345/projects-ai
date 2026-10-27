@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 from agentops.config import AgentConfig, AppConfig, load_config
 from agentops.events import EventType
-from agentops.registry import AgentHealth,  AgentRegistry, DetectedAgent
+from agentops.registry import AgentHealth, AgentRegistry, DetectedAgent
 from agentops.routing import (
     AgentCapabilityResolver,
     AgentProfile,
@@ -55,10 +55,8 @@ def _profiles(*detected: DetectedAgent) -> tuple[AgentProfile, ...]:
     return tuple(resolver.profile(item) for item in detected)
 
 
-
 def _registry_with(name):
-    return AppConfig({name: _config(name, ("implementation",))},
-                     {"implementation": (name,)})
+    return AppConfig({name: _config(name, ("implementation",))}, {"implementation": (name,)})
 
 
 class AgentCapabilityResolverTests(unittest.TestCase):
@@ -111,15 +109,15 @@ class AgentCapabilityResolverTests(unittest.TestCase):
         self.assertEqual(required, tuple(sorted(required)))
 
     def test_declared_legacy_capabilities_expand_to_task_capabilities(self):
-        coding = self.resolver.profile(_detected(_config(
-            "coder", ("architecture",), capabilities=("coding",)
-        )))
+        coding = self.resolver.profile(
+            _detected(_config("coder", ("architecture",), capabilities=("coding",)))
+        )
         self.assertIn("implementation", coding.capabilities)
         self.assertIn("refactoring", coding.capabilities)
         self.assertIn("testing", coding.capabilities)
-        reviewing = self.resolver.profile(_detected(_config(
-            "reviewer", ("architecture",), capabilities=("review",)
-        )))
+        reviewing = self.resolver.profile(
+            _detected(_config("reviewer", ("architecture",), capabilities=("review",)))
+        )
         self.assertIn("code review", reviewing.capabilities)
         self.assertIn("security review", reviewing.capabilities)
 
@@ -160,7 +158,10 @@ class AgentRouterTests(unittest.TestCase):
             required_capabilities=("implementation",),
             available_agents=self.profiles,
             user_preferences=("preferred",),
-            historical_performance={"fallback": {"success_rate": 1.0}, "preferred": {"success_rate": 0.1}},
+            historical_performance={
+                "fallback": {"success_rate": 1.0},
+                "preferred": {"success_rate": 0.1},
+            },
         )
         self.assertEqual(decision.selected_agent.identifier, "preferred")
         self.assertIn("preferred agent", " ".join(decision.reasons).lower())
@@ -176,7 +177,9 @@ class AgentRouterTests(unittest.TestCase):
             user_preferences=("preferred", "fallback"),
         )
         self.assertEqual(decision.selected_agent.identifier, "fallback")
-        self.assertTrue(any("unavailable" in item.reasons[0].lower() for item in decision.rejected_candidates))
+        self.assertTrue(
+            any("unavailable" in item.reasons[0].lower() for item in decision.rejected_candidates)
+        )
 
     def test_disabled_agent_is_rejected(self):
         disabled = _detected(_config("disabled", ("implementation",), enabled=False))
@@ -188,7 +191,9 @@ class AgentRouterTests(unittest.TestCase):
             user_preferences=("disabled", "fallback"),
         )
         self.assertEqual(decision.selected_agent.identifier, "fallback")
-        self.assertTrue(any("disabled" in item.reasons[0].lower() for item in decision.rejected_candidates))
+        self.assertTrue(
+            any("disabled" in item.reasons[0].lower() for item in decision.rejected_candidates)
+        )
 
     def test_missing_required_capability_is_explainable(self):
         decision = AgentRouter(resolver=self.resolver).route(
@@ -199,7 +204,9 @@ class AgentRouterTests(unittest.TestCase):
         )
         self.assertIsNone(decision.selected_agent)
         self.assertEqual(len(decision.rejected_candidates), 1)
-        self.assertTrue(any("security review" in reason for reason in decision.rejected_candidates[0].reasons))
+        self.assertTrue(
+            any("security review" in reason for reason in decision.rejected_candidates[0].reasons)
+        )
         self.assertTrue(decision.constraints)
 
     def test_decision_exposes_alternatives_reasons_rejections_and_constraints(self):
@@ -234,7 +241,9 @@ class AgentRouterTests(unittest.TestCase):
 
     def test_inferred_task_fit_scores_but_does_not_gate_selection(self):
         plain = _detected(_config("plain", ("implementation",)))
-        documented = _detected(_config("documented", ("implementation",), capabilities=("documentation",)))
+        documented = _detected(
+            _config("documented", ("implementation",), capabilities=("documentation",))
+        )
         plain_profile, documented_profile = _profiles(plain, documented)
         decision = AgentRouter(resolver=self.resolver).route(
             role="implementation",
@@ -265,7 +274,9 @@ class AgentRouterTests(unittest.TestCase):
             excluded=("preferred",),
         )
         self.assertEqual(decision.selected_agent.identifier, "fallback")
-        self.assertTrue(any("excluded" in reason.lower() for reason in decision.rejected_candidates[0].reasons))
+        self.assertTrue(
+            any("excluded" in reason.lower() for reason in decision.rejected_candidates[0].reasons)
+        )
 
     def test_single_profile_is_accepted_without_iteration(self):
         decision = AgentRouter(resolver=self.resolver).route(
@@ -296,7 +307,6 @@ class AgentRouterTests(unittest.TestCase):
             user_preferences=("preferred", "fallback"),
         )
         self.assertEqual(enabled_decision.selected_agent.identifier, "preferred")
-
 
     @patch("agentops.config._load_data")
     @patch("agentops.registry.subprocess.run")
@@ -335,7 +345,9 @@ class AgentRouterTests(unittest.TestCase):
         self.assertIsNotNone(selected)
         assert selected is not None
         self.assertEqual(selected.config.name, "coder")
-        self.assertIsNone(registry.select("implementation", required_capabilities=("security review",)))
+        self.assertIsNone(
+            registry.select("implementation", required_capabilities=("security review",))
+        )
 
 
 class ConfigRoutingTests(unittest.TestCase):
@@ -376,10 +388,12 @@ class RegistryProfileTests(unittest.TestCase):
     def test_non_ascii_version_output_never_breaks_detection(self, run, which):
         which.return_value = "/bin/pi"
         run.side_effect = UnicodeDecodeError("cp1252", b"\xff", 0, 1, "invalid start byte")
-        registry = AgentRegistry(AppConfig(
-            {"pi": _config("pi", ("implementation",))},
-            {"implementation": ("pi",)},
-        ))
+        registry = AgentRegistry(
+            AppConfig(
+                {"pi": _config("pi", ("implementation",))},
+                {"implementation": ("pi",)},
+            )
+        )
         detected = registry.detect()["pi"]
         self.assertTrue(detected.available)
         self.assertEqual(detected.executable, "/bin/pi")
@@ -405,8 +419,12 @@ class WorkflowRoutingTests(unittest.TestCase):
     def setUp(self):
         self.config = AppConfig(
             {
-                "first": _config("first", ("architecture", "implementation", "review", "debugging")),
-                "second": _config("second", ("architecture", "implementation", "review", "debugging")),
+                "first": _config(
+                    "first", ("architecture", "implementation", "review", "debugging")
+                ),
+                "second": _config(
+                    "second", ("architecture", "implementation", "review", "debugging")
+                ),
             },
             {
                 role: ("first", "second")
@@ -429,7 +447,9 @@ class WorkflowRoutingTests(unittest.TestCase):
                 '"non_blocking":[],"confidence":0.99}'
             )
             task_text = review_verdict if role == "review" else "done"
-            return RunResult(agent.config.name, ("fake",), 0, task_text, "", 0.01, False, Path(f"{task_id}.log"))
+            return RunResult(
+                agent.config.name, ("fake",), 0, task_text, "", 0.01, False, Path(f"{task_id}.log")
+            )
 
         self.runner.run_agent = run_agent
         self.verifier = MagicMock()
@@ -488,7 +508,9 @@ class WorkflowRoutingTests(unittest.TestCase):
         passed = MagicMock(succeeded=True, output="tests passed")
         self.verifier.run = MagicMock(side_effect=lambda *a, **k: asyncio.sleep(0, result=[passed]))
         engine = WorkflowEngine(self.config, self.state, self.registry, self.runner, self.verifier)
-        engine._repository_characteristics = MagicMock(side_effect=RuntimeError("inspection exploded"))
+        engine._repository_characteristics = MagicMock(
+            side_effect=RuntimeError("inspection exploded")
+        )
         result = asyncio.run(engine.run_high_level("Add routing", Path.cwd()))
         self.assertTrue(result.ready)
 
@@ -584,7 +606,10 @@ class RepositoryCharacteristicRoutingTests(unittest.TestCase):
 
     def test_explicit_user_preference_beats_derived_signals(self):
         decision = self._route(
-            repository_characteristics={"requires_tests": True, "repository_exploration_required": True},
+            repository_characteristics={
+                "requires_tests": True,
+                "repository_exploration_required": True,
+            },
             user_preferences=("plain",),
         )
         self.assertEqual("plain", decision.selected_agent.identifier)
@@ -623,7 +648,8 @@ class RepositoryCharacteristicRoutingTests(unittest.TestCase):
         from agentops.repo_inspection import RepoCharacteristics
 
         required = self.resolver.required_capabilities(
-            "architecture", "Design the module layout",
+            "architecture",
+            "Design the module layout",
             RepoCharacteristics(test_runner="pytest").routing_flags(),
         )
         self.assertIn("testing", required)
@@ -661,7 +687,11 @@ class WorkflowRepositoryCharacteristicTests(unittest.TestCase):
 
         spy_router.route = spy_route
         engine = WorkflowEngine(
-            self.config, self.state, registry, self.runner, self.verifier,
+            self.config,
+            self.state,
+            registry,
+            self.runner,
+            self.verifier,
             router=spy_router,
         )
         return engine, calls
@@ -688,10 +718,15 @@ class WorkflowRepositoryCharacteristicTests(unittest.TestCase):
 
     def test_precomputed_characteristics_are_used_without_rescanning(self):
         engine, calls = self._engine()
-        precomputed = {"requires_tests": True, "repository_exploration_required": False,
-                       "security_sensitive": False, "documentation_required": False}
+        precomputed = {
+            "requires_tests": True,
+            "repository_exploration_required": False,
+            "security_sensitive": False,
+            "documentation_required": False,
+        }
         with patch.object(
-            engine.repo_inspector, "routing_flags",
+            engine.repo_inspector,
+            "routing_flags",
             side_effect=AssertionError("must not rescan"),
         ):
             engine._select_agent(self._implementation_task(), set(), Path.cwd(), precomputed)
@@ -700,7 +735,8 @@ class WorkflowRepositoryCharacteristicTests(unittest.TestCase):
     def test_inspection_failure_degrades_to_empty_characteristics(self):
         engine, calls = self._engine()
         with patch.object(
-            engine.repo_inspector, "routing_flags",
+            engine.repo_inspector,
+            "routing_flags",
             side_effect=RuntimeError("inspector exploded"),
         ):
             selected = engine._select_agent(self._implementation_task(), set(), Path.cwd())
@@ -749,8 +785,10 @@ class AgentHealthTests(unittest.TestCase):
     @patch("agentops.registry.shutil.which")
     def test_disabled_agent_is_blocked(self, which):
         which.return_value = "/bin/off"
-        config = AppConfig({"off": _config("off", ("implementation",), enabled=False)},
-                           {"implementation": ("off",)})
+        config = AppConfig(
+            {"off": _config("off", ("implementation",), enabled=False)},
+            {"implementation": ("off",)},
+        )
         agent = AgentRegistry(config).detect()["off"]
         self.assertIs(agent.health, AgentHealth.BLOCKED)
         self.assertEqual(agent.status, "DISABLED")

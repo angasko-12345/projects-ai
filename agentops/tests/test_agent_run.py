@@ -68,9 +68,13 @@ class TimeoutProcess:
 
 def _agent(name="demo", timeout_seconds=30, model=None):
     config = AgentConfig(
-        name, sys.executable, ("-c", "print('ok')"),
+        name,
+        sys.executable,
+        ("-c", "print('ok')"),
         ("architecture", "implementation", "debugging", "review"),
-        timeout_seconds, True, model,
+        timeout_seconds,
+        True,
+        model,
     )
     return DetectedAgent(config, True, sys.executable)
 
@@ -79,14 +83,17 @@ def _workflow_config(**overrides):
     values = {"max_attempts": 2, "concurrency": 1, "max_repair_cycles": 1}
     values.update(overrides)
     config = AgentConfig(
-        "worker", "fake", ("{prompt}",),
+        "worker",
+        "fake",
+        ("{prompt}",),
         ("architecture", "implementation", "debugging", "review"),
     )
     return AppConfig(
         {"worker": config},
-        {role: ("worker",) for role in (
-            "architecture", "implementation", "debugging", "review")},
-        (), max_attempts=values["max_attempts"], concurrency=values["concurrency"],
+        {role: ("worker",) for role in ("architecture", "implementation", "debugging", "review")},
+        (),
+        max_attempts=values["max_attempts"],
+        concurrency=values["concurrency"],
         max_repair_cycles=values["max_repair_cycles"],
     )
 
@@ -209,14 +216,24 @@ class AgentRunPersistenceTests(unittest.TestCase):
         state = StateStore(":memory:")
         try:
             workflow_id = state.create_workflow("retry workflow")
-            parent = state.create_agent_run(AgentRunContext(
-                agent="demo", workflow_id=workflow_id, task_id="task-1", attempt=1))
+            parent = state.create_agent_run(
+                AgentRunContext(agent="demo", workflow_id=workflow_id, task_id="task-1", attempt=1)
+            )
             state.start_agent_run(parent.id)
             state.mark_agent_run_running(parent.id)
-            state.finish_agent_run(parent.id, AgentRunOutcome(status=AgentRunStatus.FAILED, exit_code=1))
-            child = state.create_agent_run(AgentRunContext(
-                agent="demo", workflow_id=workflow_id, task_id="task-1", attempt=2,
-                parent_run_id=parent.id, relationship=AgentRunRelationship.RETRY))
+            state.finish_agent_run(
+                parent.id, AgentRunOutcome(status=AgentRunStatus.FAILED, exit_code=1)
+            )
+            child = state.create_agent_run(
+                AgentRunContext(
+                    agent="demo",
+                    workflow_id=workflow_id,
+                    task_id="task-1",
+                    attempt=2,
+                    parent_run_id=parent.id,
+                    relationship=AgentRunRelationship.RETRY,
+                )
+            )
             self.assertEqual(child.parent_run_id, parent.id)
             self.assertEqual(child.retry_of, parent.id)
             self.assertIsNone(child.repair_of)
@@ -255,7 +272,8 @@ class AgentRunPersistenceTests(unittest.TestCase):
                     state.start_agent_run(run.id)
                     state.mark_agent_run_running(run.id)
                     state.finish_agent_run(
-                        run.id, AgentRunOutcome(status=AgentRunStatus.COMPLETED, exit_code=0))
+                        run.id, AgentRunOutcome(status=AgentRunStatus.COMPLETED, exit_code=0)
+                    )
                     results.append(run.id)
                 except BaseException as error:
                     errors.append(error)
@@ -288,21 +306,29 @@ class RunnerAgentRunTests(unittest.TestCase):
                 prompt = f"implement safely {SECRET}"
                 command = (sys.executable, prompt)
                 create_process.return_value = FakeProcess(b"done\n", b"", 0)
-                result = asyncio.run(runner.run_agent(
-                    agent, prompt, directory, "task-1", run_context=AgentRunContext(
-                        agent=agent.config.name,
-                        executable=sys.executable,
-                        role="implementation",
-                        model="test-model",
-                        workflow_id=workflow_id,
-                        task_id="task-1",
-                        attempt=1,
-                        working_directory=directory,
-                        prompt=prompt,
-                        command=command,
-                    ),
-                    metadata_collector=lambda path: AgentRunMetadata(("changed.txt",), " changed.txt | 1 +"),
-                ))
+                result = asyncio.run(
+                    runner.run_agent(
+                        agent,
+                        prompt,
+                        directory,
+                        "task-1",
+                        run_context=AgentRunContext(
+                            agent=agent.config.name,
+                            executable=sys.executable,
+                            role="implementation",
+                            model="test-model",
+                            workflow_id=workflow_id,
+                            task_id="task-1",
+                            attempt=1,
+                            working_directory=directory,
+                            prompt=prompt,
+                            command=command,
+                        ),
+                        metadata_collector=lambda path: AgentRunMetadata(
+                            ("changed.txt",), " changed.txt | 1 +"
+                        ),
+                    )
+                )
                 self.assertTrue(result.succeeded)
                 self.assertIsNotNone(result.run_id)
                 assert result.run_id is not None
@@ -341,8 +367,11 @@ class RunnerAgentRunTests(unittest.TestCase):
             state, runner = self._harness(directory)
             try:
                 create_process.return_value = TimeoutProcess()
-                result = asyncio.run(runner.run_agent(
-                    _agent(timeout_seconds=1), "slow", directory, timeout_seconds=0.05))
+                result = asyncio.run(
+                    runner.run_agent(
+                        _agent(timeout_seconds=1), "slow", directory, timeout_seconds=0.05
+                    )
+                )
                 self.assertTrue(result.timed_out)
                 assert result.run_id is not None
                 run = state.get_agent_run(result.run_id)
@@ -361,8 +390,9 @@ class RunnerAgentRunTests(unittest.TestCase):
                 cancel_event = threading.Event()
                 cancel_event.set()
                 with self.assertRaises(OperationCancelled):
-                    asyncio.run(runner.run_agent(
-                        _agent(), "cancel", directory, cancel_event=cancel_event))
+                    asyncio.run(
+                        runner.run_agent(_agent(), "cancel", directory, cancel_event=cancel_event)
+                    )
                 runs = state.list_agent_runs(status=AgentRunStatus.CANCELLED)
                 self.assertEqual(len(runs), 1)
                 self.assertTrue(runs[0].cancelled)
@@ -390,19 +420,37 @@ class WorkflowAgentRunTests(unittest.TestCase):
         config, state, registry, runner, verifier = _workflow_harness()
         calls: list[str] = []
 
-        async def _run_agent(agent, prompt, directory, task_id, cancel_event=None,
-                            run_context=None, run_observer=None, metadata_collector=None):
+        async def _run_agent(
+            agent,
+            prompt,
+            directory,
+            task_id,
+            cancel_event=None,
+            run_context=None,
+            run_observer=None,
+            metadata_collector=None,
+        ):
             calls.append(task_id)
             code = 1 if len(calls) == 1 else 0
-            return RunResult(agent.config.name, ("fake",), code, "output", "", 0.01, False, Path("fake.log"))
+            return RunResult(
+                agent.config.name, ("fake",), code, "output", "", 0.01, False, Path("fake.log")
+            )
 
         runner.run_agent = _run_agent
         try:
-            engine = WorkflowEngine(config, state, registry, runner, verifier,
-                                    metadata_collector=_declared_evidence())
-            workflow_id, _ = engine.create_workflow("retry", [{
-                "id": "work", "description": "do work", "role": "implementation",
-            }])
+            engine = WorkflowEngine(
+                config, state, registry, runner, verifier, metadata_collector=_declared_evidence()
+            )
+            workflow_id, _ = engine.create_workflow(
+                "retry",
+                [
+                    {
+                        "id": "work",
+                        "description": "do work",
+                        "role": "implementation",
+                    }
+                ],
+            )
             asyncio.run(engine.execute(workflow_id, Path.cwd()))
             task = state.list_tasks(workflow_id)[0]
             self.assertEqual(task.status, TaskStatus.PASSED)
@@ -420,31 +468,44 @@ class WorkflowAgentRunTests(unittest.TestCase):
     def test_repair_run_links_to_source_run(self):
         config, state, registry, runner, verifier = _workflow_harness()
 
-        async def _run_agent(agent, prompt, directory, task_id, cancel_event=None,
-                            run_context=None, run_observer=None, metadata_collector=None):
+        async def _run_agent(
+            agent,
+            prompt,
+            directory,
+            task_id,
+            cancel_event=None,
+            run_context=None,
+            run_observer=None,
+            metadata_collector=None,
+        ):
             role = state.get_task(task_id).role
             stdout = (
                 '{"schema_version":1,"verdict":"approve","blocking":[],'
                 '"non_blocking":[],"confidence":0.99}'
-                if role == "review" else "done"
+                if role == "review"
+                else "done"
             )
-            return RunResult(agent.config.name, ("fake",), 0, stdout, "", 0.01, False, Path("fake.log"))
+            return RunResult(
+                agent.config.name, ("fake",), 0, stdout, "", 0.01, False, Path("fake.log")
+            )
 
         runner.run_agent = _run_agent
         failed = MagicMock(succeeded=False, output="test failed")
         passed = MagicMock(succeeded=True, output="tests passed")
-        verifier.run = MagicMock(side_effect=[
-            asyncio.sleep(0, result=[failed]),
-            asyncio.sleep(0, result=[passed]),
-        ])
+        verifier.run = MagicMock(
+            side_effect=[
+                asyncio.sleep(0, result=[failed]),
+                asyncio.sleep(0, result=[passed]),
+            ]
+        )
         try:
-            engine = WorkflowEngine(config, state, registry, runner, verifier,
-                                    metadata_collector=_declared_evidence())
+            engine = WorkflowEngine(
+                config, state, registry, runner, verifier, metadata_collector=_declared_evidence()
+            )
             result = asyncio.run(engine.run_high_level("repair flow", Path.cwd()))
             self.assertTrue(result.ready)
             repair = next(
-                run for run in state.list_agent_runs(result.workflow_id)
-                if run.role == "debugging"
+                run for run in state.list_agent_runs(result.workflow_id) if run.role == "debugging"
             )
             self.assertEqual(repair.status, AgentRunStatus.COMPLETED)
             self.assertEqual(repair.relationship, AgentRunRelationship.REPAIR)
@@ -462,11 +523,14 @@ class InspectionTests(unittest.TestCase):
             state = StateStore(root / ".agentops" / "state.sqlite")
             try:
                 workflow_id = state.create_workflow("inspection workflow")
-                run = state.create_agent_run(AgentRunContext(
-                    agent="demo", workflow_id=workflow_id, task_id="task-1"))
+                run = state.create_agent_run(
+                    AgentRunContext(agent="demo", workflow_id=workflow_id, task_id="task-1")
+                )
                 state.start_agent_run(run.id)
                 state.mark_agent_run_running(run.id)
-                state.finish_agent_run(run.id, AgentRunOutcome(status=AgentRunStatus.COMPLETED, exit_code=0))
+                state.finish_agent_run(
+                    run.id, AgentRunOutcome(status=AgentRunStatus.COMPLETED, exit_code=0)
+                )
             finally:
                 state.close()
             output = io.StringIO()
@@ -484,7 +548,9 @@ class InspectionTests(unittest.TestCase):
             try:
                 workflow_id = state.create_workflow("status workflow")
                 run = state.create_agent_run(AgentRunContext(agent="demo", workflow_id=workflow_id))
-                state.finish_agent_run(run.id, AgentRunOutcome(status=AgentRunStatus.FAILED, exit_code=1))
+                state.finish_agent_run(
+                    run.id, AgentRunOutcome(status=AgentRunStatus.FAILED, exit_code=1)
+                )
             finally:
                 state.close()
             output = io.StringIO()
@@ -501,13 +567,24 @@ class InspectionTests(unittest.TestCase):
             state = StateStore(root / ".agentops" / "state.sqlite")
             try:
                 workflow_id = state.create_workflow("controller workflow")
-                run = state.create_agent_run(AgentRunContext(
-                    agent="demo", executable="/resolved/demo", role="implementation",
-                    model="test-model", workflow_id=workflow_id, task_id="task-1"))
-                state.finish_agent_run(run.id, AgentRunOutcome(status=AgentRunStatus.COMPLETED, exit_code=0))
+                run = state.create_agent_run(
+                    AgentRunContext(
+                        agent="demo",
+                        executable="/resolved/demo",
+                        role="implementation",
+                        model="test-model",
+                        workflow_id=workflow_id,
+                        task_id="task-1",
+                    )
+                )
+                state.finish_agent_run(
+                    run.id, AgentRunOutcome(status=AgentRunStatus.COMPLETED, exit_code=0)
+                )
             finally:
                 state.close()
-            controller = AgentOpsController(config=AppConfig({}, {}, (), max_attempts=1, concurrency=1))
+            controller = AgentOpsController(
+                config=AppConfig({}, {}, (), max_attempts=1, concurrency=1)
+            )
             runs = controller.list_agent_runs(root, task_id="task-1")
             self.assertEqual(len(runs), 1)
             self.assertEqual(runs[0]["executable"], "/resolved/demo")
@@ -525,24 +602,25 @@ class RunsGuiController:
     def latest_workflow(self, directory):
         return None
 
-    def list_agent_runs(self, directory, workflow_id=None, task_id=None,
-                        status=None, limit=50, offset=0):
-        return [{
-            "id": "run-1",
-            "status": "completed",
-            "agent": "demo",
-            "attempt": 2,
-            "exit_code": 0,
-            "duration_seconds": 1.5,
-            "log_path": "demo.meta.log",
-        }]
+    def list_agent_runs(
+        self, directory, workflow_id=None, task_id=None, status=None, limit=50, offset=0
+    ):
+        return [
+            {
+                "id": "run-1",
+                "status": "completed",
+                "agent": "demo",
+                "attempt": 2,
+                "exit_code": 0,
+                "duration_seconds": 1.5,
+                "log_path": "demo.meta.log",
+            }
+        ]
 
-    def list_verification_runs(self, directory, workflow_id=None, task_id=None,
-                               limit=50, offset=0):
+    def list_verification_runs(self, directory, workflow_id=None, task_id=None, limit=50, offset=0):
         return []
 
-    def list_failures(self, directory, workflow_id=None, task_id=None,
-                      limit=50, offset=0):
+    def list_failures(self, directory, workflow_id=None, task_id=None, limit=50, offset=0):
         return []
 
 
@@ -556,16 +634,18 @@ class TaskDetailRunsTests(unittest.TestCase):
         context = make_context(RunsGuiController())
         panel = TaskDetailPanel(context)
         self.addCleanup(destroy, panel)
-        panel.set_task({
-            "id": "task-1",
-            "role": "implementation",
-            "status": "passed",
-            "assigned_agent": "demo",
-            "attempts": 2,
-            "dependencies": (),
-            "description": "do work",
-            "result": "done",
-        })
+        panel.set_task(
+            {
+                "id": "task-1",
+                "role": "implementation",
+                "status": "passed",
+                "assigned_agent": "demo",
+                "attempts": 2,
+                "dependencies": (),
+                "description": "do work",
+                "result": "done",
+            }
+        )
         wait_until(lambda: len(panel._runs_table.rows()) == 1)
         rows = panel._runs_table.rows()
         self.assertEqual(len(rows), 1)
@@ -580,7 +660,10 @@ class NoWindowCollectorTests(unittest.TestCase):
         import subprocess as stdlib_subprocess
         from unittest.mock import patch
         from agentops.agent_run import GitRunMetadataCollector
-        completed = stdlib_subprocess.CompletedProcess(args=["git"], returncode=1, stdout="", stderr="")
+
+        completed = stdlib_subprocess.CompletedProcess(
+            args=["git"], returncode=1, stdout="", stderr=""
+        )
         with tempfile.TemporaryDirectory() as directory:
             with patch("agentops.agent_run.subprocess.run", return_value=completed) as run:
                 metadata = GitRunMetadataCollector()(directory)

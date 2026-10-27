@@ -8,18 +8,12 @@ from agentops.tasks import Task, TaskStatus
 
 
 def _index_names(state: StateStore, table: str) -> set[str]:
-    return {
-        row[1]
-        for row in state.connection.execute(f"PRAGMA index_list({table})").fetchall()
-    }
+    return {row[1] for row in state.connection.execute(f"PRAGMA index_list({table})").fetchall()}
 
 
 def _plan_details(state: StateStore, query: str, params: tuple[object, ...]) -> list[str]:
     return [
-        row[3]
-        for row in state.connection.execute(
-            "EXPLAIN QUERY PLAN " + query, params
-        ).fetchall()
+        row[3] for row in state.connection.execute("EXPLAIN QUERY PLAN " + query, params).fetchall()
     ]
 
 

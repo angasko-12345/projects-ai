@@ -37,8 +37,7 @@ LEGACY_SCHEMA_VERSION = 1
 
 # The model fields from_config() reads: the shape and behavior needed to rebuild
 # the model without the surrounding Config.
-MODEL_FIELDS = ("vocab_size", "context_length", "n_layers", "n_heads", "d_model",
-                "d_ff", "dropout")
+MODEL_FIELDS = ("vocab_size", "context_length", "n_layers", "n_heads", "d_model", "d_ff", "dropout")
 
 # Top-level keys a checkpoint cannot be read without. rng_state is deliberately
 # not among them: checkpoints written before the RNG was saved still load, they
@@ -55,9 +54,14 @@ REQUIRED_CHECKPOINT_KEYS = ("model_state", "config", "step")
 VALIDATED_KEY = "_mini_llm_validated"
 
 
-def build_checkpoint_metadata(cfg: Config, step: int, *, epoch: float | None = None,
-                              tokens_seen: int | None = None,
-                              provenance: dict | None = None) -> dict:
+def build_checkpoint_metadata(
+    cfg: Config,
+    step: int,
+    *,
+    epoch: float | None = None,
+    tokens_seen: int | None = None,
+    provenance: dict | None = None,
+) -> dict:
     """The block stored at a checkpoint's `checkpoint_metadata` key.
 
     Plain strings, numbers and dicts only, so a checkpoint carrying it still
@@ -116,8 +120,7 @@ def _legacy_metadata(ckpt: dict, path: str) -> dict:
     if not isinstance(config, dict):
         gaps.append("config")
     else:
-        gaps += [name for name in MODEL_FIELDS + ("tokenizer_path",)
-                 if name not in config]
+        gaps += [name for name in MODEL_FIELDS + ("tokenizer_path",) if name not in config]
     if gaps:
         raise ValueError(
             f"{path} has no checkpoint metadata and records no {', '.join(gaps)}; "
@@ -128,8 +131,12 @@ def _legacy_metadata(ckpt: dict, path: str) -> dict:
         "schema_version": LEGACY_SCHEMA_VERSION,
         "model": {name: config[name] for name in MODEL_FIELDS},
         "tokenizer": {"path": config["tokenizer_path"], "sha256": None},
-        "progress": {"step": int(ckpt["step"]), "epoch": None, "tokens_seen": None,
-                     "max_steps": config.get("max_steps")},
+        "progress": {
+            "step": int(ckpt["step"]),
+            "epoch": None,
+            "tokens_seen": None,
+            "max_steps": config.get("max_steps"),
+        },
         "required_keys": list(REQUIRED_CHECKPOINT_KEYS),
     }
 
@@ -150,8 +157,9 @@ def validate_checkpoint(ckpt: dict, path: str) -> dict:
     if meta is None:
         meta = _legacy_metadata(ckpt, path)
     elif not isinstance(meta, dict):
-        raise ValueError(f"{path} has checkpoint_metadata of type "
-                         f"{type(meta).__name__}, not a dict of fields")
+        raise ValueError(
+            f"{path} has checkpoint_metadata of type {type(meta).__name__}, not a dict of fields"
+        )
     else:
         version = meta.get("schema_version")
         if isinstance(version, bool) or not isinstance(version, int):
@@ -161,8 +169,11 @@ def validate_checkpoint(ckpt: dict, path: str) -> dict:
                 "cannot be trusted to mean what this build expects"
             )
         if version != CHECKPOINT_SCHEMA_VERSION:
-            origin = ("a newer mini-llm" if version > CHECKPOINT_SCHEMA_VERSION
-                      else "an older checkpoint format")
+            origin = (
+                "a newer mini-llm"
+                if version > CHECKPOINT_SCHEMA_VERSION
+                else "an older checkpoint format"
+            )
             raise ValueError(
                 f"{path} uses checkpoint schema {version}, written by {origin}; this "
                 f"build reads schema {CHECKPOINT_SCHEMA_VERSION}. Use the checkout that "
@@ -189,19 +200,20 @@ def validate_checkpoint(ckpt: dict, path: str) -> dict:
     # a model the other does not describe.
     config = ckpt["config"]
     if not isinstance(config, dict):
-        raise ValueError(f"{path} has a config of type {type(config).__name__}, "
-                         "not a dict of settings")
+        raise ValueError(
+            f"{path} has a config of type {type(config).__name__}, not a dict of settings"
+        )
     model_state = ckpt["model_state"]
     if not isinstance(model_state, dict):
-        raise ValueError(f"{path} has a model_state of type {type(model_state).__name__}, "
-                         "not a dict of tensors")
+        raise ValueError(
+            f"{path} has a model_state of type {type(model_state).__name__}, not a dict of tensors"
+        )
     stale = []
     for name in MODEL_FIELDS:
         if name not in config:
             stale.append(f"{name}: metadata={meta['model'][name]!r} config=<missing>")
         elif config[name] != meta["model"][name]:
-            stale.append(f"{name}: metadata={meta['model'][name]!r} "
-                         f"config={config[name]!r}")
+            stale.append(f"{name}: metadata={meta['model'][name]!r} config={config[name]!r}")
 
     # Progress step vs checkpoint step
     meta_step = meta.get("progress", {}).get("step")
@@ -244,7 +256,9 @@ def validate_checkpoint(ckpt: dict, path: str) -> dict:
         context_length = model_meta.get("context_length")
         d_model = model_meta.get("d_model")
         if context_length is not None and len(wpe.shape) > 0 and wpe.shape[0] != context_length:
-            stale.append(f"wpe.weight context_length: tensor={wpe.shape[0]} metadata={context_length}")
+            stale.append(
+                f"wpe.weight context_length: tensor={wpe.shape[0]} metadata={context_length}"
+            )
         if d_model is not None and len(wpe.shape) > 1 and wpe.shape[1] != d_model:
             stale.append(f"wpe.weight d_model: tensor={wpe.shape[1]} metadata={d_model}")
 
@@ -274,10 +288,12 @@ def configure_torch_threads(cfg: Config) -> None:
         try:
             torch.set_num_interop_threads(cfg.torch_interop_threads)
         except RuntimeError as exc:
-            print(f"warning: ignoring --torch-interop-threads "
-                  f"{cfg.torch_interop_threads}: {exc}")
-    print(f"torch threads: intraop={torch.get_num_threads()} "
-          f"interop={torch.get_num_interop_threads()}", flush=True)
+            print(f"warning: ignoring --torch-interop-threads {cfg.torch_interop_threads}: {exc}")
+    print(
+        f"torch threads: intraop={torch.get_num_threads()} "
+        f"interop={torch.get_num_interop_threads()}",
+        flush=True,
+    )
 
 
 def maybe_compile_model(model, enabled: bool):
@@ -292,8 +308,7 @@ def maybe_compile_model(model, enabled: bool):
     compile_fn = getattr(torch, "compile", None)
     if compile_fn is None:
         raise SystemExit(
-            "torch.compile is unavailable in this PyTorch build; "
-            "rerun without --compile"
+            "torch.compile is unavailable in this PyTorch build; rerun without --compile"
         )
     try:
         compiled = compile_fn(model)
@@ -311,8 +326,7 @@ def maybe_compile_model(model, enabled: bool):
         torch.set_rng_state(rng)
     except Exception as exc:
         raise SystemExit(
-            f"torch.compile dry run failed ({type(exc).__name__}: {exc}); "
-            f"rerun without --compile"
+            f"torch.compile dry run failed ({type(exc).__name__}: {exc}); rerun without --compile"
         ) from exc
     return compiled
 
@@ -383,8 +397,10 @@ def restore_grad_scaler(scaler, ckpt: dict, path: str) -> None:
         scaler.load_state_dict(state)
         print(f"restored GradScaler from {path}: scale {scaler.get_scale():.0f}")
     else:
-        print(f"warning: {path} records no GradScaler state; fp16 resumes with a "
-              "fresh loss scale", file=sys.stderr)
+        print(
+            f"warning: {path} records no GradScaler state; fp16 resumes with a fresh loss scale",
+            file=sys.stderr,
+        )
 
 
 def optimizer_step(model, optimizer, scaler, grad_clip: float) -> None:
@@ -503,8 +519,15 @@ def restore_rng_state(state: dict | None) -> None:
         random.setstate(state["python"])
     n = state.get("numpy")
     if n:
-        np.random.set_state((n["name"], np.array(n["keys"], dtype=np.uint32), n["pos"],
-                             n["has_gauss"], n["cached_gaussian"]))
+        np.random.set_state(
+            (
+                n["name"],
+                np.array(n["keys"], dtype=np.uint32),
+                n["pos"],
+                n["has_gauss"],
+                n["cached_gaussian"],
+            )
+        )
     cuda_states = state.get("cuda")
     # Saved on GPU, resumed elsewhere: restore only what this machine has,
     # never more devices than exist; CPU-only machines skip it (old checkpoints
@@ -527,8 +550,7 @@ def _atomic_torch_save(obj, path: str) -> None:
     """
     directory = os.path.dirname(os.path.abspath(path))
     os.makedirs(directory, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=directory,
-                               prefix=os.path.basename(path) + ".", suffix=".tmp")
+    fd, tmp = tempfile.mkstemp(dir=directory, prefix=os.path.basename(path) + ".", suffix=".tmp")
     try:
         with os.fdopen(fd, "wb") as handle:
             torch.save(obj, handle)
@@ -565,8 +587,7 @@ def list_step_checkpoints(checkpoint_dir: str) -> list[tuple[int, str]]:
     return found
 
 
-def rotate_checkpoints(checkpoint_dir: str, keep_last: int,
-                       keep: str | None = None) -> list[str]:
+def rotate_checkpoints(checkpoint_dir: str, keep_last: int, keep: str | None = None) -> list[str]:
     """Delete the oldest numbered checkpoints so at most keep_last remain.
 
     Call this only after a new checkpoint is already on disk: the newest is then
@@ -589,16 +610,23 @@ def rotate_checkpoints(checkpoint_dir: str, keep_last: int,
         except FileNotFoundError:
             continue
         except OSError as exc:
-            print(f"warning: could not remove old checkpoint {path}: {exc}",
-                  file=sys.stderr)
+            print(f"warning: could not remove old checkpoint {path}: {exc}", file=sys.stderr)
             continue
         removed.append(path)
     return removed
 
 
-def save_checkpoint(path: str, model, optimizer, step: int, cfg: Config, lr: float | None = None,
-                    extra: dict | None = None, progress: dict | None = None,
-                    scaler=None) -> None:
+def save_checkpoint(
+    path: str,
+    model,
+    optimizer,
+    step: int,
+    cfg: Config,
+    lr: float | None = None,
+    extra: dict | None = None,
+    progress: dict | None = None,
+    scaler=None,
+) -> None:
     # LR is set manually (warmup + cosine), so scheduler state is the schedule
     # config plus the current lr value.
     rng_state = capture_rng_state()
@@ -640,7 +668,9 @@ def save_checkpoint(path: str, model, optimizer, step: int, cfg: Config, lr: flo
     # progress. Written last of the described fields so the digest above is the
     # one the metadata names.
     ckpt["checkpoint_metadata"] = build_checkpoint_metadata(
-        cfg, step, epoch=progress.get("epoch"),
+        cfg,
+        step,
+        epoch=progress.get("epoch"),
         tokens_seen=progress.get("tokens_seen"),
         provenance=ckpt["data_provenance"],
     )
@@ -686,7 +716,8 @@ def validated_checkpoint(checkpoint: str | dict) -> dict:
         return read_checkpoint(checkpoint)
     if checkpoint.get(VALIDATED_KEY) is not True:
         checkpoint["checkpoint_metadata"] = validate_checkpoint(
-            checkpoint, "<in-memory checkpoint>")
+            checkpoint, "<in-memory checkpoint>"
+        )
         checkpoint[VALIDATED_KEY] = True
     return checkpoint
 
@@ -715,8 +746,7 @@ def _chunked_loss(module, x, y, chunk_size):
     return getattr(module, "_orig_mod", module).chunked_loss(x, y, chunk_size)
 
 
-def evaluate(model, loader, batches: int, device: torch.device,
-             chunk_size: int = 0) -> float:
+def evaluate(model, loader, batches: int, device: torch.device, chunk_size: int = 0) -> float:
     """Token-weighted mean val loss over the first `batches` batches.
 
     The arithmetic lives in src.evaluate.evaluate_stats, which also counts the
@@ -754,15 +784,19 @@ def check_resume_provenance(ckpt: dict, cfg: Config, checkpoint_path: str) -> No
         # digest terms against the checkpoint rather than stopping at whichever
         # internal check tripped first: the useful answer is "these are not the
         # files this checkpoint was trained on".
-        current = {"vocab_size": cfg.vocab_size,
-                   "train_sha256": _digest_or_missing(cfg.train_bin),
-                   "val_sha256": _digest_or_missing(cfg.val_bin),
-                   "tokenizer_sha256": _digest_or_missing(cfg.tokenizer_path)}
+        current = {
+            "vocab_size": cfg.vocab_size,
+            "train_sha256": _digest_or_missing(cfg.train_bin),
+            "val_sha256": _digest_or_missing(cfg.val_bin),
+            "tokenizer_sha256": _digest_or_missing(cfg.tokenizer_path),
+        }
     mismatches = provenance_mismatches(recorded, current)
     if not mismatches:
-        print(f"data matches {checkpoint_path}: train={current['train_sha256'][:12]}... "
-              f"val={current['val_sha256'][:12]}... "
-              f"tokenizer={current['tokenizer_sha256'][:12]}...")
+        print(
+            f"data matches {checkpoint_path}: train={current['train_sha256'][:12]}... "
+            f"val={current['val_sha256'][:12]}... "
+            f"tokenizer={current['tokenizer_sha256'][:12]}..."
+        )
         return
     # Joined outside the f-string: a backslash inside an f-string expression is
     # a syntax error before Python 3.12, and 3.11 is the supported floor.
@@ -778,9 +812,14 @@ def check_resume_provenance(ckpt: dict, cfg: Config, checkpoint_path: str) -> No
     )
 
 
-def train(cfg: Config, resume_from: str | None = None, start_step: int | None = None,
-          stride: int = 1, device_spec: str = "auto",
-          explicit_optimizer_fields: set[str] | None = None) -> None:
+def train(
+    cfg: Config,
+    resume_from: str | None = None,
+    start_step: int | None = None,
+    stride: int = 1,
+    device_spec: str = "auto",
+    explicit_optimizer_fields: set[str] | None = None,
+) -> None:
     ckpt = None
     if resume_from:
         ckpt = read_checkpoint(resume_from)
@@ -801,10 +840,12 @@ def train(cfg: Config, resume_from: str | None = None, start_step: int | None = 
         # One failure type for the command line: the data set is not the one this
         # config describes. The cause is already an actionable message.
         raise SystemExit(f"data/tokenizer set is not consistent:\n  {exc}") from exc
-    print(f"data: train={provenance['train_bin']} "
-          f"(sha256 {provenance['train_sha256'][:12]}...)\n"
-          f"      tokenizer={provenance['tokenizer_path']} "
-          f"(sha256 {provenance['tokenizer_sha256'][:12]}...)")
+    print(
+        f"data: train={provenance['train_bin']} "
+        f"(sha256 {provenance['train_sha256'][:12]}...)\n"
+        f"      tokenizer={provenance['tokenizer_path']} "
+        f"(sha256 {provenance['tokenizer_sha256'][:12]}...)"
+    )
     if resume_from:
         check_resume_provenance(ckpt, cfg, resume_from)
         # A resumed run continues in the precision it was trained in. Switching
@@ -826,8 +867,7 @@ def train(cfg: Config, resume_from: str | None = None, start_step: int | None = 
     forward_context = autocast or contextlib.nullcontext
     scaler = make_grad_scaler(device, amp_dtype)
     if amp_dtype is not None:
-        print(f"amp: {cfg.amp} autocast"
-              + (" + GradScaler" if scaler is not None else ""))
+        print(f"amp: {cfg.amp} autocast" + (" + GradScaler" if scaler is not None else ""))
 
     model = from_config(cfg).to(device)
     # The original module owns params, optimizer state and checkpoints;
@@ -837,8 +877,9 @@ def train(cfg: Config, resume_from: str | None = None, start_step: int | None = 
     print(f"parameters: {n_params / 1e6:.2f}M ({n_params})")
 
     # drop_last=False for val so a one-sample val set still yields a batch.
-    train_loader = build_dataloader(cfg.train_bin, cfg.context_length, cfg.batch_size,
-                                    shuffle=True, stride=stride)
+    train_loader = build_dataloader(
+        cfg.train_bin, cfg.context_length, cfg.batch_size, shuffle=True, stride=stride
+    )
     val_loader = build_dataloader(cfg.val_bin, cfg.context_length, cfg.batch_size, shuffle=False)
     # An epoch is one pass over the corpus: tokens consumed divided by the tokens
     # the training file holds. Counting it in tokens rather than in batches keeps
@@ -933,9 +974,15 @@ def train(cfg: Config, resume_from: str | None = None, start_step: int | None = 
             )
 
         if step % cfg.eval_interval == 0 or step == cfg.max_steps:
-            stats = evaluate_stats(train_model, val_loader, cfg.eval_batches, device,
-                                   cfg.loss_chunk_size, byte_lengths=byte_lengths,
-                                   autocast=autocast)
+            stats = evaluate_stats(
+                train_model,
+                val_loader,
+                cfg.eval_batches,
+                device,
+                cfg.loss_chunk_size,
+                byte_lengths=byte_lengths,
+                autocast=autocast,
+            )
             val_loss, val_bpb = stats["loss"], stats["bpb"]
             last_train_loss, last_val_loss, last_val_bpb = group_loss, val_loss, val_bpb
             print(
@@ -946,34 +993,46 @@ def train(cfg: Config, resume_from: str | None = None, start_step: int | None = 
             checkpoint_path = os.path.join(cfg.checkpoint_dir, f"step_{step}.pt")
             save_checkpoint(
                 checkpoint_path,
-                model, optimizer, step, cfg, lr=lr, progress=progress_snapshot(),
-                extra={"train_loss": group_loss, "val_loss": val_loss,
-                       "val_bpb": val_bpb},
+                model,
+                optimizer,
+                step,
+                cfg,
+                lr=lr,
+                progress=progress_snapshot(),
+                extra={"train_loss": group_loss, "val_loss": val_loss, "val_bpb": val_bpb},
                 scaler=scaler,
             )
             # Rotate only after the new checkpoint is safely on disk, so the file
             # just written can never be deleted and the newest always survives.
-            for old_path in rotate_checkpoints(cfg.checkpoint_dir, cfg.keep_last,
-                                               keep=checkpoint_path):
+            for old_path in rotate_checkpoints(
+                cfg.checkpoint_dir, cfg.keep_last, keep=checkpoint_path
+            ):
                 print(f"removed old checkpoint {old_path}")
 
     save_checkpoint(
-        os.path.join(cfg.checkpoint_dir, "final.pt"), model, optimizer,
-        cfg.max_steps, cfg, lr=lr_at_step(cfg.max_steps, cfg),
+        os.path.join(cfg.checkpoint_dir, "final.pt"),
+        model,
+        optimizer,
+        cfg.max_steps,
+        cfg,
+        lr=lr_at_step(cfg.max_steps, cfg),
         progress=progress_snapshot(),
-        extra={"train_loss": last_train_loss, "val_loss": last_val_loss,
-               "val_bpb": last_val_bpb},
+        extra={"train_loss": last_train_loss, "val_loss": last_val_loss, "val_bpb": last_val_bpb},
         scaler=scaler,
     )
     print("saved final checkpoint")
     if scaler is not None:
-        print(f"fp16: {skipped_updates} of {cfg.max_steps - start_step + 1} updates "
-              f"skipped for inf/nan gradients; final loss scale {scaler.get_scale():.0f}")
+        print(
+            f"fp16: {skipped_updates} of {cfg.max_steps - start_step + 1} updates "
+            f"skipped for inf/nan gradients; final loss scale {scaler.get_scale():.0f}"
+        )
     elapsed = time.perf_counter() - t_start
     n_steps = cfg.max_steps - start_step + 1
-    print(f"training time {elapsed:.1f}s over {n_steps} steps, "
-          f"{n_steps / elapsed:.2f} steps/sec, "
-          f"{total_tokens / elapsed:.0f} tokens/sec ({total_tokens} tokens)")
+    print(
+        f"training time {elapsed:.1f}s over {n_steps} steps, "
+        f"{n_steps / elapsed:.2f} steps/sec, "
+        f"{total_tokens / elapsed:.0f} tokens/sec ({total_tokens} tokens)"
+    )
 
 
 # Flags that map straight onto a Config field: (argument dest, Config field).
@@ -1033,81 +1092,172 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--batch-size", type=int, default=None)
     parser.add_argument("--context-length", type=int, default=None)
     parser.add_argument("--checkpoint-dir", default=None)
-    parser.add_argument("--keep-last", dest="keep_last", type=int, default=None,
-                        help="numbered step_*.pt checkpoints to retain (default 3); "
-                             "older ones are deleted after each new one is saved. "
-                             "final.pt is always kept. Must be >= 1")
+    parser.add_argument(
+        "--keep-last",
+        dest="keep_last",
+        type=int,
+        default=None,
+        help="numbered step_*.pt checkpoints to retain (default 3); "
+        "older ones are deleted after each new one is saved. "
+        "final.pt is always kept. Must be >= 1",
+    )
     parser.add_argument("--train-bin", default=None)
     parser.add_argument("--val-bin", default=None)
-    parser.add_argument("--tokenizer", "--tokenizer-path", dest="tokenizer", default=None,
-                        help="tokenizer the .bin files were encoded with; defaults to "
-                             "data/tokenizer.json and is recorded in every checkpoint, "
-                             "so a resume is checked against it (--tokenizer-path is the "
-                             "same flag, named after the Config field)")
+    parser.add_argument(
+        "--tokenizer",
+        "--tokenizer-path",
+        dest="tokenizer",
+        default=None,
+        help="tokenizer the .bin files were encoded with; defaults to "
+        "data/tokenizer.json and is recorded in every checkpoint, "
+        "so a resume is checked against it (--tokenizer-path is the "
+        "same flag, named after the Config field)",
+    )
     parser.add_argument("--vocab-size", type=int, default=None)
     # Model size and training hyperparameters. Each defaults to None, so it only
     # changes the Config value when the flag is actually passed.
-    parser.add_argument("--n-layers", dest="n_layers", type=int, default=None,
-                        help="number of transformer blocks")
-    parser.add_argument("--n-heads", dest="n_heads", type=int, default=None,
-                        help="attention heads; --d-model must divide evenly by it")
-    parser.add_argument("--d-model", dest="d_model", type=int, default=None,
-                        help="model width (embedding size)")
-    parser.add_argument("--d-ff", dest="d_ff", type=int, default=None,
-                        help="feed-forward hidden width")
-    parser.add_argument("--dropout", type=float, default=None,
-                        help="dropout probability (default 0.0)")
-    parser.add_argument("--learning-rate", dest="learning_rate", type=float, default=None,
-                        help="peak AdamW learning rate")
-    parser.add_argument("--weight-decay", dest="weight_decay", type=float, default=None,
-                        help="AdamW weight decay on matrix parameters")
-    parser.add_argument("--min-lr-ratio", dest="min_lr_ratio", type=float, default=None,
-                        help="cosine floor as a fraction of the peak learning rate")
+    parser.add_argument(
+        "--n-layers", dest="n_layers", type=int, default=None, help="number of transformer blocks"
+    )
+    parser.add_argument(
+        "--n-heads",
+        dest="n_heads",
+        type=int,
+        default=None,
+        help="attention heads; --d-model must divide evenly by it",
+    )
+    parser.add_argument(
+        "--d-model", dest="d_model", type=int, default=None, help="model width (embedding size)"
+    )
+    parser.add_argument(
+        "--d-ff", dest="d_ff", type=int, default=None, help="feed-forward hidden width"
+    )
+    parser.add_argument(
+        "--dropout", type=float, default=None, help="dropout probability (default 0.0)"
+    )
+    parser.add_argument(
+        "--learning-rate",
+        dest="learning_rate",
+        type=float,
+        default=None,
+        help="peak AdamW learning rate",
+    )
+    parser.add_argument(
+        "--weight-decay",
+        dest="weight_decay",
+        type=float,
+        default=None,
+        help="AdamW weight decay on matrix parameters",
+    )
+    parser.add_argument(
+        "--min-lr-ratio",
+        dest="min_lr_ratio",
+        type=float,
+        default=None,
+        help="cosine floor as a fraction of the peak learning rate",
+    )
     parser.add_argument("--beta1", type=float, default=None, help="AdamW beta1")
     parser.add_argument("--beta2", type=float, default=None, help="AdamW beta2")
-    parser.add_argument("--grad-clip", dest="grad_clip", type=float, default=None,
-                        help="max global gradient norm")
-    parser.add_argument("--grad-accum-steps", dest="grad_accum_steps", type=int,
-                        default=None, metavar="N",
-                        help="microbatches accumulated per optimizer update; the "
-                             "effective batch is --batch-size * N. 1 (default) updates "
-                             "on every batch. Must be >= 1")
-    parser.add_argument("--loss-chunk-size", dest="loss_chunk_size", type=int,
-                        default=None, metavar="N",
-                        help="sequence positions per chunk of the LM loss, recomputed "
-                             "in backward so full B x T x vocab logits are never live. "
-                             "0 (default) disables chunking. Must be >= 0")
-    parser.add_argument("--warmup-steps", dest="warmup_steps", type=int, default=None,
-                        help="linear warmup length in steps")
-    parser.add_argument("--eval-interval", dest="eval_interval", type=int, default=None,
-                        help="steps between validation and checkpoints. Must be >= 1")
-    parser.add_argument("--eval-batches", dest="eval_batches", type=int, default=None,
-                        help="validation batches averaged per evaluation. Must be >= 1")
+    parser.add_argument(
+        "--grad-clip", dest="grad_clip", type=float, default=None, help="max global gradient norm"
+    )
+    parser.add_argument(
+        "--grad-accum-steps",
+        dest="grad_accum_steps",
+        type=int,
+        default=None,
+        metavar="N",
+        help="microbatches accumulated per optimizer update; the "
+        "effective batch is --batch-size * N. 1 (default) updates "
+        "on every batch. Must be >= 1",
+    )
+    parser.add_argument(
+        "--loss-chunk-size",
+        dest="loss_chunk_size",
+        type=int,
+        default=None,
+        metavar="N",
+        help="sequence positions per chunk of the LM loss, recomputed "
+        "in backward so full B x T x vocab logits are never live. "
+        "0 (default) disables chunking. Must be >= 0",
+    )
+    parser.add_argument(
+        "--warmup-steps",
+        dest="warmup_steps",
+        type=int,
+        default=None,
+        help="linear warmup length in steps",
+    )
+    parser.add_argument(
+        "--eval-interval",
+        dest="eval_interval",
+        type=int,
+        default=None,
+        help="steps between validation and checkpoints. Must be >= 1",
+    )
+    parser.add_argument(
+        "--eval-batches",
+        dest="eval_batches",
+        type=int,
+        default=None,
+        help="validation batches averaged per evaluation. Must be >= 1",
+    )
     parser.add_argument("--seed", type=int, default=None, help="random seed")
-    parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto",
-                        help="training device: auto (default) picks CUDA when "
-                             "available, else CPU; cuda fails instead of silently "
-                             "falling back to CPU")
-    parser.add_argument("--amp", choices=("off", "fp16", "bf16"), default=None,
-                        help="mixed precision: off (default, fp32), fp16 (CUDA only: "
-                             "autocast + GradScaler, use this on a Kaggle T4) or bf16 "
-                             "(CPU, or a GPU with native bf16). A resume keeps the "
-                             "checkpoint's setting; passing a different one is refused")
-    parser.add_argument("--resume", default=None, metavar="CHECKPOINT",
-                        help="continue from step_N.pt / final.pt: model, optimizer, "
-                             "step and the original lr schedule are all restored")
-    parser.add_argument("--stride", type=int, default=1,
-                        help="training window stride in tokens: 1 (default) supervises "
-                             "every transition; context_length gives non-overlapping chunks")
-    parser.add_argument("--torch-threads", type=int, default=None, metavar="N",
-                        help="torch.set_num_threads(N); omit for the PyTorch default")
-    parser.add_argument("--torch-interop-threads", type=int, default=None, metavar="N",
-                        help="torch.set_num_interop_threads(N); omit for the default")
+    parser.add_argument(
+        "--device",
+        choices=("auto", "cpu", "cuda"),
+        default="auto",
+        help="training device: auto (default) picks CUDA when "
+        "available, else CPU; cuda fails instead of silently "
+        "falling back to CPU",
+    )
+    parser.add_argument(
+        "--amp",
+        choices=("off", "fp16", "bf16"),
+        default=None,
+        help="mixed precision: off (default, fp32), fp16 (CUDA only: "
+        "autocast + GradScaler, use this on a Kaggle T4) or bf16 "
+        "(CPU, or a GPU with native bf16). A resume keeps the "
+        "checkpoint's setting; passing a different one is refused",
+    )
+    parser.add_argument(
+        "--resume",
+        default=None,
+        metavar="CHECKPOINT",
+        help="continue from step_N.pt / final.pt: model, optimizer, "
+        "step and the original lr schedule are all restored",
+    )
+    parser.add_argument(
+        "--stride",
+        type=int,
+        default=1,
+        help="training window stride in tokens: 1 (default) supervises "
+        "every transition; context_length gives non-overlapping chunks",
+    )
+    parser.add_argument(
+        "--torch-threads",
+        type=int,
+        default=None,
+        metavar="N",
+        help="torch.set_num_threads(N); omit for the PyTorch default",
+    )
+    parser.add_argument(
+        "--torch-interop-threads",
+        type=int,
+        default=None,
+        metavar="N",
+        help="torch.set_num_interop_threads(N); omit for the default",
+    )
     # default=None (not False) so a resumed run keeps the checkpoint's value
     # unless the flag is passed explicitly.
-    parser.add_argument("--compile", dest="compile", action="store_true", default=None,
-                        help="torch.compile the model before training (default off; "
-                             "benchmark it, it is not known-good on Windows CPU)")
+    parser.add_argument(
+        "--compile",
+        dest="compile",
+        action="store_true",
+        default=None,
+        help="torch.compile the model before training (default off; "
+        "benchmark it, it is not known-good on Windows CPU)",
+    )
     return parser
 
 
@@ -1124,9 +1274,12 @@ def main() -> None:
     else:
         overrides = {}
         # The tokenizer flag is --tokenizer; the config field is tokenizer_path.
-        for flag, field in (("train_bin", "train_bin"), ("val_bin", "val_bin"),
-                            ("tokenizer", "tokenizer_path"),
-                            ("checkpoint_dir", "checkpoint_dir")):
+        for flag, field in (
+            ("train_bin", "train_bin"),
+            ("val_bin", "val_bin"),
+            ("tokenizer", "tokenizer_path"),
+            ("checkpoint_dir", "checkpoint_dir"),
+        ):
             if getattr(args, flag) is not None:
                 overrides[field] = getattr(args, flag)
         if args.vocab_size is not None:
@@ -1163,10 +1316,17 @@ def main() -> None:
         print(f"resuming {args.resume}: step {resume_step} -> {start_step} of {cfg.max_steps}")
     # None-defaulted flags are how this CLI distinguishes an explicit value from
     # a default; train() needs that distinction to win over the checkpoint.
-    explicit = {name for name in ("beta1", "beta2", "weight_decay")
-                if getattr(args, name) is not None}
-    train(cfg, resume_from=args.resume, start_step=start_step, stride=args.stride,
-          device_spec=args.device, explicit_optimizer_fields=explicit)
+    explicit = {
+        name for name in ("beta1", "beta2", "weight_decay") if getattr(args, name) is not None
+    }
+    train(
+        cfg,
+        resume_from=args.resume,
+        start_step=start_step,
+        stride=args.stride,
+        device_spec=args.device,
+        explicit_optimizer_fields=explicit,
+    )
 
 
 if __name__ == "__main__":

@@ -71,8 +71,11 @@ def check_tokenizer_provenance(ckpt: dict, tokenizer_path: str) -> None:
     """
     recorded = ckpt.get("data_provenance")
     if not recorded:
-        print("warning: this checkpoint records no tokenizer provenance, so "
-              f"{tokenizer_path} cannot be verified against it", file=sys.stderr)
+        print(
+            "warning: this checkpoint records no tokenizer provenance, so "
+            f"{tokenizer_path} cannot be verified against it",
+            file=sys.stderr,
+        )
         return
     actual = file_sha256(tokenizer_path)
     if actual != recorded["tokenizer_sha256"]:
@@ -93,12 +96,18 @@ def main() -> None:
     parser.add_argument("--tokens", type=int, default=100)
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--top-k", type=int, default=None)
-    parser.add_argument("--tokenizer", default=None,
-                        help="defaults to the tokenizer path stored in the checkpoint config")
-    parser.add_argument("--no-eos-stop", action="store_true",
-                        help="keep sampling past <eos>")
-    parser.add_argument("--seed", type=int, default=None,
-                        help="seed the sampling RNG; omit for a different sample each run")
+    parser.add_argument(
+        "--tokenizer",
+        default=None,
+        help="defaults to the tokenizer path stored in the checkpoint config",
+    )
+    parser.add_argument("--no-eos-stop", action="store_true", help="keep sampling past <eos>")
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="seed the sampling RNG; omit for a different sample each run",
+    )
     args = parser.parse_args()
 
     if args.seed is not None:
@@ -114,7 +123,11 @@ def main() -> None:
     prompt_ids = tok.encode(args.prompt).ids if args.prompt else [tok.token_to_id("<bos>")]
     idx = torch.tensor([prompt_ids], dtype=torch.long)
     out = generate_tokens(
-        model, idx, args.tokens, args.temperature, args.top_k,
+        model,
+        idx,
+        args.tokens,
+        args.temperature,
+        args.top_k,
         eos_id=None if args.no_eos_stop else tok.token_to_id("<eos>"),
     )
     print(decode(tok, out[0].tolist()))

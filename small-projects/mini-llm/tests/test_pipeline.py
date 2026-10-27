@@ -25,10 +25,22 @@ from src.generate import generate_tokens
 from src.generate import main as generate_main
 from src.model import from_config
 from src.tokenizer import load_tokenizer, train_bpe_tokenizer
-from src.train import (build_checkpoint_metadata, build_param_groups, evaluate, load_checkpoint,
-                       load_model, lr_at_step, read_checkpoint, resolve_device, restore_rng_state,
-                       save_checkpoint, train, validate_checkpoint, CHECKPOINT_SCHEMA_VERSION,
-                       VALIDATED_KEY)
+from src.train import (
+    build_checkpoint_metadata,
+    build_param_groups,
+    evaluate,
+    load_checkpoint,
+    load_model,
+    lr_at_step,
+    read_checkpoint,
+    resolve_device,
+    restore_rng_state,
+    save_checkpoint,
+    train,
+    validate_checkpoint,
+    CHECKPOINT_SCHEMA_VERSION,
+    VALIDATED_KEY,
+)
 from src.train import main as train_main
 
 CORPUS = (
@@ -59,14 +71,22 @@ def build_data(tmp: str, context_length: int = 16, val_frac: float = 0.2) -> str
     argv = sys.argv
     sys.argv = [
         "prepare_data.py",
-        "--input", corpus,
-        "--tokenizer-out", os.path.join(tmp, "tokenizer.json"),
-        "--train-out", os.path.join(tmp, "train.bin"),
-        "--val-out", os.path.join(tmp, "val.bin"),
-        "--vocab-size", "512",
-        "--min-frequency", "1",
-        "--val-frac", str(val_frac),
-        "--context-length", str(context_length),
+        "--input",
+        corpus,
+        "--tokenizer-out",
+        os.path.join(tmp, "tokenizer.json"),
+        "--train-out",
+        os.path.join(tmp, "train.bin"),
+        "--val-out",
+        os.path.join(tmp, "val.bin"),
+        "--vocab-size",
+        "512",
+        "--min-frequency",
+        "1",
+        "--val-frac",
+        str(val_frac),
+        "--context-length",
+        str(context_length),
     ]
     try:
         prepare_data.main()
@@ -75,8 +95,13 @@ def build_data(tmp: str, context_length: int = 16, val_frac: float = 0.2) -> str
     return os.path.join(tmp, "train.bin")
 
 
-def build_data_set(root: str, vocab_size: int = 512, context_length: int = 16,
-                   val_frac: float = 0.2, corpus_text: str = CORPUS) -> dict:
+def build_data_set(
+    root: str,
+    vocab_size: int = 512,
+    context_length: int = 16,
+    val_frac: float = 0.2,
+    corpus_text: str = CORPUS,
+) -> dict:
     """Prepare a data set under `root` and return the paths it produced.
 
     Same contract as build_data, but named rather than fixed to one temp dir, so
@@ -89,14 +114,22 @@ def build_data_set(root: str, vocab_size: int = 512, context_length: int = 16,
     argv = sys.argv
     sys.argv = [
         "prepare_data.py",
-        "--input", corpus,
-        "--tokenizer-out", os.path.join(root, "tokenizer.json"),
-        "--train-out", os.path.join(root, "train.bin"),
-        "--val-out", os.path.join(root, "val.bin"),
-        "--vocab-size", str(vocab_size),
-        "--min-frequency", "1",
-        "--val-frac", str(val_frac),
-        "--context-length", str(context_length),
+        "--input",
+        corpus,
+        "--tokenizer-out",
+        os.path.join(root, "tokenizer.json"),
+        "--train-out",
+        os.path.join(root, "train.bin"),
+        "--val-out",
+        os.path.join(root, "val.bin"),
+        "--vocab-size",
+        str(vocab_size),
+        "--min-frequency",
+        "1",
+        "--val-frac",
+        str(val_frac),
+        "--context-length",
+        str(context_length),
     ]
     try:
         prepare_data.main()
@@ -144,11 +177,21 @@ class TestPrepareData(unittest.TestCase):
         with open(tiny, "w", encoding="utf-8") as f:
             f.write("too small\n")
         argv = sys.argv
-        sys.argv = ["prepare_data.py", "--input", tiny, "--tokenizer-out",
-                    os.path.join(self.tmp.name, "t.json"), "--train-out",
-                    os.path.join(self.tmp.name, "t.bin"), "--val-out",
-                    os.path.join(self.tmp.name, "v.bin"), "--min-frequency", "1",
-                    "--context-length", "512"]
+        sys.argv = [
+            "prepare_data.py",
+            "--input",
+            tiny,
+            "--tokenizer-out",
+            os.path.join(self.tmp.name, "t.json"),
+            "--train-out",
+            os.path.join(self.tmp.name, "t.bin"),
+            "--val-out",
+            os.path.join(self.tmp.name, "v.bin"),
+            "--min-frequency",
+            "1",
+            "--context-length",
+            "512",
+        ]
         try:
             with self.assertRaises(SystemExit):
                 prepare_data.main()
@@ -219,26 +262,24 @@ class TestDataset(unittest.TestCase):
     def test_sample_counts_by_stride(self):
         """The documented stride table: samples shrink ~linearly with stride."""
         tokens = np.arange(736)
-        counts = {s: len(TokenDataset(tokens, context_length=32, stride=s))
-                  for s in (1, 32, 33)}
-        self.assertEqual(counts[1], 704)   # 736 - 32
+        counts = {s: len(TokenDataset(tokens, context_length=32, stride=s)) for s in (1, 32, 33)}
+        self.assertEqual(counts[1], 704)  # 736 - 32
         self.assertEqual(counts[32], 22)
-        self.assertEqual(counts[33], 22)   # context and context+1 both tile
+        self.assertEqual(counts[33], 22)  # context and context+1 both tile
         self.assertGreater(counts[1], 30 * counts[32])  # ~33x more windows
 
     def test_loader_passes_stride_through(self):
         path = os.path.join(self.tmp.name, "train.bin")
         n = len(load_token_ids(path))
-        sliding = build_dataloader(path, 16, 2, shuffle=False)              # stride 1
-        chunked = build_dataloader(path, 16, 2, shuffle=False, stride=16)   # non-overlapping
+        sliding = build_dataloader(path, 16, 2, shuffle=False)  # stride 1
+        chunked = build_dataloader(path, 16, 2, shuffle=False, stride=16)  # non-overlapping
         self.assertEqual(len(sliding), (n - 16) // 2)
         self.assertEqual(len(chunked), ((n - 17) // 16 + 1) // 2)
         self.assertGreater(len(sliding), 10 * len(chunked))
 
     def test_undersized_message_reports_stride(self):
         with self.assertRaises(ValueError) as ctx:
-            build_dataloader(self.train_bin, context_length=16, batch_size=10_000,
-                             stride=16)
+            build_dataloader(self.train_bin, context_length=16, batch_size=10_000, stride=16)
         self.assertIn("stride 16", str(ctx.exception))
 
     def test_too_few_tokens_raises_with_hint(self):
@@ -260,17 +301,16 @@ class TestDataset(unittest.TestCase):
         self.assertIn("batch_size", str(ctx.exception))
 
     def test_val_loader_keeps_ragged_tail(self):
-        loader = build_dataloader(
-            os.path.join(self.tmp.name, "val.bin"), 16, 8, shuffle=False
-        )
+        loader = build_dataloader(os.path.join(self.tmp.name, "val.bin"), 16, 8, shuffle=False)
         self.assertGreater(len(loader), 0)
         self.assertTrue(all(x.shape[1] == 16 for x, _ in loader))
 
 
 class TestEvaluate(unittest.TestCase):
     def model(self):
-        return from_config(Config(vocab_size=32, context_length=16, n_layers=1,
-                                  n_heads=2, d_model=16, d_ff=32))
+        return from_config(
+            Config(vocab_size=32, context_length=16, n_layers=1, n_heads=2, d_model=16, d_ff=32)
+        )
 
     def test_empty_loader_raises(self):
         # This used to escape as an uncaught StopIteration.
@@ -311,17 +351,16 @@ class TestEvaluate(unittest.TestCase):
                 return None, x.float().mean()
 
         tokens = torch.arange(1, 22)  # 21 tokens -> 5 samples of x=4, y=4
-        ds = TokenDatasetList([(tokens[i : i + 4], tokens[i + 1 : i + 5])
-                               for i in range(0, 20, 4)])
+        ds = TokenDatasetList([(tokens[i : i + 4], tokens[i + 1 : i + 5]) for i in range(0, 20, 4)])
         loader = DataLoader(ds, batch_size=3, shuffle=False, drop_last=False)
         batches = [x for x, _ in loader]
         self.assertEqual([b.shape[0] for b in batches], [3, 2])  # ragged tail
 
         per_batch = [b.float().mean().item() for b in batches]
         tokens_per_batch = [b.numel() for b in batches]
-        expected = sum(mean * count
-                       for mean, count in zip(per_batch, tokens_per_batch,
-                                              strict=False)) / sum(tokens_per_batch)
+        expected = sum(
+            mean * count for mean, count in zip(per_batch, tokens_per_batch, strict=False)
+        ) / sum(tokens_per_batch)
         naive = sum(per_batch) / len(per_batch)
 
         self.assertAlmostEqual(
@@ -349,13 +388,24 @@ class TestTrainingLoop(unittest.TestCase):
         self.ckpt_dir = os.path.join(self.tmp.name, "ckpts")
 
     def tiny(self, **over) -> Config:
-        kw = dict(vocab_size=load_data_meta(self.train_bin)["vocab_size"],
-                  context_length=16, n_layers=2, n_heads=2, d_model=32, d_ff=64,
-                  batch_size=2, max_steps=6, warmup_steps=2, eval_interval=3,
-                  eval_batches=2, train_bin=self.train_bin,
-                  val_bin=os.path.join(self.tmp.name, "val.bin"),
-                  tokenizer_path=os.path.join(self.tmp.name, "tokenizer.json"),
-                  checkpoint_dir=self.ckpt_dir, seed=0)
+        kw = dict(
+            vocab_size=load_data_meta(self.train_bin)["vocab_size"],
+            context_length=16,
+            n_layers=2,
+            n_heads=2,
+            d_model=32,
+            d_ff=64,
+            batch_size=2,
+            max_steps=6,
+            warmup_steps=2,
+            eval_interval=3,
+            eval_batches=2,
+            train_bin=self.train_bin,
+            val_bin=os.path.join(self.tmp.name, "val.bin"),
+            tokenizer_path=os.path.join(self.tmp.name, "tokenizer.json"),
+            checkpoint_dir=self.ckpt_dir,
+            seed=0,
+        )
         kw.update(over)
         return Config(**kw)
 
@@ -363,9 +413,7 @@ class TestTrainingLoop(unittest.TestCase):
         cfg = Config()
         self.assertAlmostEqual(lr_at_step(1, cfg), cfg.learning_rate / cfg.warmup_steps)
         self.assertAlmostEqual(lr_at_step(cfg.warmup_steps, cfg), cfg.learning_rate)
-        self.assertAlmostEqual(
-            lr_at_step(cfg.max_steps, cfg), cfg.learning_rate * cfg.min_lr_ratio
-        )
+        self.assertAlmostEqual(lr_at_step(cfg.max_steps, cfg), cfg.learning_rate * cfg.min_lr_ratio)
 
     def test_train_writes_checkpoints_with_losses(self):
         cfg = self.tiny()
@@ -373,8 +421,16 @@ class TestTrainingLoop(unittest.TestCase):
         final = os.path.join(self.ckpt_dir, "final.pt")
         self.assertTrue(os.path.exists(final))
         ckpt = read_checkpoint(final)
-        for key in ("model_state", "optimizer_state", "scheduler_state", "step",
-                    "config", "rng_state", "train_loss", "val_loss"):
+        for key in (
+            "model_state",
+            "optimizer_state",
+            "scheduler_state",
+            "step",
+            "config",
+            "rng_state",
+            "train_loss",
+            "val_loss",
+        ):
             self.assertIn(key, ckpt)
         self.assertEqual(ckpt["step"], cfg.max_steps)
         self.assertTrue(math.isfinite(ckpt["val_loss"]))
@@ -410,13 +466,24 @@ class TestResume(unittest.TestCase):
         self.ckpt_dir = os.path.join(self.tmp.name, "ckpts")
 
     def tiny(self, **over) -> Config:
-        kw = dict(vocab_size=load_data_meta(self.train_bin)["vocab_size"],
-                  context_length=16, n_layers=2, n_heads=2, d_model=32, d_ff=64,
-                  batch_size=2, max_steps=9, warmup_steps=3, eval_interval=3,
-                  eval_batches=2, train_bin=self.train_bin,
-                  val_bin=os.path.join(self.tmp.name, "val.bin"),
-                  tokenizer_path=os.path.join(self.tmp.name, "tokenizer.json"),
-                  checkpoint_dir=self.ckpt_dir, seed=0)
+        kw = dict(
+            vocab_size=load_data_meta(self.train_bin)["vocab_size"],
+            context_length=16,
+            n_layers=2,
+            n_heads=2,
+            d_model=32,
+            d_ff=64,
+            batch_size=2,
+            max_steps=9,
+            warmup_steps=3,
+            eval_interval=3,
+            eval_batches=2,
+            train_bin=self.train_bin,
+            val_bin=os.path.join(self.tmp.name, "val.bin"),
+            tokenizer_path=os.path.join(self.tmp.name, "tokenizer.json"),
+            checkpoint_dir=self.ckpt_dir,
+            seed=0,
+        )
         kw.update(over)
         return Config(**kw)
 
@@ -430,8 +497,7 @@ class TestResume(unittest.TestCase):
         fresh_cfg = self.tiny(max_steps=3, checkpoint_dir=os.path.join(self.tmp.name, "fresh"))
         train(fresh_cfg)
 
-        train(self.tiny(), resume_from=os.path.join(self.ckpt_dir, "step_3.pt"),
-              start_step=4)
+        train(self.tiny(), resume_from=os.path.join(self.ckpt_dir, "step_3.pt"), start_step=4)
         done = read_checkpoint(os.path.join(self.ckpt_dir, "final.pt"))
         self.assertEqual(done["step"], 9)
 
@@ -459,8 +525,7 @@ class TestResume(unittest.TestCase):
         # already on its cosine leg and well past that value.
         self.assertGreater(lr_at_step(4, cfg), lr_at_step(1, cfg))
         self.assertLess(lr_at_step(4, cfg), lr_at_step(3, cfg))  # decaying
-        self.assertAlmostEqual(
-            lr_at_step(cfg.max_steps, cfg), cfg.learning_rate * cfg.min_lr_ratio)
+        self.assertAlmostEqual(lr_at_step(cfg.max_steps, cfg), cfg.learning_rate * cfg.min_lr_ratio)
 
     def test_resume_restores_rng_state(self):
         cfg = self.tiny(max_steps=3)
@@ -474,8 +539,7 @@ class TestResume(unittest.TestCase):
         cfg = self.tiny(max_steps=3)
         train(cfg)
         with self.assertRaises(SystemExit):
-            train(self.tiny(), resume_from=os.path.join(self.ckpt_dir, "step_3.pt"),
-                  start_step=99)
+            train(self.tiny(), resume_from=os.path.join(self.ckpt_dir, "step_3.pt"), start_step=99)
 
     def test_resume_cli_restores_step(self):
         train(self.tiny())  # runs to step 9, leaving step_3.pt behind
@@ -485,20 +549,23 @@ class TestResume(unittest.TestCase):
             train_main()
         finally:
             sys.argv = argv
-        self.assertEqual(read_checkpoint(
-            os.path.join(self.ckpt_dir, "final.pt"))["step"], 9)
+        self.assertEqual(read_checkpoint(os.path.join(self.ckpt_dir, "final.pt"))["step"], 9)
 
     def test_cli_can_extend_max_steps(self):
         train(self.tiny())
         argv = sys.argv
-        sys.argv = ["train.py", "--resume", os.path.join(self.ckpt_dir, "step_3.pt"),
-                    "--max-steps", "12"]
+        sys.argv = [
+            "train.py",
+            "--resume",
+            os.path.join(self.ckpt_dir, "step_3.pt"),
+            "--max-steps",
+            "12",
+        ]
         try:
             train_main()
         finally:
             sys.argv = argv
-        self.assertEqual(read_checkpoint(
-            os.path.join(self.ckpt_dir, "final.pt"))["step"], 12)
+        self.assertEqual(read_checkpoint(os.path.join(self.ckpt_dir, "final.pt"))["step"], 12)
 
 
 class TestDeviceSelection(unittest.TestCase):
@@ -526,8 +593,15 @@ class TestDeviceSelection(unittest.TestCase):
 
 class TestParamGroups(unittest.TestCase):
     def test_one_dimensional_params_are_excluded_from_decay(self):
-        cfg = Config(vocab_size=32, context_length=8, n_layers=2, n_heads=2,
-                     d_model=16, d_ff=32, weight_decay=0.1)
+        cfg = Config(
+            vocab_size=32,
+            context_length=8,
+            n_layers=2,
+            n_heads=2,
+            d_model=16,
+            d_ff=32,
+            weight_decay=0.1,
+        )
         model = from_config(cfg)
         groups = build_param_groups(model, cfg.weight_decay)
         self.assertEqual(len(groups), 2)
@@ -544,9 +618,24 @@ class TestParamGroups(unittest.TestCase):
         self.assertEqual(len(grouped), len(list(model.parameters())))
 
     def test_training_uses_the_groups(self):
-        self.assertTrue(any("weight_decay" in g for g in build_param_groups(
-            from_config(Config(vocab_size=32, context_length=8, n_layers=1, n_heads=2,
-                                d_model=16, d_ff=32)), 0.1)))
+        self.assertTrue(
+            any(
+                "weight_decay" in g
+                for g in build_param_groups(
+                    from_config(
+                        Config(
+                            vocab_size=32,
+                            context_length=8,
+                            n_layers=1,
+                            n_heads=2,
+                            d_model=16,
+                            d_ff=32,
+                        )
+                    ),
+                    0.1,
+                )
+            )
+        )
 
 
 class TestCheckpointSafety(unittest.TestCase):
@@ -555,8 +644,7 @@ class TestCheckpointSafety(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
 
     def tiny(self) -> Config:
-        return Config(vocab_size=40, context_length=8, n_layers=1, n_heads=2,
-                      d_model=16, d_ff=32)
+        return Config(vocab_size=40, context_length=8, n_layers=1, n_heads=2, d_model=16, d_ff=32)
 
     def test_full_checkpoint_loads_with_weights_only(self):
         cfg = self.tiny()
@@ -566,19 +654,29 @@ class TestCheckpointSafety(unittest.TestCase):
         model(x, torch.randint(0, cfg.vocab_size, (2, 8)))[1].backward()
         opt.step()
         path = os.path.join(self.tmp.name, "ckpt.pt")
-        save_checkpoint(path, model, opt, step=1, cfg=cfg, lr=1e-3,
-                        extra={"train_loss": 1.0, "val_loss": 1.0})
+        save_checkpoint(
+            path, model, opt, step=1, cfg=cfg, lr=1e-3, extra={"train_loss": 1.0, "val_loss": 1.0}
+        )
         # No weights_only=False anywhere: this is the same call the library makes.
         ckpt = torch.load(path, map_location="cpu", weights_only=True)
-        for key in ("model_state", "optimizer_state", "scheduler_state", "step",
-                    "config", "rng_state", "train_loss", "val_loss"):
+        for key in (
+            "model_state",
+            "optimizer_state",
+            "scheduler_state",
+            "step",
+            "config",
+            "rng_state",
+            "train_loss",
+            "val_loss",
+        ):
             self.assertIn(key, ckpt)
         # And it restores into a real optimizer, which needs no custom classes.
         fresh = from_config(cfg)
         fresh_opt = torch.optim.AdamW(build_param_groups(fresh, cfg.weight_decay), lr=1e-3)
         load_checkpoint(path, fresh, fresh_opt)
-        self.assertEqual(len(fresh_opt.state_dict()["state"]),
-                         len(ckpt["optimizer_state"]["state"]))
+        self.assertEqual(
+            len(fresh_opt.state_dict()["state"]), len(ckpt["optimizer_state"]["state"])
+        )
 
     def test_arbitrary_objects_are_rejected(self):
         path = os.path.join(self.tmp.name, "evil.pt")
@@ -613,8 +711,7 @@ class TestCheckpointSafety(unittest.TestCase):
     def test_restore_skips_cuda_states_on_cpu_only_machine(self):
         # A GPU-trained checkpoint resumed on a CPU box: the cuda states must be
         # ignored while the CPU RNG state still restores exactly.
-        state = {"torch": torch.get_rng_state(),
-                 "cuda": [torch.zeros(64, dtype=torch.uint8)]}
+        state = {"torch": torch.get_rng_state(), "cuda": [torch.zeros(64, dtype=torch.uint8)]}
         expected = torch.rand(4)
         restore_rng_state(state)
         self.assertTrue(torch.equal(torch.rand(4), expected))
@@ -637,12 +734,25 @@ class TestCheckpointMetadata(unittest.TestCase):
         self.ckpt_dir = os.path.join(self.tmp.name, "ckpts")
 
     def cfg(self, **over) -> Config:
-        kw = dict(vocab_size=load_data_meta(self.data["train_bin"])["vocab_size"],
-                  context_length=16, n_layers=1, n_heads=2, d_model=16, d_ff=32,
-                  dropout=0.1, batch_size=2, max_steps=9, warmup_steps=2,
-                  eval_interval=3, eval_batches=2, train_bin=self.data["train_bin"],
-                  val_bin=self.data["val_bin"], tokenizer_path=self.data["tokenizer"],
-                  checkpoint_dir=self.ckpt_dir, seed=0)
+        kw = dict(
+            vocab_size=load_data_meta(self.data["train_bin"])["vocab_size"],
+            context_length=16,
+            n_layers=1,
+            n_heads=2,
+            d_model=16,
+            d_ff=32,
+            dropout=0.1,
+            batch_size=2,
+            max_steps=9,
+            warmup_steps=2,
+            eval_interval=3,
+            eval_batches=2,
+            train_bin=self.data["train_bin"],
+            val_bin=self.data["val_bin"],
+            tokenizer_path=self.data["tokenizer"],
+            checkpoint_dir=self.ckpt_dir,
+            seed=0,
+        )
         kw.update(over)
         return Config(**kw)
 
@@ -668,18 +778,23 @@ class TestCheckpointMetadata(unittest.TestCase):
         self.assertEqual(meta["schema_version"], CHECKPOINT_SCHEMA_VERSION)
         self.assertEqual(meta["progress"]["step"], 4)
         self.assertEqual(meta["progress"]["max_steps"], cfg.max_steps)
-        for name in ("vocab_size", "context_length", "n_layers", "n_heads",
-                     "d_model", "d_ff", "dropout"):
+        for name in (
+            "vocab_size",
+            "context_length",
+            "n_layers",
+            "n_heads",
+            "d_model",
+            "d_ff",
+            "dropout",
+        ):
             self.assertEqual(meta["model"][name], getattr(cfg, name), name)
         self.assertEqual(meta["tokenizer"]["path"], self.data["tokenizer"])
-        self.assertEqual(sorted(meta["required_keys"]),
-                         ["config", "model_state", "step"])
+        self.assertEqual(sorted(meta["required_keys"]), ["config", "model_state", "step"])
 
     def test_metadata_loads_under_weights_only(self):
         """Plain containers only: adding the block must not cost safe loading."""
         path = self.save(self.cfg())
-        meta = torch.load(path, map_location="cpu",
-                          weights_only=True)["checkpoint_metadata"]
+        meta = torch.load(path, map_location="cpu", weights_only=True)["checkpoint_metadata"]
         self.assertEqual(meta["schema_version"], CHECKPOINT_SCHEMA_VERSION)
         self.assertEqual(meta["tokenizer"]["path"], self.data["tokenizer"])
 
@@ -689,9 +804,12 @@ class TestCheckpointMetadata(unittest.TestCase):
         cfg = self.cfg()
         path = self.save(cfg, step=4, progress={"epoch": 1.5, "tokens_seen": 96})
         ckpt = read_checkpoint(path)
-        self.assertEqual(ckpt["checkpoint_metadata"],
-                         build_checkpoint_metadata(cfg, 4, epoch=1.5, tokens_seen=96,
-                                                   provenance=ckpt["data_provenance"]))
+        self.assertEqual(
+            ckpt["checkpoint_metadata"],
+            build_checkpoint_metadata(
+                cfg, 4, epoch=1.5, tokens_seen=96, provenance=ckpt["data_provenance"]
+            ),
+        )
 
     def test_the_recorded_model_is_the_model_that_loads(self):
         """The block describes the model that actually comes back out of the file."""
@@ -699,13 +817,19 @@ class TestCheckpointMetadata(unittest.TestCase):
         path = self.save(cfg)
         model, loaded_cfg = load_model(path)
         meta = read_checkpoint(path)["checkpoint_metadata"]
-        for name in ("vocab_size", "context_length", "n_layers", "n_heads",
-                     "d_model", "d_ff", "dropout"):
+        for name in (
+            "vocab_size",
+            "context_length",
+            "n_layers",
+            "n_heads",
+            "d_model",
+            "d_ff",
+            "dropout",
+        ):
             self.assertEqual(meta["model"][name], getattr(loaded_cfg, name), name)
         self.assertEqual(model.context_length, cfg.context_length)
         self.assertEqual(loaded_cfg.dropout, cfg.dropout)
-        self.assertEqual(model.count_parameters(),
-                         from_config(loaded_cfg).count_parameters())
+        self.assertEqual(model.count_parameters(), from_config(loaded_cfg).count_parameters())
 
     # --- tokenizer information ----------------------------------------------
 
@@ -719,16 +843,17 @@ class TestCheckpointMetadata(unittest.TestCase):
         # tokenizer cannot pass as this one by sitting at the same path.
         with open(self.data["tokenizer"], "a", encoding="utf-8") as f:
             f.write(" ")
-        self.assertEqual(read_checkpoint(path)["checkpoint_metadata"]["tokenizer"],
-                         tokenizer)
+        self.assertEqual(read_checkpoint(path)["checkpoint_metadata"]["tokenizer"], tokenizer)
         self.assertNotEqual(tokenizer["sha256"], file_sha256(self.data["tokenizer"]))
 
     # --- schema version handling --------------------------------------------
 
     def test_a_newer_schema_version_is_refused(self):
         path = self.save(self.cfg())
-        self.rewrite(path, lambda c: c["checkpoint_metadata"].update(
-            schema_version=CHECKPOINT_SCHEMA_VERSION + 1))
+        self.rewrite(
+            path,
+            lambda c: c["checkpoint_metadata"].update(schema_version=CHECKPOINT_SCHEMA_VERSION + 1),
+        )
         with self.assertRaises(ValueError) as ctx:
             read_checkpoint(path)
         message = str(ctx.exception)
@@ -747,8 +872,9 @@ class TestCheckpointMetadata(unittest.TestCase):
         for i, version in enumerate([None, "2", True]):
             with self.subTest(schema_version=version):
                 path = self.save(self.cfg(), name=f"unversioned_{i}.pt")
-                self.rewrite(path, lambda c, v=version: c["checkpoint_metadata"].update(
-                    schema_version=v))
+                self.rewrite(
+                    path, lambda c, v=version: c["checkpoint_metadata"].update(schema_version=v)
+                )
                 with self.assertRaises(ValueError) as ctx:
                     read_checkpoint(path)
                 self.assertIn("schema_version", str(ctx.exception))
@@ -781,8 +907,9 @@ class TestCheckpointMetadata(unittest.TestCase):
     def test_a_legacy_checkpoint_missing_the_model_shape_is_refused(self):
         """A default vocab_size/context_length is a different model, not a default."""
         path = self.save(self.cfg())
-        self.rewrite(path, lambda c: (c.pop("checkpoint_metadata"),
-                                      c["config"].pop("context_length")))
+        self.rewrite(
+            path, lambda c: (c.pop("checkpoint_metadata"), c["config"].pop("context_length"))
+        )
         with self.assertRaises(ValueError) as ctx:
             read_checkpoint(path)
         message = str(ctx.exception)
@@ -795,8 +922,9 @@ class TestCheckpointMetadata(unittest.TestCase):
         for i, tokenizer in enumerate([{}, {"sha256": "0" * 64}]):
             with self.subTest(tokenizer=tokenizer):
                 path = self.save(self.cfg(), name=f"no_tokenizer_{i}.pt")
-                self.rewrite(path, lambda c, t=tokenizer: c["checkpoint_metadata"].update(
-                    tokenizer=t))
+                self.rewrite(
+                    path, lambda c, t=tokenizer: c["checkpoint_metadata"].update(tokenizer=t)
+                )
                 with self.assertRaises(ValueError) as ctx:
                     read_checkpoint(path)
                 self.assertIn("tokenizer.path", str(ctx.exception))
@@ -812,8 +940,9 @@ class TestCheckpointMetadata(unittest.TestCase):
         for i, progress in enumerate([{}, {"step": None}]):
             with self.subTest(progress=progress):
                 path = self.save(self.cfg(), name=f"no_progress_{i}.pt")
-                self.rewrite(path, lambda c, p=progress: c["checkpoint_metadata"].update(
-                    progress=p))
+                self.rewrite(
+                    path, lambda c, p=progress: c["checkpoint_metadata"].update(progress=p)
+                )
                 with self.assertRaises(ValueError) as ctx:
                     read_checkpoint(path)
                 self.assertIn("progress.step", str(ctx.exception))
@@ -839,8 +968,12 @@ class TestCheckpointMetadata(unittest.TestCase):
 
     def test_metadata_tokenizer_path_contradicting_config_is_refused(self):
         path = self.save(self.cfg())
-        self.rewrite(path, lambda c: c["checkpoint_metadata"]["tokenizer"].update(
-            path="data/other_tokenizer.json"))
+        self.rewrite(
+            path,
+            lambda c: c["checkpoint_metadata"]["tokenizer"].update(
+                path="data/other_tokenizer.json"
+            ),
+        )
         with self.assertRaises(ValueError) as ctx:
             read_checkpoint(path)
         message = str(ctx.exception)
@@ -849,8 +982,12 @@ class TestCheckpointMetadata(unittest.TestCase):
 
     def test_metadata_max_steps_contradicting_config_is_refused(self):
         path = self.save(self.cfg())
-        self.rewrite(path, lambda c: c["checkpoint_metadata"]["progress"].update(
-            max_steps=self.cfg().max_steps + 10))
+        self.rewrite(
+            path,
+            lambda c: c["checkpoint_metadata"]["progress"].update(
+                max_steps=self.cfg().max_steps + 10
+            ),
+        )
         with self.assertRaises(ValueError) as ctx:
             read_checkpoint(path)
         message = str(ctx.exception)
@@ -859,8 +996,7 @@ class TestCheckpointMetadata(unittest.TestCase):
 
     def test_metadata_tokenizer_sha256_contradicting_provenance_is_refused(self):
         path = self.save(self.cfg())
-        self.rewrite(path, lambda c: c["checkpoint_metadata"]["tokenizer"].update(
-            sha256="0" * 64))
+        self.rewrite(path, lambda c: c["checkpoint_metadata"]["tokenizer"].update(sha256="0" * 64))
         with self.assertRaises(ValueError) as ctx:
             read_checkpoint(path)
         message = str(ctx.exception)
@@ -869,9 +1005,19 @@ class TestCheckpointMetadata(unittest.TestCase):
 
     def test_model_state_shape_contradicting_metadata_is_refused(self):
         path = self.save(self.cfg())
-        self.rewrite(path, lambda c: c["model_state"].update(
-            {"wte.weight": torch.zeros((c["checkpoint_metadata"]["model"]["vocab_size"] + 8,
-                                        c["checkpoint_metadata"]["model"]["d_model"]))}))
+        self.rewrite(
+            path,
+            lambda c: c["model_state"].update(
+                {
+                    "wte.weight": torch.zeros(
+                        (
+                            c["checkpoint_metadata"]["model"]["vocab_size"] + 8,
+                            c["checkpoint_metadata"]["model"]["d_model"],
+                        )
+                    )
+                }
+            ),
+        )
         with self.assertRaises(ValueError) as ctx:
             read_checkpoint(path)
         message = str(ctx.exception)
@@ -887,9 +1033,19 @@ class TestCheckpointMetadata(unittest.TestCase):
         on the same terms as the embedding one.
         """
         path = self.save(self.cfg())
-        self.rewrite(path, lambda c: c["model_state"].update(
-            {"wpe.weight": torch.zeros((c["checkpoint_metadata"]["model"]["context_length"] - 4,
-                                        c["checkpoint_metadata"]["model"]["d_model"]))}))
+        self.rewrite(
+            path,
+            lambda c: c["model_state"].update(
+                {
+                    "wpe.weight": torch.zeros(
+                        (
+                            c["checkpoint_metadata"]["model"]["context_length"] - 4,
+                            c["checkpoint_metadata"]["model"]["d_model"],
+                        )
+                    )
+                }
+            ),
+        )
         with self.assertRaises(ValueError) as ctx:
             read_checkpoint(path)
         message = str(ctx.exception)
@@ -899,9 +1055,19 @@ class TestCheckpointMetadata(unittest.TestCase):
     def test_embedding_shape_contradicting_d_model_is_refused(self):
         """Both tensors are checked against d_model, not only against vocab_size."""
         path = self.save(self.cfg())
-        self.rewrite(path, lambda c: c["model_state"].update(
-            {"wte.weight": torch.zeros((c["checkpoint_metadata"]["model"]["vocab_size"],
-                                        c["checkpoint_metadata"]["model"]["d_model"] + 4))}))
+        self.rewrite(
+            path,
+            lambda c: c["model_state"].update(
+                {
+                    "wte.weight": torch.zeros(
+                        (
+                            c["checkpoint_metadata"]["model"]["vocab_size"],
+                            c["checkpoint_metadata"]["model"]["d_model"] + 4,
+                        )
+                    )
+                }
+            ),
+        )
         with self.assertRaises(ValueError) as ctx:
             read_checkpoint(path)
         message = str(ctx.exception)
@@ -965,29 +1131,33 @@ class TestCheckpointMetadata(unittest.TestCase):
     def test_the_training_loop_records_step_epoch_and_tokens(self):
         cfg = self.cfg(max_steps=3, warmup_steps=1, eval_interval=3)
         train(cfg)
-        progress = read_checkpoint(
-            os.path.join(self.ckpt_dir, "final.pt"))["checkpoint_metadata"]["progress"]
+        progress = read_checkpoint(os.path.join(self.ckpt_dir, "final.pt"))["checkpoint_metadata"][
+            "progress"
+        ]
         n_train_tokens = len(load_token_ids(self.data["train_bin"]))
         self.assertEqual(progress["step"], 3)
         self.assertEqual(progress["tokens_seen"], 3 * cfg.batch_size * cfg.context_length)
-        self.assertAlmostEqual(progress["epoch"],
-                               3 * cfg.batch_size * cfg.context_length / n_train_tokens)
+        self.assertAlmostEqual(
+            progress["epoch"], 3 * cfg.batch_size * cfg.context_length / n_train_tokens
+        )
 
     def test_a_resumed_run_keeps_counting_the_same_epoch(self):
         cfg = self.cfg(max_steps=3, warmup_steps=1, eval_interval=3)
         train(cfg)
         first = read_checkpoint(os.path.join(self.ckpt_dir, "final.pt"))
-        train(self.cfg(max_steps=6, warmup_steps=1, eval_interval=3),
-              resume_from=os.path.join(self.ckpt_dir, "step_3.pt"), start_step=4)
-        progress = read_checkpoint(
-            os.path.join(self.ckpt_dir, "final.pt"))["checkpoint_metadata"]["progress"]
+        train(
+            self.cfg(max_steps=6, warmup_steps=1, eval_interval=3),
+            resume_from=os.path.join(self.ckpt_dir, "step_3.pt"),
+            start_step=4,
+        )
+        progress = read_checkpoint(os.path.join(self.ckpt_dir, "final.pt"))["checkpoint_metadata"][
+            "progress"
+        ]
         self.assertEqual(progress["step"], 6)
         # The continuation adds to the count the checkpoint already carried; it
         # does not restart the run's epoch at the resume point.
-        self.assertEqual(progress["tokens_seen"],
-                         2 * 3 * cfg.batch_size * cfg.context_length)
-        self.assertGreater(progress["epoch"],
-                           first["checkpoint_metadata"]["progress"]["epoch"])
+        self.assertEqual(progress["tokens_seen"], 2 * 3 * cfg.batch_size * cfg.context_length)
+        self.assertGreater(progress["epoch"], first["checkpoint_metadata"]["progress"]["epoch"])
 
     def test_programmatic_resume_without_start_step_resumes_from_checkpoint_step(self):
         """train(cfg, resume_from=...) without start_step continues at ckpt['step'] + 1."""
@@ -999,8 +1169,10 @@ class TestCheckpointMetadata(unittest.TestCase):
         self.assertEqual(tokens_at_step_3, 3 * cfg.batch_size * cfg.context_length)
 
         # Call train() with resume_from without passing start_step
-        train(self.cfg(max_steps=6, warmup_steps=1, eval_interval=3),
-              resume_from=os.path.join(self.ckpt_dir, "step_3.pt"))
+        train(
+            self.cfg(max_steps=6, warmup_steps=1, eval_interval=3),
+            resume_from=os.path.join(self.ckpt_dir, "step_3.pt"),
+        )
         final_ckpt = read_checkpoint(os.path.join(self.ckpt_dir, "final.pt"))
         progress = final_ckpt["checkpoint_metadata"]["progress"]
         self.assertEqual(final_ckpt["step"], 6)
@@ -1015,8 +1187,7 @@ class TestCheckpointMetadata(unittest.TestCase):
         """The check is a pure function of the dict, so it is usable before a load."""
         cfg = self.cfg()
         ckpt = read_checkpoint(self.save(cfg))
-        self.assertEqual(validate_checkpoint(ckpt, "somewhere.pt"),
-                         ckpt["checkpoint_metadata"])
+        self.assertEqual(validate_checkpoint(ckpt, "somewhere.pt"), ckpt["checkpoint_metadata"])
         with self.assertRaises(ValueError):
             validate_checkpoint({"model_state": {}, "step": 1}, "somewhere.pt")
 
@@ -1025,8 +1196,9 @@ class TestGenerationSeed(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.cfg = Config(vocab_size=40, context_length=8, n_layers=1, n_heads=2,
-                          d_model=16, d_ff=32, dropout=0.0)
+        self.cfg = Config(
+            vocab_size=40, context_length=8, n_layers=1, n_heads=2, d_model=16, d_ff=32, dropout=0.0
+        )
         self.ckpt = os.path.join(self.tmp.name, "ckpt.pt")
         torch.manual_seed(0)
         model = from_config(self.cfg)
@@ -1035,8 +1207,18 @@ class TestGenerationSeed(unittest.TestCase):
 
     def run_main(self, *extra) -> str:
         argv = sys.argv
-        sys.argv = ["generate.py", "--checkpoint", self.ckpt, "--tokens", "12",
-                    "--temperature", "1.0", "--top-k", "8", *extra]
+        sys.argv = [
+            "generate.py",
+            "--checkpoint",
+            self.ckpt,
+            "--tokens",
+            "12",
+            "--temperature",
+            "1.0",
+            "--top-k",
+            "8",
+            *extra,
+        ]
         try:
             train_out = io.StringIO()
             with contextlib.redirect_stdout(train_out):
@@ -1062,8 +1244,7 @@ class TestGenerationSeed(unittest.TestCase):
 class TestGenerateArgs(unittest.TestCase):
     def setUp(self):
         self.model = from_config(
-            Config(vocab_size=32, context_length=8, n_layers=1, n_heads=2,
-                   d_model=16, d_ff=32)
+            Config(vocab_size=32, context_length=8, n_layers=1, n_heads=2, d_model=16, d_ff=32)
         )
         self.prompt = torch.zeros(1, 4, dtype=torch.long)
 
@@ -1139,8 +1320,9 @@ class TestShippedData(unittest.TestCase):
         # deleting or swapping it broke generation while the rest of the suite passed.
         path = os.path.join(ROOT, "data", "tokenizer.json")
         meta = load_data_meta(os.path.join(ROOT, "data", "processed", "train.bin"))
-        self.assertTrue(os.path.exists(path),
-                        "data/tokenizer.json is a tracked artifact; restore it from git")
+        self.assertTrue(
+            os.path.exists(path), "data/tokenizer.json is a tracked artifact; restore it from git"
+        )
         tok = load_tokenizer(path)
         self.assertEqual(tok.get_vocab_size(), meta["vocab_size"])
         for special in ("<pad>", "<unk>", "<bos>", "<eos>"):
@@ -1150,19 +1332,21 @@ class TestShippedData(unittest.TestCase):
         # The committed tokenizer must carry the full byte alphabet: text outside
         # the sample corpus encodes without <unk> and decodes back exactly.
         tok = load_tokenizer(os.path.join(ROOT, "data", "tokenizer.json"))
-        text = "caf\u00e9 \u00fcn\u00efcode \U0001F680 3.14\tdon't\n\nx"
+        text = "caf\u00e9 \u00fcn\u00efcode \U0001f680 3.14\tdon't\n\nx"
         ids = tok.encode(text).ids
         self.assertNotIn(tok.token_to_id("<unk>"), ids)
         self.assertEqual(tok.decode(ids), text)
 
     def test_shipped_artifacts_match_the_committed_digests(self):
         meta = load_data_meta(os.path.join(ROOT, "data", "processed", "train.bin"))
-        self.assertEqual(file_sha256(os.path.join(ROOT, "data", "tokenizer.json")),
-                         meta["tokenizer_sha256"])
+        self.assertEqual(
+            file_sha256(os.path.join(ROOT, "data", "tokenizer.json")), meta["tokenizer_sha256"]
+        )
         for name in ("train", "val"):
             self.assertEqual(
                 file_sha256(os.path.join(ROOT, "data", "processed", f"{name}.bin")),
-                meta[f"{name}_sha256"])
+                meta[f"{name}_sha256"],
+            )
 
 
 class TestConfigDataAgreement(unittest.TestCase):
@@ -1179,8 +1363,14 @@ class TestConfigDataAgreement(unittest.TestCase):
     def test_explicit_vocab_size_must_match_data(self):
         meta = load_data_meta(self.train_bin)
         with self.assertRaises(ValueError):
-            config_for_data(self.train_bin, vocab_size=meta["vocab_size"] + 1,
-                            n_layers=1, n_heads=2, d_model=16, d_ff=32)
+            config_for_data(
+                self.train_bin,
+                vocab_size=meta["vocab_size"] + 1,
+                n_layers=1,
+                n_heads=2,
+                d_model=16,
+                d_ff=32,
+            )
 
     def test_missing_meta_is_an_error(self):
         os.mkdir(os.path.join(self.tmp.name, "unprepared"))
@@ -1188,8 +1378,7 @@ class TestConfigDataAgreement(unittest.TestCase):
             config_for_data(os.path.join(self.tmp.name, "unprepared", "absent.bin"))
 
     def test_config_round_trips_through_checkpoint_dict(self):
-        cfg = Config(vocab_size=128, context_length=8, n_layers=1, n_heads=2,
-                     d_model=16, d_ff=32)
+        cfg = Config(vocab_size=128, context_length=8, n_layers=1, n_heads=2, d_model=16, d_ff=32)
         self.assertEqual(Config.from_dict(json.loads(json.dumps(cfg.to_dict()))), cfg)
 
 
@@ -1208,21 +1397,32 @@ class TestDataProvenance(unittest.TestCase):
         # own corpus and vocabulary, so every artifact differs by content; setUp
         # asserts that rather than trusting the inputs to differ.
         self.a = build_data_set(os.path.join(self.tmp.name, "set_a"))
-        self.b = build_data_set(os.path.join(self.tmp.name, "set_b"), vocab_size=300,
-                                corpus_text=OTHER_CORPUS)
+        self.b = build_data_set(
+            os.path.join(self.tmp.name, "set_b"), vocab_size=300, corpus_text=OTHER_CORPUS
+        )
         self.ckpt_dir = os.path.join(self.tmp.name, "ckpts")
-        self.assertNotEqual(file_sha256(self.a["train_bin"]),
-                            file_sha256(self.b["train_bin"]))
-        self.assertNotEqual(file_sha256(self.a["tokenizer"]),
-                            file_sha256(self.b["tokenizer"]))
+        self.assertNotEqual(file_sha256(self.a["train_bin"]), file_sha256(self.b["train_bin"]))
+        self.assertNotEqual(file_sha256(self.a["tokenizer"]), file_sha256(self.b["tokenizer"]))
 
     def cfg_for(self, data: dict, **over) -> Config:
-        kw = dict(vocab_size=load_data_meta(data["train_bin"])["vocab_size"],
-                  context_length=16, n_layers=1, n_heads=2, d_model=16, d_ff=32,
-                  batch_size=2, max_steps=9, warmup_steps=2, eval_interval=3,
-                  eval_batches=2, train_bin=data["train_bin"], val_bin=data["val_bin"],
-                  tokenizer_path=data["tokenizer"],
-                  checkpoint_dir=self.ckpt_dir, seed=0)
+        kw = dict(
+            vocab_size=load_data_meta(data["train_bin"])["vocab_size"],
+            context_length=16,
+            n_layers=1,
+            n_heads=2,
+            d_model=16,
+            d_ff=32,
+            batch_size=2,
+            max_steps=9,
+            warmup_steps=2,
+            eval_interval=3,
+            eval_batches=2,
+            train_bin=data["train_bin"],
+            val_bin=data["val_bin"],
+            tokenizer_path=data["tokenizer"],
+            checkpoint_dir=self.ckpt_dir,
+            seed=0,
+        )
         kw.update(over)
         return Config(**kw)
 
@@ -1251,9 +1451,11 @@ class TestDataProvenance(unittest.TestCase):
         self.assertEqual(meta["tokenizer_path"], self.a["tokenizer"])
         self.assertEqual(meta["train_bin"], self.a["train_bin"])
         self.assertEqual(meta["val_bin"], self.a["val_bin"])
-        for key, path in (("tokenizer_sha256", self.a["tokenizer"]),
-                          ("train_sha256", self.a["train_bin"]),
-                          ("val_sha256", self.a["val_bin"])):
+        for key, path in (
+            ("tokenizer_sha256", self.a["tokenizer"]),
+            ("train_sha256", self.a["train_bin"]),
+            ("val_sha256", self.a["val_bin"]),
+        ):
             self.assertEqual(meta[key], file_sha256(path), key)
 
     def test_meta_without_provenance_is_refused(self):
@@ -1280,36 +1482,44 @@ class TestDataProvenance(unittest.TestCase):
             self.cfg_for(self.a).data_provenance()
         self.assertIn("tokenizer.json", str(ctx.exception))
 
-
-# --- non-default paths through the CLI -------------------------------
+    # --- non-default paths through the CLI -------------------------------
 
     def test_cli_records_non_default_tokenizer_and_data_paths(self):
         """--tokenizer / --train-bin / --val-bin land in the checkpoint verbatim."""
         # No architecture flags are passed, so this runs the default model at the
         # data set's vocab for 2 steps; what matters is what gets recorded.
-        self.run_main("--max-steps", "2", "--context-length", "16",
-                      "--batch-size", "2",
-                      "--checkpoint-dir", self.ckpt_dir,
-                      "--train-bin", self.a["train_bin"],
-                      "--val-bin", self.a["val_bin"],
-                      "--tokenizer", self.a["tokenizer"])
+        self.run_main(
+            "--max-steps",
+            "2",
+            "--context-length",
+            "16",
+            "--batch-size",
+            "2",
+            "--checkpoint-dir",
+            self.ckpt_dir,
+            "--train-bin",
+            self.a["train_bin"],
+            "--val-bin",
+            self.a["val_bin"],
+            "--tokenizer",
+            self.a["tokenizer"],
+        )
         ckpt = read_checkpoint(os.path.join(self.ckpt_dir, "final.pt"))
         stored = ckpt["config"]
         self.assertEqual(stored["tokenizer_path"], self.a["tokenizer"])
         self.assertEqual(stored["train_bin"], self.a["train_bin"])
         self.assertEqual(stored["val_bin"], self.a["val_bin"])
         # And the checkpoint identifies that same tokenizer by content.
-        self.assertEqual(ckpt["data_provenance"]["tokenizer_sha256"],
-                         file_sha256(self.a["tokenizer"]))
+        self.assertEqual(
+            ckpt["data_provenance"]["tokenizer_sha256"], file_sha256(self.a["tokenizer"])
+        )
 
     def test_config_for_data_adopts_the_prepared_tokenizer(self):
         """A non-default data set pulls its own tokenizer/val paths into the config."""
-        cfg = config_for_data(self.b["train_bin"], n_layers=1, n_heads=2,
-                              d_model=16, d_ff=32)
+        cfg = config_for_data(self.b["train_bin"], n_layers=1, n_heads=2, d_model=16, d_ff=32)
         self.assertEqual(cfg.tokenizer_path, self.b["tokenizer"])
         self.assertEqual(cfg.val_bin, self.b["val_bin"])
-        self.assertEqual(cfg.vocab_size,
-                         load_data_meta(self.b["train_bin"])["vocab_size"])
+        self.assertEqual(cfg.vocab_size, load_data_meta(self.b["train_bin"])["vocab_size"])
 
     def test_checkpoint_records_data_provenance(self):
         self.train_partial()
@@ -1317,14 +1527,12 @@ class TestDataProvenance(unittest.TestCase):
         self.assertEqual(prov["tokenizer_sha256"], file_sha256(self.a["tokenizer"]))
         self.assertEqual(prov["train_sha256"], file_sha256(self.a["train_bin"]))
         self.assertEqual(prov["val_sha256"], file_sha256(self.a["val_bin"]))
-        self.assertEqual(prov["vocab_size"],
-                         load_data_meta(self.a["train_bin"])["vocab_size"])
+        self.assertEqual(prov["vocab_size"], load_data_meta(self.a["train_bin"])["vocab_size"])
 
     def test_checkpoint_still_loads_with_weights_only(self):
         self.train_partial()
         path = os.path.join(self.ckpt_dir, "final.pt")
-        self.assertIn("data_provenance",
-                      torch.load(path, map_location="cpu", weights_only=True))
+        self.assertIn("data_provenance", torch.load(path, map_location="cpu", weights_only=True))
 
     # --- matching resume --------------------------------------------------
 
@@ -1335,36 +1543,39 @@ class TestDataProvenance(unittest.TestCase):
         train(self.cfg_for(self.a, max_steps=12), resume_from=mid, start_step=4)
         done = read_checkpoint(os.path.join(self.ckpt_dir, "final.pt"))
         self.assertEqual(done["step"], 12)
-        self.assertEqual(done["data_provenance"]["tokenizer_sha256"],
-                         file_sha256(self.a["tokenizer"]))
+        self.assertEqual(
+            done["data_provenance"]["tokenizer_sha256"], file_sha256(self.a["tokenizer"])
+        )
 
     def test_matching_resume_from_checkpoint_paths_needs_no_flags(self):
         """A bare --resume works: the checkpoint carries its own verified paths."""
         mid = self.train_partial()
         self.run_main("--resume", mid, "--max-steps", "12")
-        self.assertEqual(read_checkpoint(
-            os.path.join(self.ckpt_dir, "final.pt"))["step"], 12)
+        self.assertEqual(read_checkpoint(os.path.join(self.ckpt_dir, "final.pt"))["step"], 12)
 
     def test_relocated_but_identical_artifacts_still_resume(self):
         """Digests, not paths, are the contract: a moved copy is the same data."""
         mid = self.train_partial()
         moved = os.path.join(self.tmp.name, "moved")
         shutil.copytree(self.a["root"], moved)
-        moved_set = {"train_bin": os.path.join(moved, "train.bin"),
-                     "val_bin": os.path.join(moved, "val.bin"),
-                     "tokenizer": os.path.join(moved, "tokenizer.json")}
+        moved_set = {
+            "train_bin": os.path.join(moved, "train.bin"),
+            "val_bin": os.path.join(moved, "val.bin"),
+            "tokenizer": os.path.join(moved, "tokenizer.json"),
+        }
         train(self.cfg_for(moved_set, max_steps=12), resume_from=mid, start_step=4)
-        self.assertEqual(read_checkpoint(
-            os.path.join(self.ckpt_dir, "final.pt"))["step"], 12)
+        self.assertEqual(read_checkpoint(os.path.join(self.ckpt_dir, "final.pt"))["step"], 12)
 
-
-# --- mismatch is refused, never a silent fallback --------------------
+    # --- mismatch is refused, never a silent fallback --------------------
 
     def test_resume_against_another_tokenizer_is_refused(self):
         mid = self.train_partial()
         with self.assertRaises(SystemExit) as ctx:
-            train(self.cfg_for(self.a, tokenizer_path=self.b["tokenizer"]),
-                  resume_from=mid, start_step=4)
+            train(
+                self.cfg_for(self.a, tokenizer_path=self.b["tokenizer"]),
+                resume_from=mid,
+                start_step=4,
+            )
         self.assertIn("tokenizer_sha256", str(ctx.exception))
 
     def test_resume_against_another_dataset_is_refused(self):
@@ -1386,11 +1597,18 @@ class TestDataProvenance(unittest.TestCase):
         """The bug's exact failure mode: a resume whose flags point elsewhere."""
         mid = self.train_partial()
         with self.assertRaises(SystemExit) as ctx:
-            self.run_main("--resume", mid,
-                          "--train-bin", self.b["train_bin"],
-                          "--val-bin", self.b["val_bin"],
-                          "--tokenizer", self.b["tokenizer"],
-                          "--checkpoint-dir", self.ckpt_dir)
+            self.run_main(
+                "--resume",
+                mid,
+                "--train-bin",
+                self.b["train_bin"],
+                "--val-bin",
+                self.b["val_bin"],
+                "--tokenizer",
+                self.b["tokenizer"],
+                "--checkpoint-dir",
+                self.ckpt_dir,
+            )
         self.assertIn("refusing to resume", str(ctx.exception))
 
     def test_resume_of_a_checkpoint_without_provenance_is_refused(self):

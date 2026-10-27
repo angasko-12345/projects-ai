@@ -14,8 +14,13 @@ _COLUMNS = (
     TableColumn("id", "Artifact", 90, format=lambda value: short_id(value, 8)),
     TableColumn("name", "Name", 220),
     TableColumn("kind", "Kind", 150),
-    TableColumn("size_bytes", "Size", 90, format=format_size,
-                sort=lambda value: float(value) if isinstance(value, (int, float)) else -1.0),
+    TableColumn(
+        "size_bytes",
+        "Size",
+        90,
+        format=format_size,
+        sort=lambda value: float(value) if isinstance(value, (int, float)) else -1.0,
+    ),
     TableColumn("created_at", "Created", 150, format=format_timestamp),
     TableColumn("workflow_id", "Workflow", 90, format=lambda value: short_id(value, 8)),
     TableColumn("task_id", "Task", 90, format=lambda value: short_id(value, 8)),
@@ -49,8 +54,8 @@ class ArtifactsView(ListDetailView):
 
     def _build_hook(self) -> None:
         self._table.selection_changed.connect(
-            lambda _row: self._delete_btn.setEnabled(
-                self._table.selected_row() is not None))
+            lambda _row: self._delete_btn.setEnabled(self._table.selected_row() is not None)
+        )
         self._delete_btn.setEnabled(False)
 
     def _delete_selected_artifact(self) -> None:
@@ -58,7 +63,8 @@ class ArtifactsView(ListDetailView):
         self.delete_selected(
             "artifact",
             lambda repository, artifact_id: self.ctx.controller.delete_artifact(
-                repository, artifact_id),
+                repository, artifact_id
+            ),
             detail=str(row.get("name") or ""),
             extra="The stored file is removed too.",
         )

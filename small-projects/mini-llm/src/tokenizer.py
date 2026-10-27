@@ -65,8 +65,7 @@ def load_tokenizer(path: str) -> Tokenizer:
     # which artifact is missing. Name it, and say how to make it.
     if not os.path.exists(path):
         raise FileNotFoundError(
-            f"no tokenizer at {os.path.abspath(path)} - run prepare_data.py "
-            "(or pass --tokenizer)"
+            f"no tokenizer at {os.path.abspath(path)} - run prepare_data.py (or pass --tokenizer)"
         )
     return Tokenizer.from_file(path)
 

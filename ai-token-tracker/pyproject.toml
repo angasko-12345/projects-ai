@@ -1,0 +1,26 @@
+# Packaging metadata for AI Token Tracker. Mirrors README.md "Requirements":
+# Python 3.10+ (see AGENTS.md) and PySide6 for the GUI. The headless commands
+# (`python -m token_tracker headroom`, the status line tee) are stdlib-only, and
+# the test suite runs without PySide6 (the GUI tests skip).
+#
+# `python -m token_tracker` from this directory keeps working exactly as before;
+# this file only makes `pip install .` / `uv sync` possible.
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-token-tracker"
+version = "0.1.0"
+description = "Local usage and headroom tracker for coding-agent CLIs"
+requires-python = ">=3.10"
+dependencies = ["PySide6"]
+
+[project.optional-dependencies]
+# DeepSeek Harness sessions are zstd-compressed. Python 3.14+ decodes them with
+# the stdlib `compression.zstd`; older interpreters need the backport.
+zstd = ["zstandard; python_version < '3.14'"]
+
+[tool.setuptools.packages.find]
+include = ["token_tracker*"]

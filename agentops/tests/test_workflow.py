@@ -17,8 +17,11 @@ from agentops.state import StateStore
 from agentops.tasks import TaskStatus
 from agentops.verification_kernel import VerificationKernel
 from agentops.verification_model import (
-    VerificationCheckClass, VerificationCheckSpec, VerificationExecutionPolicy,
-    VerificationProfile, VerificationProfileMode,
+    VerificationCheckClass,
+    VerificationCheckSpec,
+    VerificationExecutionPolicy,
+    VerificationProfile,
+    VerificationProfileMode,
 )
 from agentops.workflow import WorkflowEngine
 
@@ -26,13 +29,27 @@ from agentops.workflow import WorkflowEngine
 class WorkflowTests(unittest.TestCase):
     def setUp(self):
         self.config = AppConfig(
-            {"fallback": AgentConfig("fallback", "fake", ("{prompt}",), ("architecture", "implementation", "review", "debugging"))},
-            {role: ("fallback",) for role in ("architecture", "implementation", "review", "debugging")},
-            (("test",),), max_attempts=2, concurrency=2,
+            {
+                "fallback": AgentConfig(
+                    "fallback",
+                    "fake",
+                    ("{prompt}",),
+                    ("architecture", "implementation", "review", "debugging"),
+                )
+            },
+            {
+                role: ("fallback",)
+                for role in ("architecture", "implementation", "review", "debugging")
+            },
+            (("test",),),
+            max_attempts=2,
+            concurrency=2,
         )
         self.state = StateStore(":memory:")
         self.registry = MagicMock()
-        self.registry.select.return_value = DetectedAgent(self.config.agents["fallback"], True, "fake")
+        self.registry.select.return_value = DetectedAgent(
+            self.config.agents["fallback"], True, "fake"
+        )
         self.runner = MagicMock()
         self.runner.run_agent = self._run_agent
         self.verifier = MagicMock()
@@ -46,16 +63,20 @@ class WorkflowTests(unittest.TestCase):
         # Evidence is therefore declared here, explicitly, instead of being
         # borrowed from whatever state the repository happens to be in.
         self.metadata_collector = MagicMock(
-            return_value=AgentRunMetadata(files_changed=("src/app.py",)))
+            return_value=AgentRunMetadata(files_changed=("src/app.py",))
+        )
 
     async def _run_agent(self, agent, prompt, directory, task_id, cancel_event=None):
         role = self.state.get_task(task_id).role
         stdout = (
             '{"schema_version":1,"verdict":"approve","blocking":[],'
             '"non_blocking":[],"confidence":0.99}'
-            if role == "review" else "done"
+            if role == "review"
+            else "done"
         )
-        return RunResult(agent.config.name, ("fake",), 0, stdout, "", 0.01, False, Path(f"{task_id}.log"))
+        return RunResult(
+            agent.config.name, ("fake",), 0, stdout, "", 0.01, False, Path(f"{task_id}.log")
+        )
 
     def tearDown(self):
         self.state.close()
@@ -63,8 +84,14 @@ class WorkflowTests(unittest.TestCase):
     def test_standard_workflow_runs_to_ready(self):
         passed_check = MagicMock(succeeded=True, output="tests passed")
         self.verifier.run = MagicMock(return_value=asyncio.sleep(0, result=[passed_check]))
-        engine = WorkflowEngine(self.config, self.state, self.registry, self.runner, self.verifier,
-                              metadata_collector=self.metadata_collector)
+        engine = WorkflowEngine(
+            self.config,
+            self.state,
+            self.registry,
+            self.runner,
+            self.verifier,
+            metadata_collector=self.metadata_collector,
+        )
         result = asyncio.run(engine.run_high_level("Add dark mode", Path.cwd()))
         self.assertTrue(result.ready)
         self.assertEqual(result.summary, "READY")
@@ -73,9 +100,20 @@ class WorkflowTests(unittest.TestCase):
     def test_failed_verification_creates_repair_flow(self):
         failed_check = MagicMock(succeeded=False, output="one test failed")
         passed_check = MagicMock(succeeded=True, output="tests passed")
-        self.verifier.run = MagicMock(side_effect=[asyncio.sleep(0, result=[failed_check]), asyncio.sleep(0, result=[passed_check])])
-        engine = WorkflowEngine(self.config, self.state, self.registry, self.runner, self.verifier,
-                              metadata_collector=self.metadata_collector)
+        self.verifier.run = MagicMock(
+            side_effect=[
+                asyncio.sleep(0, result=[failed_check]),
+                asyncio.sleep(0, result=[passed_check]),
+            ]
+        )
+        engine = WorkflowEngine(
+            self.config,
+            self.state,
+            self.registry,
+            self.runner,
+            self.verifier,
+            metadata_collector=self.metadata_collector,
+        )
         result = asyncio.run(engine.run_high_level("Fix issue", Path.cwd()))
         self.assertTrue(result.ready)
         self.assertEqual(len(self.state.list_tasks(result.workflow_id)), 7)
@@ -83,15 +121,31 @@ class WorkflowTests(unittest.TestCase):
     def test_custom_workflow_accepts_parallel_tasks(self):
         passed_check = MagicMock(succeeded=True, output="tests passed")
         self.verifier.run = MagicMock(return_value=asyncio.sleep(0, result=[passed_check]))
-        engine = WorkflowEngine(self.config, self.state, self.registry, self.runner, self.verifier,
-                              metadata_collector=self.metadata_collector)
-        workflow_id, tasks = engine.create_workflow("custom", [
-            {"id": "a", "description": "first", "role": "implementation"},
-            {"id": "b", "description": "second", "role": "implementation"},
-            {"id": "verify", "description": "check", "role": "verification", "dependencies": ["a", "b"]},
-        ])
+        engine = WorkflowEngine(
+            self.config,
+            self.state,
+            self.registry,
+            self.runner,
+            self.verifier,
+            metadata_collector=self.metadata_collector,
+        )
+        workflow_id, tasks = engine.create_workflow(
+            "custom",
+            [
+                {"id": "a", "description": "first", "role": "implementation"},
+                {"id": "b", "description": "second", "role": "implementation"},
+                {
+                    "id": "verify",
+                    "description": "check",
+                    "role": "verification",
+                    "dependencies": ["a", "b"],
+                },
+            ],
+        )
         asyncio.run(engine.execute(workflow_id, Path.cwd()))
-        self.assertTrue(all(self.state.get_task(task.id).status.value == "passed" for task in tasks))
+        self.assertTrue(
+            all(self.state.get_task(task.id).status.value == "passed" for task in tasks)
+        )
 
 
 class ImplementationEvidenceTests(WorkflowTests):
@@ -127,14 +181,18 @@ class ImplementationEvidenceTests(WorkflowTests):
         # Tests declare the evidence explicitly rather than depending on what
         # happens to be in the real cwd.
         collector = MagicMock(return_value=AgentRunMetadata(files_changed=files_changed))
-        engine = WorkflowEngine(engine_cfg, self.state, self.registry,
-                                self.runner, self.verifier,
-                                metadata_collector=collector)
+        engine = WorkflowEngine(
+            engine_cfg,
+            self.state,
+            self.registry,
+            self.runner,
+            self.verifier,
+            metadata_collector=collector,
+        )
         original = self.runner.run_agent
 
         async def _run(agent, prompt, directory, task_id, cancel_event=None):
-            return await original(agent, prompt, directory, task_id,
-                                  cancel_event=cancel_event)
+            return await original(agent, prompt, directory, task_id, cancel_event=cancel_event)
 
         self.runner.run_agent = _run
         return engine
@@ -150,8 +208,10 @@ class ImplementationEvidenceTests(WorkflowTests):
         result = asyncio.run(engine.run_high_level("Create PROOF.md", Path(self._git_dir)))
         task = self._implementation(result.workflow_id)
         self.assertNotEqual(
-            task.status, TaskStatus.PASSED,
-            "exit 0 with an empty worktree must not be a PASSED implementation")
+            task.status,
+            TaskStatus.PASSED,
+            "exit 0 with an empty worktree must not be a PASSED implementation",
+        )
         self.assertIn("no_evidence", task.result)
 
     def test_success_with_worktree_change_is_passed(self):
@@ -165,21 +225,30 @@ class ImplementationEvidenceTests(WorkflowTests):
         # files. A blanket "no changes = failure" rule would be wrong, so the
         # requirement must be scoped by role.
         config = AppConfig(
-            {"fallback": AgentConfig("fallback", "fake", ("{prompt}",),
-                                     ("architecture", "research", "verification"))},
+            {
+                "fallback": AgentConfig(
+                    "fallback", "fake", ("{prompt}",), ("architecture", "research", "verification")
+                )
+            },
             {role: ("fallback",) for role in ("architecture", "research", "verification")},
-            (("test",),), max_attempts=2, concurrency=2,
+            (("test",),),
+            max_attempts=2,
+            concurrency=2,
         )
         engine = self._engine_with(files_changed=(), config=config)
-        workflow_id, tasks = engine.create_workflow("research", [
-            {"id": "investigate", "description": "Investigate the failure",
-             "role": "research"},
-        ])
+        workflow_id, tasks = engine.create_workflow(
+            "research",
+            [
+                {"id": "investigate", "description": "Investigate the failure", "role": "research"},
+            ],
+        )
         asyncio.run(engine.execute(workflow_id, Path.cwd()))
         research_task = next(t for t in tasks if t.role == "research")
         self.assertEqual(
-            self.state.get_task(research_task.id).status, TaskStatus.PASSED,
-            "a research task with no file changes must still be able to PASS")
+            self.state.get_task(research_task.id).status,
+            TaskStatus.PASSED,
+            "a research task with no file changes must still be able to PASS",
+        )
 
 
 if __name__ == "__main__":
@@ -202,32 +271,48 @@ class UnverifiedMustNotInventRepairTests(WorkflowTests):
         """A kernel whose only required check is inapplicable here (no tests/),
         which is the UNVERIFIED -> BLOCKED path."""
         profile = VerificationProfile(
-            name="standard", mode=VerificationProfileMode.FAIL_FAST,
-            concurrency=1, default_timeout_seconds=30,
-            checks=(VerificationCheckSpec(
-                "unit", VerificationCheckClass.TESTS,
-                ("python", "-m", "unittest", "discover", "-s", "tests"),
-                required=True, policy=VerificationExecutionPolicy.SEQUENTIAL),),
+            name="standard",
+            mode=VerificationProfileMode.FAIL_FAST,
+            concurrency=1,
+            default_timeout_seconds=30,
+            checks=(
+                VerificationCheckSpec(
+                    "unit",
+                    VerificationCheckClass.TESTS,
+                    ("python", "-m", "unittest", "discover", "-s", "tests"),
+                    required=True,
+                    policy=VerificationExecutionPolicy.SEQUENTIAL,
+                ),
+            ),
         )
-        kernel = VerificationKernel(profiles={"standard": profile},
-                                    default_profile="standard", state=self.state)
+        kernel = VerificationKernel(
+            profiles={"standard": profile}, default_profile="standard", state=self.state
+        )
         # The repository already has a committed file, so implementation passes
         # the evidence contract; otherwise it fails for an unrelated reason and
         # the repair branch is skipped, making the test vacuous.
         collector = MagicMock(return_value=AgentRunMetadata(files_changed=("base.txt",)))
-        return WorkflowEngine(self.config, self.state, self.registry,
-                              self.runner, self.verifier,
-                              verification_kernel=kernel,
-                              metadata_collector=collector)
+        return WorkflowEngine(
+            self.config,
+            self.state,
+            self.registry,
+            self.runner,
+            self.verifier,
+            verification_kernel=kernel,
+            metadata_collector=collector,
+        )
 
     def _git_repo_with_work(self):
         import subprocess as sp
         import tempfile as tf
+
         directory = tf.mkdtemp()
         self.addCleanup(shutil.rmtree, directory, ignore_errors=True)
-        for cmd in (["git", "init", "-q"],
-                    ["git", "config", "user.email", "t@t.local"],
-                    ["git", "config", "user.name", "T"]):
+        for cmd in (
+            ["git", "init", "-q"],
+            ["git", "config", "user.email", "t@t.local"],
+            ["git", "config", "user.name", "T"],
+        ):
             sp.run(cmd, cwd=directory, check=True)
         Path(directory, "base.txt").write_text("base", encoding="utf-8")
         sp.run(["git", "add", "-A"], cwd=directory, check=True)
@@ -243,9 +328,9 @@ class UnverifiedMustNotInventRepairTests(WorkflowTests):
         self.assertFalse(
             any("Repair the configured verification failure" in d for d in descriptions),
             "UNVERIFIED/BLOCKED verification must not invent a repair task for a "
-            "failure no check demonstrated")
-        self.assertFalse(result.ready,
-                         "an unverified workflow must never be READY")
+            "failure no check demonstrated",
+        )
+        self.assertFalse(result.ready, "an unverified workflow must never be READY")
 
     def test_blocked_verification_is_not_collapsed_into_failed(self):
         engine = self._engine_unverifiable()
@@ -253,8 +338,11 @@ class UnverifiedMustNotInventRepairTests(WorkflowTests):
         result = asyncio.run(engine.run_high_level("Do the work", directory))
         statuses = {t.role: t.status for t in self.state.list_tasks(result.workflow_id)}
         self.assertIs(statuses["implementation"], TaskStatus.PASSED)
-        self.assertIs(statuses["verification"], TaskStatus.BLOCKED,
-                      "UNVERIFIED must reach the task as BLOCKED, not FAILED")
+        self.assertIs(
+            statuses["verification"],
+            TaskStatus.BLOCKED,
+            "UNVERIFIED must reach the task as BLOCKED, not FAILED",
+        )
 
 
 if __name__ == "__main__":
@@ -282,33 +370,52 @@ class CancelledAndTerminatedAreNotSuccessTests(WorkflowTests):
             stdout = (
                 '{"schema_version":1,"verdict":"approve","blocking":[],'
                 '"non_blocking":[],"confidence":0.99}'
-                if role == "review" and not (
+                if role == "review"
+                and not (
                     result_kwargs.get("cancelled", False)
                     or result_kwargs.get("terminated", False)
                     or result_kwargs["timed_out"]
                     or result_kwargs["exit_code"] != 0
-                ) else "partial output"
+                )
+                else "partial output"
             )
-            return RunResult(agent.config.name, ("fake",), result_kwargs["exit_code"],
-                             stdout, "", 0.01, result_kwargs["timed_out"],
-                             Path(f"{task_id}.log"),
-                             cancelled=result_kwargs.get("cancelled", False),
-                             terminated=result_kwargs.get("terminated", False))
+            return RunResult(
+                agent.config.name,
+                ("fake",),
+                result_kwargs["exit_code"],
+                stdout,
+                "",
+                0.01,
+                result_kwargs["timed_out"],
+                Path(f"{task_id}.log"),
+                cancelled=result_kwargs.get("cancelled", False),
+                terminated=result_kwargs.get("terminated", False),
+            )
+
         self.runner.run_agent = _run
         collector = MagicMock(return_value=AgentRunMetadata(files_changed=("a.txt",)))
         passed = MagicMock(succeeded=True, output="tests passed")
         self.verifier.run = MagicMock(return_value=asyncio.sleep(0, result=[passed]))
-        return WorkflowEngine(self.config, self.state, self.registry,
-                              self.runner, self.verifier, metadata_collector=collector)
+        return WorkflowEngine(
+            self.config,
+            self.state,
+            self.registry,
+            self.runner,
+            self.verifier,
+            metadata_collector=collector,
+        )
 
     def _git_repo(self):
         import subprocess as sp
         import tempfile as tf
+
         directory = tf.mkdtemp()
         self.addCleanup(shutil.rmtree, directory, ignore_errors=True)
-        for cmd in (["git", "init", "-q"],
-                    ["git", "config", "user.email", "t@t.local"],
-                    ["git", "config", "user.name", "T"]):
+        for cmd in (
+            ["git", "init", "-q"],
+            ["git", "config", "user.email", "t@t.local"],
+            ["git", "config", "user.name", "T"],
+        ):
             sp.run(cmd, cwd=directory, check=True)
         Path(directory, "base.txt").write_text("base", encoding="utf-8")
         sp.run(["git", "add", "-A"], cwd=directory, check=True)
@@ -316,21 +423,19 @@ class CancelledAndTerminatedAreNotSuccessTests(WorkflowTests):
         return Path(directory)
 
     def _assert_not_ready(self, result):
-        self.assertFalse(result.ready,
-                         "a cancelled/terminated run must never reach READY")
+        self.assertFalse(result.ready, "a cancelled/terminated run must never reach READY")
         for task in self.state.list_tasks(result.workflow_id):
-            self.assertNotEqual(task.status, TaskStatus.PASSED,
-                                f"{task.role} PASSED on a cancelled/terminated run")
+            self.assertNotEqual(
+                task.status, TaskStatus.PASSED, f"{task.role} PASSED on a cancelled/terminated run"
+            )
 
     def test_terminated_run_does_not_reach_ready(self):
         engine = self._engine_returning(exit_code=0, timed_out=False, terminated=True)
-        self._assert_not_ready(
-            asyncio.run(engine.run_high_level("Do it", self._git_repo())))
+        self._assert_not_ready(asyncio.run(engine.run_high_level("Do it", self._git_repo())))
 
     def test_cancelled_run_does_not_reach_ready(self):
         engine = self._engine_returning(exit_code=0, timed_out=False, cancelled=True)
-        self._assert_not_ready(
-            asyncio.run(engine.run_high_level("Do it", self._git_repo())))
+        self._assert_not_ready(asyncio.run(engine.run_high_level("Do it", self._git_repo())))
 
     def test_clean_run_still_reaches_ready(self):
         # The guard must not break the ordinary success path.
@@ -354,15 +459,19 @@ class CancelledWorkflowStatusTests(WorkflowTests):
     """
 
     def _engine(self):
-        return WorkflowEngine(self.config, self.state, self.registry,
-                              self.runner, self.verifier,
-                              metadata_collector=self.metadata_collector)
+        return WorkflowEngine(
+            self.config,
+            self.state,
+            self.registry,
+            self.runner,
+            self.verifier,
+            metadata_collector=self.metadata_collector,
+        )
 
     def test_cancellation_persists_terminal_workflow_status(self):
         started = threading.Event()
 
-        async def run_agent(agent, prompt, directory, task_id,
-                            cancel_event=None, **kwargs):
+        async def run_agent(agent, prompt, directory, task_id, cancel_event=None, **kwargs):
             # A real agent blocks until cooperative cancellation tears the
             # child down, then OperationCancelled propagates.
             started.set()
@@ -376,8 +485,7 @@ class CancelledWorkflowStatusTests(WorkflowTests):
         cancel = threading.Event()
 
         async def scenario():
-            execution = asyncio.create_task(
-                engine.execute(workflow_id, Path.cwd(), cancel))
+            execution = asyncio.create_task(engine.execute(workflow_id, Path.cwd(), cancel))
             for _ in range(400):  # bounded wait: agent start within 2s
                 if started.is_set():
                     break
@@ -398,8 +506,9 @@ class CancelledWorkflowStatusTests(WorkflowTests):
         # terminal FAILED row -- never a stale `pending` row for an operation
         # that has stopped.
         self.assertEqual(workflow.status, TaskStatus.FAILED)
-        plan = next(task for task in self.state.list_tasks(workflow_id)
-                    if task.role == "architecture")
+        plan = next(
+            task for task in self.state.list_tasks(workflow_id) if task.role == "architecture"
+        )
         self.assertEqual(plan.status, TaskStatus.FAILED)
         self.assertIn("cancelled", (plan.result or "").lower())
 
@@ -446,11 +555,9 @@ class StructuredAgentResultTaskStatusTests(WorkflowTests):
     PASSED -- and the workflow to READY.
     """
 
-    def _engine_returning(self, exit_code=0, status=None, stdout=None,
-                          structured_envelope=True):
+    def _engine_returning(self, exit_code=0, status=None, stdout=None, structured_envelope=True):
         if status is not None:
-            payload = AgentResult(
-                status=status, summary=f"agent reports {status.value}").to_dict()
+            payload = AgentResult(status=status, summary=f"agent reports {status.value}").to_dict()
             structured = payload if structured_envelope else None
             text = stdout if stdout is not None else json.dumps(payload)
         else:
@@ -464,24 +571,42 @@ class StructuredAgentResultTaskStatusTests(WorkflowTests):
                 '"non_blocking":[],"confidence":0.99}'
             )
             task_text = review_verdict if role == "review" else text
-            return RunResult(agent.config.name, ("fake",), exit_code,
-                             task_text, "", 0.01, False, Path(f"{task_id}.log"),
-                             structured_result=structured)
+            return RunResult(
+                agent.config.name,
+                ("fake",),
+                exit_code,
+                task_text,
+                "",
+                0.01,
+                False,
+                Path(f"{task_id}.log"),
+                structured_result=structured,
+            )
+
         self.runner.run_agent = _run
         collector = MagicMock(return_value=AgentRunMetadata(files_changed=("a.txt",)))
         passed = MagicMock(succeeded=True, output="tests passed")
         self.verifier.run = MagicMock(return_value=asyncio.sleep(0, result=[passed]))
-        return WorkflowEngine(self.config, self.state, self.registry,
-                              self.runner, self.verifier, metadata_collector=collector)
+        return WorkflowEngine(
+            self.config,
+            self.state,
+            self.registry,
+            self.runner,
+            self.verifier,
+            metadata_collector=collector,
+        )
 
     def _git_repo(self):
         import subprocess as sp
         import tempfile as tf
+
         directory = tf.mkdtemp()
         self.addCleanup(shutil.rmtree, directory, ignore_errors=True)
-        for cmd in (["git", "init", "-q"],
-                    ["git", "config", "user.email", "t@t.local"],
-                    ["git", "config", "user.name", "T"]):
+        for cmd in (
+            ["git", "init", "-q"],
+            ["git", "config", "user.email", "t@t.local"],
+            ["git", "config", "user.name", "T"],
+        ):
             sp.run(cmd, cwd=directory, check=True)
         Path(directory, "base.txt").write_text("base", encoding="utf-8")
         sp.run(["git", "add", "-A"], cwd=directory, check=True)
@@ -492,68 +617,58 @@ class StructuredAgentResultTaskStatusTests(WorkflowTests):
         return {t.role: t.status for t in self.state.list_tasks(workflow_id)}
 
     def test_exit_zero_structured_success_passes(self):
-        engine = self._engine_returning(
-            exit_code=0, status=AgentResultStatus.SUCCESS)
+        engine = self._engine_returning(exit_code=0, status=AgentResultStatus.SUCCESS)
         result = asyncio.run(engine.run_high_level("Do it", self._git_repo()))
         self.assertTrue(result.ready, result.summary)
-        self.assertIs(
-            self._statuses(result.workflow_id)["implementation"], TaskStatus.PASSED)
+        self.assertIs(self._statuses(result.workflow_id)["implementation"], TaskStatus.PASSED)
 
     def test_exit_zero_structured_failure_never_passes(self):
-        engine = self._engine_returning(
-            exit_code=0, status=AgentResultStatus.FAILURE)
+        engine = self._engine_returning(exit_code=0, status=AgentResultStatus.FAILURE)
         result = asyncio.run(engine.run_high_level("Do it", self._git_repo()))
-        self.assertFalse(result.ready,
-                         "structured FAILURE at exit 0 must never reach READY")
+        self.assertFalse(result.ready, "structured FAILURE at exit 0 must never reach READY")
         statuses = self._statuses(result.workflow_id)
         # Architecture runs first with the same failing stub, so it FAILED
         # and implementation is BLOCKED behind it: neither may ever PASS.
         self.assertIs(statuses["architecture"], TaskStatus.FAILED)
         for role, status in statuses.items():
-            self.assertIsNot(status, TaskStatus.PASSED,
-                             f"{role} PASSED on structured FAILURE")
+            self.assertIsNot(status, TaskStatus.PASSED, f"{role} PASSED on structured FAILURE")
 
     def test_exit_zero_structured_partial_never_passes(self):
-        engine = self._engine_returning(
-            exit_code=0, status=AgentResultStatus.PARTIAL)
+        engine = self._engine_returning(exit_code=0, status=AgentResultStatus.PARTIAL)
         result = asyncio.run(engine.run_high_level("Do it", self._git_repo()))
-        self.assertFalse(result.ready,
-                         "structured PARTIAL at exit 0 must never reach READY")
+        self.assertFalse(result.ready, "structured PARTIAL at exit 0 must never reach READY")
         statuses = self._statuses(result.workflow_id)
         self.assertIs(statuses["architecture"], TaskStatus.FAILED)
         for role, status in statuses.items():
-            self.assertIsNot(status, TaskStatus.PASSED,
-                             f"{role} PASSED on structured PARTIAL")
+            self.assertIsNot(status, TaskStatus.PASSED, f"{role} PASSED on structured PARTIAL")
 
     def test_nonzero_exit_structured_success_still_fails(self):
         # Structured SUCCESS must not override a failed process.
-        engine = self._engine_returning(
-            exit_code=1, status=AgentResultStatus.SUCCESS)
+        engine = self._engine_returning(exit_code=1, status=AgentResultStatus.SUCCESS)
         result = asyncio.run(engine.run_high_level("Do it", self._git_repo()))
         self.assertFalse(result.ready)
-        self.assertIs(
-            self._statuses(result.workflow_id)["architecture"], TaskStatus.FAILED)
+        self.assertIs(self._statuses(result.workflow_id)["architecture"], TaskStatus.FAILED)
 
     def test_legacy_plaintext_exit_zero_still_passes(self):
         # No structured payload: historical exit-code behaviour is preserved.
         engine = self._engine_returning(exit_code=0, stdout="done")
         result = asyncio.run(engine.run_high_level("Do it", self._git_repo()))
         self.assertTrue(result.ready, result.summary)
-        self.assertIs(
-            self._statuses(result.workflow_id)["implementation"], TaskStatus.PASSED)
+        self.assertIs(self._statuses(result.workflow_id)["implementation"], TaskStatus.PASSED)
 
     def test_stdout_json_failure_without_envelope_still_fails(self):
         # Runner doubles that skip the structured envelope are still honoured
         # via the stdout fallback.
-        payload = AgentResult(
-            status=AgentResultStatus.FAILURE, summary="broke it").to_dict()
+        payload = AgentResult(status=AgentResultStatus.FAILURE, summary="broke it").to_dict()
         engine = self._engine_returning(
-            exit_code=0, status=AgentResultStatus.FAILURE,
-            stdout=json.dumps(payload), structured_envelope=False)
+            exit_code=0,
+            status=AgentResultStatus.FAILURE,
+            stdout=json.dumps(payload),
+            structured_envelope=False,
+        )
         result = asyncio.run(engine.run_high_level("Do it", self._git_repo()))
         self.assertFalse(result.ready)
-        self.assertIs(
-            self._statuses(result.workflow_id)["architecture"], TaskStatus.FAILED)
+        self.assertIs(self._statuses(result.workflow_id)["architecture"], TaskStatus.FAILED)
 
 
 if __name__ == "__main__":

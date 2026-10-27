@@ -30,8 +30,15 @@ TOL = 0.12
 
 def build(n_layers: int, seed: int = 0) -> MiniGPT:
     torch.manual_seed(seed)
-    return MiniGPT(vocab_size=64, context_length=16, n_layers=n_layers, n_heads=4,
-                   d_model=64, d_ff=128, dropout=0.0)
+    return MiniGPT(
+        vocab_size=64,
+        context_length=16,
+        n_layers=n_layers,
+        n_heads=4,
+        d_model=64,
+        d_ff=128,
+        dropout=0.0,
+    )
 
 
 def fixed_batch():
@@ -43,8 +50,11 @@ def fixed_batch():
 
 class TestDepthScalingFormula(unittest.TestCase):
     def assertRelClose(self, got: float, expected: float) -> None:
-        self.assertLess(abs(got - expected) / expected, TOL,
-                        f"std {got:.6f} not within {TOL:.0%} of {expected:.6f}")
+        self.assertLess(
+            abs(got - expected) / expected,
+            TOL,
+            f"std {got:.6f} not within {TOL:.0%} of {expected:.6f}",
+        )
 
     def test_residual_projections_follow_the_depth_formula(self):
         for n_layers in DEPTHS:
@@ -59,10 +69,13 @@ class TestDepthScalingFormula(unittest.TestCase):
 
     def test_unscaled_layers_keep_the_base_std(self):
         model = build(48)
-        for name, tensor in (("wte", model.wte.weight), ("wpe", model.wpe.weight),
-                             ("wq", model.blocks[0].attn.heads[0].wq.weight),
-                             ("wk", model.blocks[0].attn.heads[0].wk.weight),
-                             ("fc1", model.blocks[0].mlp.fc1.weight)):
+        for name, tensor in (
+            ("wte", model.wte.weight),
+            ("wpe", model.wpe.weight),
+            ("wq", model.blocks[0].attn.heads[0].wq.weight),
+            ("wk", model.blocks[0].attn.heads[0].wk.weight),
+            ("fc1", model.blocks[0].mlp.fc1.weight),
+        ):
             with self.subTest(layer=name):
                 self.assertRelClose(tensor.std().item(), BASE_STD)
         # The scaled projections are clearly separated from the base-std layers.
@@ -71,8 +84,7 @@ class TestDepthScalingFormula(unittest.TestCase):
         self.assertLess(proj, 0.5 * wq)
 
     def test_scaling_is_depth_dependent_not_a_constant(self):
-        stds = {n: build(n).blocks[0].attn.proj.weight.std().item()
-                for n in (6, 12, 48)}
+        stds = {n: build(n).blocks[0].attn.proj.weight.std().item() for n in (6, 12, 48)}
         self.assertGreater(stds[6], stds[12])
         self.assertGreater(stds[12], stds[48])
         # 0.02/sqrt(2*6) vs 0.02/sqrt(2*48): the ratio must be sqrt(48/6).
@@ -96,11 +108,15 @@ class TestFiniteForwardAndBackwardAtDepth(unittest.TestCase):
                 self.assertGreater(model.wte.weight.grad.norm().item(), 0.0)
                 self.assertGreater(model.ln_f.weight.grad.norm().item(), 0.0)
                 for i, block in enumerate(model.blocks):
-                    for part in (block.ln1.weight, block.attn.heads[0].wq.weight,
-                                 block.attn.proj.weight, block.ln2.weight,
-                                 block.mlp.fc1.weight, block.mlp.fc2.weight):
-                        self.assertGreater(part.grad.norm().item(), 0.0,
-                                           f"block {i}")
+                    for part in (
+                        block.ln1.weight,
+                        block.attn.heads[0].wq.weight,
+                        block.attn.proj.weight,
+                        block.ln2.weight,
+                        block.mlp.fc1.weight,
+                        block.mlp.fc2.weight,
+                    ):
+                        self.assertGreater(part.grad.norm().item(), 0.0, f"block {i}")
 
     def test_short_training_run_stays_finite_at_L24(self):
         """The audit's requested deep-config smoke test: a few steps, finite loss."""
@@ -126,16 +142,14 @@ class TestSeededReproducibility(unittest.TestCase):
 
     def test_different_seed_yields_different_weights(self):
         a, b = build(12, seed=7), build(12, seed=8)
-        self.assertFalse(torch.equal(a.blocks[0].attn.proj.weight,
-                                     b.blocks[0].attn.proj.weight))
+        self.assertFalse(torch.equal(a.blocks[0].attn.proj.weight, b.blocks[0].attn.proj.weight))
 
 
 class TestCheckpointCompatibility(unittest.TestCase):
     def expected_keys(self, n_layers: int) -> set[str]:
         # lm_head.weight appears even though it is tied to wte.weight: state_dict
         # records both names for the shared tensor.
-        keys = {"wte.weight", "wpe.weight", "ln_f.weight", "ln_f.bias",
-                "lm_head.weight"}
+        keys = {"wte.weight", "wpe.weight", "ln_f.weight", "ln_f.bias", "lm_head.weight"}
         for i in range(n_layers):
             prefix = f"blocks.{i}."
             keys.add(prefix + "ln1.weight")
@@ -187,4 +201,3 @@ class TestCheckpointCompatibility(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

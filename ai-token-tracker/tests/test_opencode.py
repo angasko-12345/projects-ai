@@ -42,7 +42,12 @@ def build_fixture(path: Path) -> None:
                 }
             ),
         ),
-        ("msg_2", "ses_1", 1791000001000, json.dumps({"role": "user", "time": {"created": 1791000001000}})),
+        (
+            "msg_2",
+            "ses_1",
+            1791000001000,
+            json.dumps({"role": "user", "time": {"created": 1791000001000}}),
+        ),
         (
             "msg_3",
             "ses_1",
@@ -54,7 +59,12 @@ def build_fixture(path: Path) -> None:
                     "modelID": "space-bunny-free",
                     "providerID": "opencode",
                     "time": {"created": 1791000002000},
-                    "tokens": {"input": 0, "output": 0, "reasoning": 0, "cache": {"read": 0, "write": 0}},
+                    "tokens": {
+                        "input": 0,
+                        "output": 0,
+                        "reasoning": 0,
+                        "cache": {"read": 0, "write": 0},
+                    },
                 }
             ),
         ),

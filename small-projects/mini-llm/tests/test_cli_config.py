@@ -28,9 +28,22 @@ from src.train import main as train_main
 # The flags this task adds, keyed by argument dest. tokenizer is included: the
 # Config field is tokenizer_path and --tokenizer-path is the same flag.
 NEW_FLAGS = (
-    "n_layers", "n_heads", "d_model", "d_ff", "learning_rate", "dropout",
-    "grad_clip", "eval_interval", "eval_batches", "warmup_steps", "seed",
-    "weight_decay", "min_lr_ratio", "beta1", "beta2", "tokenizer",
+    "n_layers",
+    "n_heads",
+    "d_model",
+    "d_ff",
+    "learning_rate",
+    "dropout",
+    "grad_clip",
+    "eval_interval",
+    "eval_batches",
+    "warmup_steps",
+    "seed",
+    "weight_decay",
+    "min_lr_ratio",
+    "beta1",
+    "beta2",
+    "tokenizer",
 )
 
 CORPUS = (
@@ -48,14 +61,22 @@ def build_data(tmp: str, context_length: int = 16) -> str:
     argv = sys.argv
     sys.argv = [
         "prepare_data.py",
-        "--input", corpus,
-        "--tokenizer-out", os.path.join(tmp, "tokenizer.json"),
-        "--train-out", os.path.join(tmp, "train.bin"),
-        "--val-out", os.path.join(tmp, "val.bin"),
-        "--vocab-size", "512",
-        "--min-frequency", "1",
-        "--val-frac", "0.2",
-        "--context-length", str(context_length),
+        "--input",
+        corpus,
+        "--tokenizer-out",
+        os.path.join(tmp, "tokenizer.json"),
+        "--train-out",
+        os.path.join(tmp, "train.bin"),
+        "--val-out",
+        os.path.join(tmp, "val.bin"),
+        "--vocab-size",
+        "512",
+        "--min-frequency",
+        "1",
+        "--val-frac",
+        "0.2",
+        "--context-length",
+        str(context_length),
     ]
     try:
         prepare_data.main()
@@ -79,35 +100,64 @@ class TestCliDefaults(unittest.TestCase):
 
     def test_library_defaults_are_unchanged(self):
         cfg = Config()
-        self.assertEqual((cfg.n_layers, cfg.n_heads, cfg.d_model, cfg.d_ff, cfg.dropout),
-                         (6, 6, 384, 1536, 0.0))
-        self.assertEqual((cfg.learning_rate, cfg.weight_decay, cfg.min_lr_ratio),
-                         (3e-4, 0.1, 0.1))
+        self.assertEqual(
+            (cfg.n_layers, cfg.n_heads, cfg.d_model, cfg.d_ff, cfg.dropout), (6, 6, 384, 1536, 0.0)
+        )
+        self.assertEqual((cfg.learning_rate, cfg.weight_decay, cfg.min_lr_ratio), (3e-4, 0.1, 0.1))
         self.assertEqual((cfg.beta1, cfg.beta2), (0.9, 0.95))
-        self.assertEqual((cfg.grad_clip, cfg.eval_interval, cfg.eval_batches,
-                          cfg.warmup_steps, cfg.seed), (1.0, 500, 50, 500, 42))
+        self.assertEqual(
+            (cfg.grad_clip, cfg.eval_interval, cfg.eval_batches, cfg.warmup_steps, cfg.seed),
+            (1.0, 500, 50, 500, 42),
+        )
         self.assertEqual(cfg.tokenizer_path, "data/tokenizer.json")
 
 
 class TestCliOverrides(unittest.TestCase):
     def test_each_flag_updates_its_field(self):
-        args = make_parser().parse_args([
-            "--n-layers", "3", "--n-heads", "4", "--d-model", "64", "--d-ff", "128",
-            "--dropout", "0.2", "--learning-rate", "0.001", "--weight-decay", "0.2",
-            "--min-lr-ratio", "0.05", "--beta1", "0.8", "--beta2", "0.99",
-            "--grad-clip", "0.5", "--warmup-steps", "4", "--eval-interval", "7",
-            "--eval-batches", "9", "--seed", "1234",
-            "--tokenizer-path", "toks/custom.json",
-        ])
+        args = make_parser().parse_args(
+            [
+                "--n-layers",
+                "3",
+                "--n-heads",
+                "4",
+                "--d-model",
+                "64",
+                "--d-ff",
+                "128",
+                "--dropout",
+                "0.2",
+                "--learning-rate",
+                "0.001",
+                "--weight-decay",
+                "0.2",
+                "--min-lr-ratio",
+                "0.05",
+                "--beta1",
+                "0.8",
+                "--beta2",
+                "0.99",
+                "--grad-clip",
+                "0.5",
+                "--warmup-steps",
+                "4",
+                "--eval-interval",
+                "7",
+                "--eval-batches",
+                "9",
+                "--seed",
+                "1234",
+                "--tokenizer-path",
+                "toks/custom.json",
+            ]
+        )
         cfg = Config(context_length=16, max_steps=10, warmup_steps=2)
         apply_cli_config(cfg, args)
-        self.assertEqual((cfg.n_layers, cfg.n_heads, cfg.d_model, cfg.d_ff),
-                         (3, 4, 64, 128))
-        self.assertEqual((cfg.learning_rate, cfg.weight_decay, cfg.min_lr_ratio),
-                         (0.001, 0.2, 0.05))
+        self.assertEqual((cfg.n_layers, cfg.n_heads, cfg.d_model, cfg.d_ff), (3, 4, 64, 128))
+        self.assertEqual(
+            (cfg.learning_rate, cfg.weight_decay, cfg.min_lr_ratio), (0.001, 0.2, 0.05)
+        )
         self.assertEqual((cfg.beta1, cfg.beta2, cfg.grad_clip), (0.8, 0.99, 0.5))
-        self.assertEqual((cfg.warmup_steps, cfg.eval_interval, cfg.eval_batches),
-                         (4, 7, 9))
+        self.assertEqual((cfg.warmup_steps, cfg.eval_interval, cfg.eval_batches), (4, 7, 9))
         self.assertEqual(cfg.dropout, 0.2)
         self.assertEqual(cfg.seed, 1234)
         self.assertEqual(cfg.tokenizer_path, "toks/custom.json")
@@ -120,16 +170,23 @@ class TestCliOverrides(unittest.TestCase):
         self.assertEqual({k for k in before if before[k] != after[k]}, {"max_steps"})
 
     def test_tokenizer_and_tokenizer_path_are_one_flag(self):
+        self.assertEqual(make_parser().parse_args(["--tokenizer", "a.json"]).tokenizer, "a.json")
         self.assertEqual(
-            make_parser().parse_args(["--tokenizer", "a.json"]).tokenizer, "a.json")
-        self.assertEqual(
-            make_parser().parse_args(["--tokenizer-path", "b.json"]).tokenizer, "b.json")
+            make_parser().parse_args(["--tokenizer-path", "b.json"]).tokenizer, "b.json"
+        )
 
 
 class TestNonDefaultModel(unittest.TestCase):
     def test_non_default_shape_constructs(self):
-        cfg = Config(vocab_size=2048, context_length=128, n_layers=4, n_heads=8,
-                     d_model=256, d_ff=1024, dropout=0.1)
+        cfg = Config(
+            vocab_size=2048,
+            context_length=128,
+            n_layers=4,
+            n_heads=8,
+            d_model=256,
+            d_ff=1024,
+            dropout=0.1,
+        )
         model = from_config(cfg)
         self.assertEqual(model.count_parameters(), 3_713_536)
         x = torch.randint(0, cfg.vocab_size, (2, cfg.context_length))
@@ -175,21 +232,46 @@ class TestCliEndToEnd(unittest.TestCase):
             sys.argv = saved
 
     def data_flags(self) -> list[str]:
-        return ["--train-bin", self.train_bin, "--val-bin", self.val_bin,
-                "--tokenizer", self.tokenizer, "--checkpoint-dir", self.ckpt_dir,
-                "--context-length", "16", "--max-steps", "2", "--batch-size", "2",
-                "--eval-interval", "2", "--eval-batches", "2"]
+        return [
+            "--train-bin",
+            self.train_bin,
+            "--val-bin",
+            self.val_bin,
+            "--tokenizer",
+            self.tokenizer,
+            "--checkpoint-dir",
+            self.ckpt_dir,
+            "--context-length",
+            "16",
+            "--max-steps",
+            "2",
+            "--batch-size",
+            "2",
+            "--eval-interval",
+            "2",
+            "--eval-batches",
+            "2",
+        ]
 
     def stored_config(self):
-        return Config.from_dict(
-            read_checkpoint(os.path.join(self.ckpt_dir, "final.pt"))["config"])
+        return Config.from_dict(read_checkpoint(os.path.join(self.ckpt_dir, "final.pt"))["config"])
 
     def test_selected_model_size_reaches_the_checkpoint(self):
-        self.run_main(*self.data_flags(), "--n-layers", "3", "--n-heads", "4",
-                      "--d-model", "64", "--d-ff", "128", "--seed", "0")
+        self.run_main(
+            *self.data_flags(),
+            "--n-layers",
+            "3",
+            "--n-heads",
+            "4",
+            "--d-model",
+            "64",
+            "--d-ff",
+            "128",
+            "--seed",
+            "0",
+        )
         cfg = self.stored_config()
-        self.assertEqual((cfg.n_layers, cfg.n_heads, cfg.d_model, cfg.d_ff),
-                         (3, 4, 64, 128))
+        self.assertEqual((cfg.n_layers, cfg.n_heads, cfg.d_model, cfg.d_ff), (3, 4, 64, 128))
         # The shape is real: the saved config rebuilds a model of that shape at
         # the vocabulary the prepared data actually reached.
         model = from_config(cfg)
@@ -198,18 +280,34 @@ class TestCliEndToEnd(unittest.TestCase):
         self.assertEqual(model.context_length, 16)
 
     def test_selected_hyperparameters_reach_the_checkpoint(self):
-        self.run_main(*self.data_flags(), "--learning-rate", "0.0007",
-                      "--weight-decay", "0.05", "--min-lr-ratio", "0.2",
-                      "--beta1", "0.85", "--beta2", "0.9", "--grad-clip", "0.3",
-                      "--warmup-steps", "1", "--dropout", "0.1", "--seed", "99")
+        self.run_main(
+            *self.data_flags(),
+            "--learning-rate",
+            "0.0007",
+            "--weight-decay",
+            "0.05",
+            "--min-lr-ratio",
+            "0.2",
+            "--beta1",
+            "0.85",
+            "--beta2",
+            "0.9",
+            "--grad-clip",
+            "0.3",
+            "--warmup-steps",
+            "1",
+            "--dropout",
+            "0.1",
+            "--seed",
+            "99",
+        )
         cfg = self.stored_config()
         self.assertEqual(cfg.learning_rate, 0.0007)
         self.assertEqual(cfg.weight_decay, 0.05)
         self.assertEqual(cfg.min_lr_ratio, 0.2)
         self.assertEqual((cfg.beta1, cfg.beta2), (0.85, 0.9))
         self.assertEqual(cfg.grad_clip, 0.3)
-        self.assertEqual((cfg.warmup_steps, cfg.eval_interval, cfg.eval_batches),
-                         (1, 2, 2))
+        self.assertEqual((cfg.warmup_steps, cfg.eval_interval, cfg.eval_batches), (1, 2, 2))
         self.assertEqual(cfg.dropout, 0.1)
         self.assertEqual(cfg.seed, 99)
 

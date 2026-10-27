@@ -40,8 +40,9 @@ from .base import BaseView
 
 _WORKFLOW_COLUMNS = (
     TableColumn("status", "Status", 110),
-    TableColumn("description", "Description", 240,
-                format=lambda value: elide(str(value or ""), 64)),
+    TableColumn(
+        "description", "Description", 240, format=lambda value: elide(str(value or ""), 64)
+    ),
     TableColumn("task_count", "Tasks", 80),
     TableColumn("run_count", "Runs", 80),
     TableColumn("created_at", "Created", 150, format=format_timestamp),
@@ -113,8 +114,8 @@ class DashboardView(BaseView):
         hero_body.addWidget(self._hero_agents)
         self._hero_input = QPlainTextEdit()
         self._hero_input.setPlaceholderText(
-            "Describe the outcome, e.g. \"Fix the failing widget tests and update "
-            "the README to match.\""
+            'Describe the outcome, e.g. "Fix the failing widget tests and update '
+            'the README to match."'
         )
         self._hero_input.setTabChangesFocus(True)
         self._hero_input.setMinimumHeight(64)
@@ -140,20 +141,24 @@ class DashboardView(BaseView):
 
         stats = QHBoxLayout()
         stats.setSpacing(12)
-        (self._workflows_card, self._workflows_stat,
-         self._workflows_detail) = self._stat_card(
-            "Active workflows", "workflows", "Open the workflow control center")
-        (self._tasks_card, self._tasks_stat,
-         self._tasks_detail) = self._stat_card(
-            "Current tasks", "tasks", "Open the task list")
-        (self._verification_card, self._verification_stat,
-         self._verification_detail) = self._stat_card(
-            "Verification health", "verification", "Open verification runs")
-        (self._agents_card, self._agents_stat,
-         self._agents_detail) = self._stat_card(
-            "Detected agents", "agents", "Open the agent roster")
-        for card in (self._workflows_card, self._tasks_card,
-                     self._verification_card, self._agents_card):
+        (self._workflows_card, self._workflows_stat, self._workflows_detail) = self._stat_card(
+            "Active workflows", "workflows", "Open the workflow control center"
+        )
+        (self._tasks_card, self._tasks_stat, self._tasks_detail) = self._stat_card(
+            "Current tasks", "tasks", "Open the task list"
+        )
+        (self._verification_card, self._verification_stat, self._verification_detail) = (
+            self._stat_card("Verification health", "verification", "Open verification runs")
+        )
+        (self._agents_card, self._agents_stat, self._agents_detail) = self._stat_card(
+            "Detected agents", "agents", "Open the agent roster"
+        )
+        for card in (
+            self._workflows_card,
+            self._tasks_card,
+            self._verification_card,
+            self._agents_card,
+        ):
             stats.addWidget(card, stretch=1)
         root.addLayout(stats)
 
@@ -170,8 +175,7 @@ class DashboardView(BaseView):
         attention_body.addWidget(self._attention_empty)
         self._attention_list = QListWidget()
         self._attention_list.setMaximumHeight(160)
-        self._attention_list.itemActivated.connect(
-            lambda _item: self.ctx.navigate("failures"))
+        self._attention_list.itemActivated.connect(lambda _item: self.ctx.navigate("failures"))
         attention_body.addWidget(self._attention_list)
         attention_actions = QHBoxLayout()
         attention_actions.addStretch(1)
@@ -182,12 +186,11 @@ class DashboardView(BaseView):
         left.addWidget(attention_card)
 
         workflows_card = Card("Recent workflows")
-        self._workflows_table = TablePanel(
-            _WORKFLOW_COLUMNS, "No workflows yet", _NO_WORKFLOWS
-        )
+        self._workflows_table = TablePanel(_WORKFLOW_COLUMNS, "No workflows yet", _NO_WORKFLOWS)
         workflows_card.add(self._workflows_table)
         self._workflows_table.activated.connect(
-            lambda row: self.ctx.open_task(str(row.get("id") or ""), ""))
+            lambda row: self.ctx.open_task(str(row.get("id") or ""), "")
+        )
         left.addWidget(workflows_card, stretch=1)
         main.addLayout(left, stretch=3)
 
@@ -202,7 +205,8 @@ class DashboardView(BaseView):
         self._activity_empty = muted(_NO_REPOSITORY)
         self._activity_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._activity_empty.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
         activity_body.addWidget(self._activity_empty)
         self._activity_list = QListWidget()
         # Timestamped entries outgrow the narrow column; wrapped rows keep
@@ -238,20 +242,27 @@ class DashboardView(BaseView):
         self._summary_loaded = False
         self._agents_loaded = False
         self._page_header.set_subtitle("No repository chosen")
-        for stat in (self._workflows_stat, self._tasks_stat,
-                     self._verification_stat, self._agents_stat):
+        for stat in (
+            self._workflows_stat,
+            self._tasks_stat,
+            self._verification_stat,
+            self._agents_stat,
+        ):
             stat.setText("-")
             stat.setStyleSheet("")
-        for detail in (self._workflows_detail, self._tasks_detail,
-                       self._verification_detail, self._agents_detail):
+        for detail in (
+            self._workflows_detail,
+            self._tasks_detail,
+            self._verification_detail,
+            self._agents_detail,
+        ):
             detail.setText("")
         self._hero_agents.setText("")
         self._attention_count.setText("")
         self._attention_empty.setText(_NO_REPOSITORY)
         self._attention_empty.show()
         self._attention_list.hide()
-        self._workflows_table.set_empty_state(
-            "No repository chosen", _NO_REPOSITORY)
+        self._workflows_table.set_empty_state("No repository chosen", _NO_REPOSITORY)
         self._workflows_table.set_rows([])
         self._activity_empty.setText(_NO_REPOSITORY)
         self._activity_empty.show()
@@ -264,8 +275,7 @@ class DashboardView(BaseView):
             self._show_no_repo()
             return
         if not self._summary_loaded:
-            for detail in (self._workflows_detail, self._tasks_detail,
-                           self._verification_detail):
+            for detail in (self._workflows_detail, self._tasks_detail, self._verification_detail):
                 detail.setText("loading...")
         if not self._agents_loaded:
             self._agents_detail.setText("detecting...")
@@ -273,8 +283,11 @@ class DashboardView(BaseView):
         self.submit(
             "summary",
             lambda: controller.dashboard_summary(
-                repository, workflow_limit=8, event_limit=12,
-                failure_limit=10, verification_limit=10,
+                repository,
+                workflow_limit=8,
+                event_limit=12,
+                failure_limit=10,
+                verification_limit=10,
             ),
             self._on_summary,
             self._on_summary_error,
@@ -294,15 +307,17 @@ class DashboardView(BaseView):
             return
         start = self.ctx.new_task
         if start is None:
-            self.ctx.toast("Unavailable",
-                           "Task creation is not wired in this context.", "error")
+            self.ctx.toast("Unavailable", "Task creation is not wired in this context.", "error")
             return
         agent = self._hero_agent.currentData()
         start(text, str(agent) if agent else None)
 
     def on_operation_event(self, event: dict) -> None:
         if str(event.get("kind") or "") in (
-            "workflow-started", "workflow-result", "result", "thread-finished"
+            "workflow-started",
+            "workflow-result",
+            "result",
+            "thread-finished",
         ):
             self.refresh()
 
@@ -311,8 +326,7 @@ class DashboardView(BaseView):
         """Error state: say what failed while keeping any loaded numbers."""
         self._page_header.set_subtitle(f"State unavailable - {message}")
         if not self._summary_loaded:
-            for detail in (self._workflows_detail, self._tasks_detail,
-                           self._verification_detail):
+            for detail in (self._workflows_detail, self._tasks_detail, self._verification_detail):
                 detail.setText("unavailable")
 
     def _on_summary(self, summary: object) -> None:
@@ -320,8 +334,7 @@ class DashboardView(BaseView):
             return
         repository = str(summary.get("repository") or self.repository())
         self._page_header.set_subtitle(
-            f"{elide(repository, 48)}  ·  "
-            f"{summary.get('total_workflows', 0)} workflows"
+            f"{elide(repository, 48)}  ·  {summary.get('total_workflows', 0)} workflows"
         )
 
         active = summary.get("active_workflows") or {}
@@ -337,14 +350,11 @@ class DashboardView(BaseView):
         verification = dict(summary.get("verification_status") or {})
         failed = int(verification.get("failed") or 0)
         self._verification_stat.setText(str(int(verification.get("passed") or 0)))
-        self._verification_stat.setStyleSheet(
-            f"color: {DARK.danger if failed else DARK.success};")
+        self._verification_stat.setStyleSheet(f"color: {DARK.danger if failed else DARK.success};")
         self._verification_detail.setText(_counts_line(verification, exclude="passed"))
 
         needs = list(summary.get("needs_attention") or [])
-        self._attention_count.setText(
-            f"{len(needs)} need attention" if needs else ""
-        )
+        self._attention_count.setText(f"{len(needs)} need attention" if needs else "")
         self._attention_empty.setVisible(not needs)
         if not needs:
             self._attention_empty.setText("Nothing needs attention right now.")
@@ -365,8 +375,7 @@ class DashboardView(BaseView):
             self._attention_list.addItem(item)
 
         rows = list(summary.get("recent_workflows") or [])
-        self._workflows_table.set_empty_state(
-            "No workflows yet", _NO_WORKFLOWS)
+        self._workflows_table.set_empty_state("No workflows yet", _NO_WORKFLOWS)
         self._workflows_table.set_rows(rows)
 
         events = list(summary.get("recent_events") or [])
@@ -378,9 +387,7 @@ class DashboardView(BaseView):
         for event in events:
             message = str(event.get("message") or event.get("type") or "")
             timestamp = str(event.get("timestamp") or "")
-            item = QListWidgetItem(
-                elide(f"{format_timestamp(timestamp)}  {message}", 110)
-            )
+            item = QListWidgetItem(elide(f"{format_timestamp(timestamp)}  {message}", 110))
             item.setToolTip(f"{timestamp}\n{message}")
             self._activity_list.addItem(item)
 
@@ -391,10 +398,8 @@ class DashboardView(BaseView):
             return
         available = sum(1 for profile in profiles if profile.get("availability"))
         self._agents_stat.setText(f"{available} / {len(profiles)}")
-        self._agents_detail.setText(
-            "available now" if profiles else "none detected")
-        self._hero_agents.setText(
-            f"{available} of {len(profiles)} agents available")
+        self._agents_detail.setText("available now" if profiles else "none detected")
+        self._hero_agents.setText(f"{available} of {len(profiles)} agents available")
         current = self._hero_agent.currentData()
         self._hero_agent.blockSignals(True)
         try:
@@ -405,8 +410,7 @@ class DashboardView(BaseView):
                     continue
                 identifier = str(profile.get("identifier") or "")
                 display = str(profile.get("display_name") or identifier)
-                self._hero_agent.addItem(
-                    agent_icon(identifier, display), display, identifier)
+                self._hero_agent.addItem(agent_icon(identifier, display), display, identifier)
             index = self._hero_agent.findData(current)
             self._hero_agent.setCurrentIndex(index if index >= 0 else 0)
         finally:

@@ -76,104 +76,104 @@ PALETTE = dict(LIGHT_THEME)
 def build_stylesheet(dark: bool) -> str:
     c = DARK_THEME if dark else LIGHT_THEME
     return f"""
-QMainWindow, QWidget#central {{ background: {c['canvas']}; }}
-QLabel#appTitle {{ font-size: 16px; font-weight: 700; color: {c['ink']}; }}
+QMainWindow, QWidget#central {{ background: {c["canvas"]}; }}
+QLabel#appTitle {{ font-size: 16px; font-weight: 700; color: {c["ink"]}; }}
 QFrame#card {{
-    background: {c['surface']};
-    border: 1px solid {c['border']};
+    background: {c["surface"]};
+    border: 1px solid {c["border"]};
     border-radius: 6px;
 }}
-QLabel#statValue {{ font-size: 26px; font-weight: 700; color: {c['ink']}; }}
-QLabel#statCaption {{ font-size: 11px; color: {c['muted']}; }}
-QLabel#panelTitle {{ font-size: 12px; font-weight: 600; color: {c['muted']}; }}
-QLabel#chartCaption {{ font-size: 11px; color: {c['muted']}; }}
-QLabel#syncLabel, QLabel#countLabel {{ font-size: 11px; color: {c['muted']}; }}
+QLabel#statValue {{ font-size: 26px; font-weight: 700; color: {c["ink"]}; }}
+QLabel#statCaption {{ font-size: 11px; color: {c["muted"]}; }}
+QLabel#panelTitle {{ font-size: 12px; font-weight: 600; color: {c["muted"]}; }}
+QLabel#chartCaption {{ font-size: 11px; color: {c["muted"]}; }}
+QLabel#syncLabel, QLabel#countLabel {{ font-size: 11px; color: {c["muted"]}; }}
 QPushButton {{
-    background: {c['surface']};
-    border: 1px solid {c['border']};
+    background: {c["surface"]};
+    border: 1px solid {c["border"]};
     border-radius: 5px;
     padding: 6px 14px;
-    color: {c['ink']};
+    color: {c["ink"]};
 }}
-QPushButton:hover {{ background: {c['hover']}; }}
+QPushButton:hover {{ background: {c["hover"]}; }}
 QPushButton#primary {{
-    background: {c['accent']};
-    border: 1px solid {c['accent']};
+    background: {c["accent"]};
+    border: 1px solid {c["accent"]};
     color: white;
     font-weight: 600;
 }}
-QPushButton#primary:hover {{ background: {c['accent_hover']}; }}
+QPushButton#primary:hover {{ background: {c["accent_hover"]}; }}
 QPushButton:disabled {{
-    background: {c['disabled']};
-    border: 1px solid {c['border']};
-    color: {c['muted']};
+    background: {c["disabled"]};
+    border: 1px solid {c["border"]};
+    color: {c["muted"]};
 }}
 QTabWidget::pane {{
-    border: 1px solid {c['border']};
+    border: 1px solid {c["border"]};
     border-radius: 6px;
-    background: {c['canvas']};
+    background: {c["canvas"]};
     top: -1px;
 }}
 QTabBar::tab {{
     background: transparent;
-    color: {c['muted']};
+    color: {c["muted"]};
     padding: 7px 16px;
     font-size: 12px;
     font-weight: 600;
     margin-right: 2px;
 }}
 QTabBar::tab:selected {{
-    background: {c['canvas']};
-    color: {c['ink']};
-    border: 1px solid {c['border']};
+    background: {c["canvas"]};
+    color: {c["ink"]};
+    border: 1px solid {c["border"]};
     border-bottom: none;
     border-radius: 6px 6px 0 0;
 }}
 QLineEdit, QComboBox {{
-    background: {c['surface']};
-    border: 1px solid {c['border']};
+    background: {c["surface"]};
+    border: 1px solid {c["border"]};
     border-radius: 5px;
     padding: 5px 8px;
     font-size: 12px;
-    color: {c['ink']};
+    color: {c["ink"]};
 }}
 QComboBox::drop-down {{ border: none; width: 16px; }}
 QComboBox QAbstractItemView {{
-    background: {c['surface']};
-    border: 1px solid {c['border']};
-    color: {c['ink']};
-    selection-background-color: {c['sel_bg']};
-    selection-color: {c['sel_ink']};
+    background: {c["surface"]};
+    border: 1px solid {c["border"]};
+    color: {c["ink"]};
+    selection-background-color: {c["sel_bg"]};
+    selection-color: {c["sel_ink"]};
 }}
 QComboBox QAbstractItemView::item {{
-    background: {c['surface']};
-    color: {c['ink']};
+    background: {c["surface"]};
+    color: {c["ink"]};
     padding: 4px 8px;
 }}
 QComboBox QAbstractItemView::item:selected {{
-    background: {c['sel_bg']};
-    color: {c['sel_ink']};
+    background: {c["sel_bg"]};
+    color: {c["sel_ink"]};
 }}
 QTableWidget {{
-    background: {c['surface']};
-    alternate-background-color: {c['alt']};
-    border: 1px solid {c['border']};
+    background: {c["surface"]};
+    alternate-background-color: {c["alt"]};
+    border: 1px solid {c["border"]};
     border-radius: 6px;
-    gridline-color: {c['gridline']};
+    gridline-color: {c["gridline"]};
     font-size: 12px;
 }}
 QHeaderView::section {{
-    background: {c['header']};
+    background: {c["header"]};
     border: none;
-    border-bottom: 1px solid {c['border']};
+    border-bottom: 1px solid {c["border"]};
     padding: 5px 8px;
     font-size: 11px;
     font-weight: 600;
-    color: {c['muted']};
+    color: {c["muted"]};
 }}
-QTableWidget::item {{ padding: 4px 8px; color: {c['ink']}; }}
-QTableWidget::item:selected {{ background: {c['sel_bg']}; color: {c['sel_ink']}; }}
-QStatusBar {{ background: {c['surface']}; border-top: 1px solid {c['border']}; color: {c['muted']}; }}
+QTableWidget::item {{ padding: 4px 8px; color: {c["ink"]}; }}
+QTableWidget::item:selected {{ background: {c["sel_bg"]}; color: {c["sel_ink"]}; }}
+QStatusBar {{ background: {c["surface"]}; border-top: 1px solid {c["border"]}; color: {c["muted"]}; }}
 """
 
 
@@ -360,8 +360,11 @@ class MainWindow(QMainWindow):
         self.theme_button.setToolTip("Switch to the light or dark theme")
         self.theme_button.clicked.connect(self.toggle_theme)
         for button in (
-            self.import_button, self.import_file_button, self.export_button,
-            self.export_json_button, self.theme_button,
+            self.import_button,
+            self.import_file_button,
+            self.export_button,
+            self.export_json_button,
+            self.theme_button,
         ):
             header.addWidget(button)
         root.addLayout(header)
@@ -553,7 +556,9 @@ class MainWindow(QMainWindow):
         header.resizeSection(5, 96)
         header.setSectionResizeMode(6, QHeaderView.Fixed)
         header.resizeSection(6, 84)
-        self.events_table.setItemDelegateForColumn(5, NumberDelegate(human_tokens, self.events_table))
+        self.events_table.setItemDelegateForColumn(
+            5, NumberDelegate(human_tokens, self.events_table)
+        )
         header.setSortIndicator(0, Qt.DescendingOrder)
         self.events_table.setSortingEnabled(True)
         layout.addWidget(self.events_table, stretch=1)
@@ -648,10 +653,7 @@ class MainWindow(QMainWindow):
 
         agent_specs = [s for s in collectors.REGISTRY if s.kind == "agent"]
         agent_sources = {s.source for s in agent_specs}
-        tracked = [
-            s for s in statuses
-            if s["source"] in agent_sources and (s["events"] or 0) > 0
-        ]
+        tracked = [s for s in statuses if s["source"] in agent_sources and (s["events"] or 0) > 0]
         exact = [s for s in tracked if s["capability"] == "exact"]
         unavailable = [s for s in statuses if s["capability"] == "unavailable"]
         self.coverage_label.setText(
@@ -662,10 +664,18 @@ class MainWindow(QMainWindow):
         self._fill_status_rows()
 
     def _fill_status_rows(self) -> None:
-        colors = {"exact": "#16A34A", "estimated": "#B45309", "unavailable": "#6B7280",
-                  "error": "#DC2626"}
-        labels = {"exact": "● Exact", "estimated": "● Estimated",
-                  "unavailable": "● Unavailable", "error": "● Error"}
+        colors = {
+            "exact": "#16A34A",
+            "estimated": "#B45309",
+            "unavailable": "#6B7280",
+            "error": "#DC2626",
+        }
+        labels = {
+            "exact": "● Exact",
+            "estimated": "● Estimated",
+            "unavailable": "● Unavailable",
+            "error": "● Error",
+        }
         table = self.status_table
         table.setSortingEnabled(False)
         table.setRowCount(0)
@@ -679,7 +689,9 @@ class MainWindow(QMainWindow):
             table.setItem(row, 1, _text_item(status["source"]))
             table.setItem(row, 2, _text_item(status.get("tool") or ""))
             last_sync = status.get("last_sync")
-            table.setItem(row, 3, _text_item(last_sync[:19].replace("T", " ") if last_sync else "never"))
+            table.setItem(
+                row, 3, _text_item(last_sync[:19].replace("T", " ") if last_sync else "never")
+            )
             table.setItem(row, 4, _number_item(int(status.get("events") or 0), align_right=True))
             table.setItem(row, 5, _text_item(status.get("error") or ""))
         table.setSortingEnabled(True)
@@ -721,7 +733,9 @@ class MainWindow(QMainWindow):
                 continue
             if needle:
                 haystack = " ".join(
-                    part for part in (event.provider, event.model, event.agent, event.project) if part
+                    part
+                    for part in (event.provider, event.model, event.agent, event.project)
+                    if part
                 ).lower()
                 if needle not in haystack:
                     continue
@@ -848,7 +862,9 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
     def import_file(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Import events file", "", "Data files (*.csv *.json)")
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import events file", "", "Data files (*.csv *.json)"
+        )
         if not path:
             return
         try:

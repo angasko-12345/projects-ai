@@ -40,8 +40,7 @@ class _Toast(QFrame):
         self._closing = False
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(DARK.space_md, DARK.space_sm,
-                                  DARK.space_sm, DARK.space_sm)
+        layout.setContentsMargins(DARK.space_md, DARK.space_sm, DARK.space_sm, DARK.space_sm)
         layout.setSpacing(DARK.space_sm)
 
         column = QVBoxLayout()
@@ -56,8 +55,12 @@ class _Toast(QFrame):
             column.addWidget(body)
         layout.addLayout(column, stretch=1)
 
-        status = {"success": "passed", "error": "failed",
-                  "warning": "blocked", "info": "running"}.get(kind, "unknown")
+        status = {
+            "success": "passed",
+            "error": "failed",
+            "warning": "blocked",
+            "info": "running",
+        }.get(kind, "unknown")
         badge = Badge(status=status)
         layout.addWidget(badge, alignment=Qt.AlignmentFlag.AlignTop)
 
@@ -117,8 +120,7 @@ class ToastHost(QWidget):
         self.setObjectName("ToastHost")
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self._layout = QVBoxLayout(self)
-        self._layout.setContentsMargins(DARK.space_md, DARK.space_md,
-                                        DARK.space_md, DARK.space_md)
+        self._layout.setContentsMargins(DARK.space_md, DARK.space_md, DARK.space_md, DARK.space_md)
         self._layout.setSpacing(DARK.space_sm)
         self._layout.addStretch(1)
         self._toasts: list[_Toast] = []

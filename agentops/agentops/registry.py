@@ -112,8 +112,12 @@ class AgentRegistry:
         command = agent.version_command or (executable, "--version")
         command = tuple(item.replace("{command}", executable) for item in command)
         kwargs: dict[str, object] = {
-            "capture_output": True, "text": True, "encoding": "utf-8",
-            "errors": "replace", "timeout": 15, "check": False,
+            "capture_output": True,
+            "text": True,
+            "encoding": "utf-8",
+            "errors": "replace",
+            "timeout": 15,
+            "check": False,
         }
         if sys.platform == "win32":
             kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
@@ -142,13 +146,11 @@ class AgentRegistry:
         detected: dict[str, DetectedAgent] = {}
         for name, agent in self.config.agents.items():
             if not agent.enabled:
-                detected[name] = DetectedAgent(agent, False, None,
-                                               health=AgentHealth.BLOCKED)
+                detected[name] = DetectedAgent(agent, False, None, health=AgentHealth.BLOCKED)
                 continue
             executable = shutil.which(agent.command)
             if executable is None:
-                detected[name] = DetectedAgent(agent, False, None,
-                                               health=AgentHealth.DISCOVERED)
+                detected[name] = DetectedAgent(agent, False, None, health=AgentHealth.DISCOVERED)
                 continue
             healthy, detail = self._health_probe(agent, executable)
             detected[name] = DetectedAgent(
@@ -198,9 +200,7 @@ class AgentRegistry:
         """
         if self._adapters is not None and not refresh:
             return self._adapters
-        self._adapters = {
-            name: adapter_for(agent) for name, agent in self.config.agents.items()
-        }
+        self._adapters = {name: adapter_for(agent) for name, agent in self.config.agents.items()}
         return self._adapters
 
     def adapter(self, name: str) -> CliAdapter:
@@ -232,7 +232,11 @@ class AgentRegistry:
             if name not in detected:
                 continue
             candidate = detected[name]
-            if candidate.available and name not in excluded and (not candidate.config.roles or role in candidate.config.roles):
+            if (
+                candidate.available
+                and name not in excluded
+                and (not candidate.config.roles or role in candidate.config.roles)
+            ):
                 if required:
                     # Every name here passed `name in detected`, and adapters
                     # covers every configured agent, so the lookup is total.

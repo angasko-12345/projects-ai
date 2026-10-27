@@ -24,10 +24,21 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.config import Config, load_data_meta
 from src.dataset import build_dataloader
 from src.model import from_config
-from src.train import (_atomic_torch_save, apply_cli_config, build_param_groups,
-                       lr_at_step, make_grad_scaler, make_parser, optimizer_step,
-                       read_checkpoint, resolve_amp, restore_grad_scaler,
-                       save_checkpoint, set_seed, train)
+from src.train import (
+    _atomic_torch_save,
+    apply_cli_config,
+    build_param_groups,
+    lr_at_step,
+    make_grad_scaler,
+    make_parser,
+    optimizer_step,
+    read_checkpoint,
+    resolve_amp,
+    restore_grad_scaler,
+    save_checkpoint,
+    set_seed,
+    train,
+)
 from tests.test_grad_accum import build_data
 
 CPU = torch.device("cpu")
@@ -91,7 +102,7 @@ class TestOptimizerStep(unittest.TestCase):
         self.x = torch.randn(8, 4)
 
     def grads_norm(self):
-        return float(torch.sqrt(sum((p.grad ** 2).sum() for p in self.model.parameters())))
+        return float(torch.sqrt(sum((p.grad**2).sum() for p in self.model.parameters())))
 
     def test_clip_sees_unscaled_gradients(self):
         self.model(self.x).pow(2).mean().backward()
@@ -108,7 +119,7 @@ class TestOptimizerStep(unittest.TestCase):
 
         def spy(params, max_norm, *a, **k):
             params = list(params)
-            seen.append(float(torch.sqrt(sum((p.grad ** 2).sum() for p in params))))
+            seen.append(float(torch.sqrt(sum((p.grad**2).sum() for p in params))))
             return real(params, max_norm, *a, **k)
 
         with mock.patch("torch.nn.utils.clip_grad_norm_", spy):
@@ -137,12 +148,19 @@ class TestScalerCheckpoint(unittest.TestCase):
         self.train_bin = build_data(self.tmp.name, context_length=16)
 
     def cfg(self):
-        return Config(vocab_size=load_data_meta(self.train_bin)["vocab_size"],
-                      context_length=16, n_layers=1, n_heads=2, d_model=16, d_ff=32,
-                      train_bin=self.train_bin,
-                      val_bin=os.path.join(self.tmp.name, "val.bin"),
-                      tokenizer_path=os.path.join(self.tmp.name, "tokenizer.json"),
-                      max_steps=4, warmup_steps=1)
+        return Config(
+            vocab_size=load_data_meta(self.train_bin)["vocab_size"],
+            context_length=16,
+            n_layers=1,
+            n_heads=2,
+            d_model=16,
+            d_ff=32,
+            train_bin=self.train_bin,
+            val_bin=os.path.join(self.tmp.name, "val.bin"),
+            tokenizer_path=os.path.join(self.tmp.name, "tokenizer.json"),
+            max_steps=4,
+            warmup_steps=1,
+        )
 
     def test_scaler_state_round_trips_under_weights_only(self):
         cfg = self.cfg()
@@ -188,19 +206,32 @@ class TrainingCase(unittest.TestCase):
         self.ckpt_dir = os.path.join(self.tmp.name, "ckpts")
 
     def tiny(self, **over) -> Config:
-        kw = dict(vocab_size=load_data_meta(self.train_bin)["vocab_size"],
-                  context_length=16, n_layers=2, n_heads=2, d_model=32, d_ff=64,
-                  batch_size=2, max_steps=5, warmup_steps=2, eval_interval=5,
-                  eval_batches=1, train_bin=self.train_bin,
-                  val_bin=os.path.join(self.tmp.name, "val.bin"),
-                  tokenizer_path=os.path.join(self.tmp.name, "tokenizer.json"),
-                  checkpoint_dir=self.ckpt_dir, seed=3)
+        kw = dict(
+            vocab_size=load_data_meta(self.train_bin)["vocab_size"],
+            context_length=16,
+            n_layers=2,
+            n_heads=2,
+            d_model=32,
+            d_ff=64,
+            batch_size=2,
+            max_steps=5,
+            warmup_steps=2,
+            eval_interval=5,
+            eval_batches=1,
+            train_bin=self.train_bin,
+            val_bin=os.path.join(self.tmp.name, "val.bin"),
+            tokenizer_path=os.path.join(self.tmp.name, "tokenizer.json"),
+            checkpoint_dir=self.ckpt_dir,
+            seed=3,
+        )
         kw.update(over)
         return Config(**kw)
 
     def run_train(self, cfg, **kw):
-        with contextlib.redirect_stdout(io.StringIO()) as out, \
-                contextlib.redirect_stderr(io.StringIO()):
+        with (
+            contextlib.redirect_stdout(io.StringIO()) as out,
+            contextlib.redirect_stderr(io.StringIO()),
+        ):
             train(cfg, device_spec="cpu", **kw)
         return out.getvalue()
 
@@ -214,11 +245,13 @@ class TestAmpOffIsTheFp32Loop(TrainingCase):
         warmup/cosine, accumulate, clip, step. No autocast, no scaler."""
         set_seed(cfg.seed)
         model = from_config(cfg)
-        loader = build_dataloader(cfg.train_bin, cfg.context_length, cfg.batch_size,
-                                  shuffle=True)
-        opt = torch.optim.AdamW(build_param_groups(model, cfg.weight_decay),
-                                lr=cfg.learning_rate, betas=(cfg.beta1, cfg.beta2),
-                                weight_decay=cfg.weight_decay)
+        loader = build_dataloader(cfg.train_bin, cfg.context_length, cfg.batch_size, shuffle=True)
+        opt = torch.optim.AdamW(
+            build_param_groups(model, cfg.weight_decay),
+            lr=cfg.learning_rate,
+            betas=(cfg.beta1, cfg.beta2),
+            weight_decay=cfg.weight_decay,
+        )
         it = iter(loader)
         model.train()
         for step in range(1, cfg.max_steps + 1):
@@ -278,8 +311,10 @@ class TestBf16OnCpu(TrainingCase):
 
     def test_resume_continues_in_bf16(self):
         self.run_train(self.tiny(amp="bf16", max_steps=3, eval_interval=3))
-        self.run_train(self.tiny(amp="bf16", max_steps=5, eval_interval=5),
-                       resume_from=os.path.join(self.ckpt_dir, "final.pt"))
+        self.run_train(
+            self.tiny(amp="bf16", max_steps=5, eval_interval=5),
+            resume_from=os.path.join(self.ckpt_dir, "final.pt"),
+        )
         self.assertEqual(self.final()["step"], 5)
 
 
@@ -293,8 +328,9 @@ class TestAmpRefusals(TrainingCase):
     def test_resume_with_a_different_amp_is_refused(self):
         self.run_train(self.tiny(max_steps=3, eval_interval=3))
         with self.assertRaises(SystemExit) as ctx:
-            self.run_train(self.tiny(amp="bf16"),
-                           resume_from=os.path.join(self.ckpt_dir, "final.pt"))
+            self.run_train(
+                self.tiny(amp="bf16"), resume_from=os.path.join(self.ckpt_dir, "final.pt")
+            )
         self.assertIn("--amp off", str(ctx.exception))
 
     def test_checkpoint_from_before_amp_still_resumes(self):
@@ -319,8 +355,9 @@ class TestFp16OnCuda(TrainingCase):
         ckpt = self.final()
         self.assertIn("scale", ckpt["scaler_state"])
         self.assertTrue(torch.isfinite(torch.tensor(ckpt["val_loss"])))
-        log = self.run_cuda(self.tiny(amp="fp16"),
-                            resume_from=os.path.join(self.ckpt_dir, "final.pt"))
+        log = self.run_cuda(
+            self.tiny(amp="fp16"), resume_from=os.path.join(self.ckpt_dir, "final.pt")
+        )
         self.assertIn("restored GradScaler", log)
         self.assertEqual(self.final()["step"], 5)
 

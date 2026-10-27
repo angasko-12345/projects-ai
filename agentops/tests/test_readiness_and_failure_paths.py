@@ -38,20 +38,28 @@ FAKE_SECRET = "sk-FAKE-TEST-SECRET-NOT-REAL"
 
 def _engine(state, *, verifier=None, run_agent=None):
     config = AppConfig(
-        {"fallback": AgentConfig("fallback", "fake", ("{prompt}",),
-                                 ("architecture", "implementation", "review", "debugging"))},
-        {role: ("fallback",) for role in
-         ("architecture", "implementation", "review", "debugging")},
+        {
+            "fallback": AgentConfig(
+                "fallback",
+                "fake",
+                ("{prompt}",),
+                ("architecture", "implementation", "review", "debugging"),
+            )
+        },
+        {role: ("fallback",) for role in ("architecture", "implementation", "review", "debugging")},
         (("test",),),
-        max_attempts=1, concurrency=1, max_repair_cycles=0,
+        max_attempts=1,
+        concurrency=1,
+        max_repair_cycles=0,
     )
     registry = MagicMock()
     registry.select.return_value = DetectedAgent(config.agents["fallback"], True, "fake")
     runner = MagicMock()
 
     async def default_run(agent, prompt, directory, task_id, cancel_event=None):
-        return RunResult(agent.config.name, ("fake",), 0, "done", "", 0.01, False,
-                         Path(f"{task_id}.log"))
+        return RunResult(
+            agent.config.name, ("fake",), 0, "done", "", 0.01, False, Path(f"{task_id}.log")
+        )
 
     runner.run_agent = run_agent or default_run
     return WorkflowEngine(config, state, registry, runner, verifier or MagicMock())
@@ -163,6 +171,7 @@ class ReadinessRuleTests(unittest.TestCase):
 
     def test_standard_flow_uses_the_shared_rule(self):
         import agentops.workflow as workflow_module
+
         source = inspect.getsource(workflow_module)
         self.assertIn("assert_tasks_ready", source)
         self.assertIn("assess_workflow_readiness", source)
@@ -180,8 +189,7 @@ class ReadinessSignalMixingTests(unittest.TestCase):
 
     def test_valid_verification_evidence_and_review_is_ready(self):
         tasks = [
-            _verification_task("wf", "verify", TaskStatus.PASSED,
-                               verified=True, evidence=True),
+            _verification_task("wf", "verify", TaskStatus.PASSED, verified=True, evidence=True),
             _review_task("wf"),
         ]
         readiness = assess_workflow_readiness(tasks, "wf")
@@ -191,10 +199,8 @@ class ReadinessSignalMixingTests(unittest.TestCase):
     def test_evidence_from_a_different_verification_task_is_not_ready(self):
         """The reported bug: PASSED task has no evidence, FAILED task does."""
         tasks = [
-            _verification_task("wf", "verify", TaskStatus.PASSED,
-                               verified=True, evidence=False),
-            _verification_task("wf", "verify-old", TaskStatus.FAILED,
-                               verified=True, evidence=True),
+            _verification_task("wf", "verify", TaskStatus.PASSED, verified=True, evidence=False),
+            _verification_task("wf", "verify-old", TaskStatus.FAILED, verified=True, evidence=True),
             _review_task("wf"),
         ]
         readiness = assess_workflow_readiness(tasks, "wf")
@@ -203,10 +209,10 @@ class ReadinessSignalMixingTests(unittest.TestCase):
 
     def test_evidence_from_an_unverified_task_is_not_ready(self):
         tasks = [
-            _verification_task("wf", "verify", TaskStatus.PASSED,
-                               verified=True, evidence=False),
-            _verification_task("wf", "verify-other", TaskStatus.PASSED,
-                               verified=False, evidence=True),
+            _verification_task("wf", "verify", TaskStatus.PASSED, verified=True, evidence=False),
+            _verification_task(
+                "wf", "verify-other", TaskStatus.PASSED, verified=False, evidence=True
+            ),
             _review_task("wf"),
         ]
         readiness = assess_workflow_readiness(tasks, "wf")
@@ -215,10 +221,10 @@ class ReadinessSignalMixingTests(unittest.TestCase):
 
     def test_evidence_from_a_running_task_is_not_ready(self):
         tasks = [
-            _verification_task("wf", "verify", TaskStatus.PASSED,
-                               verified=True, evidence=False),
-            _verification_task("wf", "verify-running", TaskStatus.RUNNING,
-                               verified=True, evidence=True),
+            _verification_task("wf", "verify", TaskStatus.PASSED, verified=True, evidence=False),
+            _verification_task(
+                "wf", "verify-running", TaskStatus.RUNNING, verified=True, evidence=True
+            ),
             _review_task("wf"),
         ]
         readiness = assess_workflow_readiness(tasks, "wf")
@@ -227,8 +233,7 @@ class ReadinessSignalMixingTests(unittest.TestCase):
 
     def test_evidence_without_a_passing_verification_is_not_ready(self):
         tasks = [
-            _verification_task("wf", "verify", TaskStatus.FAILED,
-                               verified=True, evidence=True),
+            _verification_task("wf", "verify", TaskStatus.FAILED, verified=True, evidence=True),
             _review_task("wf"),
         ]
         readiness = assess_workflow_readiness(tasks, "wf")
@@ -238,8 +243,7 @@ class ReadinessSignalMixingTests(unittest.TestCase):
 
     def test_failed_review_is_not_ready_even_with_valid_verification(self):
         tasks = [
-            _verification_task("wf", "verify", TaskStatus.PASSED,
-                               verified=True, evidence=True),
+            _verification_task("wf", "verify", TaskStatus.PASSED, verified=True, evidence=True),
             _review_task("wf", TaskStatus.FAILED),
         ]
         readiness = assess_workflow_readiness(tasks, "wf")
@@ -249,8 +253,7 @@ class ReadinessSignalMixingTests(unittest.TestCase):
 
     def test_failed_verification_is_not_ready_even_with_evidence_and_review(self):
         tasks = [
-            _verification_task("wf", "verify", TaskStatus.FAILED,
-                               verified=True, evidence=True),
+            _verification_task("wf", "verify", TaskStatus.FAILED, verified=True, evidence=True),
             _review_task("wf"),
         ]
         readiness = assess_workflow_readiness(tasks, "wf")
@@ -259,22 +262,20 @@ class ReadinessSignalMixingTests(unittest.TestCase):
 
     def test_all_required_signals_on_one_task_is_ready(self):
         tasks = [
-            _verification_task("wf", "verify", TaskStatus.PASSED,
-                               verified=True, evidence=True),
+            _verification_task("wf", "verify", TaskStatus.PASSED, verified=True, evidence=True),
             _review_task("wf"),
         ]
         readiness = assess_workflow_readiness(tasks, "wf")
-        self.assertTrue((readiness.verification_ok, readiness.evidence_present,
-                         readiness.review_ok))
+        self.assertTrue(
+            (readiness.verification_ok, readiness.evidence_present, readiness.review_ok)
+        )
         self.assertEqual(readiness.summary(), "READY")
 
     def test_mixed_signals_raise_through_the_asserting_gate(self):
         """The asserting gate must reject what the assessment rejects."""
         tasks = [
-            _verification_task("wf", "verify", TaskStatus.PASSED,
-                               verified=True, evidence=False),
-            _verification_task("wf", "verify-old", TaskStatus.FAILED,
-                               verified=True, evidence=True),
+            _verification_task("wf", "verify", TaskStatus.PASSED, verified=True, evidence=False),
+            _verification_task("wf", "verify-old", TaskStatus.FAILED, verified=True, evidence=True),
             _review_task("wf"),
         ]
         with self.assertRaises(StateTransitionError) as caught:
@@ -283,12 +284,15 @@ class ReadinessSignalMixingTests(unittest.TestCase):
 
     def test_scoped_assessment_cannot_borrow_from_a_sibling_task(self):
         """Scoping to one task must not be widened by a sibling's evidence."""
-        scoped = _verification_task("wf", "verify", TaskStatus.PASSED,
-                                    verified=True, evidence=False)
-        sibling = _verification_task("wf", "verify-old", TaskStatus.PASSED,
-                                     verified=True, evidence=True)
+        scoped = _verification_task(
+            "wf", "verify", TaskStatus.PASSED, verified=True, evidence=False
+        )
+        sibling = _verification_task(
+            "wf", "verify-old", TaskStatus.PASSED, verified=True, evidence=True
+        )
         readiness = assess_workflow_readiness(
-            [scoped, sibling, _review_task("wf")], "wf",
+            [scoped, sibling, _review_task("wf")],
+            "wf",
             verification_task_id=scoped.id,
         )
         self.assertFalse(readiness.ready)
@@ -324,8 +328,11 @@ class RetryMergeContractTests(unittest.TestCase):
         agentops/* branch, and provenance-validated merge.
         """
         source = inspect.getsource(AgentOpsController.retry_merge)
-        for gate in ("uncommitted worktree changes", "managed agentops/* worktree",
-                     "find_worktree_ref_by_path"):
+        for gate in (
+            "uncommitted worktree changes",
+            "managed agentops/* worktree",
+            "find_worktree_ref_by_path",
+        ):
             self.assertIn(gate, source)
         self.assertNotIn("workflow_readiness", source)
         self.assertNotIn("assert_tasks_ready", source)
@@ -334,8 +341,7 @@ class RetryMergeContractTests(unittest.TestCase):
         manager = GitWorktreeManager()
         worktree = manager.create(self.root, "retry task")
         (worktree.path / "feature.txt").write_text("work", encoding="utf-8")
-        controller = AgentOpsController(config=AppConfig({}, {}, (), max_attempts=1,
-                                                         concurrency=1))
+        controller = AgentOpsController(config=AppConfig({}, {}, (), max_attempts=1, concurrency=1))
         with self.assertRaises(GitError) as caught:
             controller.retry_merge(self.root, worktree.path)
         self.assertIn("uncommitted worktree changes", str(caught.exception))
@@ -349,15 +355,20 @@ class RetryMergeContractTests(unittest.TestCase):
         state = StateStore(self.root / ".agentops" / "state.sqlite")
         try:
             workflow_id = state.create_workflow("retry provenance")
-            state.record_worktree_ref(WorktreeRef(
-                id="ref-1", workflow_id=workflow_id, path=str(worktree.path),
-                branch=worktree.branch, base_branch=worktree.base_branch,
-                base_commit=worktree.base_commit, created_at="",
-            ))
+            state.record_worktree_ref(
+                WorktreeRef(
+                    id="ref-1",
+                    workflow_id=workflow_id,
+                    path=str(worktree.path),
+                    branch=worktree.branch,
+                    base_branch=worktree.base_branch,
+                    base_commit=worktree.base_commit,
+                    created_at="",
+                )
+            )
         finally:
             state.close()
-        controller = AgentOpsController(config=AppConfig({}, {}, (), max_attempts=1,
-                                                         concurrency=1))
+        controller = AgentOpsController(config=AppConfig({}, {}, (), max_attempts=1, concurrency=1))
         result = controller.retry_merge(self.root, worktree.path)
         self.assertTrue(result["used_stored_provenance"])
         self.assertTrue(result["merged"])
@@ -368,8 +379,7 @@ class RetryMergeContractTests(unittest.TestCase):
         worktree = manager.create(self.root, "retry without provenance")
         (worktree.path / "feature.txt").write_text("work", encoding="utf-8")
         manager.commit_changes(worktree, "agentops: work")
-        controller = AgentOpsController(config=AppConfig({}, {}, (), max_attempts=1,
-                                                         concurrency=1))
+        controller = AgentOpsController(config=AppConfig({}, {}, (), max_attempts=1, concurrency=1))
         result = controller.retry_merge(self.root, worktree.path)
         self.assertFalse(result["used_stored_provenance"])
         self.assertEqual(result["base_branch"], "main")
@@ -423,7 +433,6 @@ class FreshRepositoryTests(unittest.TestCase):
         self.assertIn("/.agentops/", content)
 
 
-
 class TaskResultRedactionTests(unittest.TestCase):
     """Raw agent output must not reach persistent state."""
 
@@ -435,13 +444,13 @@ class TaskResultRedactionTests(unittest.TestCase):
 
     def _run(self, stdout, stderr):
         async def run_agent(agent, prompt, directory, task_id, cancel_event=None):
-            return RunResult(agent.config.name, ("fake",), 0, stdout, stderr, 0.01,
-                             False, Path(f"{task_id}.log"))
+            return RunResult(
+                agent.config.name, ("fake",), 0, stdout, stderr, 0.01, False, Path(f"{task_id}.log")
+            )
 
         engine = _engine(self.state, run_agent=run_agent)
         workflow_id = self.state.create_workflow("redaction")
-        task_id = self.state.add_task(
-            Task("implement", "implementation", workflow_id)).id
+        task_id = self.state.add_task(Task("implement", "implementation", workflow_id)).id
         asyncio.run(engine.execute(workflow_id, tempfile.gettempdir()))
         return self.state.get_task(task_id).result
 
@@ -463,7 +472,8 @@ class TaskResultRedactionTests(unittest.TestCase):
     def test_no_secret_reaches_any_persisted_task_row(self):
         self._run(f"value {FAKE_SECRET}", f"other {FAKE_SECRET}")
         rows = self.state.connection.execute(
-            "SELECT result FROM tasks WHERE result IS NOT NULL").fetchall()
+            "SELECT result FROM tasks WHERE result IS NOT NULL"
+        ).fetchall()
         self.assertTrue(rows)
         for row in rows:
             self.assertNotIn(FAKE_SECRET, row["result"])
@@ -474,12 +484,12 @@ class TaskResultRedactionTests(unittest.TestCase):
         verifier.run = MagicMock(return_value=asyncio.sleep(0, result=[passed_check]))
         engine = _engine(self.state, verifier=verifier)
         workflow_id = self.state.create_workflow("legacy verification")
-        task_id = self.state.add_task(
-            Task("verify", "verification", workflow_id)).id
+        task_id = self.state.add_task(Task("verify", "verification", workflow_id)).id
         asyncio.run(engine.execute(workflow_id, tempfile.gettempdir()))
         result = self.state.get_task(task_id).result
         self.assertNotIn(FAKE_SECRET, result)
         self.assertIn("[REDACTED]", result)
+
 
 class VerificationSetupFailureTests(unittest.TestCase):
     """A partial verification setup must not leave the run RUNNING."""
@@ -487,13 +497,17 @@ class VerificationSetupFailureTests(unittest.TestCase):
     def setUp(self):
         self.state = StateStore(":memory:")
         self.workflow_id = self.state.create_workflow("setup")
-        self.task_id = self.state.add_task(
-            Task("verify", "verification", self.workflow_id)).id
+        self.task_id = self.state.add_task(Task("verify", "verification", self.workflow_id)).id
         self.profile = VerificationProfile(
-            name="p", mode=VerificationProfileMode.CONTINUE_ON_FAILURE,
+            name="p",
+            mode=VerificationProfileMode.CONTINUE_ON_FAILURE,
             checks=tuple(
-                VerificationCheckSpec(name=f"c{i}", check_class=VerificationCheckClass.CUSTOM,
-                                      command=("echo", "x"), required=True)
+                VerificationCheckSpec(
+                    name=f"c{i}",
+                    check_class=VerificationCheckClass.CUSTOM,
+                    command=("echo", "x"),
+                    required=True,
+                )
                 for i in range(3)
             ),
         )
@@ -512,11 +526,13 @@ class VerificationSetupFailureTests(unittest.TestCase):
             return real(*args, **kwargs)
 
         self.state.create_verification_check = flaky
-        kernel = VerificationKernel(profiles={"p": self.profile}, default_profile="p",
-                                   state=self.state)
+        kernel = VerificationKernel(
+            profiles={"p": self.profile}, default_profile="p", state=self.state
+        )
         with self.assertRaises(RuntimeError) as caught:
-            asyncio.run(kernel.run_verification(
-                self.workflow_id, self.task_id, tempfile.gettempdir()))
+            asyncio.run(
+                kernel.run_verification(self.workflow_id, self.task_id, tempfile.gettempdir())
+            )
         return str(caught.exception)
 
     def test_check_creation_failure_leaves_a_terminal_run(self):
@@ -564,7 +580,8 @@ class ScopedRecoveryTests(unittest.TestCase):
                 pass
 
         controller = controller_module.AgentOpsController.__new__(
-            controller_module.AgentOpsController)
+            controller_module.AgentOpsController
+        )
         controller._operation_root = lambda directory: directory
         controller._state_path = lambda root: root / "state.sqlite"
         stored = controller_module.StateStore

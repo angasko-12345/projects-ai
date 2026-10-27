@@ -22,9 +22,7 @@ except ImportError:  # optional desktop dependency not installed
     QTest = None  # type: ignore[assignment]
     QApplication = None  # type: ignore[assignment]
 
-requires_qt = unittest.skipIf(
-    QApplication is None, "PySide6 desktop dependency not installed"
-)
+requires_qt = unittest.skipIf(QApplication is None, "PySide6 desktop dependency not installed")
 
 _app: object | None = None
 

@@ -48,19 +48,20 @@ def record_worktree_provenance(
     if worktree is None or workflow_id is None:
         return False
     try:
-        state.record_worktree_ref(WorktreeRef(
-            id=str(uuid4()),
-            workflow_id=workflow_id,
-            path=str(worktree.path),
-            branch=worktree.branch,
-            base_branch=worktree.base_branch,
-            base_commit=worktree.base_commit,
-            created_at=utc_now(),
-        ))
+        state.record_worktree_ref(
+            WorktreeRef(
+                id=str(uuid4()),
+                workflow_id=workflow_id,
+                path=str(worktree.path),
+                branch=worktree.branch,
+                base_branch=worktree.base_branch,
+                base_commit=worktree.base_commit,
+                created_at=utc_now(),
+            )
+        )
     except Exception as error:
         if degradation is not None:
-            degradation.record(
-                "worktree_ref.create", error, workflow_id=workflow_id)
+            degradation.record("worktree_ref.create", error, workflow_id=workflow_id)
         return False
     return True
 
@@ -87,20 +88,25 @@ def finalize_worktree(
     except GitError as error:
         # The repair task must name the actual cause: only a real conflict
         # is something to resolve by merging.
-        category = FailureClassifier.classify(
-            source=FailureSource.GIT, error=str(error)).category
+        category = FailureClassifier.classify(source=FailureSource.GIT, error=str(error)).category
         if category is FailureCategory.GIT_CONFLICT:
             headline = f"Resolve Git merge conflict for '{description}'."
         elif category is FailureCategory.DIRTY_WORKTREE:
             headline = f"Clean the dirty base worktree before merging '{description}'."
         elif category is FailureCategory.POLICY_VIOLATION:
-            headline = f"Git merge for '{description}' was refused; re-validate the base branch and retry."
+            headline = (
+                f"Git merge for '{description}' was refused; re-validate the base branch and retry."
+            )
         else:
             headline = f"Git merge failed for '{description}'; inspect the error and resolve."
-        state.add_task(Task(
-            f"{headline}\n{error}", "debugging", workflow_id,
-            max_attempts=max_attempts,
-        ))
+        state.add_task(
+            Task(
+                f"{headline}\n{error}",
+                "debugging",
+                workflow_id,
+                max_attempts=max_attempts,
+            )
+        )
         return WorktreeFinalization(changed=True, merged=False, conflict_error=str(error))
     return WorktreeFinalization(changed=True, merged=True, conflict_error=None)
 
@@ -116,8 +122,8 @@ def implementation_passed(state: StateStore, workflow_id: str) -> bool:
         tasks = state.list_tasks(workflow_id)
     except Exception:
         return False
-    return any(task.role == "implementation" and task.status is TaskStatus.PASSED
-               for task in tasks)
+    return any(task.role == "implementation" and task.status is TaskStatus.PASSED for task in tasks)
+
 
 def finalize_for_outcome(
     manager: GitWorktreeManager,
@@ -169,10 +175,8 @@ def finalize_for_outcome(
         # Limbo: commit so nothing is lost, but do not merge. The worktree is
         # left in place and the caller reports where it is.
         changed = manager.commit_changes(worktree, f"agentops: {description}")
-        return WorktreeFinalization(changed=changed, merged=False,
-                                    conflict_error=None)
-    return finalize_worktree(manager, state, worktree, description,
-                             workflow_id, max_attempts)
+        return WorktreeFinalization(changed=changed, merged=False, conflict_error=None)
+    return finalize_worktree(manager, state, worktree, description, workflow_id, max_attempts)
 
 
 def retry_merge_for_worktree(
@@ -200,12 +204,22 @@ def retry_merge_for_worktree(
     if stored is not None:
         # Stored provenance wins: retry must target the original base, not
         # whatever HEAD happens to be now.
-        worktree = Worktree(root, Path(str(info["path"])), stored.branch,
-                            stored.base_branch, stored.base_commit)
+        worktree = Worktree(
+            root, Path(str(info["path"])), stored.branch, stored.base_branch, stored.base_commit
+        )
     else:
-        worktree = Worktree(root, Path(str(info["path"])), branch,
-                            manager.current_branch(root), manager.current_commit(root))
+        worktree = Worktree(
+            root,
+            Path(str(info["path"])),
+            branch,
+            manager.current_branch(root),
+            manager.current_commit(root),
+        )
     manager.merge(worktree)
-    return {"merged": True, "path": str(info["path"]), "branch": worktree.branch,
-            "base_branch": worktree.base_branch,
-            "used_stored_provenance": stored is not None}
+    return {
+        "merged": True,
+        "path": str(info["path"]),
+        "branch": worktree.branch,
+        "base_branch": worktree.base_branch,
+        "used_stored_provenance": stored is not None,
+    }

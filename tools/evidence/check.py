@@ -31,8 +31,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if not args.evidence.exists():
-        print(f"FAIL: {args.evidence} does not exist. Run "
-              f"`python tools/evidence/generate.py`.", file=sys.stderr)
+        print(
+            f"FAIL: {args.evidence} does not exist. Run `python tools/evidence/generate.py`.",
+            file=sys.stderr,
+        )
         return 1
     try:
         document = json.loads(args.evidence.read_text(encoding="utf-8"))
@@ -42,18 +44,21 @@ def main(argv: list[str] | None = None) -> int:
 
     problems = check(document, args.repo_root)
     if problems:
-        print(f"FAIL: {len(problems)} problem(s) with {args.evidence}:",
-              file=sys.stderr)
+        print(f"FAIL: {len(problems)} problem(s) with {args.evidence}:", file=sys.stderr)
         for problem in problems:
             print(f"  - {problem}", file=sys.stderr)
         return 1
 
     commit = document["commit"]
-    print(f"OK: evidence recorded at {commit[:12]} on {document['generated_at']} "
-          f"is a clean, reproducible measurement")
+    print(
+        f"OK: evidence recorded at {commit[:12]} on {document['generated_at']} "
+        f"is a clean, reproducible measurement"
+    )
     for record in document["products"]:
-        print(f"  {record['product']}: {record['result']}, {record['total']} tests, "
-              f"{record['skipped']} skipped")
+        print(
+            f"  {record['product']}: {record['result']}, {record['total']} tests, "
+            f"{record['skipped']} skipped"
+        )
     return 0
 
 

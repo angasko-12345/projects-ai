@@ -58,11 +58,18 @@ class DatabaseTest(unittest.TestCase):
 
     def test_totals_reports_cost_coverage(self):
         """cost_events counts events that carry a reported cost, including $0."""
-        db.insert_events(self.conn, [
-            make_event("2026-10-06T10:00:00.000Z", request_id="paid", input_tokens=10, cost=0.25),
-            make_event("2026-10-06T10:00:01.000Z", request_id="free", input_tokens=5, cost=0.0),
-            make_event("2026-10-06T10:00:02.000Z", request_id="unknown", input_tokens=7, cost=None),
-        ])
+        db.insert_events(
+            self.conn,
+            [
+                make_event(
+                    "2026-10-06T10:00:00.000Z", request_id="paid", input_tokens=10, cost=0.25
+                ),
+                make_event("2026-10-06T10:00:01.000Z", request_id="free", input_tokens=5, cost=0.0),
+                make_event(
+                    "2026-10-06T10:00:02.000Z", request_id="unknown", input_tokens=7, cost=None
+                ),
+            ],
+        )
         totals = db.totals(self.conn)
         self.assertEqual(totals["cost_events"], 2)  # unknown cost not counted
         self.assertAlmostEqual(totals["cost"], 0.25)
@@ -145,7 +152,9 @@ class DatabaseTest(unittest.TestCase):
         )
         from datetime import datetime, timezone
 
-        series = db.daily_series(self.conn, days=3, now=datetime(2026, 10, 6, 12, 0, tzinfo=timezone.utc))
+        series = db.daily_series(
+            self.conn, days=3, now=datetime(2026, 10, 6, 12, 0, tzinfo=timezone.utc)
+        )
         self.assertEqual(
             series,
             [("2026-10-04", 0), ("2026-10-05", 700), ("2026-10-06", 300)],
@@ -155,9 +164,27 @@ class DatabaseTest(unittest.TestCase):
         db.insert_events(
             self.conn,
             [
-                make_event("2026-10-01T00:00:00.000Z", request_id="1", provider="openrouter", model="a", input_tokens=100),
-                make_event("2026-10-01T00:00:01.000Z", request_id="2", provider="opencode", model="b", input_tokens=50),
-                make_event("2026-10-01T00:00:02.000Z", request_id="3", provider="opencode", model="c", input_tokens=25),
+                make_event(
+                    "2026-10-01T00:00:00.000Z",
+                    request_id="1",
+                    provider="openrouter",
+                    model="a",
+                    input_tokens=100,
+                ),
+                make_event(
+                    "2026-10-01T00:00:01.000Z",
+                    request_id="2",
+                    provider="opencode",
+                    model="b",
+                    input_tokens=50,
+                ),
+                make_event(
+                    "2026-10-01T00:00:02.000Z",
+                    request_id="3",
+                    provider="opencode",
+                    model="c",
+                    input_tokens=25,
+                ),
             ],
         )
         providers = db.breakdown(self.conn, "provider")
@@ -172,7 +199,9 @@ class DatabaseTest(unittest.TestCase):
             self.conn,
             [
                 make_event("2026-10-06T10:00:00.000Z", request_id="a", input_tokens=10, exact=True),
-                make_event("2026-10-06T11:00:00.000Z", request_id="b", input_tokens=20, exact=False),
+                make_event(
+                    "2026-10-06T11:00:00.000Z", request_id="b", input_tokens=20, exact=False
+                ),
             ],
         )
         out = Path(self.tmp.name) / "export.csv"
@@ -192,7 +221,9 @@ class DatabaseTest(unittest.TestCase):
             self.conn,
             [
                 make_event("2026-10-06T10:00:00.000Z", request_id="a", input_tokens=10, exact=True),
-                make_event("2026-10-06T11:00:00.000Z", request_id="b", output_tokens=20, exact=False),
+                make_event(
+                    "2026-10-06T11:00:00.000Z", request_id="b", output_tokens=20, exact=False
+                ),
             ],
         )
         out = Path(self.tmp.name) / "export.json"
@@ -203,7 +234,9 @@ class DatabaseTest(unittest.TestCase):
         self.assertEqual(sum(row["total_tokens"] for row in data), 30)
 
     def test_exports_refuse_to_overwrite_database(self):
-        db.insert_events(self.conn, [make_event("2026-10-06T10:00:00.000Z", request_id="a", input_tokens=5)])
+        db.insert_events(
+            self.conn, [make_event("2026-10-06T10:00:00.000Z", request_id="a", input_tokens=5)]
+        )
         db_path = Path(self.conn.execute("PRAGMA database_list").fetchone()[2])
         with self.assertRaises(ValueError):
             db.export_csv(self.conn, db_path)
@@ -216,8 +249,16 @@ class DatabaseTest(unittest.TestCase):
         db.insert_events(
             self.conn,
             [
-                make_event("2026-10-06T10:00:00.000Z", request_id="a", input_tokens=1000, output_tokens=50, exact=True),
-                make_event("2026-10-05T09:30:00.000Z", request_id="b", output_tokens=25, exact=False),
+                make_event(
+                    "2026-10-06T10:00:00.000Z",
+                    request_id="a",
+                    input_tokens=1000,
+                    output_tokens=50,
+                    exact=True,
+                ),
+                make_event(
+                    "2026-10-05T09:30:00.000Z", request_id="b", output_tokens=25, exact=False
+                ),
             ],
         )
         out = Path(self.tmp.name) / "roundtrip.csv"
@@ -231,7 +272,9 @@ class DatabaseTest(unittest.TestCase):
             self.assertEqual(dst[key], src[key], key)
         # the exact/estimated split must survive: a "0" in the CSV is an estimate
         self.assertEqual(dst["estimated_tokens"], 25)
-        self.assertEqual({e.id for e in db.all_events(other)}, {e.id for e in db.all_events(self.conn)})
+        self.assertEqual(
+            {e.id for e in db.all_events(other)}, {e.id for e in db.all_events(self.conn)}
+        )
         self.assertEqual(db.import_csv(other, out), (0, 0, 2))
         self.assertEqual(db.totals(other)["total_tokens"], src["total_tokens"])
 
@@ -243,7 +286,9 @@ class DatabaseTest(unittest.TestCase):
         self.assertEqual(db.totals(self.conn)["events"], 0)
 
     def test_import_csv_aborts_on_invalid_row(self):
-        db.insert_events(self.conn, [make_event("2026-10-06T10:00:00.000Z", request_id="ok", input_tokens=5)])
+        db.insert_events(
+            self.conn, [make_event("2026-10-06T10:00:00.000Z", request_id="ok", input_tokens=5)]
+        )
         good = Path(self.tmp.name) / "good.csv"
         db.export_csv(self.conn, good)
         with good.open(newline="", encoding="utf-8") as handle:
@@ -263,7 +308,10 @@ class DatabaseTest(unittest.TestCase):
         self.assertEqual(db.totals(other)["events"], 0)  # nothing written
 
     def test_import_json_round_trips_and_validates_shape(self):
-        db.insert_events(self.conn, [make_event("2026-10-06T10:00:00.000Z", request_id="j", output_tokens=7, exact=False)])
+        db.insert_events(
+            self.conn,
+            [make_event("2026-10-06T10:00:00.000Z", request_id="j", output_tokens=7, exact=False)],
+        )
         out = Path(self.tmp.name) / "roundtrip.json"
         db.export_json(self.conn, out)
 

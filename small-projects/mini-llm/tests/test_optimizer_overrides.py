@@ -21,8 +21,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import prepare_data
 from src.config import Config, load_data_meta
 from src.model import from_config
-from src.train import (apply_explicit_optimizer_overrides, build_param_groups,
-                       load_checkpoint, read_checkpoint, save_checkpoint, train)
+from src.train import (
+    apply_explicit_optimizer_overrides,
+    build_param_groups,
+    load_checkpoint,
+    read_checkpoint,
+    save_checkpoint,
+    train,
+)
 from src.train import main as train_main
 
 CORPUS = (
@@ -44,14 +50,22 @@ def build_data(tmp: str, context_length: int = 16) -> str:
     argv = sys.argv
     sys.argv = [
         "prepare_data.py",
-        "--input", corpus,
-        "--tokenizer-out", os.path.join(tmp, "tokenizer.json"),
-        "--train-out", os.path.join(tmp, "train.bin"),
-        "--val-out", os.path.join(tmp, "val.bin"),
-        "--vocab-size", "512",
-        "--min-frequency", "1",
-        "--val-frac", "0.2",
-        "--context-length", str(context_length),
+        "--input",
+        corpus,
+        "--tokenizer-out",
+        os.path.join(tmp, "tokenizer.json"),
+        "--train-out",
+        os.path.join(tmp, "train.bin"),
+        "--val-out",
+        os.path.join(tmp, "val.bin"),
+        "--vocab-size",
+        "512",
+        "--min-frequency",
+        "1",
+        "--val-frac",
+        "0.2",
+        "--context-length",
+        str(context_length),
     ]
     try:
         prepare_data.main()
@@ -61,13 +75,24 @@ def build_data(tmp: str, context_length: int = 16) -> str:
 
 
 def tiny_cfg(train_bin: str, tmp: str, ckpt_dir: str | None = None, **over) -> Config:
-    kw = dict(vocab_size=load_data_meta(train_bin)["vocab_size"],
-              context_length=16, n_layers=1, n_heads=2, d_model=16, d_ff=32,
-              batch_size=2, max_steps=3, warmup_steps=1, eval_interval=3,
-              eval_batches=1, train_bin=train_bin,
-              val_bin=os.path.join(tmp, "val.bin"),
-              tokenizer_path=os.path.join(tmp, "tokenizer.json"), seed=0,
-              **SAVED)
+    kw = dict(
+        vocab_size=load_data_meta(train_bin)["vocab_size"],
+        context_length=16,
+        n_layers=1,
+        n_heads=2,
+        d_model=16,
+        d_ff=32,
+        batch_size=2,
+        max_steps=3,
+        warmup_steps=1,
+        eval_interval=3,
+        eval_batches=1,
+        train_bin=train_bin,
+        val_bin=os.path.join(tmp, "val.bin"),
+        tokenizer_path=os.path.join(tmp, "tokenizer.json"),
+        seed=0,
+        **SAVED,
+    )
     if ckpt_dir is not None:
         kw["checkpoint_dir"] = ckpt_dir
     kw.update(over)
@@ -75,9 +100,12 @@ def tiny_cfg(train_bin: str, tmp: str, ckpt_dir: str | None = None, **over) -> C
 
 
 def build_optimizer(model, cfg) -> torch.optim.AdamW:
-    return torch.optim.AdamW(build_param_groups(model, cfg.weight_decay),
-                             lr=cfg.learning_rate, betas=(cfg.beta1, cfg.beta2),
-                             weight_decay=cfg.weight_decay)
+    return torch.optim.AdamW(
+        build_param_groups(model, cfg.weight_decay),
+        lr=cfg.learning_rate,
+        betas=(cfg.beta1, cfg.beta2),
+        weight_decay=cfg.weight_decay,
+    )
 
 
 class TestLoadThenOverride(unittest.TestCase):
@@ -117,8 +145,7 @@ class TestLoadThenOverride(unittest.TestCase):
 
     def test_explicit_overrides_win_in_the_actual_groups(self):
         optimizer, cfg = self.resume(self.save_one(**SAVED), **WANTED)
-        apply_explicit_optimizer_overrides(
-            optimizer, cfg, {"beta1", "beta2", "weight_decay"})
+        apply_explicit_optimizer_overrides(optimizer, cfg, {"beta1", "beta2", "weight_decay"})
         for group in optimizer.param_groups:
             self.assertEqual(group["betas"], (0.8, 0.9))
         self.assertEqual(optimizer.param_groups[0]["weight_decay"], 0.05)
@@ -164,9 +191,12 @@ class TestTrainResumeOverrideWiring(unittest.TestCase):
 
     def test_resumed_run_applies_overrides_and_saves_a_valid_checkpoint(self):
         train(self.cfg())
-        train(self.cfg(max_steps=6, **WANTED),
-              resume_from=os.path.join(self.ckpt_dir, "step_3.pt"), start_step=4,
-              explicit_optimizer_fields={"beta1", "beta2", "weight_decay"})
+        train(
+            self.cfg(max_steps=6, **WANTED),
+            resume_from=os.path.join(self.ckpt_dir, "step_3.pt"),
+            start_step=4,
+            explicit_optimizer_fields={"beta1", "beta2", "weight_decay"},
+        )
         done = read_checkpoint(os.path.join(self.ckpt_dir, "final.pt"))
         self.assertEqual(done["step"], 6)
         groups = done["optimizer_state"]["param_groups"]
@@ -176,10 +206,14 @@ class TestTrainResumeOverrideWiring(unittest.TestCase):
 
     def test_resumed_run_without_fields_keeps_the_checkpoint_groups(self):
         train(self.cfg())
-        train(self.cfg(max_steps=6, **WANTED),
-              resume_from=os.path.join(self.ckpt_dir, "step_3.pt"), start_step=4)
-        groups = read_checkpoint(
-            os.path.join(self.ckpt_dir, "final.pt"))["optimizer_state"]["param_groups"]
+        train(
+            self.cfg(max_steps=6, **WANTED),
+            resume_from=os.path.join(self.ckpt_dir, "step_3.pt"),
+            start_step=4,
+        )
+        groups = read_checkpoint(os.path.join(self.ckpt_dir, "final.pt"))["optimizer_state"][
+            "param_groups"
+        ]
         self.assertEqual(groups[0]["betas"], (0.9, 0.95))
         self.assertEqual(groups[0]["weight_decay"], 0.1)
         self.assertEqual(groups[1]["weight_decay"], 0.0)
@@ -199,9 +233,16 @@ class TestCliReportsExplicitOptimizerFlags(unittest.TestCase):
         self.captured = []
 
     def run_main(self, *argv):
-        def record(cfg, resume_from=None, start_step=None, stride=1,
-                   device_spec="auto", explicit_optimizer_fields=None):
+        def record(
+            cfg,
+            resume_from=None,
+            start_step=None,
+            stride=1,
+            device_spec="auto",
+            explicit_optimizer_fields=None,
+        ):
             self.captured.append((resume_from, set(explicit_optimizer_fields or ())))
+
         saved = sys.argv
         sys.argv = ["train.py", "--resume", self.ckpt, *argv]
         try:

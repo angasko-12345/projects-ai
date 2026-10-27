@@ -46,9 +46,12 @@ class StdinSpawnPolicyTests(unittest.TestCase):
             calls.append(kwargs)
             return _StubProcess()
 
-        asyncio.run(ProcessRuntime(spawn=factory).spawn_process(
-            "prog", stdin=sentinel,
-        ))
+        asyncio.run(
+            ProcessRuntime(spawn=factory).spawn_process(
+                "prog",
+                stdin=sentinel,
+            )
+        )
         self.assertIs(calls[0]["stdin"], sentinel)
 
     def test_run_process_uses_devnull_stdin_by_default(self):
@@ -58,9 +61,14 @@ class StdinSpawnPolicyTests(unittest.TestCase):
             calls.append(kwargs)
             return _StubProcess()
 
-        result = asyncio.run(ProcessRuntime(spawn=factory).run_process(
-            ("prog",), cwd=".", env={}, timeout=5,
-        ))
+        result = asyncio.run(
+            ProcessRuntime(spawn=factory).run_process(
+                ("prog",),
+                cwd=".",
+                env={},
+                timeout=5,
+            )
+        )
         self.assertFalse(result.timed_out)
         self.assertEqual(calls[0]["stdin"], asyncio.subprocess.DEVNULL)
 
@@ -72,9 +80,15 @@ class StdinSpawnPolicyTests(unittest.TestCase):
             calls.append(kwargs)
             return _StubProcess()
 
-        asyncio.run(ProcessRuntime(spawn=factory).run_process(
-            ("prog",), cwd=".", env={}, timeout=5, stdin=sentinel,
-        ))
+        asyncio.run(
+            ProcessRuntime(spawn=factory).run_process(
+                ("prog",),
+                cwd=".",
+                env={},
+                timeout=5,
+                stdin=sentinel,
+            )
+        )
         self.assertIs(calls[0]["stdin"], sentinel)
 
 
@@ -91,11 +105,13 @@ class StdinInheritanceRegressionTests(unittest.TestCase):
         os.dup2(read_fd, 0)
         os.close(read_fd)
         try:
-            result = asyncio.run(ProcessRuntime().run_process(
-                [sys.executable, "-c", "import sys; sys.stdin.read(); print('OK')"],
-                cwd=".",
-                timeout=5.0,
-            ))
+            result = asyncio.run(
+                ProcessRuntime().run_process(
+                    [sys.executable, "-c", "import sys; sys.stdin.read(); print('OK')"],
+                    cwd=".",
+                    timeout=5.0,
+                )
+            )
         finally:
             os.dup2(saved_stdin, 0)
             os.close(saved_stdin)

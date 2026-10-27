@@ -27,7 +27,9 @@ MAX_DOCUMENT_BYTES = 2 * 1024 * 1024
 CommandRunner = Callable[[Sequence[str], float], "subprocess.CompletedProcess[str]"]
 
 
-def _default_command_runner(argv: Sequence[str], timeout: float) -> subprocess.CompletedProcess[str]:
+def _default_command_runner(
+    argv: Sequence[str], timeout: float
+) -> subprocess.CompletedProcess[str]:
     from .runtime import ProcessRuntime
 
     return subprocess.run(  # noqa: S603 - argv list from the user's own config, no shell
@@ -59,16 +61,24 @@ class HeadroomFileReader:
                 return HeadroomSnapshot(SNAPSHOT_UNREADABLE, f"headroom file too large: {location}")
             text = self.path.read_text(encoding="utf-8", errors="replace")
         except OSError as error:
-            return HeadroomSnapshot(SNAPSHOT_UNREADABLE,
-                                    f"cannot read headroom file {location}: {type(error).__name__}")
+            return HeadroomSnapshot(
+                SNAPSHOT_UNREADABLE, f"cannot read headroom file {location}: {type(error).__name__}"
+            )
         return parse_snapshot(text, now, self.max_age_seconds)
 
 
 class HeadroomCommandReader:
     """Runs ``headroom --json`` and caches the result for ``cache_seconds``."""
 
-    def __init__(self, argv: Sequence[str], max_age_seconds: float, *, timeout_seconds: float = 30.0,
-                 cache_seconds: float = 60.0, runner: CommandRunner | None = None):
+    def __init__(
+        self,
+        argv: Sequence[str],
+        max_age_seconds: float,
+        *,
+        timeout_seconds: float = 30.0,
+        cache_seconds: float = 60.0,
+        runner: CommandRunner | None = None,
+    ):
         self.argv = tuple(argv)
         self.max_age_seconds = float(max_age_seconds)
         self.timeout_seconds = float(timeout_seconds)
@@ -83,17 +93,24 @@ class HeadroomCommandReader:
         try:
             completed = self.runner(self.argv, self.timeout_seconds)
         except subprocess.TimeoutExpired:
-            return None, HeadroomSnapshot(SNAPSHOT_UNREADABLE,
-                                          f"headroom command {name} timed out after {self.timeout_seconds:g}s")
+            return None, HeadroomSnapshot(
+                SNAPSHOT_UNREADABLE,
+                f"headroom command {name} timed out after {self.timeout_seconds:g}s",
+            )
         except OSError as error:
-            return None, HeadroomSnapshot(SNAPSHOT_UNREADABLE,
-                                          f"headroom command {name} could not start: {type(error).__name__}")
+            return None, HeadroomSnapshot(
+                SNAPSHOT_UNREADABLE,
+                f"headroom command {name} could not start: {type(error).__name__}",
+            )
         if completed.returncode != 0:
-            return None, HeadroomSnapshot(SNAPSHOT_UNREADABLE,
-                                          f"headroom command {name} exited {completed.returncode}")
+            return None, HeadroomSnapshot(
+                SNAPSHOT_UNREADABLE, f"headroom command {name} exited {completed.returncode}"
+            )
         text = completed.stdout or ""
         if len(text) > MAX_DOCUMENT_BYTES:
-            return None, HeadroomSnapshot(SNAPSHOT_UNREADABLE, f"headroom command {name} output too large")
+            return None, HeadroomSnapshot(
+                SNAPSHOT_UNREADABLE, f"headroom command {name} output too large"
+            )
         return text, None
 
     def __call__(self, now: float) -> HeadroomSnapshot:
@@ -107,7 +124,9 @@ class HeadroomCommandReader:
         return parse_snapshot(self._cached_text, now, self.max_age_seconds)
 
 
-def build_headroom_gate(config: object | None, *, runner: CommandRunner | None = None) -> HeadroomGate | None:
+def build_headroom_gate(
+    config: object | None, *, runner: CommandRunner | None = None
+) -> HeadroomGate | None:
     """The gate for an ``AppConfig.headroom`` section, or None when it is absent."""
     if config is None:
         return None
@@ -121,9 +140,11 @@ def build_headroom_gate(config: object | None, *, runner: CommandRunner | None =
         reader = HeadroomFileReader(config.file, config.max_age_seconds)
     else:
         reader = HeadroomCommandReader(
-            config.command or (), config.max_age_seconds,
+            config.command or (),
+            config.max_age_seconds,
             timeout_seconds=config.command_timeout_seconds,
-            cache_seconds=config.cache_seconds, runner=runner,
+            cache_seconds=config.cache_seconds,
+            runner=runner,
         )
     bindings = {
         agent: HeadroomBinding(provider, tuple(windows), tuple(limit_ids))
@@ -132,4 +153,9 @@ def build_headroom_gate(config: object | None, *, runner: CommandRunner | None =
     return HeadroomGate(reader, bindings, policy)
 
 
-__all__ = ["HeadroomCommandReader", "HeadroomFileReader", "MAX_DOCUMENT_BYTES", "build_headroom_gate"]
+__all__ = [
+    "HeadroomCommandReader",
+    "HeadroomFileReader",
+    "MAX_DOCUMENT_BYTES",
+    "build_headroom_gate",
+]

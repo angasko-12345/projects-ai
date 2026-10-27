@@ -10,8 +10,12 @@ from ..detail import VerificationDetailPanel
 from .listdetail import ListDetailView
 
 _STATUSES = (
-    "pending", "running", "completed",
-    "failed", "cancelled", "timed_out",
+    "pending",
+    "running",
+    "completed",
+    "failed",
+    "cancelled",
+    "timed_out",
 )
 
 _COLUMNS = (
@@ -23,8 +27,13 @@ _COLUMNS = (
     TableColumn("passed_checks", "Passed", 70),
     TableColumn("failed_checks", "Failed", 70),
     TableColumn("skipped_checks", "Skipped", 80),
-    TableColumn("duration_seconds", "Duration", 90, format=format_duration,
-                sort=lambda value: float(value) if isinstance(value, (int, float)) else -1.0),
+    TableColumn(
+        "duration_seconds",
+        "Duration",
+        90,
+        format=format_duration,
+        sort=lambda value: float(value) if isinstance(value, (int, float)) else -1.0,
+    ),
     TableColumn("started_at", "Started", 150, format=format_timestamp),
     TableColumn("workflow_id", "Workflow", 90, format=lambda value: short_id(value, 8)),
     TableColumn("task_id", "Task", 90, format=lambda value: short_id(value, 8)),
@@ -59,8 +68,8 @@ class VerificationView(ListDetailView):
 
     def _build_hook(self) -> None:
         self._table.selection_changed.connect(
-            lambda _row: self._delete_btn.setEnabled(
-                self._table.selected_row() is not None))
+            lambda _row: self._delete_btn.setEnabled(self._table.selected_row() is not None)
+        )
         self._delete_btn.setEnabled(False)
 
     def _delete_selected_run(self) -> None:
@@ -69,7 +78,8 @@ class VerificationView(ListDetailView):
         self.delete_selected(
             "verification run",
             lambda repository, run_id: self.ctx.controller.delete_verification_run(
-                repository, run_id),
+                repository, run_id
+            ),
             detail=detail,
             extra="Its checks and report go with it.",
         )

@@ -129,11 +129,15 @@ def encode_file_to_temp(tok, input_path: str, tmp_path: str) -> tuple[int, int]:
         nonlocal last_report_time, last_report_passages
         now = time.time()
         # Report every PROGRESS_INTERVAL passages or every 30 seconds, whichever comes first
-        if (passage_count - last_report_passages >= PROGRESS_INTERVAL) or \
-           (now - last_report_time >= 30.0):
+        if (passage_count - last_report_passages >= PROGRESS_INTERVAL) or (
+            now - last_report_time >= 30.0
+        ):
             elapsed = now - start_time
             rate = passage_count / elapsed if elapsed > 0 else 0
-            print(f"  encoded {passage_count} passages ({total:,} tokens, {rate:.0f} passages/s)", file=sys.stderr)
+            print(
+                f"  encoded {passage_count} passages ({total:,} tokens, {rate:.0f} passages/s)",
+                file=sys.stderr,
+            )
             last_report_time = now
             last_report_passages = passage_count
 
@@ -156,7 +160,10 @@ def encode_file_to_temp(tok, input_path: str, tmp_path: str) -> tuple[int, int]:
     # Final progress report
     elapsed = time.time() - start_time
     if passage_count > 0:
-        print(f"  encoded {passage_count} passages ({total:,} tokens, {passage_count/elapsed:.0f} passages/s, {elapsed:.1f}s)", file=sys.stderr)
+        print(
+            f"  encoded {passage_count} passages ({total:,} tokens, {passage_count / elapsed:.0f} passages/s, {elapsed:.1f}s)",
+            file=sys.stderr,
+        )
 
     if total == 0:
         # Whitespace-only input (or empty file) has no passages; match the old
@@ -195,7 +202,9 @@ def split_counts(n_total: int, val_frac: float, context_length: int) -> tuple[in
     return n_train, n_val
 
 
-def split_tokens(ids: np.ndarray, val_frac: float, context_length: int) -> tuple[np.ndarray, np.ndarray]:
+def split_tokens(
+    ids: np.ndarray, val_frac: float, context_length: int
+) -> tuple[np.ndarray, np.ndarray]:
     """Hold out the last share of tokens, but never less than one val sample."""
     n_train, n_val = split_counts(len(ids), val_frac, context_length)
     return ids[:n_train], ids[n_train:]
@@ -204,9 +213,11 @@ def split_tokens(ids: np.ndarray, val_frac: float, context_length: int) -> tuple
 def split_temp_file(tmp_path: str, train_out: str, val_out: str, n_train: int) -> None:
     """Copy the first n_train IDs to train_out and the rest to val_out, in chunks."""
     itemsize = np.dtype(DTYPE).itemsize
-    with open(tmp_path, "rb") as src, \
-            open(train_out, "wb") as f_train, \
-            open(val_out, "wb") as f_val:
+    with (
+        open(tmp_path, "rb") as src,
+        open(train_out, "wb") as f_train,
+        open(val_out, "wb") as f_val,
+    ):
         remaining = n_train
         while remaining > 0:
             data = src.read(min(remaining, COPY_TOKENS) * itemsize)
@@ -236,8 +247,9 @@ def main() -> None:
         default=512,
         help="model context the split must support; also the val set minimum size",
     )
-    parser.add_argument("--skip-training", action="store_true",
-                        help="reuse existing tokenizer instead of training")
+    parser.add_argument(
+        "--skip-training", action="store_true", help="reuse existing tokenizer instead of training"
+    )
     args = parser.parse_args()
 
     if args.vocab_size < MIN_VOCAB_SIZE or args.vocab_size > MAX_VOCAB:
@@ -251,8 +263,10 @@ def main() -> None:
     else:
         print(f"training BPE tokenizer (vocab={args.vocab_size}) on {args.input}")
         tok = train_bpe_tokenizer(
-            [args.input], args.tokenizer_out,
-            vocab_size=args.vocab_size, min_frequency=args.min_frequency,
+            [args.input],
+            args.tokenizer_out,
+            vocab_size=args.vocab_size,
+            min_frequency=args.min_frequency,
         )
         print(f"saved tokenizer to {args.tokenizer_out} (vocab={tok.get_vocab_size()})")
 
@@ -304,8 +318,10 @@ def main() -> None:
         json.dump(meta, f, indent=2)
         f.write("\n")  # keep re-runs byte-identical to the committed file
     print(f"wrote {args.train_out} and {args.val_out}")
-    print(f"wrote {meta_path} (vocab_size={vocab_size}, "
-          f"tokenizer={args.tokenizer_out} sha256={meta['tokenizer_sha256'][:12]}...)")
+    print(
+        f"wrote {meta_path} (vocab_size={vocab_size}, "
+        f"tokenizer={args.tokenizer_out} sha256={meta['tokenizer_sha256'][:12]}...)"
+    )
 
 
 if __name__ == "__main__":

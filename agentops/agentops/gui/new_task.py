@@ -31,9 +31,13 @@ _WARNING = "A description and repository are required to start a task."
 class NewTaskDialog(QDialog, AsyncMixin):
     """First-class task creation flow delegating to ``AgentOpsController``."""
 
-    def __init__(self, context: ViewContext, parent: QWidget | None = None,
-                 initial_description: str = "",
-                 initial_agent: str | None = None) -> None:
+    def __init__(
+        self,
+        context: ViewContext,
+        parent: QWidget | None = None,
+        initial_description: str = "",
+        initial_agent: str | None = None,
+    ) -> None:
         self._initial_agent = str(initial_agent) if initial_agent else None
         super().__init__(parent)
         self.ctx = context
@@ -46,10 +50,12 @@ class NewTaskDialog(QDialog, AsyncMixin):
         layout.setSpacing(12)
 
         layout.addWidget(label("New Task", "title"))
-        layout.addWidget(muted(
-            "AgentOps plans, implements, verifies, and reviews the change in an "
-            "isolated worktree."
-        ))
+        layout.addWidget(
+            muted(
+                "AgentOps plans, implements, verifies, and reviews the change in an "
+                "isolated worktree."
+            )
+        )
 
         # -- repository ------------------------------------------------
         layout.addWidget(label("Repository", "subtitle"))
@@ -58,9 +64,7 @@ class NewTaskDialog(QDialog, AsyncMixin):
         self._repository.setEditable(True)
         self._repository.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         settings = context.settings()
-        paths = list(dict.fromkeys(
-            [settings.repository or "", *settings.recent_repositories]
-        ))
+        paths = list(dict.fromkeys([settings.repository or "", *settings.recent_repositories]))
         for path in paths:
             if path:
                 self._repository.addItem(path)
@@ -76,8 +80,8 @@ class NewTaskDialog(QDialog, AsyncMixin):
         layout.addWidget(label("What should the agents do?", "subtitle"))
         self._description = QPlainTextEdit()
         self._description.setPlaceholderText(
-            "Describe the outcome, e.g. \"Fix the failing widget tests and update "
-            "the README to match.\""
+            'Describe the outcome, e.g. "Fix the failing widget tests and update '
+            'the README to match."'
         )
         self._description.setTabChangesFocus(True)
         self._description.setMinimumHeight(140)
@@ -165,7 +169,8 @@ class NewTaskDialog(QDialog, AsyncMixin):
         if default and default in profiles:
             self._verification.setCurrentText(default)
         self._verification_hint.setText(
-            "Auto routing is enabled." if options.get("routing_enabled")
+            "Auto routing is enabled."
+            if options.get("routing_enabled")
             else "Router disabled; the legacy selector will choose agents."
         )
 

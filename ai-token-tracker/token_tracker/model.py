@@ -131,7 +131,9 @@ def _coerce_tokens(value: object, field: str) -> int:
     try:
         number = int(value)
     except (TypeError, ValueError):
-        raise EventValidationError(f"{field}: expected a non-negative integer, got {value!r}") from None
+        raise EventValidationError(
+            f"{field}: expected a non-negative integer, got {value!r}"
+        ) from None
     if isinstance(value, float) and not value.is_integer():
         raise EventValidationError(f"{field}: expected a non-negative integer, got {value!r}")
     if number < 0:
@@ -196,7 +198,9 @@ def make_event_id(
     return digest
 
 
-def make_dedup_key(*, provider: str, model: str | None, timestamp: str, tokens: tuple[int, ...]) -> str:
+def make_dedup_key(
+    *, provider: str, model: str | None, timestamp: str, tokens: tuple[int, ...]
+) -> str:
     """Canonical identity of an underlying request, independent of its source.
 
     Two collectors can observe the same API call (a tool and its backend

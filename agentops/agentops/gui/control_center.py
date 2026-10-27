@@ -44,6 +44,7 @@ _CANCELLED_STATUSES = ("cancelled", "canceled")
 # record helpers
 # ---------------------------------------------------------------------------
 
+
 def _text(value: object) -> str:
     return str(value or "").strip()
 
@@ -69,8 +70,11 @@ def _number(value: object) -> float | None:
 
 def _duration_total(rows: list[dict]) -> float | None:
     """Sum only the durations that were actually recorded."""
-    recorded = [value for value in (_number(row.get("duration_seconds")) for row in rows)
-                if value is not None]
+    recorded = [
+        value
+        for value in (_number(row.get("duration_seconds")) for row in rows)
+        if value is not None
+    ]
     return round(sum(recorded), 1) if recorded else None
 
 
@@ -107,6 +111,7 @@ def elapsed_since(value: object, now: datetime | None = None) -> float | None:
 # ---------------------------------------------------------------------------
 # stage flow
 # ---------------------------------------------------------------------------
+
 
 def is_custom_dag(tasks: object) -> bool:
     """True when the workflow is not the standard four-role pipeline.
@@ -215,8 +220,9 @@ def _stage(
     }
 
 
-def _finalize_stage(workflow: dict[str, object], run_rows: list[dict],
-                    cancelled: bool, stages_done: bool = False) -> dict[str, object]:
+def _finalize_stage(
+    workflow: dict[str, object], run_rows: list[dict], cancelled: bool, stages_done: bool = False
+) -> dict[str, object]:
     status = _text(workflow.get("status")).lower()
     if status in _MERGED_WORKFLOW_STATUSES:
         state = "passed"
@@ -272,11 +278,22 @@ def build_stage_flow(
             key = _text(task.get("id"))
             label = _text(task.get("role")).replace("_", " ").title() or "Task"
             depends_on = tuple(
-                dependency for dependency in (_text(d) for d in task.get("dependencies") or ())
+                dependency
+                for dependency in (_text(d) for d in task.get("dependencies") or ())
                 if dependency in by_id and dependency != key
             )
-            stages.append(_stage(key, label, [task], run_rows, verification_rows,
-                                 failure_rows, cancelled, depends_on))
+            stages.append(
+                _stage(
+                    key,
+                    label,
+                    [task],
+                    run_rows,
+                    verification_rows,
+                    failure_rows,
+                    cancelled,
+                    depends_on,
+                )
+            )
         stages.append(_finalize_stage(header, run_rows, cancelled, _stages_done(stages)))
         return stages
 
@@ -289,8 +306,18 @@ def build_stage_flow(
         group = grouped.get(role)
         if not group:
             continue
-        stages.append(_stage(role, label, group, run_rows, verification_rows,
-                             failure_rows, cancelled, (previous,) if previous else ()))
+        stages.append(
+            _stage(
+                role,
+                label,
+                group,
+                run_rows,
+                verification_rows,
+                failure_rows,
+                cancelled,
+                (previous,) if previous else (),
+            )
+        )
         previous = role
     stages.append(_finalize_stage(header, run_rows, cancelled, _stages_done(stages)))
     return stages
@@ -298,13 +325,17 @@ def build_stage_flow(
 
 def _stages_done(stages: list[dict]) -> bool:
     """True when no task stage is still pending, blocked, or running."""
-    return all(stage["state"] not in ("pending", "blocked", "running")
-               for stage in stages if stage["key"] != FINALIZE_KEY)
+    return all(
+        stage["state"] not in ("pending", "blocked", "running")
+        for stage in stages
+        if stage["key"] != FINALIZE_KEY
+    )
 
 
 # ---------------------------------------------------------------------------
 # live control room
 # ---------------------------------------------------------------------------
+
 
 def current_stage(stages: object) -> dict[str, object] | None:
     """The stage an operator should be looking at right now.
@@ -398,7 +429,8 @@ def build_live_panel(
     )
     elapsed = elapsed_since(
         (run or {}).get("started_at") or (task or {}).get("started_at")
-        if (running and in_flight and (run or task)) else None,
+        if (running and in_flight and (run or task))
+        else None,
         now,
     )
     return {
@@ -423,6 +455,7 @@ def build_live_panel(
 # activity
 # ---------------------------------------------------------------------------
 
+
 def _activity_line(event: dict) -> str:
     kind = _text(event.get("type")).replace(".", " ")
     message = elide(event.get("message"), 90)
@@ -432,9 +465,9 @@ def _activity_line(event: dict) -> str:
 def recent_activity(events: object, limit: int = 8) -> list[dict[str, object]]:
     """Newest-first timeline rows for one workflow, ready for a list widget."""
     rows = _rows(events)
-    ordered = sorted(
-        rows, key=lambda row: _text(row.get("timestamp")), reverse=True
-    )[:max(0, int(limit))]
+    ordered = sorted(rows, key=lambda row: _text(row.get("timestamp")), reverse=True)[
+        : max(0, int(limit))
+    ]
     return [
         {
             "timestamp": _text(event.get("timestamp")),
@@ -453,6 +486,7 @@ def recent_activity(events: object, limit: int = 8) -> list[dict[str, object]]:
 # verification
 # ---------------------------------------------------------------------------
 
+
 def verification_totals(runs: object, checks: object = ()) -> dict[str, object]:
     """Count verification outcomes across runs and, when loaded, checks.
 
@@ -463,7 +497,9 @@ def verification_totals(runs: object, checks: object = ()) -> dict[str, object]:
     if check_rows:
         passed = sum(1 for row in check_rows if _text(row.get("status")) == "passed")
         failed = sum(1 for row in check_rows if _text(row.get("status")) in ("failed", "timed_out"))
-        skipped = sum(1 for row in check_rows if _text(row.get("status")) in ("skipped", "cancelled"))
+        skipped = sum(
+            1 for row in check_rows if _text(row.get("status")) in ("skipped", "cancelled")
+        )
         total = len(check_rows)
     else:
         run_rows = _rows(runs)
@@ -487,6 +523,7 @@ def verification_totals(runs: object, checks: object = ()) -> dict[str, object]:
 # ---------------------------------------------------------------------------
 # failures
 # ---------------------------------------------------------------------------
+
 
 def failure_summary(failure: object, runs: object = (), tasks: object = ()) -> dict[str, object]:
     """Actionable view of one failure record.
@@ -522,8 +559,7 @@ def failure_summary(failure: object, runs: object = (), tasks: object = ()) -> d
         "task_label": _text((task or {}).get("description")) or short_id(task_id),
         "run_id": run_id,
         "run_label": (
-            f"{_text((run or {}).get('agent')) or 'agent'} run {short_id(run_id)}"
-            if run else ""
+            f"{_text((run or {}).get('agent')) or 'agent'} run {short_id(run_id)}" if run else ""
         ),
     }
 
@@ -531,6 +567,7 @@ def failure_summary(failure: object, runs: object = (), tasks: object = ()) -> d
 # ---------------------------------------------------------------------------
 # worktree and merge readiness
 # ---------------------------------------------------------------------------
+
 
 def _is_managed_path(path: str) -> bool:
     """Managed worktrees live under the repository's ``.agentops/worktrees``."""
@@ -562,8 +599,12 @@ def worktree_summary(
     changed = files or _changed_files(runs)
     path = _text(record.get("path")) or _text(info.get("path"))
     diff_stat = _text(info.get("diff_stat")) or next(
-        (_text(run.get("diff_stat")) for run in reversed(_ordered(_rows(runs), "started_at", "id"))
-         if _text(run.get("diff_stat"))), ""
+        (
+            _text(run.get("diff_stat"))
+            for run in reversed(_ordered(_rows(runs), "started_at", "id"))
+            if _text(run.get("diff_stat"))
+        ),
+        "",
     )
     return {
         "present": bool(record) or bool(path),
@@ -608,8 +649,14 @@ def merge_readiness(readiness: object, has_worktree: bool = False) -> dict[str, 
 # task and run detail
 # ---------------------------------------------------------------------------
 
-def task_detail(task: object, runs: object = (), verifications: object = (),
-                failures: object = (), artifacts: object = ()) -> dict[str, object]:
+
+def task_detail(
+    task: object,
+    runs: object = (),
+    verifications: object = (),
+    failures: object = (),
+    artifacts: object = (),
+) -> dict[str, object]:
     """Everything one task owns, grouped for the detail panel."""
     record = task if isinstance(task, dict) else {}
     task_id = _text(record.get("id"))
@@ -629,8 +676,9 @@ def task_detail(task: object, runs: object = (), verifications: object = (),
         "started_at": _text(record.get("started_at")),
         "finished_at": _text(record.get("finished_at")),
         "runs": [row for row in _rows(runs) if _text(row.get("task_id")) == task_id],
-        "verifications": [row for row in _rows(verifications)
-                          if _text(row.get("task_id")) == task_id],
+        "verifications": [
+            row for row in _rows(verifications) if _text(row.get("task_id")) == task_id
+        ],
         "failures": [row for row in _rows(failures) if _text(row.get("task_id")) == task_id],
         "artifacts": [row for row in _rows(artifacts) if _text(row.get("task_id")) == task_id],
     }
@@ -665,6 +713,7 @@ def run_detail(run: object) -> dict[str, object]:
 # cancellation
 # ---------------------------------------------------------------------------
 
+
 def cancellation_state(
     live: object,
     cancel_requested: bool = False,
@@ -686,9 +735,22 @@ def cancellation_state(
         "cancel_requested": bool(cancel_requested),
         "cancellable": cancellable,
         "conflicts_active": bool(cancellable),
-        "state": ("cancelling" if cancel_requested else
-                  "cancelled" if cancelled else "running" if running else "idle"),
-        "label": ("Cancelling" if cancel_requested else
-                  "Cancelled" if cancelled else
-                  "Running" if running else "Idle"),
+        "state": (
+            "cancelling"
+            if cancel_requested
+            else "cancelled"
+            if cancelled
+            else "running"
+            if running
+            else "idle"
+        ),
+        "label": (
+            "Cancelling"
+            if cancel_requested
+            else "Cancelled"
+            if cancelled
+            else "Running"
+            if running
+            else "Idle"
+        ),
     }

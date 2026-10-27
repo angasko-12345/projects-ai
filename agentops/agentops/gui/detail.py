@@ -51,8 +51,7 @@ class DetailPanel(QWidget, AsyncMixin):
         self._init_async(context.bridge)
 
         self._stack = QStackedWidget(self)
-        self._placeholder = EmptyState("Nothing selected",
-                                       "Pick an item to see its details.")
+        self._placeholder = EmptyState("Nothing selected", "Pick an item to see its details.")
         self._content = QWidget()
         content_layout = QVBoxLayout(self._content)
         content_layout.setContentsMargins(0, 0, 0, 0)
@@ -106,16 +105,16 @@ class DetailPanel(QWidget, AsyncMixin):
         self._body_layout.addWidget(widget)
         return widget
 
-    def add_section(self, title: str, widget: QWidget,
-                    expanded: bool = True) -> CollapsibleSection:
+    def add_section(self, title: str, widget: QWidget, expanded: bool = True) -> CollapsibleSection:
         section = CollapsibleSection(title)
         section.add(widget)
         self._body_layout.addWidget(section)
         section.set_expanded(expanded, animate=False)
         return section
 
-    def add_header_action(self, text: str, callback: Callable[[], None],
-                          variant: str = "") -> QPushButton:
+    def add_header_action(
+        self, text: str, callback: Callable[[], None], variant: str = ""
+    ) -> QPushButton:
         button = QPushButton(text)
         if variant:
             button.setProperty("variant", variant)
@@ -124,8 +123,7 @@ class DetailPanel(QWidget, AsyncMixin):
         return button
 
     # -- state --------------------------------------------------------
-    def set_heading(self, title: str, status: object | None = None,
-                    subtitle: str = "") -> None:
+    def set_heading(self, title: str, status: object | None = None, subtitle: str = "") -> None:
         self._title.setText(title)
         self._subtitle.setText(subtitle)
         if status is None:
@@ -148,6 +146,7 @@ class DetailPanel(QWidget, AsyncMixin):
 # ---------------------------------------------------------------------------
 # run detail
 # ---------------------------------------------------------------------------
+
 
 class RunDetailPanel(DetailPanel):
     """One persisted agent run: metadata, error, files changed, log."""
@@ -260,8 +259,13 @@ _TASK_RUN_COLUMNS = (
     TableColumn("agent", "Agent", 120),
     TableColumn("attempt", "Attempt", 80, format=lambda v: "-" if v is None else str(v)),
     TableColumn("exit_code", "Exit", 70),
-    TableColumn("duration_seconds", "Duration", 90,
-                format=format_duration, sort=lambda v: float(v) if isinstance(v, (int, float)) else -1.0),
+    TableColumn(
+        "duration_seconds",
+        "Duration",
+        90,
+        format=format_duration,
+        sort=lambda v: float(v) if isinstance(v, (int, float)) else -1.0,
+    ),
     TableColumn("model", "Model", 130),
     TableColumn("created_at", "Created", 150, format=format_timestamp),
     TableColumn("id", "Run", 90, format=lambda v: short_id(v, 8)),
@@ -273,8 +277,13 @@ _TASK_VERIFICATION_COLUMNS = (
     TableColumn("passed_checks", "Passed", 80),
     TableColumn("total_checks", "Checks", 80),
     TableColumn("failed_checks", "Failed", 80),
-    TableColumn("duration_seconds", "Duration", 90,
-                format=format_duration, sort=lambda v: float(v) if isinstance(v, (int, float)) else -1.0),
+    TableColumn(
+        "duration_seconds",
+        "Duration",
+        90,
+        format=format_duration,
+        sort=lambda v: float(v) if isinstance(v, (int, float)) else -1.0,
+    ),
     TableColumn("started_at", "Started", 150, format=format_timestamp),
 )
 
@@ -282,8 +291,7 @@ _TASK_FAILURE_COLUMNS = (
     TableColumn("category", "Category", 170),
     TableColumn("severity", "Severity", 100),
     TableColumn("recommended_action", "Action", 160),
-    TableColumn("retryable", "Retryable", 90,
-                format=lambda v: "yes" if v else "no"),
+    TableColumn("retryable", "Retryable", 90, format=lambda v: "yes" if v else "no"),
     TableColumn("created_at", "Created", 150, format=format_timestamp),
 )
 
@@ -304,13 +312,12 @@ class TaskDetailPanel(DetailPanel):
             _TASK_RUN_COLUMNS, "No agent runs", "Runs for this task will appear here."
         )
         self._runs_section = self.add_section("Agent runs", self._runs_table)
-        self._runs_table.activated.connect(
-            lambda row: self.ctx.open_run(str(row.get("id", "")))
-        )
+        self._runs_table.activated.connect(lambda row: self.ctx.open_run(str(row.get("id", ""))))
 
         self._verification_table = TablePanel(
-            _TASK_VERIFICATION_COLUMNS, "No verification runs",
-            "Verification runs for this task will appear here."
+            _TASK_VERIFICATION_COLUMNS,
+            "No verification runs",
+            "Verification runs for this task will appear here.",
         )
         self._verification_section = self.add_section("Verification", self._verification_table)
 
@@ -326,8 +333,9 @@ class TaskDetailPanel(DetailPanel):
             self.show_placeholder("No task selected", "Pick a task to inspect it.")
             return
         status = task.get("status")
-        self.set_heading(f"Task {short_id(task.get('id'), 8)}", status,
-                         subtitle=str(task.get("role") or ""))
+        self.set_heading(
+            f"Task {short_id(task.get('id'), 8)}", status, subtitle=str(task.get("role") or "")
+        )
         self._grid.clear()
         self._grid.add_row("Id", task.get("id"), mono_value=True)
         self._grid.add_row("Role", task.get("role"))
@@ -381,10 +389,9 @@ def _looks_like_probe_error(text: object) -> bool:
     upper = str(text or "").upper()
     if not upper.strip():
         return False
-    return upper.startswith(
-        ("EPERM", "ENOENT", "EACCES", "ERROR", "TRACEBACK")
-    ) or any(marker in upper for marker in
-              ("FAILED", "NOT FOUND", "EXIT CODE", "COMMAND NOT FOUND"))
+    return upper.startswith(("EPERM", "ENOENT", "EACCES", "ERROR", "TRACEBACK")) or any(
+        marker in upper for marker in ("FAILED", "NOT FOUND", "EXIT CODE", "COMMAND NOT FOUND")
+    )
 
 
 class AgentDetailPanel(DetailPanel):
@@ -395,35 +402,32 @@ class AgentDetailPanel(DetailPanel):
 
     def set_agent(self, row: dict | None) -> None:
         if not row:
-            self.show_placeholder("No agent selected",
-                                  "Pick an agent to inspect its configuration.")
+            self.show_placeholder(
+                "No agent selected", "Pick an agent to inspect its configuration."
+            )
             return
         name = str(row.get("display_name") or row.get("identifier") or "Agent")
-        self.set_heading(f"Agent {name}",
-                         subtitle=str(row.get("identifier") or ""))
+        self.set_heading(f"Agent {name}", subtitle=str(row.get("identifier") or ""))
         self._grid.clear()
         self._grid.add_row("Display name", row.get("display_name"))
         self._grid.add_row("Identifier", row.get("identifier"), mono_value=True)
-        self._grid.add_row("Executable", row.get("executable_path") or "not found",
-                           mono_value=True)
+        self._grid.add_row("Executable", row.get("executable_path") or "not found", mono_value=True)
         self._grid.add_row("Detected version", row.get("detected_version") or "unknown")
-        self._grid.add_row("Availability",
-                           "available" if row.get("availability") else "unavailable")
+        self._grid.add_row(
+            "Availability", "available" if row.get("availability") else "unavailable"
+        )
         self._grid.add_row("Availability note", self._availability_note(row))
         self._grid.add_row("Priority", row.get("configured_priority"))
         self._grid.add_row("Model", self._model_of(row))
         self._grid.add_row("Roles", ", ".join(str(v) for v in row.get("roles") or []))
-        self._grid.add_row("Capabilities",
-                           ", ".join(str(v) for v in row.get("capabilities") or []))
-        self._grid.add_row("Structured output",
-                           "yes" if row.get("supported_structured_output") else "no")
-        self._grid.add_row("Cancellation",
-                           "yes" if row.get("cancellation_support") else "no")
+        self._grid.add_row("Capabilities", ", ".join(str(v) for v in row.get("capabilities") or []))
+        self._grid.add_row(
+            "Structured output", "yes" if row.get("supported_structured_output") else "no"
+        )
+        self._grid.add_row("Cancellation", "yes" if row.get("cancellation_support") else "no")
         self._grid.add_row("Timeout", "yes" if row.get("timeout_support") else "no")
-        self._grid.add_row("Interactive",
-                           "yes" if row.get("interactive_support") else "no")
-        self._grid.add_row("Non-interactive",
-                           "yes" if row.get("noninteractive_support") else "no")
+        self._grid.add_row("Interactive", "yes" if row.get("interactive_support") else "no")
+        self._grid.add_row("Non-interactive", "yes" if row.get("noninteractive_support") else "no")
         self.show_content()
 
     @staticmethod
@@ -453,13 +457,16 @@ _CHECK_COLUMNS = (
     TableColumn("name", "Check", 170),
     TableColumn("check_class", "Class", 110),
     TableColumn("status", "Status", 100),
-    TableColumn("required", "Required", 90,
-                format=lambda v: "yes" if v else "no"),
+    TableColumn("required", "Required", 90, format=lambda v: "yes" if v else "no"),
     TableColumn("exit_code", "Exit", 70),
-    TableColumn("duration_seconds", "Duration", 90,
-                format=format_duration, sort=lambda v: float(v) if isinstance(v, (int, float)) else -1.0),
-    TableColumn("failure_reason", "Failure reason", 260,
-                format=lambda v: elide(v, 90)),
+    TableColumn(
+        "duration_seconds",
+        "Duration",
+        90,
+        format=format_duration,
+        sort=lambda v: float(v) if isinstance(v, (int, float)) else -1.0,
+    ),
+    TableColumn("failure_reason", "Failure reason", 260, format=lambda v: elide(v, 90)),
 )
 
 
@@ -480,13 +487,16 @@ class VerificationDetailPanel(DetailPanel):
         """Fill from a list payload, then load checks/report in the background."""
         self._run = summary
         if not summary:
-            self.show_placeholder("No verification selected",
-                                  "Pick a verification run to inspect it.")
+            self.show_placeholder(
+                "No verification selected", "Pick a verification run to inspect it."
+            )
             return
         run_id = str(summary.get("id") or "")
-        self.set_heading(f"Verification {short_id(run_id, 8)}",
-                         summary.get("overall_status") or summary.get("status"),
-                         subtitle=str(summary.get("profile_name") or ""))
+        self.set_heading(
+            f"Verification {short_id(run_id, 8)}",
+            summary.get("overall_status") or summary.get("status"),
+            subtitle=str(summary.get("profile_name") or ""),
+        )
         self._fill_grid(summary)
         self._checks.set_empty_state("Loading checks...", "")
         self._checks.set_rows([])
@@ -566,29 +576,33 @@ class VerificationDetailPanel(DetailPanel):
 # failure detail
 # ---------------------------------------------------------------------------
 
+
 class FailureDetailPanel(DetailPanel):
     """One failure record: classification, evidence, recovery information."""
 
     def _build_body(self) -> None:
         self._grid = self.add_grid()
         self._primary_text = LogText()
-        self._primary_section = self.add_section("Primary error", self._primary_text,
-                                                 expanded=False)
+        self._primary_section = self.add_section(
+            "Primary error", self._primary_text, expanded=False
+        )
         self._evidence_text = LogText()
-        self._evidence_section = self.add_section("Evidence", self._evidence_text,
-                                                  expanded=False)
+        self._evidence_section = self.add_section("Evidence", self._evidence_text, expanded=False)
         self._failure: dict | None = None
 
     def set_failure(self, failure: dict | None) -> None:
         self._failure = failure
         if not failure:
-            self.show_placeholder("No failure selected",
-                                  "Pick a failure to see classification and recovery details.")
+            self.show_placeholder(
+                "No failure selected", "Pick a failure to see classification and recovery details."
+            )
             return
         category = str(failure.get("category") or "unknown")
-        self.set_heading(category.replace("_", " ").title(),
-                         failure.get("severity") or "unknown",
-                         subtitle=str(failure.get("source") or ""))
+        self.set_heading(
+            category.replace("_", " ").title(),
+            failure.get("severity") or "unknown",
+            subtitle=str(failure.get("source") or ""),
+        )
         self._grid.clear()
         self._grid.add_row("Recommended action", failure.get("recommended_action"))
         self._grid.add_row("Retryable", failure.get("retryable"))
@@ -624,6 +638,7 @@ class FailureDetailPanel(DetailPanel):
 # worktree detail
 # ---------------------------------------------------------------------------
 
+
 class WorktreeDetailPanel(DetailPanel):
     """One Git worktree: provenance, changed files, merge/cleanup actions."""
 
@@ -633,8 +648,9 @@ class WorktreeDetailPanel(DetailPanel):
         self._status_badge_row.setProperty("role", "muted")
         self._body_layout.addWidget(self._status_badge_row)
         self._inspect_text = LogText()
-        self._inspect_section = self.add_section("Changed files", self._inspect_text,
-                                                 expanded=False)
+        self._inspect_section = self.add_section(
+            "Changed files", self._inspect_text, expanded=False
+        )
         self.add_header_action("Retry merge", self._retry_merge, variant="primary")
         self.add_header_action("Clean up...", self._cleanup, variant="danger")
         self.add_header_action("Open folder", self._open_folder, variant="ghost")
@@ -645,14 +661,22 @@ class WorktreeDetailPanel(DetailPanel):
         self._entry = entry
         self._delete_branch = delete_unmerged_branch
         if not entry:
-            self.show_placeholder("No worktree selected",
-                                  "Pick a worktree to inspect provenance and changes.")
+            self.show_placeholder(
+                "No worktree selected", "Pick a worktree to inspect provenance and changes."
+            )
             return
         path = str(entry.get("path") or "")
         status = str(entry.get("status") or "").strip()
-        state = "clean" if not status else ("unavailable" if status == "(status unavailable)" else "dirty")
-        self.set_heading(Path(path).name or path, state,
-                         subtitle="managed" if entry.get("managed") else "unmanaged")
+        state = (
+            "clean"
+            if not status
+            else ("unavailable" if status == "(status unavailable)" else "dirty")
+        )
+        self.set_heading(
+            Path(path).name or path,
+            state,
+            subtitle="managed" if entry.get("managed") else "unmanaged",
+        )
         self._grid.clear()
         self._grid.add_row("Path", path, mono_value=True)
         self._grid.add_row("Branch", entry.get("branch"))
@@ -692,9 +716,11 @@ class WorktreeDetailPanel(DetailPanel):
         if not entry:
             return
         path = str(entry.get("path") or "")
-        if not _confirm("Retry merge",
-                        "Merge this managed worktree branch into the current base "
-                        f"branch now?\n\n{path}", danger=False):
+        if not _confirm(
+            "Retry merge",
+            f"Merge this managed worktree branch into the current base branch now?\n\n{path}",
+            danger=False,
+        ):
             return
         controller = self.ctx.controller
         repository = self.repository()
@@ -704,8 +730,9 @@ class WorktreeDetailPanel(DetailPanel):
 
         def done(result: object) -> None:
             payload = result if isinstance(result, dict) else {}
-            self.ctx.toast("Merged", f"{payload.get('branch')} -> {payload.get('base_branch')}",
-                           "success")
+            self.ctx.toast(
+                "Merged", f"{payload.get('branch')} -> {payload.get('base_branch')}", "success"
+            )
             self.changed.emit()
 
         self.submit("retry_merge", merge, done)
@@ -716,12 +743,12 @@ class WorktreeDetailPanel(DetailPanel):
             return
         path = str(entry.get("path") or "")
         if self._delete_branch:
-            question = ("Remove this worktree AND force-delete its unmerged branch?"
-                        f"\n\n{path}")
+            question = f"Remove this worktree AND force-delete its unmerged branch?\n\n{path}"
             title = "Delete unmerged branch"
         else:
-            question = ("Remove this clean worktree? An unmerged branch will be "
-                        f"preserved.\n\n{path}")
+            question = (
+                f"Remove this clean worktree? An unmerged branch will be preserved.\n\n{path}"
+            )
             title = "Clean up worktree"
         if not _confirm(title, question, danger=True):
             return
@@ -735,11 +762,13 @@ class WorktreeDetailPanel(DetailPanel):
         def done(result: object) -> None:
             payload = result if isinstance(result, dict) else {}
             if payload.get("deleted_branch"):
-                self.ctx.toast("Worktree removed",
-                               f"Branch {payload.get('branch')} was deleted.", "success")
+                self.ctx.toast(
+                    "Worktree removed", f"Branch {payload.get('branch')} was deleted.", "success"
+                )
             else:
-                self.ctx.toast("Worktree removed",
-                               f"Branch {payload.get('branch')} was preserved.", "success")
+                self.ctx.toast(
+                    "Worktree removed", f"Branch {payload.get('branch')} was preserved.", "success"
+                )
             self.changed.emit()
 
         self.submit("cleanup", cleanup, done)
@@ -757,7 +786,7 @@ class WorktreeDetailPanel(DetailPanel):
 def _confirm(title: str, message: str, danger: bool = False) -> bool:
     from PySide6.QtWidgets import QMessageBox
 
-    icon = (QMessageBox.Icon.Warning if danger else QMessageBox.Icon.Question)
+    icon = QMessageBox.Icon.Warning if danger else QMessageBox.Icon.Question
     buttons = QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
     box = QMessageBox(icon, title, message, buttons, None)
     return box.exec() == QMessageBox.StandardButton.Yes
@@ -766,6 +795,7 @@ def _confirm(title: str, message: str, danger: bool = False) -> bool:
 # ---------------------------------------------------------------------------
 # artifact detail
 # ---------------------------------------------------------------------------
+
 
 class ArtifactDetailPanel(DetailPanel):
     """One artifact: metadata plus text preview read through the store."""
@@ -781,8 +811,9 @@ class ArtifactDetailPanel(DetailPanel):
     def set_artifact(self, entry: dict | None) -> None:
         self._artifact = entry
         if not entry:
-            self.show_placeholder("No artifact selected",
-                                  "Pick an artifact to preview its contents.")
+            self.show_placeholder(
+                "No artifact selected", "Pick an artifact to preview its contents."
+            )
             return
         self.set_heading(str(entry.get("name") or entry.get("kind") or "Artifact"))
         self._grid.clear()
@@ -809,13 +840,17 @@ class ArtifactDetailPanel(DetailPanel):
             return
         text = str(data.get("text", "")).rstrip()
         self._text.set_log(text or "(empty artifact)")
-        self._truncated.setText("Preview truncated; the artifact file holds the full content."
-                                if len(text) >= 65000 else "")
+        self._truncated.setText(
+            "Preview truncated; the artifact file holds the full content."
+            if len(text) >= 65000
+            else ""
+        )
 
 
 # ---------------------------------------------------------------------------
 # log viewer
 # ---------------------------------------------------------------------------
+
 
 class LogPanel(DetailPanel):
     """Contextual log viewer with path actions (used in task/run detail)."""

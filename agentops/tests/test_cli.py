@@ -116,8 +116,7 @@ class _NarrowStdout:
 
     def write(self, text: str) -> int:
         if any(ord(char) > 127 for char in text):
-            raise UnicodeEncodeError(
-                "cp1252", text, 0, 1, "character not encodable")
+            raise UnicodeEncodeError("cp1252", text, 0, 1, "character not encodable")
         return len(text)
 
     def flush(self) -> None:
@@ -133,8 +132,7 @@ class FakeWorktreeManager:
     worktree lifecycle without running Git.
     """
 
-    def __init__(self, root: Path = FAKE_ROOT,
-                 worktree: Worktree = FAKE_WORKTREE) -> None:
+    def __init__(self, root: Path = FAKE_ROOT, worktree: Worktree = FAKE_WORKTREE) -> None:
         self.root = root
         self.worktree = worktree
         self.roots: list[Path] = []
@@ -195,7 +193,8 @@ class CliTestCase(unittest.TestCase):
             "workflow_engine": lambda *args, **kwargs: MagicMock(name="engine"),
             "worktree_manager": lambda: manager,
             "finalize": lambda *args, **kwargs: WorktreeFinalization(
-                changed=True, merged=True, conflict_error=None),
+                changed=True, merged=True, conflict_error=None
+            ),
             "record_provenance": lambda *args, **kwargs: True,
             "retry_merge": lambda *args, **kwargs: {"merged": True},
         }
@@ -224,46 +223,82 @@ def _seeded_store() -> _KeptAliveStore:
     return _KeptAliveStore(store)
 
 
-def _finished_agent_run(store: StateStore, workflow_id: str, task_id: str,
-                        status: AgentRunStatus = AgentRunStatus.COMPLETED,
-                        exit_code: int = 0):
-    run = store.create_agent_run(AgentRunContext(
-        agent="demo", workflow_id=workflow_id, task_id=task_id))
+def _finished_agent_run(
+    store: StateStore,
+    workflow_id: str,
+    task_id: str,
+    status: AgentRunStatus = AgentRunStatus.COMPLETED,
+    exit_code: int = 0,
+):
+    run = store.create_agent_run(
+        AgentRunContext(agent="demo", workflow_id=workflow_id, task_id=task_id)
+    )
     store.start_agent_run(run.id)
     store.mark_agent_run_running(run.id)
-    store.finish_agent_run(run.id, AgentRunOutcome(
-        status=status, exit_code=exit_code, duration_seconds=1.5))
+    store.finish_agent_run(
+        run.id, AgentRunOutcome(status=status, exit_code=exit_code, duration_seconds=1.5)
+    )
     return run
 
 
-def _finished_verification(store: StateStore, workflow_id: str, task_id: str,
-                           overall: VerificationReportStatus = VerificationReportStatus.PASSED,
-                           skipped_checks: int = 0):
+def _finished_verification(
+    store: StateStore,
+    workflow_id: str,
+    task_id: str,
+    overall: VerificationReportStatus = VerificationReportStatus.PASSED,
+    skipped_checks: int = 0,
+):
     profile = VerificationProfile(
-        name="unit", mode=VerificationProfileMode.FAIL_FAST, concurrency=1,
+        name="unit",
+        mode=VerificationProfileMode.FAIL_FAST,
+        concurrency=1,
         default_timeout_seconds=300,
-        checks=(VerificationCheckSpec(
-            "unit", VerificationCheckClass.TESTS, ("unit",)),),
+        checks=(VerificationCheckSpec("unit", VerificationCheckClass.TESTS, ("unit",)),),
     )
     run = store.create_verification_run(workflow_id, task_id, profile)
     store.start_verification_run(run.id)
     check = store.create_verification_check(
-        run.id, workflow_id, task_id, "unit", "unit", "tests", ("unit",),
-        None, 300, True, "sequential")
-    state = (VerificationCheckStatus.SKIPPED if skipped_checks
-             else VerificationCheckStatus.PASSED)
+        run.id,
+        workflow_id,
+        task_id,
+        "unit",
+        "unit",
+        "tests",
+        ("unit",),
+        None,
+        300,
+        True,
+        "sequential",
+    )
+    state = VerificationCheckStatus.SKIPPED if skipped_checks else VerificationCheckStatus.PASSED
     store.finish_verification_check(check.id, state, exit_code=0)
     store.finish_verification_run(
-        run.id, VerificationRunStatus.COMPLETED, overall,
-        total_checks=1, passed_checks=0 if skipped_checks else 1,
-        failed_checks=0, skipped_checks=skipped_checks,
-        required_failures=0, duration_seconds=0.5)
-    store.create_verification_report(VerificationReport(
-        id="report-1", run_id=run.id, workflow_id=workflow_id, task_id=task_id,
-        profile_name="unit", total_checks=1,
-        passed_checks=0 if skipped_checks else 1, failed_checks=0,
-        skipped_checks=skipped_checks, required_failures=0,
-        duration_seconds=0.5, overall_status=overall))
+        run.id,
+        VerificationRunStatus.COMPLETED,
+        overall,
+        total_checks=1,
+        passed_checks=0 if skipped_checks else 1,
+        failed_checks=0,
+        skipped_checks=skipped_checks,
+        required_failures=0,
+        duration_seconds=0.5,
+    )
+    store.create_verification_report(
+        VerificationReport(
+            id="report-1",
+            run_id=run.id,
+            workflow_id=workflow_id,
+            task_id=task_id,
+            profile_name="unit",
+            total_checks=1,
+            passed_checks=0 if skipped_checks else 1,
+            failed_checks=0,
+            skipped_checks=skipped_checks,
+            required_failures=0,
+            duration_seconds=0.5,
+            overall_status=overall,
+        )
+    )
     return run
 
 
@@ -306,8 +341,7 @@ class BuildServicesTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("No persisted workflows.", stdout)
         # The injected factory opened the store at the resolved path.
-        state_store.assert_called_once_with(
-            FAKE_ROOT / ".agentops" / "state.sqlite")
+        state_store.assert_called_once_with(FAKE_ROOT / ".agentops" / "state.sqlite")
 
     def test_main_builds_the_production_bundle_when_none_is_given(self):
         state = MagicMock(name="state")
@@ -330,11 +364,11 @@ class BuildServicesTests(unittest.TestCase):
         # `agents` loads the config but opens no state, so the
         # production loader runs against a patched load_config.
         config_path = Path("agents/agents.yaml")
-        with patch("agentops.cli.load_config",
-                   return_value=AppConfig({}, {}, (), max_attempts=1,
-                                          concurrency=1)) as load:
-            code, stdout, _ = _run(["--config", str(config_path), "agents"],
-                                     None)
+        with patch(
+            "agentops.cli.load_config",
+            return_value=AppConfig({}, {}, (), max_attempts=1, concurrency=1),
+        ) as load:
+            code, stdout, _ = _run(["--config", str(config_path), "agents"], None)
         self.assertEqual(code, 0)
         load.assert_called_once_with(config_path)
 
@@ -361,7 +395,8 @@ class StatusCommandTests(CliTestCase):
     def test_status_forwards_list_arguments(self):
         state = MagicMock(name="state")
         state.latest_workflow.return_value = SimpleNamespace(
-            id="wf-1", status=TaskStatus.PENDING, description="desc")
+            id="wf-1", status=TaskStatus.PENDING, description="desc"
+        )
         state.list_tasks.return_value = []
         state.list_agent_runs.return_value = []
         state.list_verification_runs.return_value = []
@@ -380,18 +415,33 @@ class StatusCommandTests(CliTestCase):
         task_id = store.list_tasks(workflow_id)[0].id
         _finished_agent_run(store, workflow_id, task_id)
         _finished_verification(store, workflow_id, task_id)
-        store.create_failure(Failure(
-            id="failure-1", workflow_id=workflow_id, task_id=task_id,
-            agent_run_id=None, source=FailureSource.AGENT,
-            category=FailureCategory.AGENT_ERROR, severity=FailureSeverity.HIGH,
-            retryable=True, repairable=True, evidence="boom",
-            recommended_action=RepairAction.RETRY_SAME_AGENT,
-            recovery_state=RecoveryState.RECOVERED_FAILED))
-        store.record_worktree_ref(WorktreeRef(
-            id="ref-1", workflow_id=workflow_id,
-            path=str(FAKE_WORKTREE.path), branch=FAKE_WORKTREE.branch,
-            base_branch=FAKE_WORKTREE.base_branch,
-            base_commit=FAKE_WORKTREE.base_commit, created_at=""))
+        store.create_failure(
+            Failure(
+                id="failure-1",
+                workflow_id=workflow_id,
+                task_id=task_id,
+                agent_run_id=None,
+                source=FailureSource.AGENT,
+                category=FailureCategory.AGENT_ERROR,
+                severity=FailureSeverity.HIGH,
+                retryable=True,
+                repairable=True,
+                evidence="boom",
+                recommended_action=RepairAction.RETRY_SAME_AGENT,
+                recovery_state=RecoveryState.RECOVERED_FAILED,
+            )
+        )
+        store.record_worktree_ref(
+            WorktreeRef(
+                id="ref-1",
+                workflow_id=workflow_id,
+                path=str(FAKE_WORKTREE.path),
+                branch=FAKE_WORKTREE.branch,
+                base_branch=FAKE_WORKTREE.base_branch,
+                base_commit=FAKE_WORKTREE.base_commit,
+                created_at="",
+            )
+        )
         services = self._services(state_store=lambda path: store)
         code, stdout, _ = self._invoke(["status"], services)
         self.assertEqual(code, 0)
@@ -431,13 +481,26 @@ class RunsCommandTests(CliTestCase):
         state.list_agent_runs.return_value = []
         services = self._services(state_store=lambda path: state)
         code, stdout, _ = self._invoke(
-            ["runs", "--workflow", "wf-1", "--task", "task-1",
-             "--status", "completed", "--limit", "5", "--offset", "2"],
-            services)
+            [
+                "runs",
+                "--workflow",
+                "wf-1",
+                "--task",
+                "task-1",
+                "--status",
+                "completed",
+                "--limit",
+                "5",
+                "--offset",
+                "2",
+            ],
+            services,
+        )
         self.assertEqual(code, 0)
         self.assertIn("No persisted agent runs.", stdout)
         state.list_agent_runs.assert_called_once_with(
-            "wf-1", "task-1", AgentRunStatus.COMPLETED, 5, 2)
+            "wf-1", "task-1", AgentRunStatus.COMPLETED, 5, 2
+        )
 
     def test_runs_rejects_an_unknown_status(self):
         code, stdout, stderr = self._invoke(["runs", "--status", "bogus"])
@@ -488,8 +551,12 @@ class VerifyCommandTests(CliTestCase):
         workflow_id = store.latest_workflow().id
         task_id = store.list_tasks(workflow_id)[0].id
         run = _finished_verification(
-            store, workflow_id, task_id,
-            overall=VerificationReportStatus.UNVERIFIED, skipped_checks=1)
+            store,
+            workflow_id,
+            task_id,
+            overall=VerificationReportStatus.UNVERIFIED,
+            skipped_checks=1,
+        )
         services = self._services(state_store=lambda path: store)
         code, stdout, _ = self._invoke(["verify", "--run", run.id], services)
         self.assertEqual(code, 0)
@@ -508,8 +575,9 @@ class VerifyCommandTests(CliTestCase):
         workflow_id = store.latest_workflow().id
         task_id = store.list_tasks(workflow_id)[0].id
         profile = VerificationProfile(
-            name="unit", checks=(VerificationCheckSpec(
-                "unit", VerificationCheckClass.TESTS, ("unit",)),))
+            name="unit",
+            checks=(VerificationCheckSpec("unit", VerificationCheckClass.TESTS, ("unit",)),),
+        )
         run = store.create_verification_run(workflow_id, task_id, profile)
         services = self._services(state_store=lambda path: store)
         code, stdout, _ = self._invoke(["verify", "--run", run.id], services)
@@ -521,12 +589,12 @@ class VerifyCommandTests(CliTestCase):
         state.list_verification_runs.return_value = []
         services = self._services(state_store=lambda path: state)
         code, stdout, _ = self._invoke(
-            ["verify", "--workflow", "wf-1", "--task", "task-1",
-             "--limit", "5", "--offset", "2"], services)
+            ["verify", "--workflow", "wf-1", "--task", "task-1", "--limit", "5", "--offset", "2"],
+            services,
+        )
         self.assertEqual(code, 0)
         self.assertIn("No persisted verification runs.", stdout)
-        state.list_verification_runs.assert_called_once_with(
-            "wf-1", "task-1", limit=5, offset=2)
+        state.list_verification_runs.assert_called_once_with("wf-1", "task-1", limit=5, offset=2)
 
 
 class EventsCommandTests(CliTestCase):
@@ -539,10 +607,15 @@ class EventsCommandTests(CliTestCase):
         store = _seeded_store()
         workflow_id = store.latest_workflow().id
         task_id = store.list_tasks(workflow_id)[0].id
-        store.record_typed_event(Event(
-            workflow_id=workflow_id, task_id=task_id,
-            type=EventType.TASK_COMPLETED, severity=EventSeverity.INFO,
-            message="task completed"))
+        store.record_typed_event(
+            Event(
+                workflow_id=workflow_id,
+                task_id=task_id,
+                type=EventType.TASK_COMPLETED,
+                severity=EventSeverity.INFO,
+                message="task completed",
+            )
+        )
         services = self._services(state_store=lambda path: store)
         code, stdout, _ = self._invoke(["events"], services)
         self.assertEqual(code, 0)
@@ -557,13 +630,28 @@ class EventsCommandTests(CliTestCase):
         state.query_events.return_value = []
         services = self._services(state_store=lambda path: state)
         code, stdout, _ = self._invoke(
-            ["events", "--workflow", "wf-1", "--task", "task-1",
-             "--run", "run-1", "--type", "task.completed",
-             "--limit", "5", "--offset", "2"], services)
+            [
+                "events",
+                "--workflow",
+                "wf-1",
+                "--task",
+                "task-1",
+                "--run",
+                "run-1",
+                "--type",
+                "task.completed",
+                "--limit",
+                "5",
+                "--offset",
+                "2",
+            ],
+            services,
+        )
         self.assertEqual(code, 0)
         self.assertIn("No timeline events.", stdout)
         state.query_events.assert_called_once_with(
-            "wf-1", "task-1", "run-1", "task.completed", 5, 2)
+            "wf-1", "task-1", "run-1", "task.completed", 5, 2
+        )
 
 
 class ArtifactsCommandTests(CliTestCase):
@@ -576,10 +664,17 @@ class ArtifactsCommandTests(CliTestCase):
         store = _seeded_store()
         workflow_id = store.latest_workflow().id
         task_id = store.list_tasks(workflow_id)[0].id
-        artifact = store.create_artifact_record(Artifact(
-            workflow_id=workflow_id, task_id=task_id, kind=ArtifactKind.PLANS,
-            name="plan.md", rel_path="plans/wf/plan.md",
-            sha256="ab" * 32, size_bytes=120))
+        artifact = store.create_artifact_record(
+            Artifact(
+                workflow_id=workflow_id,
+                task_id=task_id,
+                kind=ArtifactKind.PLANS,
+                name="plan.md",
+                rel_path="plans/wf/plan.md",
+                sha256="ab" * 32,
+                size_bytes=120,
+            )
+        )
         services = self._services(state_store=lambda path: store)
         code, stdout, _ = self._invoke(["artifacts"], services)
         self.assertEqual(code, 0)
@@ -595,28 +690,46 @@ class ArtifactsCommandTests(CliTestCase):
         state.list_artifacts.return_value = []
         services = self._services(state_store=lambda path: state)
         code, stdout, _ = self._invoke(
-            ["artifacts", "--workflow", "wf-1", "--task", "task-1",
-             "--kind", "plans", "--limit", "5", "--offset", "2"], services)
+            [
+                "artifacts",
+                "--workflow",
+                "wf-1",
+                "--task",
+                "task-1",
+                "--kind",
+                "plans",
+                "--limit",
+                "5",
+                "--offset",
+                "2",
+            ],
+            services,
+        )
         self.assertEqual(code, 0)
         self.assertIn("No stored artifacts.", stdout)
-        state.list_artifacts.assert_called_once_with(
-            "wf-1", "task-1", "plans", 5, 2)
+        state.list_artifacts.assert_called_once_with("wf-1", "task-1", "plans", 5, 2)
 
     def test_artifacts_show_prints_the_stored_content(self):
         store = _seeded_store()
         workflow_id = store.latest_workflow().id
         task_id = store.list_tasks(workflow_id)[0].id
-        artifact = store.create_artifact_record(Artifact(
-            workflow_id=workflow_id, task_id=task_id, kind=ArtifactKind.PLANS,
-            name="plan.md", rel_path="plans/wf/plan.md",
-            sha256="ab" * 32, size_bytes=120))
+        artifact = store.create_artifact_record(
+            Artifact(
+                workflow_id=workflow_id,
+                task_id=task_id,
+                kind=ArtifactKind.PLANS,
+                name="plan.md",
+                rel_path="plans/wf/plan.md",
+                sha256="ab" * 32,
+                size_bytes=120,
+            )
+        )
         artifact_store = MagicMock(name="artifact_store")
         artifact_store.read_text.return_value = "the plan"
         services = self._services(
-            state_store=lambda path: store,
-            artifact_store=lambda path: artifact_store)
-        code, stdout, _ = self._invoke(["artifacts", "--show", artifact.id],
-                                       services)
+            state_store=lambda path: store, artifact_store=lambda path: artifact_store
+        )
+        code, stdout, _ = self._invoke(["artifacts", "--show", artifact.id], services)
         self.assertEqual(code, 0)
         self.assertIn("the plan", stdout)
         artifact_store.read_text.assert_called_once_with(artifact)
@@ -631,18 +744,23 @@ class ArtifactsCommandTests(CliTestCase):
         store = _seeded_store()
         workflow_id = store.latest_workflow().id
         task_id = store.list_tasks(workflow_id)[0].id
-        artifact = store.create_artifact_record(Artifact(
-            workflow_id=workflow_id, task_id=task_id, kind=ArtifactKind.PLANS,
-            name="plan.md", rel_path="plans/wf/plan.md",
-            sha256="ab" * 32, size_bytes=120))
+        artifact = store.create_artifact_record(
+            Artifact(
+                workflow_id=workflow_id,
+                task_id=task_id,
+                kind=ArtifactKind.PLANS,
+                name="plan.md",
+                rel_path="plans/wf/plan.md",
+                sha256="ab" * 32,
+                size_bytes=120,
+            )
+        )
         artifact_store = MagicMock(name="artifact_store")
-        artifact_store.read_text.side_effect = ArtifactMissingError(
-            "artifact file missing")
+        artifact_store.read_text.side_effect = ArtifactMissingError("artifact file missing")
         services = self._services(
-            state_store=lambda path: store,
-            artifact_store=lambda path: artifact_store)
-        code, stdout, _ = self._invoke(["artifacts", "--show", artifact.id],
-                                       services)
+            state_store=lambda path: store, artifact_store=lambda path: artifact_store
+        )
+        code, stdout, _ = self._invoke(["artifacts", "--show", artifact.id], services)
         self.assertEqual(code, 2)
         self.assertIn("ERROR:", stdout)
 
@@ -650,31 +768,42 @@ class ArtifactsCommandTests(CliTestCase):
         store = _seeded_store()
         workflow_id = store.latest_workflow().id
         task_id = store.list_tasks(workflow_id)[0].id
-        kept = store.create_artifact_record(Artifact(
-            workflow_id=workflow_id, task_id=task_id, kind=ArtifactKind.PLANS,
-            name="newest", rel_path="plans/wf/newest",
-            sha256="cd" * 32, size_bytes=10))
-        pruned = store.create_artifact_record(Artifact(
-            workflow_id=workflow_id, task_id=task_id, kind=ArtifactKind.PLANS,
-            name="oldest", rel_path="plans/wf/oldest",
-            sha256="ef" * 32, size_bytes=10))
+        kept = store.create_artifact_record(
+            Artifact(
+                workflow_id=workflow_id,
+                task_id=task_id,
+                kind=ArtifactKind.PLANS,
+                name="newest",
+                rel_path="plans/wf/newest",
+                sha256="cd" * 32,
+                size_bytes=10,
+            )
+        )
+        pruned = store.create_artifact_record(
+            Artifact(
+                workflow_id=workflow_id,
+                task_id=task_id,
+                kind=ArtifactKind.PLANS,
+                name="oldest",
+                rel_path="plans/wf/oldest",
+                sha256="ef" * 32,
+                size_bytes=10,
+            )
+        )
         artifact_store = MagicMock(name="artifact_store")
-        artifact_store.scan_files.return_value = [
-            "plans/wf/newest", "plans/wf/oldest"]
+        artifact_store.scan_files.return_value = ["plans/wf/newest", "plans/wf/oldest"]
         artifact_store.prune.return_value = [pruned.id]
         artifact_store.find_orphans.return_value = []
         state = MagicMock(name="state")
         state.list_artifacts.return_value = [pruned, kept]
         state.delete_artifact_record.return_value = True
         services = self._services(
-            state_store=lambda path: state,
-            artifact_store=lambda path: artifact_store)
-        code, stdout, _ = self._invoke(["artifacts", "--prune-keep", "1"],
-                                       services)
+            state_store=lambda path: state, artifact_store=lambda path: artifact_store
+        )
+        code, stdout, _ = self._invoke(["artifacts", "--prune-keep", "1"], services)
         self.assertEqual(code, 0)
         self.assertIn("Pruned 1 artifact(s).", stdout)
-        artifact_store.prune.assert_called_once_with([pruned, kept],
-                                                     keep_last_n=1)
+        artifact_store.prune.assert_called_once_with([pruned, kept], keep_last_n=1)
         state.delete_artifact_record.assert_called_once_with(pruned.id)
 
 
@@ -688,13 +817,22 @@ class FailuresCommandTests(CliTestCase):
         store = _seeded_store()
         workflow_id = store.latest_workflow().id
         task_id = store.list_tasks(workflow_id)[0].id
-        store.create_failure(Failure(
-            id="failure-1", workflow_id=workflow_id, task_id=task_id,
-            agent_run_id=None, source=FailureSource.AGENT,
-            category=FailureCategory.TIMEOUT, severity=FailureSeverity.HIGH,
-            retryable=True, repairable=False, evidence="timed out",
-            recommended_action=RepairAction.RETRY_SAME_AGENT,
-            recovery_state=RecoveryState.INTERRUPTED_AGENT_EXECUTION))
+        store.create_failure(
+            Failure(
+                id="failure-1",
+                workflow_id=workflow_id,
+                task_id=task_id,
+                agent_run_id=None,
+                source=FailureSource.AGENT,
+                category=FailureCategory.TIMEOUT,
+                severity=FailureSeverity.HIGH,
+                retryable=True,
+                repairable=False,
+                evidence="timed out",
+                recommended_action=RepairAction.RETRY_SAME_AGENT,
+                recovery_state=RecoveryState.INTERRUPTED_AGENT_EXECUTION,
+            )
+        )
         services = self._services(state_store=lambda path: store)
         code, stdout, _ = self._invoke(["failures"], services)
         self.assertEqual(code, 0)
@@ -712,13 +850,24 @@ class FailuresCommandTests(CliTestCase):
         state.list_failures.return_value = []
         services = self._services(state_store=lambda path: state)
         code, stdout, _ = self._invoke(
-            ["failures", "--workflow", "wf-1", "--task", "task-1",
-             "--category", "TIMEOUT", "--limit", "5", "--offset", "2"],
-            services)
+            [
+                "failures",
+                "--workflow",
+                "wf-1",
+                "--task",
+                "task-1",
+                "--category",
+                "TIMEOUT",
+                "--limit",
+                "5",
+                "--offset",
+                "2",
+            ],
+            services,
+        )
         self.assertEqual(code, 0)
         self.assertIn("No persisted failures.", stdout)
-        state.list_failures.assert_called_once_with(
-            "wf-1", "task-1", "TIMEOUT", 5, 2)
+        state.list_failures.assert_called_once_with("wf-1", "task-1", "TIMEOUT", 5, 2)
 
 
 class RecoverCommandTests(CliTestCase):
@@ -727,11 +876,12 @@ class RecoverCommandTests(CliTestCase):
         services = self._services(state_store=lambda path: store)
         code, stdout, _ = self._invoke(["recover"], services)
         self.assertEqual(code, 0)
-        self.assertIn("Recovered agent_runs=0 verification_runs=0 tasks=0.",
-                      stdout)
-        self.assertIn("Interrupted work is marked failed "
-                      "(never success without evidence); worktrees preserved.",
-                      stdout)
+        self.assertIn("Recovered agent_runs=0 verification_runs=0 tasks=0.", stdout)
+        self.assertIn(
+            "Interrupted work is marked failed "
+            "(never success without evidence); worktrees preserved.",
+            stdout,
+        )
 
     def test_recover_marks_interrupted_work_failed(self):
         store = _seeded_store()
@@ -741,33 +891,33 @@ class RecoverCommandTests(CliTestCase):
         # and a RUNNING verification run.
         task.status = TaskStatus.RUNNING
         store.update_task(task)
-        _finished_agent_run(store, workflow_id, task.id,
-                            status=AgentRunStatus.RUNNING, exit_code=None)
+        _finished_agent_run(
+            store, workflow_id, task.id, status=AgentRunStatus.RUNNING, exit_code=None
+        )
         profile = VerificationProfile(
-            name="unit", checks=(VerificationCheckSpec(
-                "unit", VerificationCheckClass.TESTS, ("unit",)),))
-        verification = store.create_verification_run(
-            workflow_id, task.id, profile)
+            name="unit",
+            checks=(VerificationCheckSpec("unit", VerificationCheckClass.TESTS, ("unit",)),),
+        )
+        verification = store.create_verification_run(workflow_id, task.id, profile)
         store.start_verification_run(verification.id)
         services = self._services(state_store=lambda path: store)
         code, stdout, _ = self._invoke(["recover"], services)
         self.assertEqual(code, 0)
-        self.assertIn("Recovered agent_runs=1 verification_runs=1 tasks=1.",
-                      stdout)
-        self.assertIn("Interrupted work is marked failed "
-                      "(never success without evidence); worktrees preserved.",
-                      stdout)
+        self.assertIn("Recovered agent_runs=1 verification_runs=1 tasks=1.", stdout)
+        self.assertIn(
+            "Interrupted work is marked failed "
+            "(never success without evidence); worktrees preserved.",
+            stdout,
+        )
         # Recovery must never mint success: everything stranded is now
         # terminal and failed/terminated.
         self.assertEqual(store.get_task(task.id).status, TaskStatus.FAILED)
         runs = store.list_agent_runs(workflow_id)
         self.assertTrue(runs)
-        self.assertTrue(all(run.status is AgentRunStatus.TERMINATED
-                            for run in runs))
+        self.assertTrue(all(run.status is AgentRunStatus.TERMINATED for run in runs))
         verifications = store.list_verification_runs(workflow_id)
         self.assertTrue(verifications)
-        self.assertTrue(all(run.status is VerificationRunStatus.FAILED
-                            for run in verifications))
+        self.assertTrue(all(run.status is VerificationRunStatus.FAILED for run in verifications))
 
 
 class LogsCommandTests(CliTestCase):
@@ -798,8 +948,7 @@ class LogsCommandTests(CliTestCase):
         oldest = Path("/agentops-cli-test/.agentops/logs/oldest.log")
         logs.list_logs.return_value = [newest, oldest]
         services = self._services(log_manager=lambda path: logs)
-        code, stdout, _ = self._invoke(
-            ["logs", "--task", "task-1", "--tail", "1"], services)
+        code, stdout, _ = self._invoke(["logs", "--task", "task-1", "--tail", "1"], services)
         self.assertEqual(code, 0)
         # Only the newest of the two survives the --tail 1 slice.
         self.assertIn(str(newest), stdout)
@@ -810,16 +959,20 @@ class LogsCommandTests(CliTestCase):
 class AgentsCommandTests(CliTestCase):
     def _registry_with(self, *detected):
         registry = MagicMock(name="registry")
-        registry.detect.return_value = {
-            agent.config.name: agent for agent in detected}
+        registry.detect.return_value = {agent.config.name: agent for agent in detected}
         return registry
 
     def test_agents_reports_health_and_reason(self):
         config = AgentConfig("demo", "demo", ("{prompt}",))
         registry = self._registry_with(
-            DetectedAgent(config, True, "demo",
-                          health=AgentHealth.UNHEALTHY,
-                          health_detail="health probe timed out"))
+            DetectedAgent(
+                config,
+                True,
+                "demo",
+                health=AgentHealth.UNHEALTHY,
+                health_detail="health probe timed out",
+            )
+        )
         services = self._services(agent_registry=lambda config: registry)
         code, stdout, _ = self._invoke(["agents"], services)
         self.assertEqual(code, 0)
@@ -828,12 +981,16 @@ class AgentsCommandTests(CliTestCase):
         self.assertIn("(health probe timed out)", stdout)
 
     def test_agents_reports_disabled_and_missing_states(self):
-        enabled = AgentConfig("blocked", "blocked", ("{prompt}",),
-                              enabled=False)
+        enabled = AgentConfig("blocked", "blocked", ("{prompt}",), enabled=False)
         registry = self._registry_with(
             DetectedAgent(enabled, False, None, health=AgentHealth.BLOCKED),
-            DetectedAgent(AgentConfig("gone", "gone", ("{prompt}",)),
-                          False, None, health=AgentHealth.DISCOVERED))
+            DetectedAgent(
+                AgentConfig("gone", "gone", ("{prompt}",)),
+                False,
+                None,
+                health=AgentHealth.DISCOVERED,
+            ),
+        )
         services = self._services(agent_registry=lambda config: registry)
         code, stdout, _ = self._invoke(["agents"], services)
         self.assertEqual(code, 0)
@@ -844,20 +1001,26 @@ class AgentsCommandTests(CliTestCase):
 class RunCommandTests(CliTestCase):
     def _run_services(self, runner, registry=None, store=None):
         registry = registry or MagicMock(name="registry")
-        agent = DetectedAgent(AgentConfig("demo", "demo", ("{prompt}",)),
-                               True, "demo")
+        agent = DetectedAgent(AgentConfig("demo", "demo", ("{prompt}",)), True, "demo")
         registry.get.return_value = agent
         return self._services(
             state_store=lambda path: store or _in_memory_store(),
             agent_registry=lambda config: registry,
-            agent_runner=lambda *args, **kwargs: runner)
+            agent_runner=lambda *args, **kwargs: runner,
+        )
 
     def test_run_reports_a_successful_run(self):
         result = RunResult(
-            agent="demo", command=("demo",), exit_code=0,
-            stdout="did the work", stderr="", duration_seconds=0.5,
-            timed_out=False, log_path=Path("/agentops-cli-test/demo.log"),
-            run_id="run-1")
+            agent="demo",
+            command=("demo",),
+            exit_code=0,
+            stdout="did the work",
+            stderr="",
+            duration_seconds=0.5,
+            timed_out=False,
+            log_path=Path("/agentops-cli-test/demo.log"),
+            run_id="run-1",
+        )
         runner = FakeRunner(result)
         services = self._run_services(runner)
         code, stdout, _ = self._invoke(["run", "demo", "do the work"], services)
@@ -876,9 +1039,16 @@ class RunCommandTests(CliTestCase):
 
     def test_run_reports_a_failed_run(self):
         result = RunResult(
-            agent="demo", command=("demo",), exit_code=1, stdout="",
-            stderr="boom", duration_seconds=0.5, timed_out=False,
-            log_path=Path("/agentops-cli-test/demo.log"), run_id="run-2")
+            agent="demo",
+            command=("demo",),
+            exit_code=1,
+            stdout="",
+            stderr="boom",
+            duration_seconds=0.5,
+            timed_out=False,
+            log_path=Path("/agentops-cli-test/demo.log"),
+            run_id="run-2",
+        )
         runner = FakeRunner(result)
         services = self._run_services(runner)
         code, stdout, _ = self._invoke(["run", "demo", "do the work"], services)
@@ -888,9 +1058,16 @@ class RunCommandTests(CliTestCase):
 
     def test_run_reports_a_timed_out_run_as_a_failure(self):
         result = RunResult(
-            agent="demo", command=("demo",), exit_code=None, stdout="",
-            stderr="", duration_seconds=30.0, timed_out=True,
-            log_path=Path("/agentops-cli-test/demo.log"), run_id="run-3")
+            agent="demo",
+            command=("demo",),
+            exit_code=None,
+            stdout="",
+            stderr="",
+            duration_seconds=30.0,
+            timed_out=True,
+            log_path=Path("/agentops-cli-test/demo.log"),
+            run_id="run-3",
+        )
         runner = FakeRunner(result)
         services = self._run_services(runner)
         code, stdout, _ = self._invoke(["run", "demo", "do the work"], services)
@@ -901,9 +1078,16 @@ class RunCommandTests(CliTestCase):
         registry = MagicMock(name="registry")
         registry.get.side_effect = KeyError("Unknown agent: nope")
         result = RunResult(
-            agent="demo", command=("demo",), exit_code=0, stdout="",
-            stderr="", duration_seconds=0.0, timed_out=False,
-            log_path=Path("/agentops-cli-test/demo.log"), run_id="run-x")
+            agent="demo",
+            command=("demo",),
+            exit_code=0,
+            stdout="",
+            stderr="",
+            duration_seconds=0.0,
+            timed_out=False,
+            log_path=Path("/agentops-cli-test/demo.log"),
+            run_id="run-x",
+        )
         services = self._run_services(FakeRunner(result), registry=registry)
         code, stdout, _ = self._invoke(["run", "nope", "do it"], services)
         self.assertEqual(code, 1)
@@ -914,6 +1098,7 @@ class RunCommandTests(CliTestCase):
         class _ExplodingRunner:
             async def run_agent(self, *args, **kwargs):
                 raise RuntimeError("runner exploded")
+
         services = self._run_services(_ExplodingRunner())
         code, stdout, _ = self._invoke(["run", "demo", "do it"], services)
         self.assertEqual(code, 1)
@@ -924,9 +1109,15 @@ class RunCommandTests(CliTestCase):
 class TaskWorkflowCommandTests(CliTestCase):
     """The task/workflow dispatch, readiness, and merge gate."""
 
-    def _workflow_services(self, engine, manager=None, finalize=None,
-                           state=None, record_provenance=None,
-                           worktree_manager=None):
+    def _workflow_services(
+        self,
+        engine,
+        manager=None,
+        finalize=None,
+        state=None,
+        record_provenance=None,
+        worktree_manager=None,
+    ):
         if state is None:
             # The CLI iterates these two results in the task/workflow
             # tail, and a bare MagicMock is not iterable, so a freshly
@@ -942,33 +1133,37 @@ class TaskWorkflowCommandTests(CliTestCase):
             worktree_manager=worktree_manager or manager,
             state_store=lambda path: state,
             workflow_engine=lambda *args, **kwargs: engine,
-            finalize=finalize or (lambda *args, **kwargs: WorktreeFinalization(
-                changed=True, merged=True, conflict_error=None)),
-            record_provenance=record_provenance
-            or (lambda *args, **kwargs: True),
+            finalize=finalize
+            or (
+                lambda *args, **kwargs: WorktreeFinalization(
+                    changed=True, merged=True, conflict_error=None
+                )
+            ),
+            record_provenance=record_provenance or (lambda *args, **kwargs: True),
         )
 
     def _ready_engine(self, workflow_id="wf-1", summary="READY"):
         engine = MagicMock(name="engine")
         engine.run_high_level = MagicMock(
-            return_value=_awaitable(WorkflowResult(
-                workflow_id, True, summary)))
+            return_value=_awaitable(WorkflowResult(workflow_id, True, summary))
+        )
         return engine
 
     def test_task_merges_and_removes_the_worktree_when_ready(self):
         engine = self._ready_engine()
-        finalize = MagicMock(return_value=WorktreeFinalization(
-            changed=True, merged=True, conflict_error=None))
+        finalize = MagicMock(
+            return_value=WorktreeFinalization(changed=True, merged=True, conflict_error=None)
+        )
         record_provenance = MagicMock(return_value=True)
         services = self._workflow_services(
-            engine, finalize=finalize, record_provenance=record_provenance)
+            engine, finalize=finalize, record_provenance=record_provenance
+        )
         code, stdout, _ = self._invoke(["task", "ship it"], services)
         self.assertEqual(code, 0)
         self.assertIn("RESULT: READY", stdout)
         self.assertIn("workflow: wf-1", stdout)
         self.assertIn("merged worktree changes", stdout)
-        engine.run_high_level.assert_called_once_with(
-            "ship it", FAKE_WORKTREE.path)
+        engine.run_high_level.assert_called_once_with("ship it", FAKE_WORKTREE.path)
         finalize.assert_called_once()
         args = finalize.call_args.args
         self.assertEqual(args[3], "ship it")
@@ -983,8 +1178,9 @@ class TaskWorkflowCommandTests(CliTestCase):
 
     def test_task_reports_no_changes_when_nothing_changed(self):
         engine = self._ready_engine()
-        finalize = MagicMock(return_value=WorktreeFinalization(
-            changed=False, merged=False, conflict_error=None))
+        finalize = MagicMock(
+            return_value=WorktreeFinalization(changed=False, merged=False, conflict_error=None)
+        )
         services = self._workflow_services(engine, finalize=finalize)
         code, stdout, _ = self._invoke(["task", "ship it"], services)
         self.assertEqual(code, 0)
@@ -995,15 +1191,15 @@ class TaskWorkflowCommandTests(CliTestCase):
     def test_task_does_not_merge_when_not_ready_and_implementation_failed(self):
         engine = MagicMock(name="engine")
         engine.run_high_level = MagicMock(
-            return_value=_awaitable(WorkflowResult(
-                "wf-1", False, "Review did not pass.")))
+            return_value=_awaitable(WorkflowResult("wf-1", False, "Review did not pass."))
+        )
         state = MagicMock(name="state")
         state.list_tasks.return_value = []  # no PASSED implementation task
         state.list_verification_runs.return_value = []
-        finalize = MagicMock(return_value=WorktreeFinalization(
-            changed=False, merged=False, conflict_error=None))
-        services = self._workflow_services(
-            engine, finalize=finalize, state=state)
+        finalize = MagicMock(
+            return_value=WorktreeFinalization(changed=False, merged=False, conflict_error=None)
+        )
+        services = self._workflow_services(engine, finalize=finalize, state=state)
         code, stdout, _ = self._invoke(["task", "ship it"], services)
         # Not READY with a failed implementation: no commit, no
         # merge, worktree preserved. The command itself ran to
@@ -1019,16 +1215,17 @@ class TaskWorkflowCommandTests(CliTestCase):
         """Delegate work is committed even when verification did not pass."""
         engine = MagicMock(name="engine")
         engine.run_high_level = MagicMock(
-            return_value=_awaitable(WorkflowResult(
-                "wf-1", False, "Verification was unverified")))
+            return_value=_awaitable(WorkflowResult("wf-1", False, "Verification was unverified"))
+        )
         state = MagicMock(name="state")
         state.list_tasks.return_value = [
-            Task("impl", "implementation", "wf-1", status=TaskStatus.PASSED)]
+            Task("impl", "implementation", "wf-1", status=TaskStatus.PASSED)
+        ]
         state.list_verification_runs.return_value = []
-        finalize = MagicMock(return_value=WorktreeFinalization(
-            changed=True, merged=False, conflict_error=None))
-        services = self._workflow_services(
-            engine, finalize=finalize, state=state)
+        finalize = MagicMock(
+            return_value=WorktreeFinalization(changed=True, merged=False, conflict_error=None)
+        )
+        services = self._workflow_services(engine, finalize=finalize, state=state)
         code, stdout, _ = self._invoke(["task", "ship it"], services)
         # Not READY, but the implementation passed: the delegate
         # work is committed to the agentops branch and preserved
@@ -1036,8 +1233,7 @@ class TaskWorkflowCommandTests(CliTestCase):
         # The command itself ran to completion, so it is not an
         # error exit.
         self.assertEqual(code, 0)
-        self.assertIn("work committed but NOT merged (workflow not READY)",
-                      stdout)
+        self.assertIn("work committed but NOT merged (workflow not READY)", stdout)
         finalize.assert_called_once()
         self.assertFalse(finalize.call_args.kwargs["ready"])
         self.assertEqual(self.manager.merged, [])
@@ -1045,20 +1241,23 @@ class TaskWorkflowCommandTests(CliTestCase):
 
     def test_task_preserves_the_worktree_on_a_merge_conflict(self):
         engine = self._ready_engine()
-        finalize = MagicMock(return_value=WorktreeFinalization(
-            changed=True, merged=False, conflict_error="merge conflict"))
+        finalize = MagicMock(
+            return_value=WorktreeFinalization(
+                changed=True, merged=False, conflict_error="merge conflict"
+            )
+        )
         services = self._workflow_services(engine, finalize=finalize)
         code, stdout, _ = self._invoke(["task", "ship it"], services)
         self.assertEqual(code, 1)
         self.assertIn("CONFLICT: merge conflict", stdout)
-        self.assertIn("A persisted conflict-resolution task was created; "
-                      "the worktree is preserved.", stdout)
+        self.assertIn(
+            "A persisted conflict-resolution task was created; the worktree is preserved.", stdout
+        )
         self.assertEqual(self.manager.removed, [])
 
     def test_task_reports_engine_failures(self):
         engine = MagicMock(name="engine")
-        engine.run_high_level = MagicMock(
-            side_effect=RuntimeError("engine exploded"))
+        engine.run_high_level = MagicMock(side_effect=RuntimeError("engine exploded"))
         services = self._workflow_services(engine)
         code, stdout, _ = self._invoke(["task", "ship it"], services)
         self.assertEqual(code, 1)
@@ -1067,11 +1266,9 @@ class TaskWorkflowCommandTests(CliTestCase):
 
     def test_task_fails_fast_outside_a_git_repository(self):
         manager = FakeWorktreeManager()
-        manager.repository_root = MagicMock(
-            side_effect=GitError("Not a Git repository"))
+        manager.repository_root = MagicMock(side_effect=GitError("Not a Git repository"))
         engine = MagicMock(name="engine")
-        services = self._workflow_services(
-            engine, worktree_manager=manager)
+        services = self._workflow_services(engine, worktree_manager=manager)
         code, stdout, _ = self._invoke(["task", "ship it"], services)
         self.assertEqual(code, 1)
         self.assertIn("ERROR:", stdout)
@@ -1085,8 +1282,8 @@ class TaskWorkflowCommandTests(CliTestCase):
         state.list_tasks.return_value = []
         state.list_verification_runs.return_value = [SimpleNamespace(id="vr-1")]
         state.get_verification_report_by_run.return_value = SimpleNamespace(
-            skipped_checks=2, total_checks=3,
-            overall_status=VerificationReportStatus.UNVERIFIED)
+            skipped_checks=2, total_checks=3, overall_status=VerificationReportStatus.UNVERIFIED
+        )
         services = self._workflow_services(engine, state=state)
         code, stdout, _ = self._invoke(["task", "ship it"], services)
         self.assertEqual(code, 0)
@@ -1099,37 +1296,34 @@ class TaskWorkflowCommandTests(CliTestCase):
         services = self._workflow_services(engine)
         definition = {"description": "high level"}
         with patch("agentops.cli._load_data", return_value=definition):
-            code, stdout, _ = self._invoke(
-                ["workflow", "flow.yaml"], services)
+            code, stdout, _ = self._invoke(["workflow", "flow.yaml"], services)
         self.assertEqual(code, 0)
         self.assertIn("RESULT: READY", stdout)
-        engine.run_high_level.assert_called_once_with(
-            "high level", FAKE_WORKTREE.path)
+        engine.run_high_level.assert_called_once_with("high level", FAKE_WORKTREE.path)
 
     def test_workflow_with_tasks_runs_the_dependency_graph(self):
         engine = MagicMock(name="engine")
         engine.create_workflow.return_value = (
-            "wf-1", [Task("a", "implementation", "wf-1"),
-                     Task("b", "verification", "wf-1")])
+            "wf-1",
+            [Task("a", "implementation", "wf-1"), Task("b", "verification", "wf-1")],
+        )
         engine.execute = MagicMock(return_value=_awaitable(None))
         engine.workflow_readiness.return_value = SimpleNamespace(
-            ready=True, summary=lambda: "READY")
+            ready=True, summary=lambda: "READY"
+        )
         services = self._workflow_services(engine)
         definition = {
             "description": "custom flow",
             "tasks": [
                 {"id": "a", "description": "first", "role": "implementation"},
-                {"id": "b", "description": "second", "role": "verification",
-                 "dependencies": ["a"]},
+                {"id": "b", "description": "second", "role": "verification", "dependencies": ["a"]},
             ],
         }
         with patch("agentops.cli._load_data", return_value=definition):
-            code, stdout, _ = self._invoke(
-                ["workflow", "flow.yaml"], services)
+            code, stdout, _ = self._invoke(["workflow", "flow.yaml"], services)
         self.assertEqual(code, 0)
         self.assertIn("RESULT: READY", stdout)
-        engine.create_workflow.assert_called_once_with(
-            "custom flow", definition["tasks"])
+        engine.create_workflow.assert_called_once_with("custom flow", definition["tasks"])
         engine.execute.assert_called_once_with("wf-1", FAKE_WORKTREE.path)
         engine.workflow_readiness.assert_called_once_with("wf-1")
 
@@ -1138,13 +1332,15 @@ class TaskWorkflowCommandTests(CliTestCase):
         engine.create_workflow.return_value = ("wf-1", [])
         engine.execute = MagicMock(return_value=_awaitable(None))
         engine.workflow_readiness.return_value = SimpleNamespace(
-            ready=False, summary=lambda: "NOT READY")
+            ready=False, summary=lambda: "NOT READY"
+        )
         services = self._workflow_services(engine)
-        definition = {"description": "custom flow", "tasks": [
-            {"id": "a", "description": "first", "role": "implementation"}]}
+        definition = {
+            "description": "custom flow",
+            "tasks": [{"id": "a", "description": "first", "role": "implementation"}],
+        }
         with patch("agentops.cli._load_data", return_value=definition):
-            code, stdout, _ = self._invoke(
-                ["workflow", "flow.yaml"], services)
+            code, stdout, _ = self._invoke(["workflow", "flow.yaml"], services)
         # A not-READY DAG is a preserved outcome, not an error:
         # the work is kept for `agentops retry-merge`.
         self.assertEqual(code, 0)
@@ -1153,33 +1349,24 @@ class TaskWorkflowCommandTests(CliTestCase):
 
     def test_workflow_file_requiring_a_description(self):
         services = self._workflow_services(MagicMock(name="engine"))
-        with patch("agentops.cli._load_data",
-                   return_value={"tasks": []}):
-            code, stdout, _ = self._invoke(
-                ["workflow", "flow.yaml"], services)
+        with patch("agentops.cli._load_data", return_value={"tasks": []}):
+            code, stdout, _ = self._invoke(["workflow", "flow.yaml"], services)
         self.assertEqual(code, 2)
-        self.assertIn("ERROR: workflow file requires a string 'description'.",
-                      stdout)
+        self.assertIn("ERROR: workflow file requires a string 'description'.", stdout)
 
     def test_workflow_file_with_a_non_list_tasks_value(self):
         services = self._workflow_services(MagicMock(name="engine"))
-        with patch("agentops.cli._load_data",
-                   return_value={"description": "d", "tasks": "nope"}):
-            code, stdout, _ = self._invoke(
-                ["workflow", "flow.yaml"], services)
+        with patch("agentops.cli._load_data", return_value={"description": "d", "tasks": "nope"}):
+            code, stdout, _ = self._invoke(["workflow", "flow.yaml"], services)
         self.assertEqual(code, 2)
-        self.assertIn("ERROR: workflow 'tasks' must be a list of mappings.",
-                      stdout)
+        self.assertIn("ERROR: workflow 'tasks' must be a list of mappings.", stdout)
 
     def test_workflow_file_with_a_non_mapping_task(self):
         services = self._workflow_services(MagicMock(name="engine"))
-        with patch("agentops.cli._load_data",
-                   return_value={"description": "d", "tasks": ["nope"]}):
-            code, stdout, _ = self._invoke(
-                ["workflow", "flow.yaml"], services)
+        with patch("agentops.cli._load_data", return_value={"description": "d", "tasks": ["nope"]}):
+            code, stdout, _ = self._invoke(["workflow", "flow.yaml"], services)
         self.assertEqual(code, 2)
-        self.assertIn("ERROR: workflow 'tasks' must be a list of mappings.",
-                      stdout)
+        self.assertIn("ERROR: workflow 'tasks' must be a list of mappings.", stdout)
 
     def test_workflow_invalid_task_fields_are_rejected_before_worktree_creation(self):
         engine = MagicMock(name="engine")
@@ -1187,9 +1374,12 @@ class TaskWorkflowCommandTests(CliTestCase):
             "Each workflow task requires string description and role fields."
         )
         services = self._workflow_services(engine)
-        definition = {"description": "invalid graph", "tasks": [
-            {"id": "a", "description": "first", "role": 42},
-        ]}
+        definition = {
+            "description": "invalid graph",
+            "tasks": [
+                {"id": "a", "description": "first", "role": 42},
+            ],
+        }
         with patch("agentops.cli._load_data", return_value=definition):
             code, stdout, _ = self._invoke(["workflow", "flow.yaml"], services)
 
@@ -1200,19 +1390,18 @@ class TaskWorkflowCommandTests(CliTestCase):
 
     def test_workflow_missing_file_is_an_error(self):
         services = self._workflow_services(MagicMock(name="engine"))
-        with patch("agentops.cli._load_data",
-                   side_effect=FileNotFoundError("no such file")):
-            code, stdout, _ = self._invoke(
-                ["workflow", "missing.yaml"], services)
+        with patch("agentops.cli._load_data", side_effect=FileNotFoundError("no such file")):
+            code, stdout, _ = self._invoke(["workflow", "missing.yaml"], services)
         self.assertEqual(code, 2)
         self.assertIn("ERROR: invalid workflow file", stdout)
 
     def test_workflow_file_with_an_invalid_format_is_an_error(self):
         services = self._workflow_services(MagicMock(name="engine"))
-        with patch("agentops.cli._load_data",
-                   side_effect=ValueError("Configuration root must be a mapping.")):
-            code, stdout, _ = self._invoke(
-                ["workflow", "bad.yaml"], services)
+        with patch(
+            "agentops.cli._load_data",
+            side_effect=ValueError("Configuration root must be a mapping."),
+        ):
+            code, stdout, _ = self._invoke(["workflow", "bad.yaml"], services)
         self.assertEqual(code, 2)
         self.assertIn("ERROR: invalid workflow file", stdout)
 
@@ -1220,20 +1409,25 @@ class TaskWorkflowCommandTests(CliTestCase):
 class RetryMergeCommandTests(CliTestCase):
     def _retry_merge_services(self, outcome=None, manager=None):
         manager = manager or FakeWorktreeManager()
-        retry_merge = MagicMock(return_value=outcome or {
-            "merged": True, "path": str(FAKE_WORKTREE.path),
-            "branch": FAKE_WORKTREE.branch,
-            "base_branch": FAKE_WORKTREE.base_branch,
-            "used_stored_provenance": True})
+        retry_merge = MagicMock(
+            return_value=outcome
+            or {
+                "merged": True,
+                "path": str(FAKE_WORKTREE.path),
+                "branch": FAKE_WORKTREE.branch,
+                "base_branch": FAKE_WORKTREE.base_branch,
+                "used_stored_provenance": True,
+            }
+        )
         return self._services(
             worktree_manager=manager,
             state_store=lambda path: _in_memory_store(),
-            retry_merge=retry_merge), retry_merge
+            retry_merge=retry_merge,
+        ), retry_merge
 
     def test_retry_merge_merges_a_preserved_worktree(self):
         services, retry_merge = self._retry_merge_services()
-        code, stdout, _ = self._invoke(
-            ["retry-merge", str(FAKE_WORKTREE.path)], services)
+        code, stdout, _ = self._invoke(["retry-merge", str(FAKE_WORKTREE.path)], services)
         self.assertEqual(code, 0)
         self.assertIn("merged agentops/test into main", stdout)
         retry_merge.assert_called_once()
@@ -1241,23 +1435,27 @@ class RetryMergeCommandTests(CliTestCase):
         self.assertEqual(args[3], FAKE_WORKTREE.path)
 
     def test_retry_merge_warns_when_provenance_was_not_stored(self):
-        services, retry_merge = self._retry_merge_services(outcome={
-            "merged": True, "path": str(FAKE_WORKTREE.path),
-            "branch": FAKE_WORKTREE.branch,
-            "base_branch": FAKE_WORKTREE.base_branch,
-            "used_stored_provenance": False})
-        code, stdout, _ = self._invoke(
-            ["retry-merge", str(FAKE_WORKTREE.path)], services)
+        services, retry_merge = self._retry_merge_services(
+            outcome={
+                "merged": True,
+                "path": str(FAKE_WORKTREE.path),
+                "branch": FAKE_WORKTREE.branch,
+                "base_branch": FAKE_WORKTREE.base_branch,
+                "used_stored_provenance": False,
+            }
+        )
+        code, stdout, _ = self._invoke(["retry-merge", str(FAKE_WORKTREE.path)], services)
         self.assertEqual(code, 0)
-        self.assertIn("WARNING: no stored provenance for this worktree; "
-                      "merged against the current HEAD of the base branch.",
-                      stdout)
+        self.assertIn(
+            "WARNING: no stored provenance for this worktree; "
+            "merged against the current HEAD of the base branch.",
+            stdout,
+        )
 
     def test_retry_merge_reports_a_git_error(self):
         services, retry_merge = self._retry_merge_services()
         retry_merge.side_effect = GitError("merge failed")
-        code, stdout, _ = self._invoke(
-            ["retry-merge", str(FAKE_WORKTREE.path)], services)
+        code, stdout, _ = self._invoke(["retry-merge", str(FAKE_WORKTREE.path)], services)
         self.assertEqual(code, 1)
         self.assertIn("ERROR: merge failed", stdout)
 
@@ -1293,8 +1491,7 @@ class ParserAndArgumentTests(CliTestCase):
         self.assertIn("ERROR:", stdout.getvalue())
 
     def test_invalid_config_is_an_error(self):
-        with patch("agentops.cli.load_config",
-                   side_effect=ValueError("agents must be a mapping.")):
+        with patch("agentops.cli.load_config", side_effect=ValueError("agents must be a mapping.")):
             stdout, stderr = io.StringIO(), io.StringIO()
             with redirect_stdout(stdout), redirect_stderr(stderr):
                 code = main(["agents"])
@@ -1319,13 +1516,20 @@ class PrintTextTests(unittest.TestCase):
 
     def test_run_command_falls_back_to_the_binary_buffer(self):
         result = RunResult(
-            agent="demo", command=("demo",), exit_code=0,
-            stdout="result → done", stderr="", duration_seconds=0.5,
-            timed_out=False, log_path=Path("/agentops-cli-test/demo.log"),
-            run_id="run-1")
+            agent="demo",
+            command=("demo",),
+            exit_code=0,
+            stdout="result → done",
+            stderr="",
+            duration_seconds=0.5,
+            timed_out=False,
+            log_path=Path("/agentops-cli-test/demo.log"),
+            run_id="run-1",
+        )
         registry = MagicMock(name="registry")
         registry.get.return_value = DetectedAgent(
-            AgentConfig("demo", "demo", ("{prompt}",)), True, "demo")
+            AgentConfig("demo", "demo", ("{prompt}",)), True, "demo"
+        )
         narrow = _NarrowStdout()
         services = CliServices(
             config=AppConfig({}, {}, (), max_attempts=1, concurrency=1),
@@ -1350,21 +1554,18 @@ class ResolveStateBaseTests(unittest.TestCase):
         manager = MagicMock(name="manager")
         manager.repository_root.side_effect = GitError("not a repo")
         self.assertEqual(
-            _resolve_state_base(Path("/somewhere"), lambda: manager),
-            Path("/somewhere"))
+            _resolve_state_base(Path("/somewhere"), lambda: manager), Path("/somewhere")
+        )
 
     def test_git_repository_resolves_the_root(self):
         manager = MagicMock(name="manager")
         manager.repository_root.return_value = Path("/repo")
-        self.assertEqual(
-            _resolve_state_base(Path("/repo/sub"), lambda: manager),
-            Path("/repo"))
+        self.assertEqual(_resolve_state_base(Path("/repo/sub"), lambda: manager), Path("/repo"))
 
     def test_default_manager_is_the_real_worktree_manager(self):
         # The production default is bound at definition time, so the
         # real manager is what a one-argument call uses.
-        default = inspect.signature(_resolve_state_base).parameters[
-            "worktree_manager"].default
+        default = inspect.signature(_resolve_state_base).parameters["worktree_manager"].default
         self.assertIs(default, GitWorktreeManager)
 
 

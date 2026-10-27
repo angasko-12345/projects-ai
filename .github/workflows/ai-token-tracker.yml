@@ -24,11 +24,17 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.10 is the declared floor (pyproject.toml, AGENTS.md); 3.11 is the
+        # version the other product jobs and the evidence file use.
+        python-version: ["3.10", "3.11"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
       - name: Run the AI Token Tracker suite
         run: |
           cd ai-token-tracker

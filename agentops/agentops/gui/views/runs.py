@@ -14,8 +14,13 @@ _RUN_COLUMNS = (
     TableColumn("agent", "Agent", 130),
     TableColumn("role", "Role", 130),
     TableColumn("status", "Status", 110),
-    TableColumn("duration_seconds", "Duration", 90, format=format_duration,
-                sort=lambda value: float(value) if isinstance(value, (int, float)) else -1.0),
+    TableColumn(
+        "duration_seconds",
+        "Duration",
+        90,
+        format=format_duration,
+        sort=lambda value: float(value) if isinstance(value, (int, float)) else -1.0,
+    ),
     TableColumn("model", "Model", 130),
     TableColumn("task_id", "Task", 90, format=lambda value: short_id(value, 8)),
     TableColumn("workflow_id", "Workflow", 90, format=lambda value: short_id(value, 8)),
@@ -25,8 +30,14 @@ _RUN_COLUMNS = (
 )
 
 _STATUSES = (
-    "pending", "starting", "running", "completed",
-    "failed", "cancelled", "timed_out", "terminated",
+    "pending",
+    "starting",
+    "running",
+    "completed",
+    "failed",
+    "cancelled",
+    "timed_out",
+    "terminated",
 )
 _ROLES = ("architecture", "implementation", "verification", "review", "debugging")
 
@@ -68,8 +79,8 @@ class RunsView(ListDetailView):
 
     def _build_hook(self) -> None:
         self._table.selection_changed.connect(
-            lambda _row: self._delete_btn.setEnabled(
-                self._table.selected_row() is not None))
+            lambda _row: self._delete_btn.setEnabled(self._table.selected_row() is not None)
+        )
         self._delete_btn.setEnabled(False)
 
     def _delete_selected_run(self) -> None:
@@ -79,8 +90,7 @@ class RunsView(ListDetailView):
         detail = f"{agent} - {role}".strip(" -")
         self.delete_selected(
             "agent run",
-            lambda repository, run_id: self.ctx.controller.delete_agent_run(
-                repository, run_id),
+            lambda repository, run_id: self.ctx.controller.delete_agent_run(repository, run_id),
             detail=detail,
             extra="Linked verification runs go with it; failure rows stay readable.",
         )

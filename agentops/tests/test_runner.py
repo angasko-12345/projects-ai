@@ -12,15 +12,20 @@ from agentops.runner import AgentRunner
 class AgentRunnerTests(unittest.TestCase):
     def test_build_command_delegates_to_adapter(self):
         from agentops.agent_adapter import adapter_for
+
         config = AgentConfig("pi", "pi", ("--prompt", "{prompt}"))
         agent = DetectedAgent(config, True, "/bin/pi")
-        self.assertEqual(AgentRunner.build_command(agent, "hi"),
-                         adapter_for(config, "/bin/pi").build_command("hi"))
-        self.assertEqual(AgentRunner.build_command(config, "hi"),
-                         adapter_for(config).build_command("hi"))
+        self.assertEqual(
+            AgentRunner.build_command(agent, "hi"),
+            adapter_for(config, "/bin/pi").build_command("hi"),
+        )
+        self.assertEqual(
+            AgentRunner.build_command(config, "hi"), adapter_for(config).build_command("hi")
+        )
 
     def test_spawn_hides_console_on_windows(self):
         import subprocess as stdlib_subprocess
+
         logs = MagicMock()
         logs.write_run.return_value = Path("task-1.meta.log")
         process = MagicMock()
@@ -28,7 +33,9 @@ class AgentRunnerTests(unittest.TestCase):
         process.returncode = 0
         config = AgentConfig("python", sys.executable, ("-c", "print('{prompt}')"))
         agent = DetectedAgent(config, True, sys.executable)
-        with patch("agentops.runner.asyncio.create_subprocess_exec", new_callable=AsyncMock) as create_process:
+        with patch(
+            "agentops.runner.asyncio.create_subprocess_exec", new_callable=AsyncMock
+        ) as create_process:
             create_process.return_value = process
             asyncio.run(AgentRunner(logs).run_agent(agent, "hello", Path.cwd(), "task-1"))
         kwargs = create_process.call_args.kwargs
@@ -48,7 +55,9 @@ class AgentRunnerTests(unittest.TestCase):
         observer = MagicMock()
         config = AgentConfig("python", sys.executable, ("-c", "print('{prompt}')"))
         agent = DetectedAgent(config, True, sys.executable)
-        asyncio.run(AgentRunner(logs, run_observer=observer).run_agent(agent, "hello", Path.cwd(), "task-1"))
+        asyncio.run(
+            AgentRunner(logs, run_observer=observer).run_agent(agent, "hello", Path.cwd(), "task-1")
+        )
         names = [call[0] for call in observer.mock_calls]
         self.assertLess(names.index("mark_running"), names.index("finish_run"))
 

@@ -30,7 +30,9 @@ class CostSummaryTest(unittest.TestCase):
     def test_reports_money_and_event_coverage(self):
         totals = {"cost_events": 12, "cost": 4.2537}
         self.assertEqual(cost_summary(totals), " · cost $4.25 across 12 events")
-        self.assertEqual(cost_summary({"cost_events": 1, "cost": 0.0}), " · cost $0.00 across 1 event")
+        self.assertEqual(
+            cost_summary({"cost_events": 1, "cost": 0.0}), " · cost $0.00 across 1 event"
+        )
 
 
 if __name__ == "__main__":

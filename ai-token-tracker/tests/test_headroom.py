@@ -26,13 +26,21 @@ def iso(epoch: float) -> str:
 
 
 def codex_event(ts, rate_limits, info=None):
-    return {"timestamp": iso(ts), "type": "event_msg",
-            "payload": {"type": "token_count", "info": info, "rate_limits": rate_limits}}
+    return {
+        "timestamp": iso(ts),
+        "type": "event_msg",
+        "payload": {"type": "token_count", "info": info, "rate_limits": rate_limits},
+    }
 
 
 def rl(primary=None, secondary=None, limit_id="codex", plan="plus", reached=None):
-    return {"limit_id": limit_id, "primary": primary, "secondary": secondary,
-            "plan_type": plan, "rate_limit_reached_type": reached}
+    return {
+        "limit_id": limit_id,
+        "primary": primary,
+        "secondary": secondary,
+        "plan_type": plan,
+        "rate_limit_reached_type": reached,
+    }
 
 
 def win(pct, minutes, resets_at=None, **extra):
@@ -73,7 +81,14 @@ class CodexHeadroomTest(TempCase):
         return path
 
     def test_windows_labelled_by_length_and_fresh(self):
-        self.rollout("a", [codex_event(NOW - 600, rl(win(62.0, 300, NOW + 3600), win(81.0, 10080, NOW + 3 * 86400)))])
+        self.rollout(
+            "a",
+            [
+                codex_event(
+                    NOW - 600, rl(win(62.0, 300, NOW + 3600), win(81.0, 10080, NOW + 3 * 86400))
+                )
+            ],
+        )
         p = headroom.read_codex(NOW, root=self.sessions)
         self.assertEqual(p["status"], "ok")
         w = by_window(p)
@@ -86,7 +101,9 @@ class CodexHeadroomTest(TempCase):
         self.assertEqual(week["state"], "warn")
         self.assertEqual(five["plan_type"], "plus")
         # 5h window resets in 1h -> 4h elapsed at as_of minus 10 min
-        self.assertAlmostEqual(five["elapsed_percent"], (4 * 3600 - 600) / (5 * 3600) * 100, places=2)
+        self.assertAlmostEqual(
+            five["elapsed_percent"], (4 * 3600 - 600) / (5 * 3600) * 100, places=2
+        )
         self.assertAlmostEqual(five["pace"], 62.0 / five["elapsed_percent"], places=2)
 
     def test_weekly_window_in_primary_slot_is_weekly(self):
@@ -95,10 +112,15 @@ class CodexHeadroomTest(TempCase):
         self.assertEqual([w["window"] for w in p["windows"]], ["weekly"])
 
     def test_premium_snapshot_with_null_windows_does_not_blank_last_good(self):
-        self.rollout("a", [
-            codex_event(NOW - 600, rl(win(91.0, 300, NOW + 600), win(100.0, 10080, NOW + 86400))),
-            codex_event(NOW - 60, rl(None, None, limit_id="premium")),
-        ])
+        self.rollout(
+            "a",
+            [
+                codex_event(
+                    NOW - 600, rl(win(91.0, 300, NOW + 600), win(100.0, 10080, NOW + 86400))
+                ),
+                codex_event(NOW - 60, rl(None, None, limit_id="premium")),
+            ],
+        )
         p = headroom.read_codex(NOW, root=self.sessions)
         w = by_window(p)
         self.assertEqual(set(w), {("codex", "5h"), ("codex", "weekly")})
@@ -106,15 +128,23 @@ class CodexHeadroomTest(TempCase):
         self.assertEqual(w[("codex", "weekly")]["state"], "exhausted")
 
     def test_newest_snapshot_wins_across_files(self):
-        self.rollout("old", [codex_event(NOW - 3000, rl(win(10.0, 300, NOW + 600)))], mtime=NOW - 3000)
-        self.rollout("new", [codex_event(NOW - 100, rl(win(55.0, 300, NOW + 600)))], mtime=NOW - 100,
-                     day="2027/01/14")
+        self.rollout(
+            "old", [codex_event(NOW - 3000, rl(win(10.0, 300, NOW + 600)))], mtime=NOW - 3000
+        )
+        self.rollout(
+            "new",
+            [codex_event(NOW - 100, rl(win(55.0, 300, NOW + 600)))],
+            mtime=NOW - 100,
+            day="2027/01/14",
+        )
         p = headroom.read_codex(NOW, root=self.sessions)
         self.assertEqual(by_window(p)[("codex", "5h")]["used_percent"], 55.0)
 
     def test_archived_sessions_are_read(self):
         archived = self.sessions.parent / "archived_sessions"
-        write_jsonl(archived / "rollout-arch.jsonl", [codex_event(NOW - 60, rl(win(33.0, 300, NOW + 600)))])
+        write_jsonl(
+            archived / "rollout-arch.jsonl", [codex_event(NOW - 60, rl(win(33.0, 300, NOW + 600)))]
+        )
         p = headroom.read_codex(NOW, root=self.sessions)
         self.assertEqual(by_window(p)[("codex", "5h")]["used_percent"], 33.0)
 
@@ -129,20 +159,34 @@ class CodexHeadroomTest(TempCase):
         self.assertEqual(by_window(p)[("codex", "5h")]["resets_at"], headroom.iso_utc(NOW + 1200))
 
     def test_null_rate_limits_only_is_no_data_not_zero(self):
-        self.rollout("exec", [codex_event(NOW - 60, None, info={"total_token_usage": {"input_tokens": 5}})])
+        self.rollout(
+            "exec", [codex_event(NOW - 60, None, info={"total_token_usage": {"input_tokens": 5}})]
+        )
         p = headroom.read_codex(NOW, root=self.sessions)
         self.assertEqual(p["status"], "no_data")
         self.assertEqual(p["windows"], [])
         self.assertIn("codex exec", p["detail"])
 
     def test_malformed_lines_and_windows_are_skipped_and_reported(self):
-        self.rollout("a", [
-            codex_event(NOW - 500, rl(win("lots", 300, NOW + 600), win(12.0, 10080, NOW + 9000))),
-            codex_event(NOW - 400, rl(primary="not-a-dict")),
-            {"timestamp": "not a time", "type": "event_msg",
-             "payload": {"type": "token_count", "rate_limits": rl(win(99.0, 300, NOW + 600))}},
-            ["a", "list"],
-        ], raw_lines=["{broken json", ""])
+        self.rollout(
+            "a",
+            [
+                codex_event(
+                    NOW - 500, rl(win("lots", 300, NOW + 600), win(12.0, 10080, NOW + 9000))
+                ),
+                codex_event(NOW - 400, rl(primary="not-a-dict")),
+                {
+                    "timestamp": "not a time",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "token_count",
+                        "rate_limits": rl(win(99.0, 300, NOW + 600)),
+                    },
+                },
+                ["a", "list"],
+            ],
+            raw_lines=["{broken json", ""],
+        )
         p = headroom.read_codex(NOW, root=self.sessions)
         self.assertEqual(p["status"], "ok")
         self.assertEqual(list(by_window(p)), [("codex", "weekly")])
@@ -151,8 +195,15 @@ class CodexHeadroomTest(TempCase):
         self.assertIn("window(s) with missing or invalid fields", joined)
 
     def test_reached_type_marks_fullest_window_exhausted(self):
-        self.rollout("a", [codex_event(NOW - 60, rl(win(99.6, 300, NOW + 600), win(50.0, 10080, NOW + 9000),
-                                                     reached="primary"))])
+        self.rollout(
+            "a",
+            [
+                codex_event(
+                    NOW - 60,
+                    rl(win(99.6, 300, NOW + 600), win(50.0, 10080, NOW + 9000), reached="primary"),
+                )
+            ],
+        )
         w = by_window(headroom.read_codex(NOW, root=self.sessions))
         self.assertEqual(w[("codex", "5h")]["state"], "exhausted")
         self.assertTrue(w[("codex", "5h")]["reached"])
@@ -173,9 +224,18 @@ class CodexHeadroomTest(TempCase):
     def test_old_reading_is_stale_but_keeps_severity(self):
         # 5h window: stale after 75 min. Used % only rises inside a window, so
         # a stale 96% is still at least critical.
-        self.rollout("a", [codex_event(NOW - 80 * 60, rl(win(96.0, 300, NOW + 600), win(30.0, 10080, NOW + 9e4)))])
+        self.rollout(
+            "a",
+            [
+                codex_event(
+                    NOW - 80 * 60, rl(win(96.0, 300, NOW + 600), win(30.0, 10080, NOW + 9e4))
+                )
+            ],
+        )
         w = by_window(headroom.read_codex(NOW, root=self.sessions))
-        self.assertEqual((w[("codex", "5h")]["freshness"], w[("codex", "5h")]["state"]), ("stale", "critical"))
+        self.assertEqual(
+            (w[("codex", "5h")]["freshness"], w[("codex", "5h")]["state"]), ("stale", "critical")
+        )
         self.assertEqual(w[("codex", "weekly")]["freshness"], "fresh")  # weekly threshold is 6h
 
     def test_stale_after_override(self):
@@ -184,9 +244,15 @@ class CodexHeadroomTest(TempCase):
         self.assertEqual(w["freshness"], "stale")
 
     def test_max_files_limits_scan_to_newest(self):
-        self.rollout("old", [codex_event(NOW - 9000, rl(win(5.0, 300, NOW + 600)))], mtime=NOW - 9000)
-        self.rollout("new", [codex_event(NOW - 10, rl(None, win(7.0, 10080, NOW + 9000)))], mtime=NOW - 10,
-                     day="2027/01/13")
+        self.rollout(
+            "old", [codex_event(NOW - 9000, rl(win(5.0, 300, NOW + 600)))], mtime=NOW - 9000
+        )
+        self.rollout(
+            "new",
+            [codex_event(NOW - 10, rl(None, win(7.0, 10080, NOW + 9000)))],
+            mtime=NOW - 10,
+            day="2027/01/13",
+        )
         p = headroom.read_codex(NOW, root=self.sessions, max_files=1)
         self.assertEqual(list(by_window(p)), [("codex", "weekly")])
 
@@ -211,8 +277,13 @@ def statusline_payload(five=23.5, seven=41.2, spend=None, **extra):
         limits["seven_day"] = {"used_percentage": seven, "resets_at": int(NOW + 4 * 86400)}
     if spend is not None:
         limits["spend_limit"] = spend
-    body = {"session_id": "s1", "version": "2.1.300", "model": {"display_name": "Opus"},
-            "transcript_path": "C:\\Users\\Hacir\\.claude\\projects\\x.jsonl", "rate_limits": limits}
+    body = {
+        "session_id": "s1",
+        "version": "2.1.300",
+        "model": {"display_name": "Opus"},
+        "transcript_path": "C:\\Users\\Hacir\\.claude\\projects\\x.jsonl",
+        "rate_limits": limits,
+    }
     body.update(extra)
     return body
 
@@ -261,8 +332,13 @@ class StatuslineTeeTest(TempCase):
 
     def test_wrapped_shell_command(self):
         ledger = self.root / "claude.jsonl"
-        code, out = self.run_tee(statusline_payload(), "--out", str(ledger),
-                                 "--command", f'"{sys.executable}" -c "print(42)"')
+        code, out = self.run_tee(
+            statusline_payload(),
+            "--out",
+            str(ledger),
+            "--command",
+            f'"{sys.executable}" -c "print(42)"',
+        )
         self.assertEqual(code, 0)
         self.assertEqual(out.strip(), b"42")
 
@@ -271,15 +347,24 @@ class StatuslineTeeTest(TempCase):
         blocker.write_text("x")
         ledger = blocker / "claude.jsonl"  # parent is a file -> OSError
         with mock.patch("sys.stderr", new=io.StringIO()):
-            code, out = self.run_tee(statusline_payload(), "--out", str(ledger),
-                                     "--", sys.executable, "-c", "print('still here')")
+            code, out = self.run_tee(
+                statusline_payload(),
+                "--out",
+                str(ledger),
+                "--",
+                sys.executable,
+                "-c",
+                "print('still here')",
+            )
         self.assertEqual(code, 0)
         self.assertEqual(out.strip(), b"still here")
 
     def test_ledger_is_bounded(self):
         ledger = self.root / "claude.jsonl"
-        with mock.patch.object(statusline_tee, "MAX_BYTES", 2000), \
-                mock.patch.object(statusline_tee, "KEEP_LINES", 3):
+        with (
+            mock.patch.object(statusline_tee, "MAX_BYTES", 2000),
+            mock.patch.object(statusline_tee, "KEEP_LINES", 3),
+        ):
             for _ in range(30):
                 self.run_tee(statusline_payload(), "--out", str(ledger))
         self.assertLess(len(ledger.read_text(encoding="utf-8").splitlines()), 30)  # truncated
@@ -287,31 +372,50 @@ class StatuslineTeeTest(TempCase):
 
     def test_windows_default_path_under_localappdata(self):
         env = {"LOCALAPPDATA": r"C:\Users\Hacir\AppData\Local"}
-        with mock.patch.object(statusline_tee, "_is_windows", return_value=True), \
-                mock.patch.dict(os.environ, env, clear=True):
+        with (
+            mock.patch.object(statusline_tee, "_is_windows", return_value=True),
+            mock.patch.dict(os.environ, env, clear=True),
+        ):
             got = statusline_tee.claude_ledger_path()
-        self.assertEqual(PureWindowsPath(str(got)),
-                         PureWindowsPath(r"C:\Users\Hacir\AppData\Local\ai-token-tracker\limits\claude-statusline.jsonl"))
+        self.assertEqual(
+            PureWindowsPath(str(got)),
+            PureWindowsPath(
+                r"C:\Users\Hacir\AppData\Local\ai-token-tracker\limits\claude-statusline.jsonl"
+            ),
+        )
 
     def test_posix_default_path_under_xdg_state(self):
-        with mock.patch.object(statusline_tee, "_is_windows", return_value=False), \
-                mock.patch.dict(os.environ, {"XDG_STATE_HOME": "/tmp/state"}, clear=True):
+        with (
+            mock.patch.object(statusline_tee, "_is_windows", return_value=False),
+            mock.patch.dict(os.environ, {"XDG_STATE_HOME": "/tmp/state"}, clear=True),
+        ):
             got = statusline_tee.claude_ledger_path()
         self.assertEqual(got, Path("/tmp/state/ai-token-tracker/limits/claude-statusline.jsonl"))
 
     def test_env_overrides(self):
-        with mock.patch.dict(os.environ, {"TOKEN_TRACKER_LIMITS_DIR": r"D:\ai-token-tracker\limits"}, clear=True):
-            self.assertEqual(PureWindowsPath(str(statusline_tee.claude_ledger_path())),
-                             PureWindowsPath(r"D:\ai-token-tracker\limits\claude-statusline.jsonl"))
-        with mock.patch.dict(os.environ, {"TOKEN_TRACKER_CLAUDE_STATUSLINE": str(self.root / "c.jsonl")}, clear=True):
+        with mock.patch.dict(
+            os.environ, {"TOKEN_TRACKER_LIMITS_DIR": r"D:\ai-token-tracker\limits"}, clear=True
+        ):
+            self.assertEqual(
+                PureWindowsPath(str(statusline_tee.claude_ledger_path())),
+                PureWindowsPath(r"D:\ai-token-tracker\limits\claude-statusline.jsonl"),
+            )
+        with mock.patch.dict(
+            os.environ, {"TOKEN_TRACKER_CLAUDE_STATUSLINE": str(self.root / "c.jsonl")}, clear=True
+        ):
             self.assertEqual(statusline_tee.claude_ledger_path(), self.root / "c.jsonl")
 
     def test_runs_as_plain_script_from_another_cwd(self):
         ledger = self.root / "claude.jsonl"
         script = PKG_ROOT / "token_tracker" / "statusline_tee.py"
-        done = subprocess.run([sys.executable, str(script), "--out", str(ledger)],
-                              input=json.dumps(statusline_payload()).encode(), capture_output=True,
-                              cwd=str(self.root), timeout=60, check=False)
+        done = subprocess.run(
+            [sys.executable, str(script), "--out", str(ledger)],
+            input=json.dumps(statusline_payload()).encode(),
+            capture_output=True,
+            cwd=str(self.root),
+            timeout=60,
+            check=False,
+        )
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertEqual(done.stdout.strip(), b"5h 24% | 7d 41%")
         self.assertTrue(ledger.exists())
@@ -330,12 +434,17 @@ class ClaudeHeadroomTest(TempCase):
         self.assertIn("claude -p", p["detail"])
 
     def test_latest_per_window_across_sessions(self):
-        path = self.ledger([
-            self.rec(NOW - 300, five_hour={"used_percentage": 10, "resets_at": NOW + 3600},
-                     seven_day={"used_percentage": 50, "resets_at": NOW + 86400}),
-            # a later record that lacks seven_day must not erase the earlier one
-            self.rec(NOW - 60, five_hour={"used_percentage": 85.5, "resets_at": NOW + 3600}),
-        ])
+        path = self.ledger(
+            [
+                self.rec(
+                    NOW - 300,
+                    five_hour={"used_percentage": 10, "resets_at": NOW + 3600},
+                    seven_day={"used_percentage": 50, "resets_at": NOW + 86400},
+                ),
+                # a later record that lacks seven_day must not erase the earlier one
+                self.rec(NOW - 60, five_hour={"used_percentage": 85.5, "resets_at": NOW + 3600}),
+            ]
+        )
         p = headroom.read_claude(NOW, path=path)
         w = by_window(p)
         self.assertEqual(w[("five_hour", "5h")]["used_percent"], 85.5)
@@ -345,33 +454,55 @@ class ClaudeHeadroomTest(TempCase):
         self.assertEqual(w[("seven_day", "weekly")]["as_of"], headroom.iso_utc(NOW - 300))
 
     def test_spend_limit_in_dollars_when_reported(self):
-        path = self.ledger([self.rec(NOW - 30, spend_limit={
-            "used_percentage": 62.8, "resets_at": NOW + 86400, "used_usd": 314.12, "limit_usd": 500,
-            "period": "monthly"})])
+        path = self.ledger(
+            [
+                self.rec(
+                    NOW - 30,
+                    spend_limit={
+                        "used_percentage": 62.8,
+                        "resets_at": NOW + 86400,
+                        "used_usd": 314.12,
+                        "limit_usd": 500,
+                        "period": "monthly",
+                    },
+                )
+            ]
+        )
         w = by_window(headroom.read_claude(NOW, path=path))[("spend_limit", "spend")]
-        self.assertEqual((w["unit"], w["used"], w["limit"], w["remaining"]), ("usd", 314.12, 500.0, 185.88))
+        self.assertEqual(
+            (w["unit"], w["used"], w["limit"], w["remaining"]), ("usd", 314.12, 500.0, 185.88)
+        )
         self.assertEqual(w["used_percent"], 62.8)
         self.assertEqual(w["reset_interval"], "monthly")
 
     def test_spend_limit_percent_only(self):
-        path = self.ledger([self.rec(NOW - 30, spend_limit={"used_percentage": 12, "resets_at": NOW + 600})])
+        path = self.ledger(
+            [self.rec(NOW - 30, spend_limit={"used_percentage": 12, "resets_at": NOW + 600})]
+        )
         w = by_window(headroom.read_claude(NOW, path=path))[("spend_limit", "spend")]
         self.assertEqual((w["unit"], w["used"], w["limit"]), ("percent", 12.0, 100.0))
 
     def test_malformed_ledger_lines(self):
-        path = self.ledger([
-            self.rec(NOW - 30, five_hour={"used_percentage": "high"}),
-            {"observed_at": "yesterday-ish", "rate_limits": {}},
-            {"observed_at": iso(NOW - 20), "rate_limits": "nope"},
-        ], raw_lines=["not json", "[1,2]"])
+        path = self.ledger(
+            [
+                self.rec(NOW - 30, five_hour={"used_percentage": "high"}),
+                {"observed_at": "yesterday-ish", "rate_limits": {}},
+                {"observed_at": iso(NOW - 20), "rate_limits": "nope"},
+            ],
+            raw_lines=["not json", "[1,2]"],
+        )
         p = headroom.read_claude(NOW, path=path)
         self.assertEqual(p["status"], "no_data")
         self.assertEqual(len(p["warnings"]), 2)
 
     def test_tee_output_round_trips_into_report(self):
         ledger = self.root / "limits" / "claude.jsonl"
-        statusline_tee.main(["--out", str(ledger)], stdin=io.BytesIO(json.dumps(statusline_payload(five=97)).encode()),
-                            stdout=io.BytesIO(), now_iso=iso(NOW - 30))
+        statusline_tee.main(
+            ["--out", str(ledger)],
+            stdin=io.BytesIO(json.dumps(statusline_payload(five=97)).encode()),
+            stdout=io.BytesIO(),
+            now_iso=iso(NOW - 30),
+        )
         w = by_window(headroom.read_claude(NOW, path=ledger))
         self.assertEqual(w[("five_hour", "5h")]["state"], "critical")
         self.assertEqual(w[("five_hour", "5h")]["resets_at"], headroom.iso_utc(NOW + 3600))
@@ -383,13 +514,25 @@ KEY = "sk-or-v1-SECRET-DO-NOT-LEAK"
 
 
 def or_body():
-    return {"data": {
-        "label": "sk-or-v1-abc...xyz", "limit": 20.0, "limit_reset": "monthly", "limit_remaining": 5.5,
-        "usage": 14.5, "is_free_tier": False,
-        "effective_budget": {"scope": "member", "limit_usd": 50, "spend_usd": 40, "remaining_usd": 10,
-                             "reset_interval": "weekly", "resets_at": "2027-01-18T00:00:00.000Z"},
-        "free_model_daily_requests": {"used": 990, "limit": 1000, "remaining": 10},
-    }}
+    return {
+        "data": {
+            "label": "sk-or-v1-abc...xyz",
+            "limit": 20.0,
+            "limit_reset": "monthly",
+            "limit_remaining": 5.5,
+            "usage": 14.5,
+            "is_free_tier": False,
+            "effective_budget": {
+                "scope": "member",
+                "limit_usd": 50,
+                "spend_usd": 40,
+                "remaining_usd": 10,
+                "reset_interval": "weekly",
+                "resets_at": "2027-01-18T00:00:00.000Z",
+            },
+            "free_model_daily_requests": {"used": 990, "limit": 1000, "remaining": 10},
+        }
+    }
 
 
 class OpenRouterHeadroomTest(unittest.TestCase):
@@ -401,7 +544,9 @@ class OpenRouterHeadroomTest(unittest.TestCase):
 
     def test_offline_skips_even_with_key(self):
         fetch = mock.Mock()
-        p = headroom.read_openrouter(NOW, env={"OPENROUTER_API_KEY": KEY}, offline=True, fetch=fetch)
+        p = headroom.read_openrouter(
+            NOW, env={"OPENROUTER_API_KEY": KEY}, offline=True, fetch=fetch
+        )
         self.assertEqual(p["status"], "skipped")
         fetch.assert_not_called()
 
@@ -417,7 +562,10 @@ class OpenRouterHeadroomTest(unittest.TestCase):
         self.assertEqual(w["budget"]["resets_at"], "2027-01-18T00:00:00Z")
         self.assertEqual(w["budget"]["state"], "warn")
         free = w["free_daily_requests"]
-        self.assertEqual((free["unit"], free["used"], free["limit"], free["state"]), ("requests", 990.0, 1000.0, "critical"))
+        self.assertEqual(
+            (free["unit"], free["used"], free["limit"], free["state"]),
+            ("requests", 990.0, 1000.0, "critical"),
+        )
         self.assertEqual(free["resets_at"], "2027-01-16T00:00:00Z")
         self.assertEqual(free["resets_at_basis"], "documented_utc_day")
         self.assertEqual(free["as_of"], headroom.iso_utc(NOW))
@@ -425,12 +573,19 @@ class OpenRouterHeadroomTest(unittest.TestCase):
     def test_key_never_in_output_on_success_or_error(self):
         import urllib.error
 
-        ok = headroom.build_report(NOW, codex_root=Path("/nonexistent-codex"), claude_file=Path("/nonexistent"),
-                                   env={"OPENROUTER_API_KEY": KEY}, fetch=lambda k, t: or_body())
+        ok = headroom.build_report(
+            NOW,
+            codex_root=Path("/nonexistent-codex"),
+            claude_file=Path("/nonexistent"),
+            env={"OPENROUTER_API_KEY": KEY},
+            fetch=lambda k, t: or_body(),
+        )
         self.assertNotIn(KEY, json.dumps(ok))
 
         def boom(k, t):
-            raise urllib.error.HTTPError("https://openrouter.ai/api/v1/key", 401, "Unauthorized", {}, None)
+            raise urllib.error.HTTPError(
+                "https://openrouter.ai/api/v1/key", 401, "Unauthorized", {}, None
+            )
 
         bad = headroom.read_openrouter(NOW, env={"OPENROUTER_API_KEY": KEY}, fetch=boom)
         self.assertEqual(bad["status"], "error")
@@ -443,37 +598,79 @@ class OpenRouterHeadroomTest(unittest.TestCase):
         def offline(k, t):
             raise urllib.error.URLError(OSError("no route"))
 
-        self.assertEqual(headroom.read_openrouter(NOW, env={"OPENROUTER_API_KEY": KEY}, fetch=offline)["status"], "error")
-        self.assertEqual(headroom.read_openrouter(NOW, env={"OPENROUTER_API_KEY": KEY},
-                                                  fetch=lambda k, t: ["x"])["status"], "error")
-        p = headroom.read_openrouter(NOW, env={"OPENROUTER_API_KEY": KEY},
-                                     fetch=lambda k, t: {"data": {"limit": None}})
+        self.assertEqual(
+            headroom.read_openrouter(NOW, env={"OPENROUTER_API_KEY": KEY}, fetch=offline)["status"],
+            "error",
+        )
+        self.assertEqual(
+            headroom.read_openrouter(
+                NOW, env={"OPENROUTER_API_KEY": KEY}, fetch=lambda k, t: ["x"]
+            )["status"],
+            "error",
+        )
+        p = headroom.read_openrouter(
+            NOW, env={"OPENROUTER_API_KEY": KEY}, fetch=lambda k, t: {"data": {"limit": None}}
+        )
         self.assertEqual(p["status"], "no_data")
 
 
 # --------------------------------------------------------- report + CLI
 
 PROVIDER_KEYS = {"provider", "source", "status", "detail", "location", "windows", "warnings"}
-WINDOW_KEYS = {"source", "window", "limit_id", "window_minutes", "unit", "used", "limit", "remaining",
-               "used_percent", "resets_at", "resets_at_basis", "reset_interval", "as_of", "age_seconds",
-               "freshness", "state", "reached", "elapsed_percent", "pace", "plan_type"}
+WINDOW_KEYS = {
+    "source",
+    "window",
+    "limit_id",
+    "window_minutes",
+    "unit",
+    "used",
+    "limit",
+    "remaining",
+    "used_percent",
+    "resets_at",
+    "resets_at_basis",
+    "reset_interval",
+    "as_of",
+    "age_seconds",
+    "freshness",
+    "state",
+    "reached",
+    "elapsed_percent",
+    "pace",
+    "plan_type",
+}
 
 
 class ReportTest(TempCase):
     def fixture(self):
-        write_jsonl(self.sessions / "2027/01/15/rollout-a.jsonl",
-                    [codex_event(NOW - 60, rl(win(62.0, 300, NOW + 3600), win(81.0, 10080, NOW + 86400)))])
-        ledger = write_jsonl(self.root / "claude.jsonl", [{"observed_at": iso(NOW - 30), "rate_limits": {
-            "five_hour": {"used_percentage": 20, "resets_at": NOW + 600}}}])
+        write_jsonl(
+            self.sessions / "2027/01/15/rollout-a.jsonl",
+            [codex_event(NOW - 60, rl(win(62.0, 300, NOW + 3600), win(81.0, 10080, NOW + 86400)))],
+        )
+        ledger = write_jsonl(
+            self.root / "claude.jsonl",
+            [
+                {
+                    "observed_at": iso(NOW - 30),
+                    "rate_limits": {"five_hour": {"used_percentage": 20, "resets_at": NOW + 600}},
+                }
+            ],
+        )
         return ledger
 
     def test_schema_shape_is_stable(self):
         ledger = self.fixture()
         report = headroom.build_report(NOW, codex_root=self.sessions, claude_file=ledger, env={})
-        self.assertEqual(set(report), {"schema", "schema_version", "generated_at", "thresholds", "providers"})
-        self.assertEqual((report["schema"], report["schema_version"]), ("ai-token-tracker/headroom", 1))
+        self.assertEqual(
+            set(report), {"schema", "schema_version", "generated_at", "thresholds", "providers"}
+        )
+        self.assertEqual(
+            (report["schema"], report["schema_version"]), ("ai-token-tracker/headroom", 1)
+        )
         self.assertEqual(report["generated_at"], headroom.iso_utc(NOW))
-        self.assertEqual([p["provider"] for p in report["providers"]], ["codex", "claude", "openrouter"])
+        self.assertEqual(
+            [p["provider"] for p in report["providers"]], ["codex", "claude", "openrouter"]
+        )
         for p in report["providers"]:
             self.assertEqual(set(p), PROVIDER_KEYS)
             self.assertIn(p["status"], {"ok", "no_data", "not_configured", "skipped", "error"})
@@ -486,7 +683,9 @@ class ReportTest(TempCase):
     def test_one_broken_source_does_not_hide_others(self):
         ledger = self.fixture()
         with mock.patch.object(headroom, "read_claude", side_effect=RuntimeError("disk on fire")):
-            report = headroom.build_report(NOW, codex_root=self.sessions, claude_file=ledger, env={})
+            report = headroom.build_report(
+                NOW, codex_root=self.sessions, claude_file=ledger, env={}
+            )
         status = {p["provider"]: p["status"] for p in report["providers"]}
         self.assertEqual(status, {"codex": "ok", "claude": "error", "openrouter": "not_configured"})
 
@@ -496,19 +695,41 @@ class ReportTest(TempCase):
         buf = io.StringIO()
         with mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop("OPENROUTER_API_KEY", None)
-            code = cli.main(["headroom", "--json", "--codex-dir", str(self.sessions),
-                             "--claude-file", str(ledger), "--out", str(out_file)], stdout=buf)
+            code = cli.main(
+                [
+                    "headroom",
+                    "--json",
+                    "--codex-dir",
+                    str(self.sessions),
+                    "--claude-file",
+                    str(ledger),
+                    "--out",
+                    str(out_file),
+                ],
+                stdout=buf,
+            )
         self.assertEqual(code, 0)
         doc = json.loads(buf.getvalue())
         self.assertEqual(doc["schema_version"], 1)
-        self.assertEqual(json.loads(out_file.read_text(encoding="utf-8"))["schema"], "ai-token-tracker/headroom")
+        self.assertEqual(
+            json.loads(out_file.read_text(encoding="utf-8"))["schema"], "ai-token-tracker/headroom"
+        )
         self.assertFalse(out_file.with_name("headroom.json.tmp").exists())
 
     def test_cli_table(self):
         ledger = self.fixture()
         buf = io.StringIO()
-        code = cli.main(["headroom", "--offline", "--codex-dir", str(self.sessions),
-                         "--claude-file", str(ledger)], stdout=buf)
+        code = cli.main(
+            [
+                "headroom",
+                "--offline",
+                "--codex-dir",
+                str(self.sessions),
+                "--claude-file",
+                str(ledger),
+            ],
+            stdout=buf,
+        )
         self.assertEqual(code, 0)
         text = buf.getvalue()
         self.assertIn("PROVIDER", text)
@@ -517,9 +738,13 @@ class ReportTest(TempCase):
         self.assertIn("skipped", text)
 
     def test_table_marks_old_data(self):
-        write_jsonl(self.sessions / "2027/01/15/rollout-a.jsonl",
-                    [codex_event(NOW - 7200, rl(win(62.0, 300, NOW - 5)))])
-        report = headroom.build_report(NOW, codex_root=self.sessions, claude_file=self.root / "x", offline=True)
+        write_jsonl(
+            self.sessions / "2027/01/15/rollout-a.jsonl",
+            [codex_event(NOW - 7200, rl(win(62.0, 300, NOW - 5)))],
+        )
+        report = headroom.build_report(
+            NOW, codex_root=self.sessions, claude_file=self.root / "x", offline=True
+        )
         text = headroom.render_table(report, tz=timezone.utc)
         self.assertIn("unknown (expired)", text)
         self.assertIn("not configured", text)
@@ -543,8 +768,13 @@ class ReportTest(TempCase):
             "assert 'PySide6' not in sys.modules, 'CLI imported PySide6'\n"
             "assert 'token_tracker.gui' not in sys.modules\n"
         )
-        done = subprocess.run([sys.executable, "-c", code], cwd=str(PKG_ROOT), capture_output=True,
-                              timeout=120, check=False)
+        done = subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=str(PKG_ROOT),
+            capture_output=True,
+            timeout=120,
+            check=False,
+        )
         self.assertEqual(done.returncode, 0, done.stderr.decode(errors="replace"))
         self.assertEqual(json.loads(done.stdout)["schema_version"], 1)
 

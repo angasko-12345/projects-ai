@@ -111,14 +111,18 @@ class AgentRunner:
         self.pass_env_prefixes = pass_env_prefixes
         self.run_observer = run_observer
         self.metadata_collector = metadata_collector
-        self._runtime = runtime or ProcessRuntime(pass_env_names, pass_env_prefixes, systemd_run_enabled=systemd_run_enabled)
+        self._runtime = runtime or ProcessRuntime(
+            pass_env_names, pass_env_prefixes, systemd_run_enabled=systemd_run_enabled
+        )
         # A8: an AgentRun notification that cannot be stored is a lost record,
         # not a reason to abandon a run the user asked for.  `recover_agent_runs`
         # reaps stranded runs, so these degrade — but they are no longer silent.
         self._degradation = degradation if degradation is not None else DegradationRecorder()
 
     @staticmethod
-    def _environment(pass_env_names: tuple[str, ...] = (), pass_env_prefixes: tuple[str, ...] = ()) -> dict[str, str]:
+    def _environment(
+        pass_env_names: tuple[str, ...] = (), pass_env_prefixes: tuple[str, ...] = ()
+    ) -> dict[str, str]:
         # Compatibility seam: the runtime owns environment policy. Existing
         # tests and the legacy verifier call this historical entry point.
         return ProcessRuntime.build_environment(pass_env_names, pass_env_prefixes)
@@ -157,7 +161,9 @@ class AgentRunner:
         directory.mkdir(parents=True, exist_ok=True)
         return directory / f"{uuid4().hex}.prompt.txt"
 
-    def prepare_delivery(self, agent: DetectedAgent, prompt: str, prompt_file: Path | None = None) -> PromptDelivery:
+    def prepare_delivery(
+        self, agent: DetectedAgent, prompt: str, prompt_file: Path | None = None
+    ) -> PromptDelivery:
         """Decide how ``prompt`` reaches ``agent`` (raises PromptTransportError)."""
         config = agent.config
         return prepare_prompt_delivery(
@@ -171,7 +177,9 @@ class AgentRunner:
             platform=self._platform,
         )
 
-    def _notify_create(self, observer: AgentRunObserver | None, context: AgentRunContext) -> str | None:
+    def _notify_create(
+        self, observer: AgentRunObserver | None, context: AgentRunContext
+    ) -> str | None:
         if observer is None:
             return None
         try:
@@ -182,8 +190,10 @@ class AgentRunner:
             # running.  The caller can still report the process outcome, and
             # the lost run row is recorded as a degradation.
             self._degradation.record(
-                "agent_run.create", error,
-                task_id=context.task_id, workflow_id=context.workflow_id,
+                "agent_run.create",
+                error,
+                task_id=context.task_id,
+                workflow_id=context.workflow_id,
             )
             return None
 
@@ -201,7 +211,9 @@ class AgentRunner:
             except Exception as error:
                 self._degradation.record("agent_run.transition", error, run_id=run_id)
 
-    def _notify_finish(self, observer: AgentRunObserver | None, run_id: str | None, outcome: AgentRunOutcome) -> None:
+    def _notify_finish(
+        self, observer: AgentRunObserver | None, run_id: str | None, outcome: AgentRunOutcome
+    ) -> None:
         if observer is not None and run_id is not None:
             try:
                 observer.finish_run(run_id, outcome)
@@ -258,17 +270,23 @@ class AgentRunner:
             delivery = self.prepare_delivery(agent, prompt, prompt_file)
         except PromptTransportError as error:
             run_id = self._notify_create(observer, context)
-            self._notify_finish(observer, run_id, AgentRunOutcome(
-                status=AgentRunStatus.FAILED,
-                duration_seconds=0.0,
-                error=str(error),
-                failure_classification="environment",
-            ))
+            self._notify_finish(
+                observer,
+                run_id,
+                AgentRunOutcome(
+                    status=AgentRunStatus.FAILED,
+                    duration_seconds=0.0,
+                    error=str(error),
+                    failure_classification="environment",
+                ),
+            )
             raise
         command = delivery.argv
         if isinstance(context, AgentRunContext):
             context = replace(
-                context, command=command, executable=delivery.executable,
+                context,
+                command=command,
+                executable=delivery.executable,
                 delivery=delivery.metadata(),
             )
         run_id = self._notify_create(observer, context)
@@ -276,7 +294,9 @@ class AgentRunner:
         started = monotonic()
         try:
             if delivery.prompt_file is not None:
-                descriptor = os.open(delivery.prompt_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                descriptor = os.open(
+                    delivery.prompt_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600
+                )
                 with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as handle:
                     handle.write(prompt)
             execution = await self._runtime.run_process(
@@ -325,18 +345,24 @@ class AgentRunner:
             if artifacts is None:
                 # Preserve compatibility with LogManager implementations that
                 # only expose the original write_run() entry point.
-                metadata_path = self.logs.write_run(log_task_id, agent.config.name, stdout, stderr, metadata_text)
+                metadata_path = self.logs.write_run(
+                    log_task_id, agent.config.name, stdout, stderr, metadata_text
+                )
                 artifacts = RunLogArtifacts(None, None, metadata_path)
             stdout_path = str(artifacts.stdout_path) if artifacts.stdout_path is not None else None
             stderr_path = str(artifacts.stderr_path) if artifacts.stderr_path is not None else None
             log_path = str(artifacts.metadata_path) if artifacts.metadata_path is not None else None
             structured_result = _safe_structured_result(stdout)
             status = (
-                AgentRunStatus.TIMED_OUT if timed_out else
-                AgentRunStatus.CANCELLED if cancelled else
-                AgentRunStatus.TERMINATED if terminated else
-                AgentRunStatus.COMPLETED if exit_code == 0 else
-                AgentRunStatus.FAILED
+                AgentRunStatus.TIMED_OUT
+                if timed_out
+                else AgentRunStatus.CANCELLED
+                if cancelled
+                else AgentRunStatus.TERMINATED
+                if terminated
+                else AgentRunStatus.COMPLETED
+                if exit_code == 0
+                else AgentRunStatus.FAILED
             )
             outcome = AgentRunOutcome(
                 status=status,
@@ -351,11 +377,15 @@ class AgentRunner:
                 files_changed=metadata.files_changed,
                 diff_stat=metadata.diff_stat,
                 failure_classification=(
-                    None if status is AgentRunStatus.COMPLETED else
-                    "timeout" if status is AgentRunStatus.TIMED_OUT else
-                    "cancelled" if status is AgentRunStatus.CANCELLED else
-                    "terminated" if status is AgentRunStatus.TERMINATED else
-                    "nonzero_exit"
+                    None
+                    if status is AgentRunStatus.COMPLETED
+                    else "timeout"
+                    if status is AgentRunStatus.TIMED_OUT
+                    else "cancelled"
+                    if status is AgentRunStatus.CANCELLED
+                    else "terminated"
+                    if status is AgentRunStatus.TERMINATED
+                    else "nonzero_exit"
                 ),
                 structured_result=structured_result,
             )

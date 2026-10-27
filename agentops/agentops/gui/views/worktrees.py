@@ -11,11 +11,9 @@ from .listdetail import ListDetailView
 
 _COLUMNS = (
     TableColumn("branch", "Branch", 200),
-    TableColumn("status", "Status", 170,
-                format=lambda value: str(value) if value else "clean"),
+    TableColumn("status", "Status", 170, format=lambda value: str(value) if value else "clean"),
     TableColumn("head", "Head", 100, format=lambda value: short_id(value, 8)),
-    TableColumn("managed", "Managed", 90,
-                format=lambda value: "yes" if value else "no"),
+    TableColumn("managed", "Managed", 90, format=lambda value: "yes" if value else "no"),
     TableColumn("path", "Path", 320, format=lambda value: elide(str(value or ""), 70)),
     TableColumn("id", "ID", 90, format=lambda value: short_id(value, 8)),
 )
@@ -58,8 +56,8 @@ class WorktreesView(ListDetailView):
         self._current: dict | None = None
         self._detail.changed.connect(self.refresh)
         self._table.selection_changed.connect(
-            lambda _row: self._delete_btn.setEnabled(
-                self._table.selected_row() is not None))
+            lambda _row: self._delete_btn.setEnabled(self._table.selected_row() is not None)
+        )
         self._delete_btn.setEnabled(False)
 
     def _apply_filters(self, *_args: object) -> None:
@@ -88,8 +86,7 @@ class WorktreesView(ListDetailView):
 
         self.submit(
             "delete-worktree",
-            lambda: self.ctx.controller.cleanup_worktree(
-                repository, path, delete_branch),
+            lambda: self.ctx.controller.cleanup_worktree(repository, path, delete_branch),
             done,
             lambda message: self.ctx.toast("Delete failed", message, "error"),
         )
@@ -106,9 +103,7 @@ class WorktreesView(ListDetailView):
 
     def fill_detail(self, row: dict | None) -> None:
         self._current = row
-        self._detail.set_worktree(
-            row, delete_unmerged_branch=self._delete_branch.isChecked()
-        )
+        self._detail.set_worktree(row, delete_unmerged_branch=self._delete_branch.isChecked())
 
     def _refill(self, *_args: object) -> None:
         if self._current is not None:

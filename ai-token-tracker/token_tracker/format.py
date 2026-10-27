@@ -22,13 +22,13 @@ def human_tokens(count: int) -> str:
         unit_exp, suffix = 6, "M"
     else:
         unit_exp, suffix = 3, "K"
-    text = f"{n / 10 ** unit_exp:.3g}"
+    text = f"{n / 10**unit_exp:.3g}"
     if float(text) >= 1_000:  # 3-sig rounding hit 1000: promote the unit
         if suffix == "B":
             return str(n)
         unit_exp += 3
         suffix = {"K": "M", "M": "B"}[suffix]
-        text = f"{n / 10 ** unit_exp:.3g}"
+        text = f"{n / 10**unit_exp:.3g}"
     return f"{text}{suffix}"
 
 

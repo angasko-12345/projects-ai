@@ -239,11 +239,15 @@ class RetryPolicy:
             raise ValueError("RetryPolicy.backoff_factor must be at least one.")
 
     def should_retry_attempt(self, attempt: int, failure: Failure | ClassificationResult) -> bool:
-        retryable = failure.retryable if isinstance(failure, (Failure, ClassificationResult)) else False
+        retryable = (
+            failure.retryable if isinstance(failure, (Failure, ClassificationResult)) else False
+        )
         return bool(retryable) and attempt < self.max_attempts
 
     def should_repair(self, repair_cycle: int, failure: Failure | ClassificationResult) -> bool:
-        repairable = failure.repairable if isinstance(failure, (Failure, ClassificationResult)) else False
+        repairable = (
+            failure.repairable if isinstance(failure, (Failure, ClassificationResult)) else False
+        )
         return bool(repairable) and repair_cycle < self.max_repair_cycles
 
     def backoff_for(self, attempt: int) -> float:
@@ -374,17 +378,22 @@ class FailureClassifier:
         # authoritative: a killed run that happened to print a limit line was
         # still killed.  None (the default) leaves classification unchanged.
         if usage_limit_patterns:
-            stopped = cancelled or timed_out or (
-                evidence is not None and (evidence.cancelled or evidence.timed_out)
+            stopped = (
+                cancelled
+                or timed_out
+                or (evidence is not None and (evidence.cancelled or evidence.timed_out))
             )
             haystack = text
             if evidence is not None and evidence.stderr_peek and evidence.stderr_peek not in text:
                 haystack = f"{text} {evidence.stderr_peek}"
             if not stopped and match_usage_limit(haystack, usage_limit_patterns):
                 return ClassificationResult(
-                    FailureCategory.USAGE_LIMIT, FailureSeverity.MEDIUM,
-                    retryable=True, repairable=False,
-                    recommended_action=RepairAction.RETRY_DIFFERENT_AGENT, source=src,
+                    FailureCategory.USAGE_LIMIT,
+                    FailureSeverity.MEDIUM,
+                    retryable=True,
+                    repairable=False,
+                    recommended_action=RepairAction.RETRY_DIFFERENT_AGENT,
+                    source=src,
                 )
 
         if evidence is not None and not evidence.is_empty():
@@ -392,189 +401,310 @@ class FailureClassifier:
             if structured is not None:
                 return structured
 
-        if cancelled or _contains(lowered, "operationcancelled", "task was cancelled", "taskcancelled"):
+        if cancelled or _contains(
+            lowered, "operationcancelled", "task was cancelled", "taskcancelled"
+        ):
             return ClassificationResult(
-                FailureCategory.CANCELLATION, FailureSeverity.MEDIUM,
-                retryable=True, repairable=True,
-                recommended_action=RepairAction.RETRY_SAME_AGENT, source=src,
+                FailureCategory.CANCELLATION,
+                FailureSeverity.MEDIUM,
+                retryable=True,
+                repairable=True,
+                recommended_action=RepairAction.RETRY_SAME_AGENT,
+                source=src,
             )
         if timed_out or _contains(lowered, "timed out", "timeout"):
             # Dependency install timeouts are dependency failures; otherwise generic timeout.
             if _contains(lowered, "pip", "npm", "module", "package", "dependency"):
                 return ClassificationResult(
-                    FailureCategory.DEPENDENCY_FAILURE, FailureSeverity.HIGH,
-                    retryable=True, repairable=True,
-                    recommended_action=RepairAction.RETRY_SAME_AGENT, source=src,
+                    FailureCategory.DEPENDENCY_FAILURE,
+                    FailureSeverity.HIGH,
+                    retryable=True,
+                    repairable=True,
+                    recommended_action=RepairAction.RETRY_SAME_AGENT,
+                    source=src,
                 )
             return ClassificationResult(
-                FailureCategory.TIMEOUT, FailureSeverity.HIGH,
-                retryable=True, repairable=True,
-                recommended_action=RepairAction.RETRY_SAME_AGENT, source=src,
+                FailureCategory.TIMEOUT,
+                FailureSeverity.HIGH,
+                retryable=True,
+                repairable=True,
+                recommended_action=RepairAction.RETRY_SAME_AGENT,
+                source=src,
             )
         if terminated or (exit_code is not None and exit_code < 0):
             return ClassificationResult(
-                FailureCategory.PROCESS_ERROR, FailureSeverity.HIGH,
-                retryable=True, repairable=True,
-                recommended_action=RepairAction.RETRY_SAME_AGENT, source=src,
+                FailureCategory.PROCESS_ERROR,
+                FailureSeverity.HIGH,
+                retryable=True,
+                repairable=True,
+                recommended_action=RepairAction.RETRY_SAME_AGENT,
+                source=src,
             )
-        if _contains(lowered, "merge conflict", "conflicting", "automatic merge failed",
-                     "merge_head", "unmerged"):
+        if _contains(
+            lowered,
+            "merge conflict",
+            "conflicting",
+            "automatic merge failed",
+            "merge_head",
+            "unmerged",
+        ):
             return ClassificationResult(
-                FailureCategory.GIT_CONFLICT, FailureSeverity.HIGH,
-                retryable=False, repairable=True,
-                recommended_action=RepairAction.REQUEST_APPROVAL, source=src,
+                FailureCategory.GIT_CONFLICT,
+                FailureSeverity.HIGH,
+                retryable=False,
+                repairable=True,
+                recommended_action=RepairAction.REQUEST_APPROVAL,
+                source=src,
             )
-        if _contains(lowered, "dirty worktree", "dirty work tree", "worktree",
-                     "already exists", "work tree"):
+        if _contains(
+            lowered, "dirty worktree", "dirty work tree", "worktree", "already exists", "work tree"
+        ):
             # Distinguish conflict (handled above) from dirty-tree conditions.
             if _contains(lowered, "dirty", "uncommitted", "unstaged", "already exists"):
                 return ClassificationResult(
-                    FailureCategory.DIRTY_WORKTREE, FailureSeverity.MEDIUM,
-                    retryable=True, repairable=True,
-                    recommended_action=RepairAction.RETRY_SAME_AGENT, source=src,
+                    FailureCategory.DIRTY_WORKTREE,
+                    FailureSeverity.MEDIUM,
+                    retryable=True,
+                    repairable=True,
+                    recommended_action=RepairAction.RETRY_SAME_AGENT,
+                    source=src,
                 )
-        if _contains(lowered, "allowlist", "not allowlisted", "not allowed",
-                     "outside the working directory", "refusing to", "approval required",
-                     "policy"):
+        if _contains(
+            lowered,
+            "allowlist",
+            "not allowlisted",
+            "not allowed",
+            "outside the working directory",
+            "refusing to",
+            "approval required",
+            "policy",
+        ):
             return ClassificationResult(
-                FailureCategory.POLICY_VIOLATION, FailureSeverity.CRITICAL,
-                retryable=False, repairable=False,
-                recommended_action=RepairAction.REQUEST_APPROVAL, source=src,
+                FailureCategory.POLICY_VIOLATION,
+                FailureSeverity.CRITICAL,
+                retryable=False,
+                repairable=False,
+                recommended_action=RepairAction.REQUEST_APPROVAL,
+                source=src,
             )
-        if _contains(lowered, "no installed agent", "agent is unavailable", "agent unavailable",
-                     "executable not found", "no such file", "spawn", "enoent"):
+        if _contains(
+            lowered,
+            "no installed agent",
+            "agent is unavailable",
+            "agent unavailable",
+            "executable not found",
+            "no such file",
+            "spawn",
+            "enoent",
+        ):
             return ClassificationResult(
-                FailureCategory.ENVIRONMENT_FAILURE, FailureSeverity.HIGH,
-                retryable=False, repairable=False,
-                recommended_action=RepairAction.REQUEST_APPROVAL, source=src,
+                FailureCategory.ENVIRONMENT_FAILURE,
+                FailureSeverity.HIGH,
+                retryable=False,
+                repairable=False,
+                recommended_action=RepairAction.REQUEST_APPROVAL,
+                source=src,
             )
-        if _contains(lowered, "no module named", "modulenotfound", "importerror",
-                     "cannot find module", "pip install", "npm err", "missing dependency",
-                     "dependency"):
+        if _contains(
+            lowered,
+            "no module named",
+            "modulenotfound",
+            "importerror",
+            "cannot find module",
+            "pip install",
+            "npm err",
+            "missing dependency",
+            "dependency",
+        ):
             return ClassificationResult(
-                FailureCategory.DEPENDENCY_FAILURE, FailureSeverity.HIGH,
-                retryable=True, repairable=True,
-                recommended_action=RepairAction.REPAIR_IMPLEMENTATION, source=src,
+                FailureCategory.DEPENDENCY_FAILURE,
+                FailureSeverity.HIGH,
+                retryable=True,
+                repairable=True,
+                recommended_action=RepairAction.REPAIR_IMPLEMENTATION,
+                source=src,
             )
         if _contains(lowered, "permission denied", "eacces", "eperm"):
             # Permission errors are environment failures that need a human to
             # fix filesystem permissions first; they must not stop as UNKNOWN.
             return ClassificationResult(
-                FailureCategory.ENVIRONMENT_FAILURE, FailureSeverity.HIGH,
-                retryable=False, repairable=True,
-                recommended_action=RepairAction.REQUEST_APPROVAL, source=src,
+                FailureCategory.ENVIRONMENT_FAILURE,
+                FailureSeverity.HIGH,
+                retryable=False,
+                repairable=True,
+                recommended_action=RepairAction.REQUEST_APPROVAL,
+                source=src,
             )
         if _contains(lowered, "environ", "systemroot", "path"):
             # Generic environment problems (distinct from missing modules above).
             if _contains(lowered, "systemroot", "environment variable", "environ"):
                 return ClassificationResult(
-                    FailureCategory.ENVIRONMENT_FAILURE, FailureSeverity.HIGH,
-                    retryable=True, repairable=True,
-                    recommended_action=RepairAction.RETRY_SAME_AGENT, source=src,
+                    FailureCategory.ENVIRONMENT_FAILURE,
+                    FailureSeverity.HIGH,
+                    retryable=True,
+                    repairable=True,
+                    recommended_action=RepairAction.RETRY_SAME_AGENT,
+                    source=src,
                 )
         # Verification check classes map deterministically.
         normalized_check = (check_class or "").lower()
-        if normalized_check in {"tests", "test"} or _contains(lowered, "pytest", "unittest", "jest failed",
-                                                              "test failed", "assertionerror"):
+        if normalized_check in {"tests", "test"} or _contains(
+            lowered, "pytest", "unittest", "jest failed", "test failed", "assertionerror"
+        ):
             # Only claim TEST_FAILURE when there is test-shaped evidence or an
             # explicit tests check class; otherwise fall through.
             if normalized_check in {"tests", "test"} or _contains(
                 lowered, "pytest", "unittest", "test failed", "assertionerror", "failing test"
             ):
                 return ClassificationResult(
-                    FailureCategory.TEST_FAILURE, FailureSeverity.HIGH,
-                    retryable=False, repairable=True,
-                    recommended_action=RepairAction.REPAIR_IMPLEMENTATION, source=src,
+                    FailureCategory.TEST_FAILURE,
+                    FailureSeverity.HIGH,
+                    retryable=False,
+                    repairable=True,
+                    recommended_action=RepairAction.REPAIR_IMPLEMENTATION,
+                    source=src,
                 )
         if normalized_check in {"lint"} or _contains(lowered, "ruff", "flake8", "eslint", "lint"):
             return ClassificationResult(
-                FailureCategory.LINT_FAILURE, FailureSeverity.MEDIUM,
-                retryable=False, repairable=True,
-                recommended_action=RepairAction.REPAIR_IMPLEMENTATION, source=src,
+                FailureCategory.LINT_FAILURE,
+                FailureSeverity.MEDIUM,
+                retryable=False,
+                repairable=True,
+                recommended_action=RepairAction.REPAIR_IMPLEMENTATION,
+                source=src,
             )
         if normalized_check in {"type_checking", "typecheck", "type-check"} or _contains(
             lowered, "mypy", "pyright", "type error", "typecheck"
         ):
             return ClassificationResult(
-                FailureCategory.TYPECHECK_FAILURE, FailureSeverity.MEDIUM,
-                retryable=False, repairable=True,
-                recommended_action=RepairAction.REPAIR_IMPLEMENTATION, source=src,
+                FailureCategory.TYPECHECK_FAILURE,
+                FailureSeverity.MEDIUM,
+                retryable=False,
+                repairable=True,
+                recommended_action=RepairAction.REPAIR_IMPLEMENTATION,
+                source=src,
             )
-        if normalized_check in {"build"} or _contains(lowered, "pyinstaller", "webpack", "tsc -b",
-                                                      "build failed", "compilation"):
+        if normalized_check in {"build"} or _contains(
+            lowered, "pyinstaller", "webpack", "tsc -b", "build failed", "compilation"
+        ):
             return ClassificationResult(
-                FailureCategory.BUILD_FAILURE, FailureSeverity.HIGH,
-                retryable=False, repairable=True,
-                recommended_action=RepairAction.REPAIR_IMPLEMENTATION, source=src,
+                FailureCategory.BUILD_FAILURE,
+                FailureSeverity.HIGH,
+                retryable=False,
+                repairable=True,
+                recommended_action=RepairAction.REPAIR_IMPLEMENTATION,
+                source=src,
             )
-        if normalized_check in {"formatting", "format"} or _contains(lowered, "black --check", "prettier"):
+        if normalized_check in {"formatting", "format"} or _contains(
+            lowered, "black --check", "prettier"
+        ):
             return ClassificationResult(
-                FailureCategory.LINT_FAILURE, FailureSeverity.LOW,
-                retryable=False, repairable=True,
-                recommended_action=RepairAction.REPAIR_IMPLEMENTATION, source=src,
+                FailureCategory.LINT_FAILURE,
+                FailureSeverity.LOW,
+                retryable=False,
+                repairable=True,
+                recommended_action=RepairAction.REPAIR_IMPLEMENTATION,
+                source=src,
             )
-        if normalized_check in {"custom"} or _contains(lowered, "verification", "required check",
-                                                       "nonzero_exit", "malformed_output"):
+        if normalized_check in {"custom"} or _contains(
+            lowered, "verification", "required check", "nonzero_exit", "malformed_output"
+        ):
             # A failing verification check without a more specific class.
-            if normalized_check or _contains(lowered, "verification", "nonzero_exit", "malformed_output",
-                                             "required"):
+            if normalized_check or _contains(
+                lowered, "verification", "nonzero_exit", "malformed_output", "required"
+            ):
                 return ClassificationResult(
-                    FailureCategory.VERIFICATION_FAILURE, FailureSeverity.HIGH,
-                    retryable=False, repairable=True,
-                    recommended_action=RepairAction.RERUN_VERIFICATION, source=src,
+                    FailureCategory.VERIFICATION_FAILURE,
+                    FailureSeverity.HIGH,
+                    retryable=False,
+                    repairable=True,
+                    recommended_action=RepairAction.RERUN_VERIFICATION,
+                    source=src,
                 )
-        if (role or "").lower() == "review" or _contains(lowered, "review did not pass",
-                                                         "review rejection", "changes requested"):
+        if (role or "").lower() == "review" or _contains(
+            lowered, "review did not pass", "review rejection", "changes requested"
+        ):
             return ClassificationResult(
-                FailureCategory.REVIEW_REJECTION, FailureSeverity.MEDIUM,
-                retryable=False, repairable=True,
-                recommended_action=RepairAction.REPAIR_IMPLEMENTATION, source=src,
+                FailureCategory.REVIEW_REJECTION,
+                FailureSeverity.MEDIUM,
+                retryable=False,
+                repairable=True,
+                recommended_action=RepairAction.REPAIR_IMPLEMENTATION,
+                source=src,
             )
         if _contains(lowered, "interrupted", "process was killed", "process did not exit"):
             return ClassificationResult(
-                FailureCategory.PROCESS_ERROR, FailureSeverity.HIGH,
-                retryable=True, repairable=True,
-                recommended_action=RepairAction.RETRY_SAME_AGENT, source=src,
+                FailureCategory.PROCESS_ERROR,
+                FailureSeverity.HIGH,
+                retryable=True,
+                repairable=True,
+                recommended_action=RepairAction.RETRY_SAME_AGENT,
+                source=src,
             )
         if not agent_available or _contains(lowered, "no installed agent supports role"):
             return ClassificationResult(
-                FailureCategory.ENVIRONMENT_FAILURE, FailureSeverity.HIGH,
-                retryable=False, repairable=False,
-                recommended_action=RepairAction.RETRY_DIFFERENT_AGENT, source=src,
+                FailureCategory.ENVIRONMENT_FAILURE,
+                FailureSeverity.HIGH,
+                retryable=False,
+                repairable=False,
+                recommended_action=RepairAction.RETRY_DIFFERENT_AGENT,
+                source=src,
             )
         if exit_code is not None and exit_code != 0:
             return ClassificationResult(
-                FailureCategory.AGENT_ERROR, FailureSeverity.MEDIUM,
-                retryable=True, repairable=True,
-                recommended_action=RepairAction.RETRY_SAME_AGENT, source=src,
+                FailureCategory.AGENT_ERROR,
+                FailureSeverity.MEDIUM,
+                retryable=True,
+                repairable=True,
+                recommended_action=RepairAction.RETRY_SAME_AGENT,
+                source=src,
             )
         if _contains(lowered, "exit code") and _contains(
-            lowered, "1", "2", "3", "4", "5", "6", "7", "8", "9",
+            lowered,
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9",
         ):
             # Textual nonzero-exit evidence without a structured exit code
             # (e.g. relayed agent transcripts) is still an agent error.
             return ClassificationResult(
-                FailureCategory.AGENT_ERROR, FailureSeverity.MEDIUM,
-                retryable=True, repairable=True,
-                recommended_action=RepairAction.RETRY_SAME_AGENT, source=src,
+                FailureCategory.AGENT_ERROR,
+                FailureSeverity.MEDIUM,
+                retryable=True,
+                repairable=True,
+                recommended_action=RepairAction.RETRY_SAME_AGENT,
+                source=src,
             )
         if text.strip():
             # Non-empty but unrecognized evidence stays UNKNOWN and stops the
             # line: never invent success or a specific retry from noise.
             return ClassificationResult(
-                FailureCategory.UNKNOWN, FailureSeverity.MEDIUM,
-                retryable=False, repairable=False,
-                recommended_action=RepairAction.STOP, source=src,
+                FailureCategory.UNKNOWN,
+                FailureSeverity.MEDIUM,
+                retryable=False,
+                repairable=False,
+                recommended_action=RepairAction.STOP,
+                source=src,
             )
         return ClassificationResult(
-            FailureCategory.UNKNOWN, FailureSeverity.MEDIUM,
-            retryable=False, repairable=False,
-            recommended_action=RepairAction.STOP, source=src,
+            FailureCategory.UNKNOWN,
+            FailureSeverity.MEDIUM,
+            retryable=False,
+            repairable=False,
+            recommended_action=RepairAction.STOP,
+            source=src,
         )
 
     @staticmethod
     def _classify_structured(
-        source: FailureSource, evidence: FailureEvidence,
+        source: FailureSource,
+        evidence: FailureEvidence,
     ) -> ClassificationResult | None:
         """Classify from machine-readable signals before string heuristics.
 
@@ -584,24 +714,33 @@ class FailureClassifier:
         """
         if evidence.cancelled:
             return ClassificationResult(
-                FailureCategory.CANCELLATION, FailureSeverity.MEDIUM,
-                retryable=True, repairable=True,
-                recommended_action=RepairAction.RETRY_SAME_AGENT, source=source,
+                FailureCategory.CANCELLATION,
+                FailureSeverity.MEDIUM,
+                retryable=True,
+                repairable=True,
+                recommended_action=RepairAction.RETRY_SAME_AGENT,
+                source=source,
             )
         if evidence.timed_out:
             # Specified precedence: an authoritative timeout signal wins even
             # over dependency-flavored context (legacy text rules alone would
             # say DEPENDENCY_FAILURE for e.g. "pip install timeout").
             return ClassificationResult(
-                FailureCategory.TIMEOUT, FailureSeverity.HIGH,
-                retryable=True, repairable=True,
-                recommended_action=RepairAction.RETRY_SAME_AGENT, source=source,
+                FailureCategory.TIMEOUT,
+                FailureSeverity.HIGH,
+                retryable=True,
+                repairable=True,
+                recommended_action=RepairAction.RETRY_SAME_AGENT,
+                source=source,
             )
         if evidence.terminated or (evidence.exit_code is not None and evidence.exit_code < 0):
             return ClassificationResult(
-                FailureCategory.PROCESS_ERROR, FailureSeverity.HIGH,
-                retryable=True, repairable=True,
-                recommended_action=RepairAction.RETRY_SAME_AGENT, source=source,
+                FailureCategory.PROCESS_ERROR,
+                FailureSeverity.HIGH,
+                retryable=True,
+                repairable=True,
+                recommended_action=RepairAction.RETRY_SAME_AGENT,
+                source=source,
             )
         normalized_check = (evidence.check_class or "").strip().lower()
         if source is FailureSource.VERIFICATION and not normalized_check:
@@ -611,45 +750,66 @@ class FailureClassifier:
             return None
         if normalized_check in {"tests", "test"}:
             return ClassificationResult(
-                FailureCategory.TEST_FAILURE, FailureSeverity.HIGH,
-                retryable=False, repairable=True,
-                recommended_action=RepairAction.REPAIR_IMPLEMENTATION, source=source,
+                FailureCategory.TEST_FAILURE,
+                FailureSeverity.HIGH,
+                retryable=False,
+                repairable=True,
+                recommended_action=RepairAction.REPAIR_IMPLEMENTATION,
+                source=source,
             )
         if normalized_check in {"lint"}:
             return ClassificationResult(
-                FailureCategory.LINT_FAILURE, FailureSeverity.MEDIUM,
-                retryable=False, repairable=True,
-                recommended_action=RepairAction.REPAIR_IMPLEMENTATION, source=source,
+                FailureCategory.LINT_FAILURE,
+                FailureSeverity.MEDIUM,
+                retryable=False,
+                repairable=True,
+                recommended_action=RepairAction.REPAIR_IMPLEMENTATION,
+                source=source,
             )
         if normalized_check in {"type_checking", "typecheck", "type-check"}:
             return ClassificationResult(
-                FailureCategory.TYPECHECK_FAILURE, FailureSeverity.MEDIUM,
-                retryable=False, repairable=True,
-                recommended_action=RepairAction.REPAIR_IMPLEMENTATION, source=source,
+                FailureCategory.TYPECHECK_FAILURE,
+                FailureSeverity.MEDIUM,
+                retryable=False,
+                repairable=True,
+                recommended_action=RepairAction.REPAIR_IMPLEMENTATION,
+                source=source,
             )
         if normalized_check in {"build"}:
             return ClassificationResult(
-                FailureCategory.BUILD_FAILURE, FailureSeverity.HIGH,
-                retryable=False, repairable=True,
-                recommended_action=RepairAction.REPAIR_IMPLEMENTATION, source=source,
+                FailureCategory.BUILD_FAILURE,
+                FailureSeverity.HIGH,
+                retryable=False,
+                repairable=True,
+                recommended_action=RepairAction.REPAIR_IMPLEMENTATION,
+                source=source,
             )
         if normalized_check in {"formatting", "format"}:
             return ClassificationResult(
-                FailureCategory.LINT_FAILURE, FailureSeverity.LOW,
-                retryable=False, repairable=True,
-                recommended_action=RepairAction.REPAIR_IMPLEMENTATION, source=source,
+                FailureCategory.LINT_FAILURE,
+                FailureSeverity.LOW,
+                retryable=False,
+                repairable=True,
+                recommended_action=RepairAction.REPAIR_IMPLEMENTATION,
+                source=source,
             )
         if normalized_check in {"custom"}:
             return ClassificationResult(
-                FailureCategory.VERIFICATION_FAILURE, FailureSeverity.HIGH,
-                retryable=False, repairable=True,
-                recommended_action=RepairAction.RERUN_VERIFICATION, source=source,
+                FailureCategory.VERIFICATION_FAILURE,
+                FailureSeverity.HIGH,
+                retryable=False,
+                repairable=True,
+                recommended_action=RepairAction.RERUN_VERIFICATION,
+                source=source,
             )
         if evidence.exit_code is not None and evidence.exit_code != 0:
             return ClassificationResult(
-                FailureCategory.AGENT_ERROR, FailureSeverity.MEDIUM,
-                retryable=True, repairable=True,
-                recommended_action=RepairAction.RETRY_SAME_AGENT, source=source,
+                FailureCategory.AGENT_ERROR,
+                FailureSeverity.MEDIUM,
+                retryable=True,
+                repairable=True,
+                recommended_action=RepairAction.RETRY_SAME_AGENT,
+                source=source,
             )
         return None
 
@@ -659,7 +819,11 @@ class FailureClassifier:
         detail: str | None = None,
     ) -> tuple[RecoveryState, FailureCategory, RepairAction]:
         try:
-            normalized = context if isinstance(context, InterruptionContext) else InterruptionContext(str(context))
+            normalized = (
+                context
+                if isinstance(context, InterruptionContext)
+                else InterruptionContext(str(context))
+            )
         except ValueError:
             normalized = InterruptionContext.UNKNOWN
         if normalized is InterruptionContext.UNKNOWN:
@@ -693,17 +857,21 @@ class FailureClassifier:
             # budget stops instead of looping forever on repeated planning.
             if policy.should_retry_attempt(attempt, failure):
                 return RepairPlan(
-                    failure_id=failure.id, action=RepairAction.RETRY_SAME_AGENT,
+                    failure_id=failure.id,
+                    action=RepairAction.RETRY_SAME_AGENT,
                     reason="Cancellation is retryable once the cancel request is cleared.",
-                    next_attempt=attempt + 1, next_repair_cycle=repair_cycle,
+                    next_attempt=attempt + 1,
+                    next_repair_cycle=repair_cycle,
                     parent_run_id=failure.agent_run_id,
                     verification_run_id=failure.verification_run_id,
                     previous_evidence=failure.evidence,
                 )
             return RepairPlan(
-                failure_id=failure.id, action=RepairAction.STOP,
+                failure_id=failure.id,
+                action=RepairAction.STOP,
                 reason="Retry budget exhausted for the cancelled attempt; stop permanently.",
-                next_attempt=attempt, next_repair_cycle=repair_cycle,
+                next_attempt=attempt,
+                next_repair_cycle=repair_cycle,
                 inherit_context=False,
                 parent_run_id=failure.agent_run_id,
                 verification_run_id=failure.verification_run_id,
@@ -714,17 +882,21 @@ class FailureClassifier:
             # is a useful retry, and the failed one is in cooldown.
             if policy.should_retry_attempt(attempt, failure) and alternate_agent_available:
                 return RepairPlan(
-                    failure_id=failure.id, action=RepairAction.RETRY_DIFFERENT_AGENT,
+                    failure_id=failure.id,
+                    action=RepairAction.RETRY_DIFFERENT_AGENT,
                     reason="Usage limit hit; retry with a different agent while this one cools down.",
-                    next_attempt=attempt + 1, next_repair_cycle=repair_cycle,
+                    next_attempt=attempt + 1,
+                    next_repair_cycle=repair_cycle,
                     parent_run_id=failure.agent_run_id,
                     verification_run_id=failure.verification_run_id,
                     previous_evidence=failure.evidence,
                 )
             return RepairPlan(
-                failure_id=failure.id, action=RepairAction.STOP,
+                failure_id=failure.id,
+                action=RepairAction.STOP,
                 reason="Usage limit hit and no other agent or attempt remains; wait for the reset.",
-                next_attempt=attempt, next_repair_cycle=repair_cycle,
+                next_attempt=attempt,
+                next_repair_cycle=repair_cycle,
                 inherit_context=False,
                 parent_run_id=failure.agent_run_id,
                 verification_run_id=failure.verification_run_id,
@@ -732,28 +904,36 @@ class FailureClassifier:
             )
         if failure.category is FailureCategory.POLICY_VIOLATION:
             return RepairPlan(
-                failure_id=failure.id, action=RepairAction.REQUEST_APPROVAL,
+                failure_id=failure.id,
+                action=RepairAction.REQUEST_APPROVAL,
                 reason="Policy violations require human approval before any retry.",
-                next_attempt=attempt, next_repair_cycle=repair_cycle,
-                inherit_context=False, requires_approval=True,
+                next_attempt=attempt,
+                next_repair_cycle=repair_cycle,
+                inherit_context=False,
+                requires_approval=True,
                 parent_run_id=failure.agent_run_id,
                 verification_run_id=failure.verification_run_id,
                 previous_evidence=failure.evidence,
             )
         if failure.category is FailureCategory.GIT_CONFLICT:
             return RepairPlan(
-                failure_id=failure.id, action=RepairAction.REQUEST_APPROVAL,
+                failure_id=failure.id,
+                action=RepairAction.REQUEST_APPROVAL,
                 reason="Merge conflicts preserve the worktree and need human resolution.",
-                next_attempt=attempt, next_repair_cycle=repair_cycle,
+                next_attempt=attempt,
+                next_repair_cycle=repair_cycle,
                 requires_approval=True,
                 parent_run_id=failure.agent_run_id,
                 verification_run_id=failure.verification_run_id,
                 previous_evidence=failure.evidence,
             )
         if failure.category in {
-            FailureCategory.TEST_FAILURE, FailureCategory.LINT_FAILURE,
-            FailureCategory.TYPECHECK_FAILURE, FailureCategory.BUILD_FAILURE,
-            FailureCategory.VERIFICATION_FAILURE, FailureCategory.REVIEW_REJECTION,
+            FailureCategory.TEST_FAILURE,
+            FailureCategory.LINT_FAILURE,
+            FailureCategory.TYPECHECK_FAILURE,
+            FailureCategory.BUILD_FAILURE,
+            FailureCategory.VERIFICATION_FAILURE,
+            FailureCategory.REVIEW_REJECTION,
         }:
             if policy.should_repair(repair_cycle, failure):
                 action = (
@@ -762,17 +942,21 @@ class FailureClassifier:
                     else RepairAction.REPAIR_IMPLEMENTATION
                 )
                 return RepairPlan(
-                    failure_id=failure.id, action=action,
+                    failure_id=failure.id,
+                    action=action,
                     reason=f"{failure.category.value} is repairable within the repair budget.",
-                    next_attempt=attempt, next_repair_cycle=repair_cycle + 1,
+                    next_attempt=attempt,
+                    next_repair_cycle=repair_cycle + 1,
                     parent_run_id=failure.agent_run_id,
                     verification_run_id=failure.verification_run_id,
                     previous_evidence=failure.evidence,
                 )
             return RepairPlan(
-                failure_id=failure.id, action=RepairAction.STOP,
+                failure_id=failure.id,
+                action=RepairAction.STOP,
                 reason="Repair budget exhausted; stop permanently.",
-                next_attempt=attempt, next_repair_cycle=repair_cycle,
+                next_attempt=attempt,
+                next_repair_cycle=repair_cycle,
                 inherit_context=False,
                 parent_run_id=failure.agent_run_id,
                 verification_run_id=failure.verification_run_id,
@@ -780,37 +964,46 @@ class FailureClassifier:
             )
         if policy.should_retry_attempt(attempt, failure):
             if alternate_agent_available and failure.category in {
-                FailureCategory.AGENT_ERROR, FailureCategory.ENVIRONMENT_FAILURE,
+                FailureCategory.AGENT_ERROR,
+                FailureCategory.ENVIRONMENT_FAILURE,
             }:
                 return RepairPlan(
-                    failure_id=failure.id, action=RepairAction.RETRY_DIFFERENT_AGENT,
+                    failure_id=failure.id,
+                    action=RepairAction.RETRY_DIFFERENT_AGENT,
                     reason="Retry with a different agent after excluding the failed one.",
-                    next_attempt=attempt + 1, next_repair_cycle=repair_cycle,
+                    next_attempt=attempt + 1,
+                    next_repair_cycle=repair_cycle,
                     parent_run_id=failure.agent_run_id,
                     verification_run_id=failure.verification_run_id,
                     previous_evidence=failure.evidence,
                 )
             return RepairPlan(
-                failure_id=failure.id, action=RepairAction.RETRY_SAME_AGENT,
+                failure_id=failure.id,
+                action=RepairAction.RETRY_SAME_AGENT,
                 reason="Retryable failure within the attempt budget.",
-                next_attempt=attempt + 1, next_repair_cycle=repair_cycle,
+                next_attempt=attempt + 1,
+                next_repair_cycle=repair_cycle,
                 parent_run_id=failure.agent_run_id,
                 verification_run_id=failure.verification_run_id,
                 previous_evidence=failure.evidence,
             )
         if failure.repairable and policy.should_repair(repair_cycle, failure) and approval_granted:
             return RepairPlan(
-                failure_id=failure.id, action=RepairAction.REPAIR_IMPLEMENTATION,
+                failure_id=failure.id,
+                action=RepairAction.REPAIR_IMPLEMENTATION,
                 reason="Approved repair within the repair budget.",
-                next_attempt=attempt, next_repair_cycle=repair_cycle + 1,
+                next_attempt=attempt,
+                next_repair_cycle=repair_cycle + 1,
                 parent_run_id=failure.agent_run_id,
                 verification_run_id=failure.verification_run_id,
                 previous_evidence=failure.evidence,
             )
         return RepairPlan(
-            failure_id=failure.id, action=RepairAction.STOP,
+            failure_id=failure.id,
+            action=RepairAction.STOP,
             reason="No retry or repair budget remains; stop permanently.",
-            next_attempt=attempt, next_repair_cycle=repair_cycle,
+            next_attempt=attempt,
+            next_repair_cycle=repair_cycle,
             inherit_context=False,
             parent_run_id=failure.agent_run_id,
             verification_run_id=failure.verification_run_id,

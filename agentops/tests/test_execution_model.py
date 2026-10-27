@@ -26,10 +26,16 @@ from agentops.verification_model import VerificationReport, VerificationReportSt
 
 def _report(**overrides) -> VerificationReport:
     values = {
-        "id": "rep-1", "run_id": "run-1", "workflow_id": "w",
-        "task_id": "t", "profile_name": "standard",
-        "total_checks": 3, "passed_checks": 3, "failed_checks": 0,
-        "skipped_checks": 0, "required_failures": 0,
+        "id": "rep-1",
+        "run_id": "run-1",
+        "workflow_id": "w",
+        "task_id": "t",
+        "profile_name": "standard",
+        "total_checks": 3,
+        "passed_checks": 3,
+        "failed_checks": 0,
+        "skipped_checks": 0,
+        "required_failures": 0,
         "overall_status": VerificationReportStatus.PASSED,
     }
     values.update(overrides)
@@ -98,8 +104,14 @@ class ReportConsistencyTests(unittest.TestCase):
 
 class TaskCompletionTests(unittest.TestCase):
     def test_verified_verification_task_validates(self):
-        task = Task("v", "verification", "w", status=TaskStatus.PASSED,
-                    verified=True, verification_run_id="run-1")
+        task = Task(
+            "v",
+            "verification",
+            "w",
+            status=TaskStatus.PASSED,
+            verified=True,
+            verification_run_id="run-1",
+        )
         assert_task_completion(task)
 
     def test_unverified_verification_task_raises(self):
@@ -114,8 +126,9 @@ class TaskCompletionTests(unittest.TestCase):
 
     def test_legacy_transcript_counts_as_evidence(self):
         # Legacy command path: no run object exists; output is the evidence.
-        task = Task("v", "verification", "w", status=TaskStatus.PASSED,
-                    verified=True, result="tests passed")
+        task = Task(
+            "v", "verification", "w", status=TaskStatus.PASSED, verified=True, result="tests passed"
+        )
         assert_task_completion(task)
 
     def test_verified_implementation_task_raises(self):
@@ -137,23 +150,27 @@ class TaskCompletionTests(unittest.TestCase):
 
 class WorkflowReadyTests(unittest.TestCase):
     def test_ready_with_all_signals(self):
-        assert_workflow_ready(verification_ok=True, review_ok=True,
-                              evidence_present=True, workflow_id="w")
+        assert_workflow_ready(
+            verification_ok=True, review_ok=True, evidence_present=True, workflow_id="w"
+        )
 
     def test_ready_without_evidence_raises(self):
         with self.assertRaises(StateTransitionError):
-            assert_workflow_ready(verification_ok=True, review_ok=True,
-                                  evidence_present=False, workflow_id="w")
+            assert_workflow_ready(
+                verification_ok=True, review_ok=True, evidence_present=False, workflow_id="w"
+            )
 
     def test_ready_without_review_raises(self):
         with self.assertRaises(StateTransitionError):
-            assert_workflow_ready(verification_ok=True, review_ok=False,
-                                  evidence_present=True, workflow_id="w")
+            assert_workflow_ready(
+                verification_ok=True, review_ok=False, evidence_present=True, workflow_id="w"
+            )
 
     def test_ready_without_verification_raises(self):
         with self.assertRaises(StateTransitionError):
-            assert_workflow_ready(verification_ok=False, review_ok=True,
-                                  evidence_present=True, workflow_id="w")
+            assert_workflow_ready(
+                verification_ok=False, review_ok=True, evidence_present=True, workflow_id="w"
+            )
 
 
 class HonestyAndLadderTests(unittest.TestCase):
@@ -186,21 +203,30 @@ class KernelEmptySuiteWiringTests(unittest.TestCase):
         from agentops.state import StateStore
         from agentops.verification_kernel import VerificationKernel
         from agentops.workflow import WorkflowEngine
+
         config = AppConfig(
-            {"fallback": AgentConfig("fallback", "fake", ("{prompt}",),
-                                       ("implementation",))},
-            {"implementation": ("fallback",), "verification": (),
-             "review": (), "debugging": ()},
-            (), max_attempts=1, concurrency=1,
+            {"fallback": AgentConfig("fallback", "fake", ("{prompt}",), ("implementation",))},
+            {"implementation": ("fallback",), "verification": (), "review": (), "debugging": ()},
+            (),
+            max_attempts=1,
+            concurrency=1,
         )
         state = StateStore(":memory:")
         try:
             engine = WorkflowEngine(
-                config, state, MagicMock(), MagicMock(), MagicMock(),
-                verification_kernel=VerificationKernel(profiles={}, legacy_commands=()))
-            wid, created = engine.create_workflow("custom", [
-                {"id": "v", "description": "check", "role": "verification"},
-            ])
+                config,
+                state,
+                MagicMock(),
+                MagicMock(),
+                MagicMock(),
+                verification_kernel=VerificationKernel(profiles={}, legacy_commands=()),
+            )
+            wid, created = engine.create_workflow(
+                "custom",
+                [
+                    {"id": "v", "description": "check", "role": "verification"},
+                ],
+            )
             # Must not raise: empty suite -> task FAILED via the generic
             # handler (consistent with the legacy empty-suite rule).
             asyncio.run(engine.execute(wid, Path.cwd()))
@@ -217,6 +243,7 @@ class RecoveryHonestyWiringTests(unittest.TestCase):
     def test_recovery_outputs_contain_no_success(self):
         from agentops.state import StateStore
         from agentops.verification_model import VerificationProfile
+
         state = StateStore(":memory:")
         try:
             wid = state.create_workflow("w")
@@ -232,8 +259,9 @@ class RecoveryHonestyWiringTests(unittest.TestCase):
             recovered_tasks = state.recover_tasks()
             self.assertTrue(recovered_runs and recovered_vruns and recovered_tasks)
             for item in (*recovered_runs, *recovered_vruns, *recovered_tasks):
-                self.assertNotIn(item.status.value,
-                                 {"completed", "passed", "ready", "merged", "success"})
+                self.assertNotIn(
+                    item.status.value, {"completed", "passed", "ready", "merged", "success"}
+                )
             self.assertEqual(vrun.id, recovered_vruns[0].id)
         finally:
             state.close()
@@ -244,6 +272,7 @@ class SameStateNoopTests(unittest.TestCase):
 
     def test_repeat_finish_emits_no_event(self):
         from agentops.state import StateStore
+
         state = StateStore(":memory:")
         try:
             wid = state.create_workflow("w")

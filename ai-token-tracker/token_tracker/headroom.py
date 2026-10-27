@@ -199,9 +199,16 @@ def make_window(
     }
 
 
-def _provider(provider: str, source: str, status: str, *, detail: str | None = None,
-              location: str | None = None, windows: list[dict] | None = None,
-              warnings: list[str] | None = None) -> dict:
+def _provider(
+    provider: str,
+    source: str,
+    status: str,
+    *,
+    detail: str | None = None,
+    location: str | None = None,
+    windows: list[dict] | None = None,
+    warnings: list[str] | None = None,
+) -> dict:
     return {
         "provider": provider,
         "source": source,
@@ -252,22 +259,32 @@ def _codex_files(root: Path, max_files: int) -> list[Path]:
     return files[:max_files]
 
 
-def read_codex(now: float, *, root: Path | None = None, max_files: int = DEFAULT_MAX_CODEX_FILES,
-               stale_after: float | None = None) -> dict:
+def read_codex(
+    now: float,
+    *,
+    root: Path | None = None,
+    max_files: int = DEFAULT_MAX_CODEX_FILES,
+    stale_after: float | None = None,
+) -> dict:
     source = "codex-rollout"
     if root is None:
         from . import collectors
 
         root = collectors.find_codex()
     if root is None:
-        return _provider("codex", source, NOT_CONFIGURED,
-                         detail="no Codex sessions dir found (~/.codex/sessions, "
-                                "~/.codex/archived_sessions, or CODEX_SESSIONS)")
+        return _provider(
+            "codex",
+            source,
+            NOT_CONFIGURED,
+            detail="no Codex sessions dir found (~/.codex/sessions, "
+            "~/.codex/archived_sessions, or CODEX_SESSIONS)",
+        )
     location = str(root)
     files = _codex_files(Path(root), max_files)
     if not files:
-        return _provider("codex", source, NO_DATA, location=location,
-                         detail="no rollout-*.jsonl files")
+        return _provider(
+            "codex", source, NO_DATA, location=location, detail="no rollout-*.jsonl files"
+        )
 
     # (limit_id, window key) -> best snapshot seen so far
     latest: dict[tuple[str, object], dict] = {}
@@ -291,7 +308,9 @@ def read_codex(now: float, *, root: Path | None = None, max_files: int = DEFAULT
             if observed is None:
                 bad_windows += 1
                 continue
-            limit_id = limits.get("limit_id") if isinstance(limits.get("limit_id"), str) else "codex"
+            limit_id = (
+                limits.get("limit_id") if isinstance(limits.get("limit_id"), str) else "codex"
+            )
             plan = limits.get("plan_type") if isinstance(limits.get("plan_type"), str) else None
             reached_type = limits.get("rate_limit_reached_type")
             snapshot_windows = []
@@ -312,10 +331,18 @@ def read_codex(now: float, *, root: Path | None = None, max_files: int = DEFAULT
                 if resets is None:
                     in_s = _num(w.get("resets_in_seconds"))
                     resets = observed + in_s if in_s is not None else None
-                snapshot_windows.append({
-                    "slot": slot, "pct": pct, "minutes": minutes, "resets": resets,
-                    "observed": observed, "plan": plan, "limit_id": limit_id, "reached": False,
-                })
+                snapshot_windows.append(
+                    {
+                        "slot": slot,
+                        "pct": pct,
+                        "minutes": minutes,
+                        "resets": resets,
+                        "observed": observed,
+                        "plan": plan,
+                        "limit_id": limit_id,
+                        "reached": False,
+                    }
+                )
             if reached_type and snapshot_windows:
                 # the server says a limit was hit: the fullest window of this snapshot
                 max(snapshot_windows, key=lambda s: s["pct"])["reached"] = True
@@ -328,30 +355,62 @@ def read_codex(now: float, *, root: Path | None = None, max_files: int = DEFAULT
     if bad_lines:
         warnings.append(f"{bad_lines} malformed JSON line(s) skipped")
     if bad_windows:
-        warnings.append(f"{bad_windows} rate_limits window(s) with missing or invalid fields skipped")
+        warnings.append(
+            f"{bad_windows} rate_limits window(s) with missing or invalid fields skipped"
+        )
     if unreadable:
         warnings.append(f"{unreadable} rollout file(s) could not be read")
     if not latest:
         return _provider(
-            "codex", source, NO_DATA, location=location, warnings=warnings,
+            "codex",
+            source,
+            NO_DATA,
+            location=location,
+            warnings=warnings,
             detail=f"no rate_limits in the {len(files)} newest rollout file(s) "
-                   "(codex exec and API-key sessions record none)")
+            "(codex exec and API-key sessions record none)",
+        )
 
     windows = []
-    for (limit_id, _), snap in sorted(latest.items(), key=lambda kv: (kv[0][0], kv[1]["minutes"] or 0)):
-        windows.append(make_window(
-            source=source, window=window_label(snap["minutes"]) if snap["minutes"] else snap["slot"],
-            now=now, as_of=snap["observed"], unit="percent", used=snap["pct"], limit=100.0,
-            used_percent=snap["pct"], resets_at=snap["resets"], window_minutes=snap["minutes"],
-            limit_id=limit_id, reached=snap["reached"], plan_type=snap["plan"],
-            stale_after=stale_after))
-    return _provider("codex", source, OK, location=location, windows=windows, warnings=warnings,
-                     detail=f"newest snapshot per window from {len(files)} newest rollout file(s)")
+    for (limit_id, _), snap in sorted(
+        latest.items(), key=lambda kv: (kv[0][0], kv[1]["minutes"] or 0)
+    ):
+        windows.append(
+            make_window(
+                source=source,
+                window=window_label(snap["minutes"]) if snap["minutes"] else snap["slot"],
+                now=now,
+                as_of=snap["observed"],
+                unit="percent",
+                used=snap["pct"],
+                limit=100.0,
+                used_percent=snap["pct"],
+                resets_at=snap["resets"],
+                window_minutes=snap["minutes"],
+                limit_id=limit_id,
+                reached=snap["reached"],
+                plan_type=snap["plan"],
+                stale_after=stale_after,
+            )
+        )
+    return _provider(
+        "codex",
+        source,
+        OK,
+        location=location,
+        windows=windows,
+        warnings=warnings,
+        detail=f"newest snapshot per window from {len(files)} newest rollout file(s)",
+    )
 
 
 # ----------------------------------------------------------------- claude
 
-_CLAUDE_WINDOWS = (("five_hour", "5h", 300), ("seven_day", "weekly", 10080), ("spend_limit", "spend", None))
+_CLAUDE_WINDOWS = (
+    ("five_hour", "5h", 300),
+    ("seven_day", "weekly", 10080),
+    ("spend_limit", "spend", None),
+)
 
 
 def read_claude(now: float, *, path: Path | None = None, stale_after: float | None = None) -> dict:
@@ -359,13 +418,20 @@ def read_claude(now: float, *, path: Path | None = None, stale_after: float | No
     path = Path(path) if path is not None else statusline_tee.claude_ledger_path()
     location = str(path)
     if not path.is_file():
-        return _provider("claude", source, NOT_CONFIGURED, location=location,
-                         detail="status line tee not installed or never ran (no ledger file); "
-                                "headless claude -p never runs a status line")
+        return _provider(
+            "claude",
+            source,
+            NOT_CONFIGURED,
+            location=location,
+            detail="status line tee not installed or never ran (no ledger file); "
+            "headless claude -p never runs a status line",
+        )
     try:
         objs, bad = _read_jsonl(path)
     except OSError as exc:
-        return _provider("claude", source, ERROR, location=location, detail=f"cannot read ledger: {exc}")
+        return _provider(
+            "claude", source, ERROR, location=location, detail=f"cannot read ledger: {exc}"
+        )
     warnings = [f"{bad} malformed JSON line(s) skipped"] if bad else []
     latest: dict[str, tuple[float, dict]] = {}
     bad_windows = 0
@@ -386,11 +452,19 @@ def read_claude(now: float, *, path: Path | None = None, stale_after: float | No
             if held is None or observed >= held[0]:
                 latest[key] = (observed, w)
     if bad_windows:
-        warnings.append(f"{bad_windows} record(s) or window(s) with missing or invalid fields skipped")
+        warnings.append(
+            f"{bad_windows} record(s) or window(s) with missing or invalid fields skipped"
+        )
     if not latest:
-        return _provider("claude", source, NO_DATA, location=location, warnings=warnings,
-                         detail="ledger has no rate_limits (only Pro/Max or spend-limited gateway "
-                                "sessions report them, after the first response)")
+        return _provider(
+            "claude",
+            source,
+            NO_DATA,
+            location=location,
+            warnings=warnings,
+            detail="ledger has no rate_limits (only Pro/Max or spend-limited gateway "
+            "sessions report them, after the first response)",
+        )
     windows = []
     for key, label, minutes in _CLAUDE_WINDOWS:
         if key not in latest:
@@ -401,20 +475,49 @@ def read_claude(now: float, *, path: Path | None = None, stale_after: float | No
         if key == "spend_limit":
             used_usd, limit_usd = _num(w.get("used_usd")), _num(w.get("limit_usd"))
             dollars = used_usd is not None and limit_usd is not None
-            windows.append(make_window(
-                source=source, window=label, now=now, as_of=observed,
-                unit="usd" if dollars else "percent",
-                used=used_usd if dollars else pct, limit=limit_usd if dollars else 100.0,
-                used_percent=pct, resets_at=resets, window_minutes=None, limit_id=key,
-                reset_interval=w.get("period") if isinstance(w.get("period"), str) else None,
-                stale_after=stale_after))
+            windows.append(
+                make_window(
+                    source=source,
+                    window=label,
+                    now=now,
+                    as_of=observed,
+                    unit="usd" if dollars else "percent",
+                    used=used_usd if dollars else pct,
+                    limit=limit_usd if dollars else 100.0,
+                    used_percent=pct,
+                    resets_at=resets,
+                    window_minutes=None,
+                    limit_id=key,
+                    reset_interval=w.get("period") if isinstance(w.get("period"), str) else None,
+                    stale_after=stale_after,
+                )
+            )
         else:
-            windows.append(make_window(
-                source=source, window=label, now=now, as_of=observed, unit="percent",
-                used=pct, limit=100.0, used_percent=pct, resets_at=resets,
-                window_minutes=minutes, limit_id=key, stale_after=stale_after))
-    return _provider("claude", source, OK, location=location, windows=windows, warnings=warnings,
-                     detail="newest status line snapshot per window")
+            windows.append(
+                make_window(
+                    source=source,
+                    window=label,
+                    now=now,
+                    as_of=observed,
+                    unit="percent",
+                    used=pct,
+                    limit=100.0,
+                    used_percent=pct,
+                    resets_at=resets,
+                    window_minutes=minutes,
+                    limit_id=key,
+                    stale_after=stale_after,
+                )
+            )
+    return _provider(
+        "claude",
+        source,
+        OK,
+        location=location,
+        windows=windows,
+        warnings=warnings,
+        detail="newest status line snapshot per window",
+    )
 
 
 # ------------------------------------------------------------- openrouter
@@ -436,67 +539,144 @@ def _next_utc_midnight(now: float) -> float:
     return datetime(day.year, day.month, day.day, tzinfo=timezone.utc).timestamp() + 86400
 
 
-def read_openrouter(now: float, *, env: Mapping[str, str] | None = None, offline: bool = False,
-                    fetch: Fetcher | None = None, timeout: float = OPENROUTER_TIMEOUT_S,
-                    stale_after: float | None = None) -> dict:
+def read_openrouter(
+    now: float,
+    *,
+    env: Mapping[str, str] | None = None,
+    offline: bool = False,
+    fetch: Fetcher | None = None,
+    timeout: float = OPENROUTER_TIMEOUT_S,
+    stale_after: float | None = None,
+) -> dict:
     source = "openrouter-key"
     env = os.environ if env is None else env
     if offline:
         return _provider("openrouter", source, SKIPPED, detail="--offline: network sources skipped")
     key = env.get(OPENROUTER_ENV, "").strip()
     if not key:
-        return _provider("openrouter", source, NOT_CONFIGURED,
-                         detail=f"{OPENROUTER_ENV} not set; optional source skipped")
+        return _provider(
+            "openrouter",
+            source,
+            NOT_CONFIGURED,
+            detail=f"{OPENROUTER_ENV} not set; optional source skipped",
+        )
     fetch = fetch or _http_fetch
     try:
         body = fetch(key, timeout)
     except urllib.error.HTTPError as exc:
-        return _provider("openrouter", source, ERROR, location=OPENROUTER_KEY_URL,
-                         detail=f"HTTP {exc.code} from /api/v1/key")
+        return _provider(
+            "openrouter",
+            source,
+            ERROR,
+            location=OPENROUTER_KEY_URL,
+            detail=f"HTTP {exc.code} from /api/v1/key",
+        )
     except (urllib.error.URLError, OSError, TimeoutError) as exc:
         reason = getattr(exc, "reason", exc)
-        return _provider("openrouter", source, ERROR, location=OPENROUTER_KEY_URL,
-                         detail=f"network error: {type(reason).__name__}")
+        return _provider(
+            "openrouter",
+            source,
+            ERROR,
+            location=OPENROUTER_KEY_URL,
+            detail=f"network error: {type(reason).__name__}",
+        )
     except ValueError:
-        return _provider("openrouter", source, ERROR, location=OPENROUTER_KEY_URL,
-                         detail="response was not JSON")
+        return _provider(
+            "openrouter", source, ERROR, location=OPENROUTER_KEY_URL, detail="response was not JSON"
+        )
     data = body.get("data") if isinstance(body, dict) else None
     if not isinstance(data, dict):
-        return _provider("openrouter", source, ERROR, location=OPENROUTER_KEY_URL,
-                         detail="response has no data object")
+        return _provider(
+            "openrouter",
+            source,
+            ERROR,
+            location=OPENROUTER_KEY_URL,
+            detail="response has no data object",
+        )
 
     windows = []
     limit = _num(data.get("limit"))
     if limit is not None:
         remaining = _num(data.get("limit_remaining"))
         used = None if remaining is None else max(limit - remaining, 0.0)
-        windows.append(make_window(
-            source=source, window="key_credits", now=now, as_of=now, unit="usd",
-            used=used, limit=limit, used_percent=None, resets_at=None, limit_id="key_limit",
-            reset_interval=data.get("limit_reset") if isinstance(data.get("limit_reset"), str) else None,
-            stale_after=stale_after))
+        windows.append(
+            make_window(
+                source=source,
+                window="key_credits",
+                now=now,
+                as_of=now,
+                unit="usd",
+                used=used,
+                limit=limit,
+                used_percent=None,
+                resets_at=None,
+                limit_id="key_limit",
+                reset_interval=data.get("limit_reset")
+                if isinstance(data.get("limit_reset"), str)
+                else None,
+                stale_after=stale_after,
+            )
+        )
     budget = data.get("effective_budget")
     if isinstance(budget, dict) and _num(budget.get("limit_usd")) is not None:
-        windows.append(make_window(
-            source=source, window="budget", now=now, as_of=now, unit="usd",
-            used=_num(budget.get("spend_usd")), limit=_num(budget.get("limit_usd")),
-            used_percent=None, resets_at=_epoch(budget.get("resets_at")),
-            limit_id=budget.get("scope") if isinstance(budget.get("scope"), str) else "budget",
-            reset_interval=budget.get("reset_interval") if isinstance(budget.get("reset_interval"), str) else None,
-            stale_after=stale_after))
+        windows.append(
+            make_window(
+                source=source,
+                window="budget",
+                now=now,
+                as_of=now,
+                unit="usd",
+                used=_num(budget.get("spend_usd")),
+                limit=_num(budget.get("limit_usd")),
+                used_percent=None,
+                resets_at=_epoch(budget.get("resets_at")),
+                limit_id=budget.get("scope") if isinstance(budget.get("scope"), str) else "budget",
+                reset_interval=budget.get("reset_interval")
+                if isinstance(budget.get("reset_interval"), str)
+                else None,
+                stale_after=stale_after,
+            )
+        )
     free = data.get("free_model_daily_requests")
-    if isinstance(free, dict) and _num(free.get("limit")) is not None and _num(free.get("used")) is not None:
-        windows.append(make_window(
-            source=source, window="free_daily_requests", now=now, as_of=now, unit="requests",
-            used=_num(free.get("used")), limit=_num(free.get("limit")), used_percent=None,
-            resets_at=_next_utc_midnight(now), resets_at_basis="documented_utc_day",
-            window_minutes=1440, limit_id="free_model_daily_requests", reset_interval="daily",
-            stale_after=stale_after))
+    if (
+        isinstance(free, dict)
+        and _num(free.get("limit")) is not None
+        and _num(free.get("used")) is not None
+    ):
+        windows.append(
+            make_window(
+                source=source,
+                window="free_daily_requests",
+                now=now,
+                as_of=now,
+                unit="requests",
+                used=_num(free.get("used")),
+                limit=_num(free.get("limit")),
+                used_percent=None,
+                resets_at=_next_utc_midnight(now),
+                resets_at_basis="documented_utc_day",
+                window_minutes=1440,
+                limit_id="free_model_daily_requests",
+                reset_interval="daily",
+                stale_after=stale_after,
+            )
+        )
     if not windows:
-        return _provider("openrouter", source, NO_DATA, location=OPENROUTER_KEY_URL,
-                         detail="key reports no credit limit, budget, or free-model quota")
-    return _provider("openrouter", source, OK, location=OPENROUTER_KEY_URL, windows=windows,
-                     detail="live read of /api/v1/key")
+        return _provider(
+            "openrouter",
+            source,
+            NO_DATA,
+            location=OPENROUTER_KEY_URL,
+            detail="key reports no credit limit, budget, or free-model quota",
+        )
+    return _provider(
+        "openrouter",
+        source,
+        OK,
+        location=OPENROUTER_KEY_URL,
+        windows=windows,
+        detail="live read of /api/v1/key",
+    )
 
 
 # ----------------------------------------------------------------- report
@@ -516,12 +696,25 @@ def build_report(
     """The full headroom document (schema in README). ``now`` is injectable."""
     now = datetime.now(timezone.utc).timestamp() if now is None else float(now)
     readers = (
-        ("codex", "codex-rollout",
-         lambda: read_codex(now, root=codex_root, max_files=max_codex_files, stale_after=stale_after)),
-        ("claude", "claude-statusline",
-         lambda: read_claude(now, path=claude_file, stale_after=stale_after)),
-        ("openrouter", "openrouter-key",
-         lambda: read_openrouter(now, env=env, offline=offline, fetch=fetch, stale_after=stale_after)),
+        (
+            "codex",
+            "codex-rollout",
+            lambda: read_codex(
+                now, root=codex_root, max_files=max_codex_files, stale_after=stale_after
+            ),
+        ),
+        (
+            "claude",
+            "claude-statusline",
+            lambda: read_claude(now, path=claude_file, stale_after=stale_after),
+        ),
+        (
+            "openrouter",
+            "openrouter-key",
+            lambda: read_openrouter(
+                now, env=env, offline=offline, fetch=fetch, stale_after=stale_after
+            ),
+        ),
     )
     providers = []
     for name, source, reader in readers:
@@ -582,11 +775,22 @@ def render_table(report: dict, tz: timezone | None = None) -> str:
             if p["detail"]:
                 notes.append(f"{p['provider']}: {p['detail']}")
         for w in p["windows"]:
-            name = w["window"] if w["limit_id"] in (None, "codex") or p["provider"] != "codex" \
+            name = (
+                w["window"]
+                if w["limit_id"] in (None, "codex") or p["provider"] != "codex"
                 else f"{w['window']} ({w['limit_id']})"
+            )
             state = w["state"] if w["freshness"] == "fresh" else f"{w['state']} ({w['freshness']})"
-            rows.append((p["provider"], name, _used_text(w), _local(w["resets_at"], tz),
-                         f"{_age(w['age_seconds'])} ago" if w["age_seconds"] is not None else "-", state))
+            rows.append(
+                (
+                    p["provider"],
+                    name,
+                    _used_text(w),
+                    _local(w["resets_at"], tz),
+                    f"{_age(w['age_seconds'])} ago" if w["age_seconds"] is not None else "-",
+                    state,
+                )
+            )
         for warning in p["warnings"]:
             notes.append(f"{p['provider']}: {warning}")
     widths = [max(len(r[i]) for r in rows) for i in range(len(rows[0]))]
@@ -607,7 +811,15 @@ def write_json_atomic(report: dict, path: Path) -> None:
 
 
 __all__ = [
-    "SCHEMA", "SCHEMA_VERSION", "build_report", "make_window", "read_claude", "read_codex",
-    "read_openrouter", "render_table", "window_label", "write_json_atomic", "iso_utc",
+    "SCHEMA",
+    "SCHEMA_VERSION",
+    "build_report",
+    "make_window",
+    "read_claude",
+    "read_codex",
+    "read_openrouter",
+    "render_table",
+    "window_label",
+    "write_json_atomic",
+    "iso_utc",
 ]
-

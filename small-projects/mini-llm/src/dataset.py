@@ -136,5 +136,6 @@ def build_dataloader(
     stride: int = 1,
 ) -> DataLoader:
     """Loader over a .bin file. Train drops the ragged tail; val keeps it."""
-    return TokenDataLoader(bin_path, context_length, batch_size, shuffle=shuffle,
-                           drop_last=drop_last, stride=stride)
+    return TokenDataLoader(
+        bin_path, context_length, batch_size, shuffle=shuffle, drop_last=drop_last, stride=stride
+    )

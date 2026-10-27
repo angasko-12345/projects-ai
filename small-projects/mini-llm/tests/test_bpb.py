@@ -40,8 +40,7 @@ class UniformModel(torch.nn.Module):
         logits = torch.zeros(*x.shape, self.vocab) + 0 * self.anchor
         loss = None
         if y is not None:
-            loss = torch.nn.functional.cross_entropy(logits.reshape(-1, self.vocab),
-                                                     y.reshape(-1))
+            loss = torch.nn.functional.cross_entropy(logits.reshape(-1, self.vocab), y.reshape(-1))
         return logits, loss
 
 
@@ -67,12 +66,15 @@ class TestByteTable(unittest.TestCase):
 
     def test_table_sums_to_the_utf8_length_of_the_text(self):
         table = ev.token_byte_lengths(self.tok)
-        for text in ("The tiny language model reads tokens.",
-                     "café ünïcode 🚀\ttab\n\nx", "  two  spaces", "日本語"):
+        for text in (
+            "The tiny language model reads tokens.",
+            "café ünïcode 🚀\ttab\n\nx",
+            "  two  spaces",
+            "日本語",
+        ):
             with self.subTest(text=text):
                 ids = self.tok.encode(text).ids
-                self.assertEqual(int(table[torch.tensor(ids)].sum()),
-                                 len(text.encode("utf-8")))
+                self.assertEqual(int(table[torch.tensor(ids)].sum()), len(text.encode("utf-8")))
 
     def test_special_tokens_count_zero_bytes(self):
         table = ev.token_byte_lengths(self.tok)
@@ -92,8 +94,9 @@ class TestBitsPerByteArithmetic(unittest.TestCase):
         table = torch.tensor([0, 1, 2, 3])
         y = torch.tensor([[1, 2, 3, 3]])  # 1+2+3+3 = 9 bytes, 4 targets -> 8 bits
         loader = ListLoader([(torch.zeros_like(y), y)])
-        stats = ev.evaluate_stats(UniformModel(4), loader, 1, torch.device("cpu"),
-                                  byte_lengths=table)
+        stats = ev.evaluate_stats(
+            UniformModel(4), loader, 1, torch.device("cpu"), byte_lengths=table
+        )
         self.assertAlmostEqual(stats["loss"], math.log(4), places=6)
         self.assertEqual(stats["bytes"], 9)
         self.assertEqual(stats["tokens"], 4)
@@ -102,12 +105,12 @@ class TestBitsPerByteArithmetic(unittest.TestCase):
 
     def test_ragged_final_batch_is_weighted_by_its_targets(self):
         table = torch.tensor([0, 1, 2, 3])
-        full = torch.tensor([[1, 1, 1], [1, 1, 1]])   # 6 targets, 6 bytes
-        ragged = torch.tensor([[3, 3, 3]])            # 3 targets, 9 bytes
-        loader = ListLoader([(torch.zeros_like(full), full),
-                             (torch.zeros_like(ragged), ragged)])
-        stats = ev.evaluate_stats(UniformModel(4), loader, 2, torch.device("cpu"),
-                                  byte_lengths=table)
+        full = torch.tensor([[1, 1, 1], [1, 1, 1]])  # 6 targets, 6 bytes
+        ragged = torch.tensor([[3, 3, 3]])  # 3 targets, 9 bytes
+        loader = ListLoader([(torch.zeros_like(full), full), (torch.zeros_like(ragged), ragged)])
+        stats = ev.evaluate_stats(
+            UniformModel(4), loader, 2, torch.device("cpu"), byte_lengths=table
+        )
         self.assertEqual((stats["tokens"], stats["bytes"]), (9, 15))
         self.assertAlmostEqual(stats["bpb"], 9 * 2 / 15, places=6)
 
@@ -115,8 +118,9 @@ class TestBitsPerByteArithmetic(unittest.TestCase):
         table = torch.tensor([0, 1, 2, 3])
         a, b = torch.tensor([[1, 1]]), torch.tensor([[3, 3]])
         loader = ListLoader([(a, a), (b, b)])
-        stats = ev.evaluate_stats(UniformModel(4), loader, 1, torch.device("cpu"),
-                                  byte_lengths=table)
+        stats = ev.evaluate_stats(
+            UniformModel(4), loader, 1, torch.device("cpu"), byte_lengths=table
+        )
         self.assertEqual(stats["bytes"], 2)
 
     def test_zero_bytes_is_nan_not_a_division_error(self):
@@ -124,8 +128,7 @@ class TestBitsPerByteArithmetic(unittest.TestCase):
 
     def test_without_a_table_no_bpb_is_claimed(self):
         y = torch.tensor([[1, 2]])
-        stats = ev.evaluate_stats(UniformModel(4), ListLoader([(y, y)]), 1,
-                                  torch.device("cpu"))
+        stats = ev.evaluate_stats(UniformModel(4), ListLoader([(y, y)]), 1, torch.device("cpu"))
         self.assertNotIn("bpb", stats)
 
 
@@ -135,13 +138,24 @@ class TestBpbEndToEnd(unittest.TestCase):
         cls.tmp = tempfile.TemporaryDirectory()
         cls.train_bin = build_data(cls.tmp.name, context_length=16)
         cls.ckpt_dir = os.path.join(cls.tmp.name, "ckpts")
-        cls.cfg = Config(vocab_size=load_data_meta(cls.train_bin)["vocab_size"],
-                         context_length=16, n_layers=1, n_heads=2, d_model=32, d_ff=64,
-                         batch_size=2, max_steps=4, warmup_steps=1, eval_interval=2,
-                         eval_batches=3, train_bin=cls.train_bin,
-                         val_bin=os.path.join(cls.tmp.name, "val.bin"),
-                         tokenizer_path=os.path.join(cls.tmp.name, "tokenizer.json"),
-                         checkpoint_dir=cls.ckpt_dir, seed=0)
+        cls.cfg = Config(
+            vocab_size=load_data_meta(cls.train_bin)["vocab_size"],
+            context_length=16,
+            n_layers=1,
+            n_heads=2,
+            d_model=32,
+            d_ff=64,
+            batch_size=2,
+            max_steps=4,
+            warmup_steps=1,
+            eval_interval=2,
+            eval_batches=3,
+            train_bin=cls.train_bin,
+            val_bin=os.path.join(cls.tmp.name, "val.bin"),
+            tokenizer_path=os.path.join(cls.tmp.name, "tokenizer.json"),
+            checkpoint_dir=cls.ckpt_dir,
+            seed=0,
+        )
         with contextlib.redirect_stdout(io.StringIO()) as out:
             train(cls.cfg)
         cls.train_log = out.getvalue()
@@ -160,8 +174,9 @@ class TestBpbEndToEnd(unittest.TestCase):
         ckpt = read_checkpoint(self.final)
         self.assertTrue(math.isfinite(ckpt["val_bpb"]))
         self.assertGreater(ckpt["val_bpb"], 0.0)
-        self.assertTrue(math.isfinite(read_checkpoint(
-            os.path.join(self.ckpt_dir, "step_2.pt"))["val_bpb"]))
+        self.assertTrue(
+            math.isfinite(read_checkpoint(os.path.join(self.ckpt_dir, "step_2.pt"))["val_bpb"])
+        )
 
     def test_evaluate_cli_reproduces_the_training_eval(self):
         # Same windows (stride 1), same batch count: same loss and bpb exactly.

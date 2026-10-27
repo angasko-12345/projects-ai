@@ -24,12 +24,8 @@ from token_tracker.model import EVENT_COLUMNS, normalize_event
 def build_kilo_db(path: Path) -> None:
     con = sqlite3.connect(path)
     con.execute("CREATE TABLE session (id TEXT, directory TEXT, agent TEXT)")
-    con.execute(
-        "CREATE TABLE message (id TEXT, session_id TEXT, time_created INTEGER, data TEXT)"
-    )
-    con.execute(
-        "INSERT INTO session VALUES ('s1', 'D:/work/repo', 'plan')"
-    )
+    con.execute("CREATE TABLE message (id TEXT, session_id TEXT, time_created INTEGER, data TEXT)")
+    con.execute("INSERT INTO session VALUES ('s1', 'D:/work/repo', 'plan')")
     assistant = json.dumps(
         {
             "role": "assistant",
@@ -51,8 +47,13 @@ def build_kilo_db(path: Path) -> None:
             "role": "assistant",
             "providerID": "kilo",
             "modelID": "stepfun/step-3.7-flash:free",
-            "tokens": {"total": 0, "input": 0, "output": 0, "reasoning": 0,
-                       "cache": {"read": 0, "write": 0}},
+            "tokens": {
+                "total": 0,
+                "input": 0,
+                "output": 0,
+                "reasoning": 0,
+                "cache": {"read": 0, "write": 0},
+            },
         }
     )
     con.execute("INSERT INTO message VALUES ('m1', 's1', 1790775641047, ?)", (assistant,))
@@ -82,9 +83,7 @@ def build_pi_dir(root: Path) -> None:
                 "cwd": "D:/work/pi-project",
             }
         ),
-        json.dumps(
-            {"type": "message", "id": "msg-user", "message": {"role": "user"}}
-        ),
+        json.dumps({"type": "message", "id": "msg-user", "message": {"role": "user"}}),
         json.dumps(
             {
                 "type": "message",
@@ -124,8 +123,13 @@ def build_pi_dir(root: Path) -> None:
                     "role": "assistant",
                     "provider": "groq",
                     "model": "llama-3.1-8b-instant",
-                    "usage": {"input": 0, "output": 0, "cacheRead": 0,
-                              "cacheWrite": 0, "totalTokens": 0},
+                    "usage": {
+                        "input": 0,
+                        "output": 0,
+                        "cacheRead": 0,
+                        "cacheWrite": 0,
+                        "totalTokens": 0,
+                    },
                 },
             }
         ),
@@ -462,9 +466,7 @@ def build_cline_dir(root: Path) -> None:
         ]
     }
     (session_dir / "sess-cline.json").write_text(json.dumps(meta), encoding="utf-8")
-    (session_dir / "sess-cline.messages.json").write_text(
-        json.dumps(messages), encoding="utf-8"
-    )
+    (session_dir / "sess-cline.messages.json").write_text(json.dumps(messages), encoding="utf-8")
 
 
 # ----------------------------------------------------------- dsh fixtures
@@ -483,7 +485,9 @@ def build_dsh_dir(root: Path) -> None:
         try:
             import zstandard as zstd
         except ImportError:
-            raise unittest.SkipTest("no zstd backend on this interpreter (expected on 3.11)") from None
+            raise unittest.SkipTest(
+                "no zstd backend on this interpreter (expected on 3.11)"
+            ) from None
     session_dir = root / "session-1" / "run-1"
     session_dir.mkdir(parents=True)
     lines = [
@@ -536,7 +540,14 @@ def build_dsh_dir(root: Path) -> None:
                 "type": "assistant/attempt",
                 "id": "attempt-1",
                 "time": 1790775643247,
-                "data": {"usage": {"inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "cacheReadTokens": 0}},
+                "data": {
+                    "usage": {
+                        "inputTokens": 0,
+                        "outputTokens": 0,
+                        "totalTokens": 0,
+                        "cacheReadTokens": 0,
+                    }
+                },
             }
         ),
         "{bad line",
@@ -567,8 +578,13 @@ class CollectorParsingTest(unittest.TestCase):
         self.assertEqual(full.model, "stepfun/step-3.7-flash:free")
         self.assertEqual(full.total_tokens, 167)
         self.assertEqual(
-            (full.input_tokens, full.output_tokens, full.cache_read_tokens,
-             full.cache_write_tokens, full.reasoning_tokens),
+            (
+                full.input_tokens,
+                full.output_tokens,
+                full.cache_read_tokens,
+                full.cache_write_tokens,
+                full.reasoning_tokens,
+            ),
             (100, 20, 40, 2, 5),
         )
         self.assertTrue(full.exact)
@@ -604,13 +620,21 @@ class CollectorParsingTest(unittest.TestCase):
         # input_tokens includes cache, output includes reasoning in the source;
         # the stored split must sum back to the source-reported total.
         self.assertEqual(
-            (event.input_tokens, event.cache_read_tokens, event.cache_write_tokens,
-             event.output_tokens, event.reasoning_tokens),
+            (
+                event.input_tokens,
+                event.cache_read_tokens,
+                event.cache_write_tokens,
+                event.output_tokens,
+                event.reasoning_tokens,
+            ),
             (300, 600, 100, 50, 30),
         )
         self.assertEqual(
-            event.input_tokens + event.cache_read_tokens + event.cache_write_tokens
-            + event.output_tokens + event.reasoning_tokens,
+            event.input_tokens
+            + event.cache_read_tokens
+            + event.cache_write_tokens
+            + event.output_tokens
+            + event.reasoning_tokens,
             1080,
         )
         self.assertTrue(event.exact)
@@ -654,15 +678,21 @@ class CollectorParsingTest(unittest.TestCase):
         # input (33); it must land directly in input_tokens, not be double-
         # subtracted as if it were the inclusive total (511997).
         self.assertEqual(
-            (details_event.input_tokens, details_event.cache_read_tokens,
-             details_event.cache_write_tokens, details_event.output_tokens,
-             details_event.reasoning_tokens),
+            (
+                details_event.input_tokens,
+                details_event.cache_read_tokens,
+                details_event.cache_write_tokens,
+                details_event.output_tokens,
+                details_event.reasoning_tokens,
+            ),
             (33, 436512, 75452, 3935, 1960),
         )
         # Tracker invariant vs the vendor's reported totals.
         self.assertEqual(
-            details_event.input_tokens + details_event.cache_read_tokens
-            + details_event.cache_write_tokens + details_event.output_tokens
+            details_event.input_tokens
+            + details_event.cache_read_tokens
+            + details_event.cache_write_tokens
+            + details_event.output_tokens
             + details_event.reasoning_tokens,
             511997 + 5895,
         )
@@ -673,9 +703,13 @@ class CollectorParsingTest(unittest.TestCase):
         # Without tokenDetails: inclusive inputTokens minus cache sides.
         fallback = by_model["mai-code-1.1-flash"]
         self.assertEqual(
-            (fallback.input_tokens, fallback.cache_read_tokens,
-             fallback.cache_write_tokens, fallback.output_tokens,
-             fallback.reasoning_tokens),
+            (
+                fallback.input_tokens,
+                fallback.cache_read_tokens,
+                fallback.cache_write_tokens,
+                fallback.output_tokens,
+                fallback.reasoning_tokens,
+            ),
             (900, 2000, 100, 400, 100),
         )
         self.assertEqual(fallback.total_tokens, 3000 + 500)
@@ -692,8 +726,9 @@ class CollectorParsingTest(unittest.TestCase):
         e1 = by_rid["req-1"]
         self.assertEqual(e1.tool, "Claude Code")
         self.assertEqual(e1.provider, "openrouter")  # router model parsed; open_router aliased
-        self.assertEqual(e1.raw_metadata["model_raw"],
-                         "anthropic/open_router/google/gemma-4-26b-a4b-it:free")
+        self.assertEqual(
+            e1.raw_metadata["model_raw"], "anthropic/open_router/google/gemma-4-26b-a4b-it:free"
+        )
         self.assertEqual(e1.model, "google/gemma-4-26b-a4b-it:free")
         self.assertEqual(e1.project, project_cwd)
         # Anthropic: input excludes cache; output includes thinking
@@ -853,11 +888,15 @@ class CrossSourceDedupTest(unittest.TestCase):
 
     def test_same_request_seen_by_two_sources_counts_once(self):
         first = self._event(
-            source="pi", tool="Pi", timestamp="2026-10-06T10:00:00.100Z",
+            source="pi",
+            tool="Pi",
+            timestamp="2026-10-06T10:00:00.100Z",
             request_id="pi-1",
         )
         second = self._event(
-            source="opencode", tool="OpenCode", timestamp="2026-10-06T10:00:00.900Z",
+            source="opencode",
+            tool="OpenCode",
+            timestamp="2026-10-06T10:00:00.900Z",
             request_id="oc-1",
         )
         self.assertNotEqual(first.id, second.id)  # ids are source-scoped
@@ -872,11 +911,15 @@ class CrossSourceDedupTest(unittest.TestCase):
 
     def test_content_dedup_is_order_independent(self):
         second = self._event(
-            source="opencode", tool="OpenCode", timestamp="2026-10-06T10:00:00.900Z",
+            source="opencode",
+            tool="OpenCode",
+            timestamp="2026-10-06T10:00:00.900Z",
             request_id="oc-1",
         )
         first = self._event(
-            source="pi", tool="Pi", timestamp="2026-10-06T10:00:00.100Z",
+            source="pi",
+            tool="Pi",
+            timestamp="2026-10-06T10:00:00.100Z",
             request_id="pi-1",
         )
         db.insert_events(self.conn, [second, first])
@@ -885,12 +928,17 @@ class CrossSourceDedupTest(unittest.TestCase):
 
     def test_dedup_fills_missing_tool_attribution(self):
         provider_side = self._event(
-            source="openrouter", tool=None, timestamp="2026-10-06T10:00:00.100Z",
+            source="openrouter",
+            tool=None,
+            timestamp="2026-10-06T10:00:00.100Z",
             request_id=None,
         )
         agent_side = self._event(
-            source="kilo", tool="Kilo", timestamp="2026-10-06T10:00:00.600Z",
-            request_id="kilo-7", agent="plan",
+            source="kilo",
+            tool="Kilo",
+            timestamp="2026-10-06T10:00:00.600Z",
+            request_id="kilo-7",
+            agent="plan",
         )
         self.assertEqual(db.insert_events(self.conn, [provider_side]), (1, 0, 0))
         self.assertEqual(db.insert_events(self.conn, [agent_side]), (0, 1, 0))
@@ -901,20 +949,34 @@ class CrossSourceDedupTest(unittest.TestCase):
         # Zero rows carry no tokens to double-count; merging them would
         # undercount requests, so each source event stays its own row.
         first = normalize_event(
-            timestamp="2026-10-06T10:00:00.100Z", provider="groq", model="m",
-            exact=True, source="pi", tool="Pi", request_id="z1",
+            timestamp="2026-10-06T10:00:00.100Z",
+            provider="groq",
+            model="m",
+            exact=True,
+            source="pi",
+            tool="Pi",
+            request_id="z1",
         )
         second = normalize_event(
-            timestamp="2026-10-06T10:00:00.200Z", provider="groq", model="m",
-            exact=True, source="opencode", tool="OpenCode", request_id="z2",
+            timestamp="2026-10-06T10:00:00.200Z",
+            provider="groq",
+            model="m",
+            exact=True,
+            source="opencode",
+            tool="OpenCode",
+            request_id="z2",
         )
         self.assertNotEqual(first.dedup_key, second.dedup_key)
         db.insert_events(self.conn, [first, second])
         self.assertEqual(db.totals(self.conn)["events"], 2)
 
     def test_same_source_distinct_requests_with_identical_tokens_not_merged(self):
-        a = self._event(source="pi", tool="Pi", timestamp="2026-10-06T10:00:00.100Z", request_id="r1")
-        b = self._event(source="pi", tool="Pi", timestamp="2026-10-06T10:00:00.400Z", request_id="r2")
+        a = self._event(
+            source="pi", tool="Pi", timestamp="2026-10-06T10:00:00.100Z", request_id="r1"
+        )
+        b = self._event(
+            source="pi", tool="Pi", timestamp="2026-10-06T10:00:00.400Z", request_id="r2"
+        )
         self.assertEqual(db.insert_events(self.conn, [a, b]), (2, 0, 0))
         self.assertEqual(db.totals(self.conn)["events"], 2)
 
@@ -938,39 +1000,42 @@ class AggregationTest(unittest.TestCase):
         for index, (tool, provider, model, inp, out) in enumerate(rows):
             event = normalize_event(
                 timestamp=f"2026-10-05T10:00:0{index}.000Z",
-                provider=provider, model=model, tool=tool, exact=True,
-                source="manual", input_tokens=inp, output_tokens=out,
+                provider=provider,
+                model=model,
+                tool=tool,
+                exact=True,
+                source="manual",
+                input_tokens=inp,
+                output_tokens=out,
             )
             db.insert_events(self.conn, [event])
 
     def test_breakdown_by_tool(self):
-        result = dict(
-            (key, total) for key, total, _events in db.breakdown(self.conn, "tool")
-        )
+        result = dict((key, total) for key, total, _events in db.breakdown(self.conn, "tool"))
         self.assertEqual(result["OpenCode"], 165)
         self.assertEqual(result["Oh My Pi"], 440)
         self.assertEqual(result["Hermes"], 1100)
 
     def test_breakdown_by_provider(self):
-        result = dict(
-            (key, total) for key, total, _events in db.breakdown(self.conn, "provider")
-        )
+        result = dict((key, total) for key, total, _events in db.breakdown(self.conn, "provider"))
         self.assertEqual(result["openrouter"], 165)
         self.assertEqual(result["omp-zen"], 440)
         self.assertEqual(result["nous"], 1100)
 
     def test_breakdown_by_model(self):
-        result = dict(
-            (key, total) for key, total, _events in db.breakdown(self.conn, "model")
-        )
+        result = dict((key, total) for key, total, _events in db.breakdown(self.conn, "model"))
         self.assertEqual(result["glm-5"], 165)
         self.assertEqual(result["mimo-flash"], 440)
         self.assertEqual(result["model-y"], 1100)
 
     def test_time_window_filters_and_exact_split(self):
         recent = normalize_event(
-            timestamp="2026-10-06T10:00:00.000Z", provider="kilo",
-            model="step", tool="Kilo", exact=False, source="manual",
+            timestamp="2026-10-06T10:00:00.000Z",
+            provider="kilo",
+            model="step",
+            tool="Kilo",
+            exact=False,
+            source="manual",
             input_tokens=1000000,
         )
         db.insert_events(self.conn, [recent])
@@ -999,12 +1064,19 @@ class SyncAllTest(unittest.TestCase):
         kilo_db = self.root / "kilo.db"
         build_kilo_db(kilo_db)
         registry = [
-            collectors.Collector("kilo", "Kilo", "exact", "agent",
-                                 lambda: kilo_db, collectors.collect_kilo),
-            collectors.Collector("ghost", "Ghost Agent", "exact", "agent",
-                                 lambda: None, collectors.collect_kilo),
-            collectors.Collector("openrouter", "OpenRouter", "unavailable", "provider",
-                                 unavailable_reason="activity API returned HTTP 403"),
+            collectors.Collector(
+                "kilo", "Kilo", "exact", "agent", lambda: kilo_db, collectors.collect_kilo
+            ),
+            collectors.Collector(
+                "ghost", "Ghost Agent", "exact", "agent", lambda: None, collectors.collect_kilo
+            ),
+            collectors.Collector(
+                "openrouter",
+                "OpenRouter",
+                "unavailable",
+                "provider",
+                unavailable_reason="activity API returned HTTP 403",
+            ),
         ]
         with mock.patch.object(collectors, "REGISTRY", registry):
             results = collectors.sync_all(self.conn)
@@ -1053,8 +1125,9 @@ class SyncAllTest(unittest.TestCase):
         kilo_db = self.root / "kilo.db"
         build_kilo_db(kilo_db)
         registry = [
-            collectors.Collector("kilo", "Kilo", "exact", "agent",
-                                 lambda: kilo_db, collectors.collect_kilo),
+            collectors.Collector(
+                "kilo", "Kilo", "exact", "agent", lambda: kilo_db, collectors.collect_kilo
+            ),
         ]
         with mock.patch.object(collectors, "REGISTRY", registry):
             first = collectors.sync_all(self.conn)
@@ -1069,8 +1142,9 @@ class SyncAllTest(unittest.TestCase):
 
     def test_success_clears_a_previous_error(self):
         registry_fail = [
-            collectors.Collector("kilo", "Kilo", "exact", "agent",
-                                 lambda: None, collectors.collect_kilo),
+            collectors.Collector(
+                "kilo", "Kilo", "exact", "agent", lambda: None, collectors.collect_kilo
+            ),
         ]
         with mock.patch.object(collectors, "REGISTRY", registry_fail):
             collectors.sync_all(self.conn)
@@ -1082,8 +1156,9 @@ class SyncAllTest(unittest.TestCase):
         kilo_db = self.root / "kilo.db"
         build_kilo_db(kilo_db)
         registry_ok = [
-            collectors.Collector("kilo", "Kilo", "exact", "agent",
-                                 lambda: kilo_db, collectors.collect_kilo),
+            collectors.Collector(
+                "kilo", "Kilo", "exact", "agent", lambda: kilo_db, collectors.collect_kilo
+            ),
         ]
         with mock.patch.object(collectors, "REGISTRY", registry_ok):
             collectors.sync_all(self.conn)
@@ -1121,9 +1196,7 @@ class DataDirConfigurationTest(unittest.TestCase):
         self.root = Path(self.tmp.name)
         # Never read the developer's real setting or config file.
         saved = {
-            key: os.environ.pop(key)
-            for key in (config.ENV_VAR, "KILO_DB")
-            if key in os.environ
+            key: os.environ.pop(key) for key in (config.ENV_VAR, "KILO_DB") if key in os.environ
         }
         self.addCleanup(lambda: os.environ.update(saved))
         self.real_config_file = config.config_file
@@ -1200,14 +1273,18 @@ class DataDirConfigurationTest(unittest.TestCase):
         conn = db.connect(self.root / "test.db")
         self.addCleanup(conn.close)
         registry = [
-            collectors.Collector("kilo", "Kilo", "exact", "agent",
-                                 collectors.find_kilo, collectors.collect_kilo),
-            collectors.Collector("codex", "Codex", "exact", "agent",
-                                 collectors.find_codex, collectors.collect_codex),
+            collectors.Collector(
+                "kilo", "Kilo", "exact", "agent", collectors.find_kilo, collectors.collect_kilo
+            ),
+            collectors.Collector(
+                "codex", "Codex", "exact", "agent", collectors.find_codex, collectors.collect_codex
+            ),
         ]
-        with mock.patch.dict(os.environ, {config.ENV_VAR: str(self.root / "typo")}), \
-                mock.patch.object(collectors, "_user_home", lambda: home), \
-                mock.patch.object(collectors, "REGISTRY", registry):
+        with (
+            mock.patch.dict(os.environ, {config.ENV_VAR: str(self.root / "typo")}),
+            mock.patch.object(collectors, "_user_home", lambda: home),
+            mock.patch.object(collectors, "REGISTRY", registry),
+        ):
             os.environ.pop("CODEX_SESSIONS", None)
             results = collectors.sync_all(conn)
         self.assertEqual(results["kilo"]["status"], "ok")
@@ -1220,8 +1297,9 @@ class DataDirConfigurationTest(unittest.TestCase):
         conn = db.connect(self.root / "test.db")
         self.addCleanup(conn.close)
         registry = [
-            collectors.Collector("kilo", "Kilo", "exact", "agent",
-                                 collectors.find_kilo, collectors.collect_kilo),
+            collectors.Collector(
+                "kilo", "Kilo", "exact", "agent", collectors.find_kilo, collectors.collect_kilo
+            ),
         ]
         with mock.patch.dict(os.environ, {config.ENV_VAR: str(self.root / "gone")}):
             with mock.patch.object(collectors, "REGISTRY", registry):
@@ -1236,14 +1314,22 @@ class DataDirConfigurationTest(unittest.TestCase):
 def _renormalize(event, **changes):
     """The event as a collector with different semantics would have built it."""
     fields = {
-        "timestamp": event.timestamp, "provider": event.provider, "source": event.source,
-        "input_tokens": event.input_tokens, "output_tokens": event.output_tokens,
+        "timestamp": event.timestamp,
+        "provider": event.provider,
+        "source": event.source,
+        "input_tokens": event.input_tokens,
+        "output_tokens": event.output_tokens,
         "cache_read_tokens": event.cache_read_tokens,
         "cache_write_tokens": event.cache_write_tokens,
-        "reasoning_tokens": event.reasoning_tokens, "cost": event.cost,
-        "exact": event.exact, "agent": event.agent, "tool": event.tool,
-        "model": event.model, "project": event.project,
-        "request_id": event.request_id, "raw_metadata": event.raw_metadata,
+        "reasoning_tokens": event.reasoning_tokens,
+        "cost": event.cost,
+        "exact": event.exact,
+        "agent": event.agent,
+        "tool": event.tool,
+        "model": event.model,
+        "project": event.project,
+        "request_id": event.request_id,
+        "raw_metadata": event.raw_metadata,
     }
     fields.update(changes)
     return normalize_event(**fields)
@@ -1265,12 +1351,26 @@ class UpgradeRekeyTest(unittest.TestCase):
         project = self.root / "claude" / "p1"
         project.mkdir(parents=True)
         records = [
-            {"type": "assistant", "requestId": "req_A", "timestamp": "2026-10-20T10:00:00Z",
-             "cwd": "/w", "message": {"model": "anthropic/open_router/anthropic/claude-sonnet-4.5",
-                                      "usage": {"input_tokens": 100, "output_tokens": 50}}},
-            {"type": "assistant", "requestId": "req_B", "timestamp": "2026-10-20T10:01:00Z",
-             "cwd": "/w", "message": {"model": "anthropic/OpenRouter/openai/gpt-5",
-                                      "usage": {"input_tokens": 7, "output_tokens": 3}}},
+            {
+                "type": "assistant",
+                "requestId": "req_A",
+                "timestamp": "2026-10-20T10:00:00Z",
+                "cwd": "/w",
+                "message": {
+                    "model": "anthropic/open_router/anthropic/claude-sonnet-4.5",
+                    "usage": {"input_tokens": 100, "output_tokens": 50},
+                },
+            },
+            {
+                "type": "assistant",
+                "requestId": "req_B",
+                "timestamp": "2026-10-20T10:01:00Z",
+                "cwd": "/w",
+                "message": {
+                    "model": "anthropic/OpenRouter/openai/gpt-5",
+                    "usage": {"input_tokens": 7, "output_tokens": 3},
+                },
+            },
         ]
         (project / "s.jsonl").write_text(
             "".join(json.dumps(r) + "\n" for r in records), encoding="utf-8"
@@ -1293,19 +1393,28 @@ class UpgradeRekeyTest(unittest.TestCase):
         for event, raw in zip(now["claude"], ("open_router", "OpenRouter"), strict=True):
             self.assertEqual(event.provider, "openrouter")
             old_claude.append(_renormalize(event, provider=raw))
-        old_claude.append(normalize_event(
-            timestamp="2026-10-20T10:02:00Z", provider="anthropic", source="claude",
-            tool="Claude Code", model="<synthetic>", exact=True, request_id="req_S",
-        ))
+        old_claude.append(
+            normalize_event(
+                timestamp="2026-10-20T10:02:00Z",
+                provider="anthropic",
+                source="claude",
+                tool="Claude Code",
+                model="<synthetic>",
+                exact=True,
+                request_id="req_S",
+            )
+        )
         old_hermes = [
             _renormalize(e, cost=0.0 if e.cost is None else e.cost) for e in now["hermes"]
         ]
         # Old copilot input: (tokenDetails.input.tokenCount or inputTokens)
         # minus cache, clamped at zero, recomputed from the fixture file.
         old_input = {}
-        for line in (self.root / "session-state" / "uuid-fixture" / "events.jsonl").read_text(
-            encoding="utf-8"
-        ).splitlines():
+        for line in (
+            (self.root / "session-state" / "uuid-fixture" / "events.jsonl")
+            .read_text(encoding="utf-8")
+            .splitlines()
+        ):
             try:
                 obj = json.loads(line)
             except ValueError:
@@ -1323,11 +1432,16 @@ class UpgradeRekeyTest(unittest.TestCase):
                 _renormalize(event, input_tokens=old_input[event.model], raw_metadata=meta)
             )
         self.assertNotEqual(
-            {e.id for e in old_copilot}, {e.id for e in now["copilot"]},
+            {e.id for e in old_copilot},
+            {e.id for e in now["copilot"]},
             "fixture must exercise a copilot id change",
         )
-        return {"claude": old_claude, "hermes": old_hermes,
-                "copilot": old_copilot, "kilo": now["kilo"]}
+        return {
+            "claude": old_claude,
+            "hermes": old_hermes,
+            "copilot": old_copilot,
+            "kilo": now["kilo"],
+        }
 
     def write_legacy_db(self, path, *, extra=()):
         conn = db.connect(path)
@@ -1342,8 +1456,9 @@ class UpgradeRekeyTest(unittest.TestCase):
 
     def resync(self, conn):
         registry = [
-            collectors.Collector(src, src, "exact", "agent", lambda: Path("."),
-                                 lambda _p, e=events: e)
+            collectors.Collector(
+                src, src, "exact", "agent", lambda: Path("."), lambda _p, e=events: e
+            )
             for src, events in self.current().items()
         ]
         with mock.patch.object(collectors, "REGISTRY", registry):
@@ -1428,13 +1543,26 @@ class ClaudeNoRequestIdTest(unittest.TestCase):
         self.root = Path(tmp.name)
         self.project = self.root / "claude" / "p1"
         self.project.mkdir(parents=True)
-        self.synthetic = {"type": "assistant", "timestamp": "2026-10-20T10:00:00.000Z", "cwd": "/w",
-                          "message": {"model": "<synthetic>", "usage": {"input_tokens": 0, "output_tokens": 0}}}
-        self.no_rid = {"type": "assistant", "timestamp": "2026-10-20T10:01:00.000Z", "cwd": "/w",
-                       "message": {"model": "claude-sonnet-4-5", "usage": {"input_tokens": 300, "output_tokens": 30}}}
+        self.synthetic = {
+            "type": "assistant",
+            "timestamp": "2026-10-20T10:00:00.000Z",
+            "cwd": "/w",
+            "message": {"model": "<synthetic>", "usage": {"input_tokens": 0, "output_tokens": 0}},
+        }
+        self.no_rid = {
+            "type": "assistant",
+            "timestamp": "2026-10-20T10:01:00.000Z",
+            "cwd": "/w",
+            "message": {
+                "model": "claude-sonnet-4-5",
+                "usage": {"input_tokens": 300, "output_tokens": 30},
+            },
+        }
 
     def write(self, name, records):
-        (self.project / name).write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
+        (self.project / name).write_text(
+            "".join(json.dumps(r) + "\n" for r in records), encoding="utf-8"
+        )
 
     def stored(self, conn):
         return conn.execute(
@@ -1444,7 +1572,10 @@ class ClaudeNoRequestIdTest(unittest.TestCase):
     def test_id_does_not_depend_on_earlier_records(self):
         self.write("b.jsonl", [self.no_rid])
         first = collectors.collect_claude(self.root / "claude")
-        self.write("a.jsonl", [{**self.no_rid, "requestId": "req_new", "timestamp": "2026-10-20T09:00:00.000Z"}])
+        self.write(
+            "a.jsonl",
+            [{**self.no_rid, "requestId": "req_new", "timestamp": "2026-10-20T09:00:00.000Z"}],
+        )
         second = collectors.collect_claude(self.root / "claude")
         self.assertIn(first[0].id, {event.id for event in second})
         self.assertIsNone(first[0].request_id)
@@ -1454,9 +1585,16 @@ class ClaudeNoRequestIdTest(unittest.TestCase):
         # so the real record was stored as __no_rid_1.
         self.write("s.jsonl", [self.synthetic, self.no_rid])
         legacy = normalize_event(
-            timestamp=self.no_rid["timestamp"], provider="anthropic", source="claude",
-            tool="Claude Code", model="claude-sonnet-4-5", project="/w", input_tokens=300,
-            output_tokens=30, exact=True, request_id="__no_rid_1",
+            timestamp=self.no_rid["timestamp"],
+            provider="anthropic",
+            source="claude",
+            tool="Claude Code",
+            model="claude-sonnet-4-5",
+            project="/w",
+            input_tokens=300,
+            output_tokens=30,
+            exact=True,
+            request_id="__no_rid_1",
         )
         for version in (0, 1):
             with self.subTest(user_version=version):
@@ -1470,7 +1608,9 @@ class ClaudeNoRequestIdTest(unittest.TestCase):
                 self.addCleanup(conn.close)
                 db.insert_events(conn, collectors.collect_claude(self.root / "claude"))
                 self.assertEqual(tuple(self.stored(conn)), (1, 330))
-                self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], db.SCHEMA_VERSION)
+                self.assertEqual(
+                    conn.execute("PRAGMA user_version").fetchone()[0], db.SCHEMA_VERSION
+                )
 
 
 # ----------------------------------------------------- legacy imports
@@ -1518,8 +1658,12 @@ class LegacyExportCompatTest(unittest.TestCase):
 
     def test_current_header_round_trips(self):
         event = normalize_event(
-            timestamp="2026-10-06T10:00:00.000Z", provider="openrouter",
-            tool="Pi", exact=True, source="pi", input_tokens=100,
+            timestamp="2026-10-06T10:00:00.000Z",
+            provider="openrouter",
+            tool="Pi",
+            exact=True,
+            source="pi",
+            input_tokens=100,
         )
         db.insert_events(self.conn, [event])
         path = Path(self.tmp.name) / "export.csv"

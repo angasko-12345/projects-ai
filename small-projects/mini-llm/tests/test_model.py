@@ -87,9 +87,7 @@ class TestModel(unittest.TestCase):
             self.assertIn("optimizer_state", ckpt)
             self.assertIn("scheduler_state", ckpt)
             self.assertIn("config", ckpt)
-            for p_old, p_new in zip(
-                self.model.parameters(), fresh.parameters(), strict=False
-            ):
+            for p_old, p_new in zip(self.model.parameters(), fresh.parameters(), strict=False):
                 self.assertTrue(torch.equal(p_old, p_new))
 
 

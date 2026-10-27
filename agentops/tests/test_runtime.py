@@ -135,14 +135,23 @@ class ProcessRuntimeTests(unittest.TestCase):
         self.assertEqual(runtime_env.get("AGENTOPS_RUNTIME_TEST"), "yes")
 
     def test_spawn_uses_unified_platform_policy(self):
-        with patch("agentops.runtime.asyncio.create_subprocess_exec", new_callable=AsyncMock) as spawn:
+        with patch(
+            "agentops.runtime.asyncio.create_subprocess_exec", new_callable=AsyncMock
+        ) as spawn:
             spawn.return_value = FakeProcess()
-            asyncio.run(ProcessRuntime().spawn_process(
-                "prog", cwd=".", env={}, stdout=None, stderr=None,
-            ))
+            asyncio.run(
+                ProcessRuntime().spawn_process(
+                    "prog",
+                    cwd=".",
+                    env={},
+                    stdout=None,
+                    stderr=None,
+                )
+            )
         kwargs = spawn.call_args.kwargs
         if sys.platform == "win32":
             import subprocess as stdlib_subprocess
+
             flags = kwargs.get("creationflags", 0)
             self.assertTrue(flags & stdlib_subprocess.CREATE_NO_WINDOW)
             self.assertTrue(flags & stdlib_subprocess.CREATE_NEW_PROCESS_GROUP)
@@ -163,9 +172,15 @@ class ProcessRuntimeTests(unittest.TestCase):
             calls.append((command, kwargs))
             return FakeProcess()
 
-        asyncio.run(ProcessRuntime(spawn=factory).spawn_process(
-            "prog", cwd=".", env={}, stdout=None, stderr=None,
-        ))
+        asyncio.run(
+            ProcessRuntime(spawn=factory).spawn_process(
+                "prog",
+                cwd=".",
+                env={},
+                stdout=None,
+                stderr=None,
+            )
+        )
         self.assertEqual(len(calls), 1)
         self.assertNotIn("start_new_session", calls[0][1])
         self.assertNotIn("creationflags", calls[0][1])
@@ -174,9 +189,14 @@ class ProcessRuntimeTests(unittest.TestCase):
         async def factory(*command, **kwargs):
             return HangingProcess()
 
-        result = asyncio.run(ProcessRuntime(spawn=factory).run_process(
-            ("slow",), cwd=".", env={}, timeout=0.05,
-        ))
+        result = asyncio.run(
+            ProcessRuntime(spawn=factory).run_process(
+                ("slow",),
+                cwd=".",
+                env={},
+                timeout=0.05,
+            )
+        )
         self.assertIsInstance(result, ProcessResult)
         self.assertTrue(result.timed_out)
         self.assertFalse(result.cancelled)
@@ -192,9 +212,15 @@ class ProcessRuntimeTests(unittest.TestCase):
 
         cancel_event = threading.Event()
         cancel_event.set()
-        result = asyncio.run(ProcessRuntime(spawn=factory).run_process(
-            ("prog",), cwd=".", env={}, timeout=30, cancel_event=cancel_event,
-        ))
+        result = asyncio.run(
+            ProcessRuntime(spawn=factory).run_process(
+                ("prog",),
+                cwd=".",
+                env={},
+                timeout=30,
+                cancel_event=cancel_event,
+            )
+        )
         self.assertTrue(result.cancelled)
         self.assertEqual(spawned, [])
 
@@ -206,10 +232,15 @@ class ProcessRuntimeTests(unittest.TestCase):
             raise AssertionError("cancel watcher thread must not be created")
 
         with patch("agentops.runtime.asyncio.to_thread", new=forbidden):
-            result = asyncio.run(ProcessRuntime(spawn=factory).run_process(
-                ("prog",), cwd=".", env={}, timeout=30,
-                cancel_event=threading.Event(),
-            ))
+            result = asyncio.run(
+                ProcessRuntime(spawn=factory).run_process(
+                    ("prog",),
+                    cwd=".",
+                    env={},
+                    timeout=30,
+                    cancel_event=threading.Event(),
+                )
+            )
         self.assertFalse(result.cancelled)
         self.assertEqual(result.stdout, b"done\n")
 
@@ -221,9 +252,13 @@ class ProcessRuntimeTests(unittest.TestCase):
 
         runtime = ProcessRuntime(spawn=factory)
         with patch("os.killpg", create=True) as killpg:
-            stdout, stderr = asyncio.run(runtime.terminate_process(
-                process, process_group=False, platform="posix",
-            ))
+            stdout, stderr = asyncio.run(
+                runtime.terminate_process(
+                    process,
+                    process_group=False,
+                    platform="posix",
+                )
+            )
         killpg.assert_not_called()
         self.assertTrue(process.killed)
         self.assertEqual((stdout, stderr), (b"partial", b""))
@@ -236,9 +271,13 @@ class ProcessRuntimeTests(unittest.TestCase):
 
         with patch("os.killpg", create=True) as killpg:
             killpg.side_effect = fake_killpg
-            stdout, stderr = asyncio.run(ProcessRuntime().terminate_process(
-                process, process_group=True, platform="posix",
-            ))
+            stdout, stderr = asyncio.run(
+                ProcessRuntime().terminate_process(
+                    process,
+                    process_group=True,
+                    platform="posix",
+                )
+            )
         self.assertEqual(killpg.call_count, 1)
         self.assertEqual((stdout, stderr), (b"partial", b""))
 
@@ -252,9 +291,15 @@ class ProcessRuntimeTests(unittest.TestCase):
             raise RuntimeError("observer blew up")
 
         with self.assertRaises(RuntimeError):
-            asyncio.run(ProcessRuntime(spawn=factory).run_process(
-                ("prog",), cwd=".", env={}, timeout=30, on_running=bad_callback,
-            ))
+            asyncio.run(
+                ProcessRuntime(spawn=factory).run_process(
+                    ("prog",),
+                    cwd=".",
+                    env={},
+                    timeout=30,
+                    on_running=bad_callback,
+                )
+            )
         self.assertTrue(process.killed)
 
     def test_mid_run_cancel_terminates_process(self):
@@ -267,9 +312,15 @@ class ProcessRuntimeTests(unittest.TestCase):
         timer = threading.Timer(0.05, cancel_event.set)
         timer.start()
         try:
-            result = asyncio.run(ProcessRuntime(spawn=factory).run_process(
-                ("slow",), cwd=".", env={}, timeout=30, cancel_event=cancel_event,
-            ))
+            result = asyncio.run(
+                ProcessRuntime(spawn=factory).run_process(
+                    ("slow",),
+                    cwd=".",
+                    env={},
+                    timeout=30,
+                    cancel_event=cancel_event,
+                )
+            )
         finally:
             timer.cancel()
             timer.join(timeout=5)
@@ -283,9 +334,14 @@ class ProcessRuntimeTests(unittest.TestCase):
             return process
 
         async def go():
-            task = asyncio.create_task(ProcessRuntime(spawn=factory).run_process(
-                ("slow",), cwd=".", env={}, timeout=30,
-            ))
+            task = asyncio.create_task(
+                ProcessRuntime(spawn=factory).run_process(
+                    ("slow",),
+                    cwd=".",
+                    env={},
+                    timeout=30,
+                )
+            )
             await asyncio.sleep(0.05)
             task.cancel()
             await task
@@ -312,28 +368,36 @@ class ProcessRuntimeTests(unittest.TestCase):
         called_pid, called_signal = killpg.call_args.args
         self.assertEqual(called_pid, 4242)
         import signal as stdlib_signal
+
         self.assertEqual(called_signal, stdlib_signal.SIGKILL)
         self.assertTrue(process.killed)
         self.assertEqual((stdout, stderr), (b"partial", b""))
 
     def test_cleanup_timeout_is_bounded_when_the_process_never_dies(self):
         """The fix above must not weaken the bounded-cleanup guarantee."""
+
         class UnkillableProcess(HangingProcess):
             def kill(self):
                 pass
 
         process = UnkillableProcess(pid=4242)
         with patch("os.killpg", create=True) as killpg:
-            stdout, stderr = asyncio.run(ProcessRuntime().terminate_process(
-                process, platform="posix", cleanup_timeout=0.05,
-            ))
+            stdout, stderr = asyncio.run(
+                ProcessRuntime().terminate_process(
+                    process,
+                    platform="posix",
+                    cleanup_timeout=0.05,
+                )
+            )
         killpg.assert_called_once()
-        self.assertEqual((stdout, stderr),
-                         (b"", b"Process did not exit within the cleanup timeout."))
+        self.assertEqual(
+            (stdout, stderr), (b"", b"Process did not exit within the cleanup timeout.")
+        )
 
     @unittest.skipIf(sys.platform != "win32", "Windows cleanup behavior")
     def test_windows_taskkill_cleanup_hides_console(self):
         import subprocess as stdlib_subprocess
+
         process = HangingProcess(pid=4242)
         cleanup = AsyncMock()
         cleanup.wait = AsyncMock(return_value=0)
@@ -342,7 +406,9 @@ class ProcessRuntimeTests(unittest.TestCase):
             process.kill()
             return cleanup
 
-        with patch("agentops.runtime.asyncio.create_subprocess_exec", new_callable=AsyncMock) as spawn:
+        with patch(
+            "agentops.runtime.asyncio.create_subprocess_exec", new_callable=AsyncMock
+        ) as spawn:
             spawn.side_effect = fake_taskkill
             asyncio.run(ProcessRuntime().terminate_process(process))
         kwargs = spawn.call_args.kwargs
@@ -352,6 +418,7 @@ class ProcessRuntimeTests(unittest.TestCase):
     def test_factory_alias_is_single_sourced(self):
         from agentops import runtime as runtime_module
         from agentops import verification_kernel as kernel_module
+
         self.assertIs(kernel_module.ProcessFactory, runtime_module.SpawnFactory)
 
     def test_runner_kernel_and_verifier_share_runtime(self):
@@ -368,7 +435,8 @@ class ProcessRuntimeTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             timeout_verifier = Verifier(
-                (("slow",),), timeout_seconds=0.05,
+                (("slow",),),
+                timeout_seconds=0.05,
                 runtime=ProcessRuntime(spawn=factory),
             )
             timeout_checks = asyncio.run(timeout_verifier.run(directory))
@@ -378,7 +446,8 @@ class ProcessRuntimeTests(unittest.TestCase):
             cancel_event = threading.Event()
             cancel_event.set()
             cancel_verifier = Verifier(
-                (("slow",),), timeout_seconds=30,
+                (("slow",),),
+                timeout_seconds=30,
                 runtime=ProcessRuntime(spawn=factory),
             )
             with self.assertRaises(OperationCancelled):
@@ -451,7 +520,10 @@ class ProcessRuntimeTests(unittest.TestCase):
 
             async def scenario():
                 parent = await runtime.spawn_process(
-                    sys.executable, str(helper), "parent", str(sync),
+                    sys.executable,
+                    str(helper),
+                    "parent",
+                    str(sync),
                 )
                 try:
                     ready = sync / "ready.json"
@@ -467,21 +539,19 @@ class ProcessRuntimeTests(unittest.TestCase):
                     # Sync says started; these probes say demonstrably alive
                     # at the moment termination is about to be requested.
                     self.assertTrue(alive(child_pid), "child died before termination")
-                    self.assertTrue(alive(grandchild_pid),
-                                    "grandchild died before termination")
+                    self.assertTrue(alive(grandchild_pid), "grandchild died before termination")
 
                     await runtime.terminate_process(parent)
 
                     deadline = time.monotonic() + 10
-                    while ((alive(child_pid) or alive(grandchild_pid))
-                           and time.monotonic() < deadline):
+                    while (
+                        alive(child_pid) or alive(grandchild_pid)
+                    ) and time.monotonic() < deadline:
                         await asyncio.sleep(0.05)
-                    self.assertFalse(alive(child_pid),
-                                     "child survived terminate_process()")
+                    self.assertFalse(alive(child_pid), "child survived terminate_process()")
                     self.assertFalse(
                         alive(grandchild_pid),
-                        "grandchild survived terminate_process() — real tree "
-                        "termination regressed",
+                        "grandchild survived terminate_process() — real tree termination regressed",
                     )
                     self.assertIsNotNone(parent.returncode, "parent was not reaped")
                 finally:
@@ -508,9 +578,14 @@ class ProcessRuntimeTests(unittest.TestCase):
             return FakeProcess()
 
         runtime = ProcessRuntime(spawn=factory, systemd_run_enabled=True)
-        with patch.object(ProcessRuntime, "_probe_systemd_run",
-                          side_effect=AssertionError("probe must not run")), \
-                patch("agentops.runtime.sys", platform="linux"):
+        with (
+            patch.object(
+                ProcessRuntime,
+                "_probe_systemd_run",
+                side_effect=AssertionError("probe must not run"),
+            ),
+            patch("agentops.runtime.sys", platform="linux"),
+        ):
             asyncio.run(runtime.spawn_process("prog", cwd=".", env={}))
         self.assertEqual(calls, [("prog",)])
 
@@ -522,9 +597,11 @@ class ProcessRuntimeTests(unittest.TestCase):
             return FakeProcess()
 
         runtime = ProcessRuntime(systemd_run_enabled=True)
-        with patch.object(ProcessRuntime, "_probe_systemd_run", return_value=True), \
-                patch("agentops.runtime.sys", platform="linux"), \
-                patch("agentops.runtime.asyncio.create_subprocess_exec", fake_exec):
+        with (
+            patch.object(ProcessRuntime, "_probe_systemd_run", return_value=True),
+            patch("agentops.runtime.sys", platform="linux"),
+            patch("agentops.runtime.asyncio.create_subprocess_exec", fake_exec),
+        ):
             asyncio.run(runtime.spawn_process("prog", cwd=".", env={}))
         self.assertEqual(captured[0][:3], ("systemd-run", "--user", "--scope"))
         self.assertEqual(captured[0][-1], "prog")
@@ -538,17 +615,24 @@ class ProcessRuntimeTests(unittest.TestCase):
 
         runtime = ProcessRuntime(systemd_run_enabled=True)
         for platform in ("win32", "darwin"):
-            with patch.object(ProcessRuntime, "_probe_systemd_run",
-                              side_effect=AssertionError("probe must not run")), \
-                    patch("agentops.runtime.sys", platform=platform), \
-                    patch("agentops.runtime.asyncio.create_subprocess_exec", fake_exec):
+            with (
+                patch.object(
+                    ProcessRuntime,
+                    "_probe_systemd_run",
+                    side_effect=AssertionError("probe must not run"),
+                ),
+                patch("agentops.runtime.sys", platform=platform),
+                patch("agentops.runtime.asyncio.create_subprocess_exec", fake_exec),
+            ):
                 asyncio.run(runtime.spawn_process("prog", cwd=".", env={}))
         self.assertEqual(captured, [("prog",), ("prog",)])
 
     def test_enabled_isolation_fails_fast_when_unavailable(self):
         runtime = ProcessRuntime(systemd_run_enabled=True)
-        with patch.object(ProcessRuntime, "_probe_systemd_run", return_value=False), \
-                patch("agentops.runtime.sys", platform="linux"):
+        with (
+            patch.object(ProcessRuntime, "_probe_systemd_run", return_value=False),
+            patch("agentops.runtime.sys", platform="linux"),
+        ):
             with self.assertRaises(RuntimeError):
                 asyncio.run(runtime.spawn_process("prog", cwd=".", env={}))
 

@@ -31,8 +31,11 @@ class ArtifactStoreTests(unittest.TestCase):
 
     def test_write_read_round_trip_with_hash(self):
         artifact = self.store.write(
-            "plan text", kind=ArtifactKind.PLANS, name="plan",
-            workflow_id="w", task_id="t",
+            "plan text",
+            kind=ArtifactKind.PLANS,
+            name="plan",
+            workflow_id="w",
+            task_id="t",
         )
         self.assertEqual(artifact.kind, ArtifactKind.PLANS)
         self.assertEqual(len(artifact.sha256), 64)
@@ -50,15 +53,25 @@ class ArtifactStoreTests(unittest.TestCase):
     def test_traversal_rejected(self):
         artifact = self.store.write("x", name="ok")
         with self.assertRaises(ArtifactError):
-            self.store.read(Artifact(
-                id=artifact.id, kind=artifact.kind, name="evil",
-                rel_path="../../evil", sha256=artifact.sha256,
-            ))
+            self.store.read(
+                Artifact(
+                    id=artifact.id,
+                    kind=artifact.kind,
+                    name="evil",
+                    rel_path="../../evil",
+                    sha256=artifact.sha256,
+                )
+            )
         with self.assertRaises(ArtifactError):
-            self.store.read(Artifact(
-                id=artifact.id, kind=artifact.kind, name="evil",
-                rel_path="/etc/passwd", sha256=artifact.sha256,
-            ))
+            self.store.read(
+                Artifact(
+                    id=artifact.id,
+                    kind=artifact.kind,
+                    name="evil",
+                    rel_path="/etc/passwd",
+                    sha256=artifact.sha256,
+                )
+            )
 
     @unittest.skipIf(os.name == "nt", "POSIX symlinks need privileges on Windows")
     def test_symlink_escape_rejected(self):
@@ -68,10 +81,15 @@ class ArtifactStoreTests(unittest.TestCase):
         link.mkdir(parents=True, exist_ok=True)
         (link / "link").symlink_to(outside)
         with self.assertRaises(ArtifactError):
-            self.store.read(Artifact(
-                id="x", kind=ArtifactKind.PLANS, name="link",
-                rel_path="plans/global/link", sha256="",
-            ))
+            self.store.read(
+                Artifact(
+                    id="x",
+                    kind=ArtifactKind.PLANS,
+                    name="link",
+                    rel_path="plans/global/link",
+                    sha256="",
+                )
+            )
 
     def test_crash_window_leaves_orphan_without_row(self):
         # Simulate a crash between file write and metadata insert: the
@@ -145,8 +163,12 @@ class ArtifactRegistryTests(unittest.TestCase):
 
     def test_record_get_list_delete(self):
         artifact = self.store.write(
-            "diff", kind=ArtifactKind.DIFFS, name="fix",
-            workflow_id="w", task_id="t", agent_run_id="r",
+            "diff",
+            kind=ArtifactKind.DIFFS,
+            name="fix",
+            workflow_id="w",
+            task_id="t",
+            agent_run_id="r",
         )
         self.state.create_artifact_record(artifact)
         fetched = self.state.get_artifact(artifact.id)

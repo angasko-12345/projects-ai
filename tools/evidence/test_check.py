@@ -62,8 +62,7 @@ class SummaryParsingTests(unittest.TestCase):
     """The generator must read counts, not infer them."""
 
     def test_parses_a_clean_run(self):
-        record = parse_unittest_summary(
-            "Ran 624 tests in 73.263s\n\nOK (skipped=4)\n")
+        record = parse_unittest_summary("Ran 624 tests in 73.263s\n\nOK (skipped=4)\n")
         self.assertEqual(record["total"], 624)
         self.assertEqual(record["skipped"], 4)
         self.assertEqual(record["result"], "pass")
@@ -75,9 +74,9 @@ class SummaryParsingTests(unittest.TestCase):
 
     def test_parses_failures_and_errors(self):
         record = parse_unittest_summary(
-            "Ran 12 tests in 1.0s\n\nFAILED (failures=2, errors=1, skipped=3)\n")
-        self.assertEqual((record["failures"], record["errors"], record["skipped"]),
-                         (2, 1, 3))
+            "Ran 12 tests in 1.0s\n\nFAILED (failures=2, errors=1, skipped=3)\n"
+        )
+        self.assertEqual((record["failures"], record["errors"], record["skipped"]), (2, 1, 3))
         self.assertEqual(record["result"], "fail")
 
     def test_unparseable_output_yields_nothing(self):
@@ -94,8 +93,9 @@ class SchemaTests(unittest.TestCase):
         document = good_document()
         document["products"][0]["total"] = 999
         self.assertTrue(
-            any("the recorded runner summary says" in p
-                for p in check_schema(document)), check_schema(document))
+            any("the recorded runner summary says" in p for p in check_schema(document)),
+            check_schema(document),
+        )
 
     def test_a_self_consistent_forgery_is_the_documented_limit(self):
         # Editing the count AND the summary to match defeats the summary check:
@@ -106,8 +106,7 @@ class SchemaTests(unittest.TestCase):
         # `generate.py` is the only way to produce a real one.
         document = good_document()
         document["products"][0]["total"] = 999
-        document["products"][0]["summary"] = [
-            "Ran 999 tests in 1.0s", "OK (skipped=1)"]
+        document["products"][0]["summary"] = ["Ran 999 tests in 1.0s", "OK (skipped=1)"]
         self.assertEqual(check_schema(document), [])
 
     def test_a_summary_that_is_not_a_list_of_strings_is_rejected(self):
@@ -119,8 +118,9 @@ class SchemaTests(unittest.TestCase):
                 document["products"][0]["total"] = 99999
                 document["products"][0]["summary"] = bad
                 problems = check_schema(document)
-                self.assertTrue(any("summary must be a non-empty list" in p
-                                    for p in problems), problems)
+                self.assertTrue(
+                    any("summary must be a non-empty list" in p for p in problems), problems
+                )
 
     def test_a_skipped_count_beyond_the_total_is_rejected(self):
         document = good_document()
@@ -130,8 +130,7 @@ class SchemaTests(unittest.TestCase):
     def test_pass_with_failures_is_rejected(self):
         document = good_document()
         document["products"][0]["failures"] = 1
-        self.assertTrue(any("recorded pass with" in p
-                            for p in check_schema(document)))
+        self.assertTrue(any("recorded pass with" in p for p in check_schema(document)))
 
     def test_every_test_skipped_is_not_a_pass(self):
         document = good_document()
@@ -141,26 +140,24 @@ class SchemaTests(unittest.TestCase):
     def test_empty_run_is_not_a_pass(self):
         document = good_document()
         document["products"][0]["total"] = 0
-        self.assertTrue(any("empty run is never a pass" in p
-                            for p in check_schema(document)))
+        self.assertTrue(any("empty run is never a pass" in p for p in check_schema(document)))
 
     def test_missing_product_is_rejected(self):
         document = good_document()
         document["products"].pop()
-        self.assertTrue(any("has no evidence record" in p
-                            for p in check_schema(document)))
+        self.assertTrue(any("has no evidence record" in p for p in check_schema(document)))
 
     def test_unknown_product_is_rejected(self):
         document = good_document()
         document["products"][0]["product"] = "ghost-product"
-        self.assertTrue(any("not a product of this repository" in p
-                            for p in check_schema(document)))
+        self.assertTrue(
+            any("not a product of this repository" in p for p in check_schema(document))
+        )
 
     def test_duplicate_product_is_rejected(self):
         document = good_document()
         document["products"].append(copy.deepcopy(document["products"][0]))
-        self.assertTrue(any("recorded more than once" in p
-                            for p in check_schema(document)))
+        self.assertTrue(any("recorded more than once" in p for p in check_schema(document)))
 
     def test_wrong_schema_version_is_rejected(self):
         document = good_document()
@@ -175,15 +172,14 @@ class SchemaTests(unittest.TestCase):
     def test_missing_required_field_is_rejected(self):
         document = good_document()
         del document["commit"]
-        self.assertTrue(any("missing required field 'commit'" in p
-                            for p in check_schema(document)))
+        self.assertTrue(any("missing required field 'commit'" in p for p in check_schema(document)))
 
     def test_non_boolean_clean_checkout_is_rejected(self):
         document = good_document()
         document["clean_checkout"] = "yes"
-        self.assertTrue(any("clean_checkout must be a boolean" in p
-                            for p in check_schema(document)))
-
+        self.assertTrue(
+            any("clean_checkout must be a boolean" in p for p in check_schema(document))
+        )
 
     def test_recorded_failed_product_is_rejected(self):
         # Issue #12: a record with result != "pass" must fail the check, so
@@ -191,21 +187,24 @@ class SchemaTests(unittest.TestCase):
         document = good_document()
         document["products"][0]["result"] = "fail"
         document["products"][0]["failures"] = 2
-        document["products"][0]["summary"] = [
-            "Ran 100 tests in 1.0s", "FAILED (failures=2)"]
+        document["products"][0]["summary"] = ["Ran 100 tests in 1.0s", "FAILED (failures=2)"]
         problems = check_schema(document)
-        self.assertTrue(
-            any("only a passing result" in p for p in problems), problems)
+        self.assertTrue(any("only a passing result" in p for p in problems), problems)
         self.assertTrue(check(document))
+
 
 class StalenessTests(unittest.TestCase):
     """Judged per record, against the commit that record was measured at."""
 
     @staticmethod
     def _head() -> str:
-        return subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(REPO_ROOT),
-                              capture_output=True, text=True,
-                              check=True).stdout.strip()
+        return subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
 
     @staticmethod
     def _at(record: dict, commit: str) -> dict:
@@ -234,8 +233,12 @@ class StalenessTests(unittest.TestCase):
 
     def test_product_change_after_the_measurement_is_stale(self):
         commits = subprocess.run(
-            ["git", "log", "--format=%H", "--", "agentops"], cwd=str(REPO_ROOT),
-            capture_output=True, text=True, check=True).stdout.split()
+            ["git", "log", "--format=%H", "--", "agentops"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.split()
         self.assertGreater(len(commits), 1, "expected product history to compare")
         problems = check_staleness(self._document_at(commits[-1]))
         self.assertTrue(any("stale" in p for p in problems), problems)
@@ -245,8 +248,9 @@ class StalenessTests(unittest.TestCase):
         command = ["git", "log", "--format=%H"]
         for path in paths:
             command += ["--", path]
-        return subprocess.run(command, cwd=str(REPO_ROOT), capture_output=True,
-                              text=True, check=True).stdout.split()
+        return subprocess.run(
+            command, cwd=str(REPO_ROOT), capture_output=True, text=True, check=True
+        ).stdout.split()
 
     def test_documentation_only_change_does_not_invalidate(self):
         """The point of per-product judgement: docs commits must stay cheap.
@@ -261,10 +265,21 @@ class StalenessTests(unittest.TestCase):
 
             def run(*args: str) -> str:
                 return subprocess.run(
-                    ["git", "-c", "user.name=t", "-c", "user.email=t@example.com",
-                     "-c", "commit.gpgsign=false", *args],
-                    cwd=str(root), capture_output=True, text=True,
-                    check=True).stdout.strip()
+                    [
+                        "git",
+                        "-c",
+                        "user.name=t",
+                        "-c",
+                        "user.email=t@example.com",
+                        "-c",
+                        "commit.gpgsign=false",
+                        *args,
+                    ],
+                    cwd=str(root),
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                ).stdout.strip()
 
             run("init", "-q")
             (root / "agentops").mkdir()
@@ -278,8 +293,7 @@ class StalenessTests(unittest.TestCase):
             run("add", "-A")
             run("commit", "-q", "-m", "docs only")
             problems = check_staleness(self._document_at(measured), repo_root=root)
-            self.assertEqual([p for p in problems if p.startswith("agentops:")], [],
-                             problems)
+            self.assertEqual([p for p in problems if p.startswith("agentops:")], [], problems)
 
             # Control: the same setup does go stale once the product changes,
             # so the empty result above is the rule working, not a vacuous pass.
@@ -287,8 +301,9 @@ class StalenessTests(unittest.TestCase):
             run("add", "-A")
             run("commit", "-q", "-m", "product change")
             problems = check_staleness(self._document_at(measured), repo_root=root)
-            self.assertTrue(any(p.startswith("agentops:") and "stale" in p
-                                for p in problems), problems)
+            self.assertTrue(
+                any(p.startswith("agentops:") and "stale" in p for p in problems), problems
+            )
 
     @staticmethod
     def _scratch_repo(root: Path):
@@ -298,12 +313,24 @@ class StalenessTests(unittest.TestCase):
         a record would have been measured at. core.quotePath is pinned on so a
         non-ASCII path is C-quoted whatever the caller's global config says.
         """
+
         def run(*args: str) -> str:
             return subprocess.run(
-                ["git", "-c", "user.name=t", "-c", "user.email=t@example.com",
-                 "-c", "commit.gpgsign=false", *args],
-                cwd=str(root), capture_output=True, text=True,
-                check=True).stdout.strip()
+                [
+                    "git",
+                    "-c",
+                    "user.name=t",
+                    "-c",
+                    "user.email=t@example.com",
+                    "-c",
+                    "commit.gpgsign=false",
+                    *args,
+                ],
+                cwd=str(root),
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
 
         run("init", "-q")
         run("config", "core.quotePath", "true")
@@ -323,9 +350,13 @@ class StalenessTests(unittest.TestCase):
             run("mv", "agentops/module.py", "moved_out.py")
             run("commit", "-q", "-m", "rename out")
             problems = check_staleness(self._document_at(measured), repo_root=root)
-            self.assertTrue(any(p.startswith("agentops:") and "stale" in p
-                                and "agentops/module.py" in p for p in problems),
-                            problems)
+            self.assertTrue(
+                any(
+                    p.startswith("agentops:") and "stale" in p and "agentops/module.py" in p
+                    for p in problems
+                ),
+                problems,
+            )
 
     def test_a_non_ascii_path_in_the_product_is_stale(self):
         # Regression: git C-quotes non-ASCII paths ("agentops/caf\\303\\251.py"),
@@ -333,14 +364,17 @@ class StalenessTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             run, measured = self._scratch_repo(root)
-            (root / "agentops" / "café.py").write_text(
-                "raise SystemExit(1)\n", encoding="utf-8")
+            (root / "agentops" / "café.py").write_text("raise SystemExit(1)\n", encoding="utf-8")
             run("add", "-A")
             run("commit", "-q", "-m", "non-ascii")
             problems = check_staleness(self._document_at(measured), repo_root=root)
-            self.assertTrue(any(p.startswith("agentops:") and "stale" in p
-                                and "agentops/café.py" in p for p in problems),
-                            problems)
+            self.assertTrue(
+                any(
+                    p.startswith("agentops:") and "stale" in p and "agentops/café.py" in p
+                    for p in problems
+                ),
+                problems,
+            )
 
     def test_uncommitted_changes_in_the_product_are_stale(self):
         # Regression: evidence at HEAD read as current while a tracked file
@@ -350,29 +384,37 @@ class StalenessTests(unittest.TestCase):
             run, measured = self._scratch_repo(root)
             document = self._document_at(measured)
             self.assertEqual(
-                [p for p in check_staleness(document, repo_root=root)
-                 if p.startswith("agentops:")], [])
+                [p for p in check_staleness(document, repo_root=root) if p.startswith("agentops:")],
+                [],
+            )
 
-            (root / "agentops" / "module.py").write_text(
-                "raise SystemExit(1)\n", encoding="utf-8")
+            (root / "agentops" / "module.py").write_text("raise SystemExit(1)\n", encoding="utf-8")
             problems = check_staleness(document, repo_root=root)
-            self.assertTrue(any(p.startswith("agentops:") and "uncommitted" in p
-                                and "agentops/module.py" in p for p in problems),
-                            problems)
+            self.assertTrue(
+                any(
+                    p.startswith("agentops:") and "uncommitted" in p and "agentops/module.py" in p
+                    for p in problems
+                ),
+                problems,
+            )
 
             run("checkout", "--", "agentops/module.py")
             (root / "agentops" / "new.py").write_text("y = 1\n", encoding="utf-8")
             problems = check_staleness(document, repo_root=root)
-            self.assertTrue(any(p.startswith("agentops:") and "uncommitted" in p
-                                and "agentops/new.py" in p for p in problems),
-                            problems)
+            self.assertTrue(
+                any(
+                    p.startswith("agentops:") and "uncommitted" in p and "agentops/new.py" in p
+                    for p in problems
+                ),
+                problems,
+            )
 
             # A dirty file outside every product dir is not this check's business.
             (root / "agentops" / "new.py").unlink()
             (root / "notes.md").write_text("scratch\n", encoding="utf-8")
             self.assertEqual(
-                [p for p in check_staleness(document, repo_root=root)
-                 if "uncommitted" in p], [])
+                [p for p in check_staleness(document, repo_root=root) if "uncommitted" in p], []
+            )
 
     def test_index_flags_cannot_hide_uncommitted_changes(self):
         # Regression: `git status` honours assume-unchanged / skip-worktree, so
@@ -384,11 +426,18 @@ class StalenessTests(unittest.TestCase):
                 document = self._document_at(measured)
                 run("update-index", flag, "agentops/module.py")
                 (root / "agentops" / "module.py").write_text(
-                    "raise SystemExit(1)\n", encoding="utf-8")
+                    "raise SystemExit(1)\n", encoding="utf-8"
+                )
                 problems = check_staleness(document, repo_root=root)
-                self.assertTrue(any(p.startswith("agentops:") and "uncommitted" in p
-                                    and "agentops/module.py" in p for p in problems),
-                                problems)
+                self.assertTrue(
+                    any(
+                        p.startswith("agentops:")
+                        and "uncommitted" in p
+                        and "agentops/module.py" in p
+                        for p in problems
+                    ),
+                    problems,
+                )
 
     def test_an_excluded_product_is_never_named_as_stale(self):
         """tiktok-slop-factory is excluded from measurement, so its changes can
@@ -407,8 +456,8 @@ class StalenessTests(unittest.TestCase):
             for problem in check_staleness(self._document_at(commit)):
                 self.assertTrue(
                     any(directory in problem for directory in directories),
-                    f"stale report named a path outside the measured products: "
-                    f"{problem}")
+                    f"stale report named a path outside the measured products: {problem}",
+                )
             checked += 1
         if not checked:
             self.skipTest("no tiktok-slop-factory history to compare")
@@ -421,8 +470,11 @@ class StalenessTests(unittest.TestCase):
         product = next(r for r in PRODUCTS if r["product"] == "universal-game-agent")
         commits = subprocess.run(
             ["git", "log", "--format=%H", "--", product["directory"]],
-            cwd=str(REPO_ROOT), capture_output=True, text=True,
-            check=True).stdout.split()
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.split()
         self.assertGreater(len(commits), 1, "expected product history to compare")
 
         head = self._head()
@@ -433,15 +485,17 @@ class StalenessTests(unittest.TestCase):
             if record["product"] == "universal-game-agent":
                 record["commit"] = commits[-1]
         problems = check_staleness(document)
-        self.assertTrue(any("universal-game-agent" in p and "stale" in p
-                            for p in problems), problems)
+        self.assertTrue(
+            any("universal-game-agent" in p and "stale" in p for p in problems), problems
+        )
         self.assertFalse(any(p.startswith("agentops") for p in problems), problems)
 
     def test_a_record_cannot_claim_a_directory_it_does_not_own(self):
         document = good_document()
         document["products"][0]["directory"] = "docs"
-        self.assertTrue(any("but this product's suite runs from" in p
-                            for p in check_schema(document)))
+        self.assertTrue(
+            any("but this product's suite runs from" in p for p in check_schema(document))
+        )
 
 
 class DocumentClaimTests(unittest.TestCase):
@@ -461,10 +515,10 @@ class DocumentClaimTests(unittest.TestCase):
             target = root / COUNT_FREE_FILES[0]
             target.write_text(
                 f"{EVIDENCE_REFERENCE}\n- 512 tests, 4 skipped by environment, OK\n",
-                encoding="utf-8")
+                encoding="utf-8",
+            )
             problems = check_documents(good_document(), root)
-            self.assertTrue(any("states a measured count" in p for p in problems),
-                            problems)
+            self.assertTrue(any("states a measured count" in p for p in problems), problems)
 
     def test_a_count_claim_in_readme_is_rejected(self):
         """README.md is in COUNT_FREE_FILES — a measured count there fails the checker.
@@ -479,12 +533,11 @@ class DocumentClaimTests(unittest.TestCase):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(f"{EVIDENCE_REFERENCE}\n", encoding="utf-8")
             (root / "README.md").write_text(
-                f"measured in `{EVIDENCE_REFERENCE}`.\n"
-                f"- 512 tests, 4 skipped, OK\n",
-                encoding="utf-8")
+                f"measured in `{EVIDENCE_REFERENCE}`.\n- 512 tests, 4 skipped, OK\n",
+                encoding="utf-8",
+            )
             problems = check_documents(good_document(), root)
-            self.assertTrue(any("states a measured count" in p for p in problems),
-                            problems)
+            self.assertTrue(any("states a measured count" in p for p in problems), problems)
 
     def test_a_missing_reference_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -494,8 +547,7 @@ class DocumentClaimTests(unittest.TestCase):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text("# no evidence reference here\n", encoding="utf-8")
             problems = check_documents(good_document(), root)
-            self.assertTrue(any("does not reference" in p for p in problems),
-                            problems)
+            self.assertTrue(any("does not reference" in p for p in problems), problems)
 
 
 class EndToEndTests(unittest.TestCase):
@@ -504,12 +556,16 @@ class EndToEndTests(unittest.TestCase):
     def _run(self, *extra: str) -> subprocess.CompletedProcess:
         return subprocess.run(
             [sys.executable, str(Path(__file__).with_name("check.py")), *extra],
-            cwd=str(REPO_ROOT), capture_output=True, text=True, check=False)
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
 
     def _recorded(self) -> dict:
         return json.loads(
-            (REPO_ROOT / ".agents" / "evidence" / "verification.json")
-            .read_text(encoding="utf-8"))
+            (REPO_ROOT / ".agents" / "evidence" / "verification.json").read_text(encoding="utf-8")
+        )
 
     def _run_corrupted(self, document: dict) -> subprocess.CompletedProcess:
         with tempfile.TemporaryDirectory() as directory:
@@ -532,7 +588,8 @@ class EndToEndTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 1)
         self.assertIn(
             f"total is recorded as 999 but the recorded runner summary says {before}",
-            completed.stderr)
+            completed.stderr,
+        )
 
     def test_a_zero_total_fails(self):
         document = self._recorded()

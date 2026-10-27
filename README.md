@@ -23,7 +23,7 @@ Everything here runs on your own machine: no accounts, no hosted backend, and no
 | [mini-llm](small-projects/mini-llm/) | A small GPT-style language model written from scratch in PyTorch: tokenizer, training loop, sampling. |
 | [Privacy Audit Tool](small-projects/privacy_audit_tool/) | A read-only Windows tool that finds your forgotten online accounts from mail exports, browser history and usernames. It deletes nothing and runs offline by default; its optional username checks contact external sites. |
 | [TikTok Slop Factory](tiktok-slop-factory/) | An experiment that turns short fictional scripts into vertical videos with one command. |
-| [quickscripts](small-projects/quickscripts/), [Cube Timer](small-projects/Cube%20Timer.html) | Small utilities. |
+| [quickscripts](archive/quickscripts/), [Cube Timer](archive/Cube%20Timer.html) | Small utilities, archived (not maintained). |
 
 ## Quick start
 
@@ -47,6 +47,21 @@ npx expo start
 
 See each project's README for full setup, configuration and tests.
 
+## Dev commands
+
+`tasks.py` at the repo root is one stdlib-only entrypoint that runs the same commands CI and the product docs run. It works the same in PowerShell and bash, and installs nothing (install each product's dependencies first).
+
+```powershell
+python tasks.py list                    # products and the exact commands behind them
+python tasks.py test agentops           # unit suite + acceptance_test.py
+python tasks.py test all                # every Python product's suite
+python tasks.py lint                    # ruff check . with the repo-wide config
+python tasks.py format-check mini-llm   # ruff format --check on one product
+python tasks.py evidence ai-token-tracker   # regenerate + check verification evidence
+```
+
+Product names: `agentops`, `ai-token-tracker` (`tracker`), `mini-llm`, `universal-game-agent` (`uga`), `privacy-audit`, `tiktok-slop-factory`.
+
 ## Repository layout
 
 ```
@@ -55,13 +70,15 @@ qr-generator/           Android QR app (Expo)
 ai-token-tracker/       Token usage dashboard
 universal-game-agent/   Pixel-based RL testbed
 tiktok-slop-factory/    Video generation experiment
-small-projects/         mini-llm, privacy audit tool, scripts
+small-projects/         mini-llm, privacy audit tool
+archive/                Unmaintained standalone files (Cube Timer, quickscripts)
 tools/evidence/         Verification-evidence tooling used by CI
 .agents/                Agent instructions, plans and verification records
 tasks/                  Active-task slot (or pointer) + after-task procedure; live queue: .agents/pending_tasks.md
 .agents/memory/archive/ Completed task records, preserved verbatim and searchable
 AGENTS.md, pi_AGENTS.md Root instruction shims (canonical copies live in .agents/)
 acceptance_test.py      AgentOps acceptance tests from Issue #4
+tasks.py                Dev entrypoint: test / lint / evidence per product
 .github/workflows/      Nine CI workflows: a test suite for every product, plus repo-wide ruff and the evidence checker
 ```
 

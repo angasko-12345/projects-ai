@@ -59,16 +59,16 @@ def _shannon_entropy(text: str) -> float:
         for char in text:
             frequencies[char] = frequencies.get(char, 0) + 1
         length = len(text)
-        return -sum(
-            (count / length) * math.log2(count / length)
-            for count in frequencies.values()
-        )
+        return -sum((count / length) * math.log2(count / length) for count in frequencies.values())
     except Exception:
         return 0.0
 
 
 def _fingerprint_path(
-    location: str, match_start: int, text: str, newlines: list[int] | None = None,
+    location: str,
+    match_start: int,
+    text: str,
+    newlines: list[int] | None = None,
 ) -> str:
     """Describe where a match sits (``location:line``) without quoting it.
 
@@ -103,10 +103,13 @@ def scan_text(text: str | None, location: str = "diff") -> list[SecretFinding]:
                     if key in seen:
                         continue
                     seen.add(key)
-                    findings.append(SecretFinding(
-                        pattern=name, location=where,
-                        hint="known credential shape",
-                    ))
+                    findings.append(
+                        SecretFinding(
+                            pattern=name,
+                            location=where,
+                            hint="known credential shape",
+                        )
+                    )
             except Exception:
                 continue
         try:
@@ -121,10 +124,13 @@ def scan_text(text: str | None, location: str = "diff") -> list[SecretFinding]:
                 if key in seen:
                     continue
                 seen.add(key)
-                findings.append(SecretFinding(
-                    pattern="high-entropy-token", location=where,
-                    hint="long opaque value worth checking",
-                ))
+                findings.append(
+                    SecretFinding(
+                        pattern="high-entropy-token",
+                        location=where,
+                        hint="long opaque value worth checking",
+                    )
+                )
         except Exception:
             pass
         return findings

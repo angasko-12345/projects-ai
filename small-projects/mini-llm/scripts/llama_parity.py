@@ -37,13 +37,20 @@ from src.generate import check_tokenizer_provenance  # noqa: E402
 from src.tokenizer import load_tokenizer  # noqa: E402
 from src.train import load_model, read_checkpoint  # noqa: E402
 
-PROMPTS = ["The fox", "Once upon a time", "The cat sat on the", "A small dog",
-           "She said", "In the garden", "One day"]
+PROMPTS = [
+    "The fox",
+    "Once upon a time",
+    "The cat sat on the",
+    "A small dog",
+    "She said",
+    "In the garden",
+    "One day",
+]
 TOKENIZE = ["The fox jumped.", "Hello,\n\nworld!  two  spaces\ttab", "café ünïcode 🚀 3.14 don't"]
 
 
 def topk_verdict(ours: list[int], theirs: list[int], p: np.ndarray, tie_tol: float) -> str:
-    """"identical", "same up to near-ties", or "DIFFERENT".
+    """ "identical", "same up to near-ties", or "DIFFERENT".
 
     The greedy (top-1) token must match exactly. Below it, two tokens whose
     mini-llm probabilities differ by less than tie_tol may swap ranks: that is
@@ -75,8 +82,9 @@ def main() -> int:
     ap.add_argument("--tokenizer", default=None)
     ap.add_argument("--top-k", type=int, default=10)
     ap.add_argument("--max-dp", type=float, default=2e-3)
-    ap.add_argument("--extra-server-args", default="",
-                    help="e.g. '-ngl 99' to offload to a Vulkan GPU")
+    ap.add_argument(
+        "--extra-server-args", default="", help="e.g. '-ngl 99' to offload to a Vulkan GPU"
+    )
     args = ap.parse_args()
     if not args.llama_cpp_dir:
         ap.error("--llama-cpp-dir (or LLAMA_CPP_DIR) is required")
@@ -91,8 +99,12 @@ def main() -> int:
     tokenize = find_bin(args.llama_cpp_dir, "llama-tokenize")
     if tokenize:
         for text in TOKENIZE:
-            out = subprocess.run([tokenize, "-m", args.gguf, "-p", text, "--ids", "--no-bos",
-                                  "--log-disable"], capture_output=True, text=True, check=True)
+            out = subprocess.run(
+                [tokenize, "-m", args.gguf, "-p", text, "--ids", "--no-bos", "--log-disable"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
             theirs = json.loads([ln for ln in out.stdout.splitlines() if ln.startswith("[")][-1])
             same = theirs == tok.encode(text).ids
             ok &= same
@@ -105,9 +117,22 @@ def main() -> int:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
-    proc = subprocess.Popen([server, "-m", args.gguf, "--host", "127.0.0.1", "--port", str(port),
-                             "-c", str(cfg.context_length), *args.extra_server_args.split()],
-                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    proc = subprocess.Popen(
+        [
+            server,
+            "-m",
+            args.gguf,
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+            "-c",
+            str(cfg.context_length),
+            *args.extra_server_args.split(),
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     base = f"http://127.0.0.1:{port}"
     compared = 0
@@ -124,10 +149,12 @@ def main() -> int:
                 return 1
             time.sleep(0.3)
         for prompt in PROMPTS:
-            body = json.dumps({"prompt": prompt, "max_tokens": 1, "logprobs": args.top_k,
-                               "temperature": 0}).encode()
-            req = urllib.request.Request(base + "/v1/completions", data=body,
-                                         headers={"Content-Type": "application/json"})
+            body = json.dumps(
+                {"prompt": prompt, "max_tokens": 1, "logprobs": args.top_k, "temperature": 0}
+            ).encode()
+            req = urllib.request.Request(
+                base + "/v1/completions", data=body, headers={"Content-Type": "application/json"}
+            )
             lp = json.load(opener.open(req, timeout=60))["choices"][0]["logprobs"]
             if not lp:
                 print(f"{prompt!r}: skipped (server returned no logprobs)")
@@ -142,9 +169,11 @@ def main() -> int:
             verdict = topk_verdict(ours, theirs, p, args.max_dp)
             ok &= verdict != "DIFFERENT" and dp < args.max_dp
             compared += 1
-            print(f"{prompt!r}: top-{args.top_k} {verdict}, "
-                  f"max |dp| {dp:.2e}, p(top1) mini-llm {p[ours[0]]:.4f} "
-                  f"llama.cpp {math.exp(top[0]['logprob']):.4f}")
+            print(
+                f"{prompt!r}: top-{args.top_k} {verdict}, "
+                f"max |dp| {dp:.2e}, p(top1) mini-llm {p[ours[0]]:.4f} "
+                f"llama.cpp {math.exp(top[0]['logprob']):.4f}"
+            )
     finally:
         proc.terminate()
         proc.wait(10)

@@ -38,8 +38,7 @@ from agentops.agent_result import AgentResultStatus
 
 
 APPROVE = (
-    '{"schema_version":1,"verdict":"approve","blocking":[],'
-    '"non_blocking":[],"confidence":0.9}'
+    '{"schema_version":1,"verdict":"approve","blocking":[],"non_blocking":[],"confidence":0.9}'
 )
 REJECT = (
     '{"schema_version":1,"verdict":"reject","blocking":["unsafe input"],'
@@ -50,8 +49,7 @@ APPROVE_BLOCKING = (
     '"non_blocking":[],"confidence":0.9}'
 )
 
-_ALL_ROLES = ("architecture", "implementation", "review", "debugging",
-              "security", "verification")
+_ALL_ROLES = ("architecture", "implementation", "review", "debugging", "security", "verification")
 
 
 def _engine(security_review=False, max_review_rounds=2, max_attempts=1):
@@ -59,13 +57,15 @@ def _engine(security_review=False, max_review_rounds=2, max_attempts=1):
         {"fallback": AgentConfig("fallback", "fake", ("{prompt}",), _ALL_ROLES)},
         {role: ("fallback",) for role in _ALL_ROLES},
         (("test",),),
-        max_attempts=max_attempts, concurrency=1, max_repair_cycles=1,
-        security_review=security_review, max_review_rounds=max_review_rounds,
+        max_attempts=max_attempts,
+        concurrency=1,
+        max_repair_cycles=1,
+        security_review=security_review,
+        max_review_rounds=max_review_rounds,
     )
     state = StateStore(":memory:")
     registry = MagicMock()
-    registry.select.return_value = DetectedAgent(
-        config.agents["fallback"], True, "fake")
+    registry.select.return_value = DetectedAgent(config.agents["fallback"], True, "fake")
     runner = MagicMock()
     verifier = MagicMock()
     return config, state, registry, runner, verifier
@@ -79,16 +79,16 @@ def _scratch_repo(testcase):
     """
     directory = Path(tempfile.mkdtemp(prefix="agentops-gate-"))
     testcase.addCleanup(shutil.rmtree, directory, ignore_errors=True)
-    env = {key: value for key, value in os.environ.items()
-           if not key.startswith("GIT_")}
-    for command in (["git", "init", "-q"],
-                    ["git", "config", "user.email", "gate@agentops.invalid"],
-                    ["git", "config", "user.name", "Gate Test"]):
+    env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    for command in (
+        ["git", "init", "-q"],
+        ["git", "config", "user.email", "gate@agentops.invalid"],
+        ["git", "config", "user.name", "Gate Test"],
+    ):
         subprocess.run(command, cwd=directory, check=True, env=env)
     (directory / "base.txt").write_text("base\n", encoding="utf-8")
     subprocess.run(["git", "add", "-A"], cwd=directory, check=True, env=env)
-    subprocess.run(["git", "commit", "-qm", "base"], cwd=directory,
-                   check=True, env=env)
+    subprocess.run(["git", "commit", "-qm", "base"], cwd=directory, check=True, env=env)
     return directory
 
 
@@ -96,24 +96,21 @@ def _ok_verifier():
     verifier = MagicMock()
 
     def _run(*args, **kwargs):
-        return asyncio.sleep(
-            0, result=[SimpleNamespace(succeeded=True, output="ok")])
+        return asyncio.sleep(0, result=[SimpleNamespace(succeeded=True, output="ok")])
 
     verifier.run = MagicMock(side_effect=_run)
     return verifier
 
 
 def _evidence_collector():
-    return MagicMock(return_value=AgentRunMetadata(
-        files_changed=("src/app.py",)))
+    return MagicMock(return_value=AgentRunMetadata(files_changed=("src/app.py",)))
 
 
 def _dispatch_runner(state, outputs_by_role):
     """Fake run_agent answering per task role; string or list per role."""
     cursors = {role: 0 for role in outputs_by_role}
 
-    async def _run(agent, prompt, directory, task_id, cancel_event=None,
-                   **kwargs):
+    async def _run(agent, prompt, directory, task_id, cancel_event=None, **kwargs):
         role = state.get_task(task_id).role
         output = outputs_by_role.get(role, "done")
         if isinstance(output, list):
@@ -123,17 +120,24 @@ def _dispatch_runner(state, outputs_by_role):
             stdout, structured = output
         else:
             stdout, structured = output, None
-        return RunResult(agent.config.name, ("fake",), 0, stdout, "", 0.01,
-                         False, Path(f"{task_id}.log"),
-                         structured_result=structured)
+        return RunResult(
+            agent.config.name,
+            ("fake",),
+            0,
+            stdout,
+            "",
+            0.01,
+            False,
+            Path(f"{task_id}.log"),
+            structured_result=structured,
+        )
 
     return _run
 
 
 class StructuredStatusTests(unittest.TestCase):
     def _result(self, stdout, structured=None):
-        return SimpleNamespace(stdout=stdout, structured_result=structured,
-                               succeeded=True)
+        return SimpleNamespace(stdout=stdout, structured_result=structured, succeeded=True)
 
     def test_verdict_only_output_is_not_an_agent_status(self):
         status = _structured_agent_status(self._result(APPROVE))
@@ -155,27 +159,30 @@ class StructuredStatusTests(unittest.TestCase):
         self.assertEqual(task.status, TaskStatus.PASSED)
 
     def test_explicit_unknown_is_not_success(self):
-        status = _structured_agent_status(self._result(
-            '{"schema_version":1,"status":"unknown","summary":"shrug"}'))
+        status = _structured_agent_status(
+            self._result('{"schema_version":1,"status":"unknown","summary":"shrug"}')
+        )
         self.assertEqual(status, AgentResultStatus.UNKNOWN)
         self.assertNotIn(status, (None, AgentResultStatus.SUCCESS))
 
     def test_explicit_failure_is_not_success(self):
-        status = _structured_agent_status(self._result(
-            '{"schema_version":1,"status":"failure","summary":"broke"}'))
+        status = _structured_agent_status(
+            self._result('{"schema_version":1,"status":"failure","summary":"broke"}')
+        )
         self.assertEqual(status, AgentResultStatus.FAILURE)
 
     def test_explicit_success_false_is_denied(self):
-        self.assertTrue(_explicit_success_denied(
-            self._result('{"success": false}')))
+        self.assertTrue(_explicit_success_denied(self._result('{"success": false}')))
         self.assertFalse(_explicit_success_denied(self._result("done")))
         self.assertFalse(_explicit_success_denied(self._result(APPROVE)))
 
     def test_success_false_inside_legacy_payload_is_denied(self):
-        structured = {"schema_version": 1, "status": "success",
-                      "metadata": {"legacy_payload": {"success": False}}}
-        self.assertTrue(_explicit_success_denied(
-            self._result("done", structured)))
+        structured = {
+            "schema_version": 1,
+            "status": "success",
+            "metadata": {"legacy_payload": {"success": False}},
+        }
+        self.assertTrue(_explicit_success_denied(self._result("done", structured)))
 
     def test_parse_verdict_reexported_in_agent_result(self):
         import agentops.agent_result as agent_result
@@ -188,13 +195,11 @@ class StructuredStatusTests(unittest.TestCase):
 class ReviewGateTests(unittest.TestCase):
     def _run_review_task(self, stdout, role="review", structured=None):
         config, state, registry, runner, verifier = _engine()
-        runner.run_agent = _dispatch_runner(
-            state, {role: [(stdout, structured)]})
+        runner.run_agent = _dispatch_runner(state, {role: [(stdout, structured)]})
         try:
             engine = WorkflowEngine(config, state, registry, runner, verifier)
             workflow_id = state.create_workflow("gate test")
-            task = state.add_task(Task("Review the change", role, workflow_id,
-                                       max_attempts=1))
+            task = state.add_task(Task("Review the change", role, workflow_id, max_attempts=1))
             asyncio.run(engine.execute(workflow_id, _scratch_repo(self)))
             return state.get_task(task.id)
         finally:
@@ -204,8 +209,7 @@ class ReviewGateTests(unittest.TestCase):
         task = self._run_review_task(REJECT)
         self.assertEqual(task.status, TaskStatus.FAILED)
         self.assertIn("unsafe input", task.result or "")
-        readiness = assess_workflow_readiness(
-            [task], task.workflow_id, review_task_id=task.id)
+        readiness = assess_workflow_readiness([task], task.workflow_id, review_task_id=task.id)
         self.assertFalse(readiness.ready)
 
     def test_missing_verdict_is_not_approved(self):
@@ -214,14 +218,15 @@ class ReviewGateTests(unittest.TestCase):
         self.assertIn("verdict", (task.result or "").lower())
 
     def test_malformed_verdict_is_not_approved(self):
-        bad = ('{"schema_version":1,"verdict":"approve",'
-               '"blocking":"everything","non_blocking":[],"confidence":0.9}')
+        bad = (
+            '{"schema_version":1,"verdict":"approve",'
+            '"blocking":"everything","non_blocking":[],"confidence":0.9}'
+        )
         task = self._run_review_task(bad)
         self.assertEqual(task.status, TaskStatus.FAILED)
 
     def test_truncated_verdict_is_not_approved(self):
-        task = self._run_review_task(
-            '{"schema_version": 1, "verdict": "approve"')
+        task = self._run_review_task('{"schema_version": 1, "verdict": "approve"')
         self.assertEqual(task.status, TaskStatus.FAILED)
 
     def test_success_false_is_not_approved(self):
@@ -239,37 +244,45 @@ class ReviewGateTests(unittest.TestCase):
 
     def test_structured_failure_for_implementation_is_not_success(self):
         config, state, registry, runner, verifier = _engine()
-        runner.run_agent = _dispatch_runner(state, {
-            "implementation": [('{"schema_version":1,"status":"failure",'
-                                '"summary":"broke"}', None)],
-        })
+        runner.run_agent = _dispatch_runner(
+            state,
+            {
+                "implementation": [
+                    ('{"schema_version":1,"status":"failure","summary":"broke"}', None)
+                ],
+            },
+        )
         try:
-            engine = WorkflowEngine(config, state, registry, runner, verifier,
-                                    metadata_collector=_evidence_collector())
+            engine = WorkflowEngine(
+                config, state, registry, runner, verifier, metadata_collector=_evidence_collector()
+            )
             workflow_id = state.create_workflow("structured failure")
-            task = state.add_task(Task("Do the thing", "implementation",
-                                       workflow_id, max_attempts=1))
+            task = state.add_task(
+                Task("Do the thing", "implementation", workflow_id, max_attempts=1)
+            )
             asyncio.run(engine.execute(workflow_id, _scratch_repo(self)))
-            self.assertEqual(state.get_task(task.id).status,
-                             TaskStatus.FAILED)
+            self.assertEqual(state.get_task(task.id).status, TaskStatus.FAILED)
         finally:
             state.close()
 
     def test_structured_unknown_for_implementation_is_not_success(self):
         config, state, registry, runner, verifier = _engine()
-        runner.run_agent = _dispatch_runner(state, {
-            "implementation": [('{"schema_version":1,"status":"unknown"}',
-                                None)],
-        })
+        runner.run_agent = _dispatch_runner(
+            state,
+            {
+                "implementation": [('{"schema_version":1,"status":"unknown"}', None)],
+            },
+        )
         try:
-            engine = WorkflowEngine(config, state, registry, runner, verifier,
-                                    metadata_collector=_evidence_collector())
+            engine = WorkflowEngine(
+                config, state, registry, runner, verifier, metadata_collector=_evidence_collector()
+            )
             workflow_id = state.create_workflow("structured unknown")
-            task = state.add_task(Task("Do the thing", "implementation",
-                                       workflow_id, max_attempts=1))
+            task = state.add_task(
+                Task("Do the thing", "implementation", workflow_id, max_attempts=1)
+            )
             asyncio.run(engine.execute(workflow_id, _scratch_repo(self)))
-            self.assertEqual(state.get_task(task.id).status,
-                             TaskStatus.FAILED)
+            self.assertEqual(state.get_task(task.id).status, TaskStatus.FAILED)
         finally:
             state.close()
 
@@ -279,11 +292,9 @@ class ReviewGateTests(unittest.TestCase):
         try:
             engine = WorkflowEngine(config, state, registry, runner, verifier)
             workflow_id = state.create_workflow("verdict event")
-            state.add_task(Task("Review the change", "review",
-                                       workflow_id, max_attempts=1))
+            state.add_task(Task("Review the change", "review", workflow_id, max_attempts=1))
             asyncio.run(engine.execute(workflow_id, _scratch_repo(self)))
-            kinds = [event["kind"] for event in
-                     state.list_events(workflow_id)]
+            kinds = [event["kind"] for event in state.list_events(workflow_id)]
             self.assertIn(EventType.REVIEW_COMPLETED.value, kinds)
         finally:
             state.close()
@@ -305,8 +316,7 @@ class PromptContractTests(unittest.TestCase):
         engine = self._engine()
         state = engine.state
         workflow_id = state.create_workflow("prompt contract")
-        task = state.add_task(Task("Do the thing", "implementation",
-                                   workflow_id, max_attempts=1))
+        task = state.add_task(Task("Do the thing", "implementation", workflow_id, max_attempts=1))
         try:
             prompt = engine._prompt(task, _scratch_repo(self))
         finally:
@@ -319,34 +329,46 @@ class PromptContractTests(unittest.TestCase):
 
 class RepairRoundTests(unittest.TestCase):
     def test_rejection_then_approval_within_rounds_is_ready(self):
-        config, state, registry, runner, verifier = _engine(
-            max_review_rounds=2)
-        runner.run_agent = _dispatch_runner(state, {
-            "review": [REJECT, APPROVE],
-        })
+        config, state, registry, runner, verifier = _engine(max_review_rounds=2)
+        runner.run_agent = _dispatch_runner(
+            state,
+            {
+                "review": [REJECT, APPROVE],
+            },
+        )
         try:
-            engine = WorkflowEngine(config, state, registry, runner,
-                                    _ok_verifier(),
-                                    metadata_collector=_evidence_collector())
-            result = asyncio.run(
-                engine.run_high_level("Fix the thing", _scratch_repo(self)))
+            engine = WorkflowEngine(
+                config,
+                state,
+                registry,
+                runner,
+                _ok_verifier(),
+                metadata_collector=_evidence_collector(),
+            )
+            result = asyncio.run(engine.run_high_level("Fix the thing", _scratch_repo(self)))
             self.assertTrue(result.ready, result.summary)
             self.assertIn("READY", result.summary)
         finally:
             state.close()
 
     def test_repeated_rejection_beyond_budget_is_blocked(self):
-        config, state, registry, runner, verifier = _engine(
-            max_review_rounds=1)
-        runner.run_agent = _dispatch_runner(state, {
-            "review": [REJECT, REJECT, REJECT, REJECT],
-        })
+        config, state, registry, runner, verifier = _engine(max_review_rounds=1)
+        runner.run_agent = _dispatch_runner(
+            state,
+            {
+                "review": [REJECT, REJECT, REJECT, REJECT],
+            },
+        )
         try:
-            engine = WorkflowEngine(config, state, registry, runner,
-                                    _ok_verifier(),
-                                    metadata_collector=_evidence_collector())
-            result = asyncio.run(
-                engine.run_high_level("Fix the thing", _scratch_repo(self)))
+            engine = WorkflowEngine(
+                config,
+                state,
+                registry,
+                runner,
+                _ok_verifier(),
+                metadata_collector=_evidence_collector(),
+            )
+            result = asyncio.run(engine.run_high_level("Fix the thing", _scratch_repo(self)))
             self.assertFalse(result.ready)
             self.assertIn("BLOCKED", result.summary)
             self.assertIn("unsafe input", result.summary)
@@ -371,14 +393,14 @@ class RejectionIsNotReRolledTests(unittest.TestCase):
     """
 
     def _single_task(self, role, outputs, max_attempts=2):
-        config, state, registry, runner, verifier = _engine(
-            max_attempts=max_attempts)
+        config, state, registry, runner, verifier = _engine(max_attempts=max_attempts)
         runner.run_agent = _dispatch_runner(state, {role: outputs})
         try:
             engine = WorkflowEngine(config, state, registry, runner, verifier)
             workflow_id = state.create_workflow("re-roll test")
-            task = state.add_task(Task("Review the change", role, workflow_id,
-                                       max_attempts=max_attempts))
+            task = state.add_task(
+                Task("Review the change", role, workflow_id, max_attempts=max_attempts)
+            )
             asyncio.run(engine.execute(workflow_id, _scratch_repo(self)))
             return state.get_task(task.id)
         finally:
@@ -406,23 +428,26 @@ class RejectionIsNotReRolledTests(unittest.TestCase):
         calls = []
         dispatch = _dispatch_runner(state, {"review": [REJECT, APPROVE]})
 
-        async def _recording(agent, prompt, directory, task_id,
-                             cancel_event=None, **kwargs):
+        async def _recording(agent, prompt, directory, task_id, cancel_event=None, **kwargs):
             calls.append(state.get_task(task_id).role)
-            return await dispatch(agent, prompt, directory, task_id,
-                                  cancel_event, **kwargs)
+            return await dispatch(agent, prompt, directory, task_id, cancel_event, **kwargs)
 
         runner.run_agent = _recording
         try:
-            engine = WorkflowEngine(config, state, registry, runner,
-                                    _ok_verifier(),
-                                    metadata_collector=_evidence_collector())
-            result = asyncio.run(
-                engine.run_high_level("Fix the thing", _scratch_repo(self)))
+            engine = WorkflowEngine(
+                config,
+                state,
+                registry,
+                runner,
+                _ok_verifier(),
+                metadata_collector=_evidence_collector(),
+            )
+            result = asyncio.run(engine.run_high_level("Fix the thing", _scratch_repo(self)))
             self.assertTrue(result.ready, result.summary)
             first = calls.index("review")
-            self.assertIn("debugging", calls[first + 1:],
-                          f"REJECT reached READY without a repair: {calls}")
+            self.assertIn(
+                "debugging", calls[first + 1 :], f"REJECT reached READY without a repair: {calls}"
+            )
             self.assertEqual(calls.count("review"), 2)
         finally:
             state.close()
@@ -435,13 +460,17 @@ class SecurityGateTests(unittest.TestCase):
             raise unittest.SkipTest("git is not available")
         root = Path(tempfile.mkdtemp(prefix="agentops-security-"))
         _git_args = ("-c", "user.name=t", "-c", "user.email=t@example.com")
-        subprocess.run(("git", "init", "-q"), cwd=str(root),
-                       capture_output=True, check=True)
+        subprocess.run(("git", "init", "-q"), cwd=str(root), capture_output=True, check=True)
         (root / "app.py").write_text("x = 1\n", encoding="utf-8")
-        subprocess.run(("git", *_git_args, "add", "-A"), cwd=str(root),
-                       capture_output=True, check=True)
-        subprocess.run(("git", *_git_args, "commit", "-q", "-m", "base"),
-                       cwd=str(root), capture_output=True, check=True)
+        subprocess.run(
+            ("git", *_git_args, "add", "-A"), cwd=str(root), capture_output=True, check=True
+        )
+        subprocess.run(
+            ("git", *_git_args, "commit", "-q", "-m", "base"),
+            cwd=str(root),
+            capture_output=True,
+            check=True,
+        )
         with (root / "app.py").open("a", encoding="utf-8") as handle:
             handle.write('AWS_KEY = "AKIAIOSFODNN7EXAMPLE"\n')
         return root
@@ -449,25 +478,30 @@ class SecurityGateTests(unittest.TestCase):
     def test_fake_secret_in_diff_blocks_the_workflow(self):
         root = self._repo_with_secret()
         try:
-            config, state, registry, runner, verifier = _engine(
-                security_review=True)
-            runner.run_agent = _dispatch_runner(state, {
-                "review": [APPROVE],
-                "security": [APPROVE],
-            })
-            engine = WorkflowEngine(config, state, registry, runner,
-                                    _ok_verifier(),
-                                    metadata_collector=_evidence_collector())
-            result = asyncio.run(
-                engine.run_high_level("Add the feature", root))
+            config, state, registry, runner, verifier = _engine(security_review=True)
+            runner.run_agent = _dispatch_runner(
+                state,
+                {
+                    "review": [APPROVE],
+                    "security": [APPROVE],
+                },
+            )
+            engine = WorkflowEngine(
+                config,
+                state,
+                registry,
+                runner,
+                _ok_verifier(),
+                metadata_collector=_evidence_collector(),
+            )
+            result = asyncio.run(engine.run_high_level("Add the feature", root))
             self.assertFalse(result.ready, result.summary)
-            security = next(task for task in
-                            state.list_tasks(result.workflow_id)
-                            if task.role == "security")
+            security = next(
+                task for task in state.list_tasks(result.workflow_id) if task.role == "security"
+            )
             self.assertEqual(security.status, TaskStatus.FAILED)
             self.assertIn("secret scan", (security.result or "").lower())
-            self.assertNotIn("AKIAIOSFODNN7EXAMPLE",
-                             security.result or "")
+            self.assertNotIn("AKIAIOSFODNN7EXAMPLE", security.result or "")
         finally:
             state.close()
             shutil.rmtree(root, ignore_errors=True)
@@ -477,19 +511,24 @@ class SecurityGateTests(unittest.TestCase):
             raise unittest.SkipTest("git is not available")
         root = Path(tempfile.mkdtemp(prefix="agentops-security-clean-"))
         try:
-            subprocess.run(("git", "init", "-q"), cwd=str(root),
-                           capture_output=True, check=True)
-            config, state, registry, runner, verifier = _engine(
-                security_review=True)
-            runner.run_agent = _dispatch_runner(state, {
-                "review": [APPROVE],
-                "security": [APPROVE],
-            })
-            engine = WorkflowEngine(config, state, registry, runner,
-                                    _ok_verifier(),
-                                    metadata_collector=_evidence_collector())
-            result = asyncio.run(
-                engine.run_high_level("Add the feature", root))
+            subprocess.run(("git", "init", "-q"), cwd=str(root), capture_output=True, check=True)
+            config, state, registry, runner, verifier = _engine(security_review=True)
+            runner.run_agent = _dispatch_runner(
+                state,
+                {
+                    "review": [APPROVE],
+                    "security": [APPROVE],
+                },
+            )
+            engine = WorkflowEngine(
+                config,
+                state,
+                registry,
+                runner,
+                _ok_verifier(),
+                metadata_collector=_evidence_collector(),
+            )
+            result = asyncio.run(engine.run_high_level("Add the feature", root))
             self.assertTrue(result.ready, result.summary)
         finally:
             state.close()
@@ -507,8 +546,7 @@ class SecurityGateTests(unittest.TestCase):
             findings, completed = _local_security_scan(root)
             self.assertTrue(completed)
             self.assertTrue(findings)
-            self.assertNotIn("AKIAIOSFODNN7EXAMPLE",
-                             " ".join(f.describe() for f in findings))
+            self.assertNotIn("AKIAIOSFODNN7EXAMPLE", " ".join(f.describe() for f in findings))
             self.assertEqual(_local_security_scan(plain), ([], False))
         finally:
             shutil.rmtree(root, ignore_errors=True)
@@ -518,18 +556,20 @@ class SecurityGateTests(unittest.TestCase):
         # Reviewer finding: a prescan that could not run left no trace. The
         # degradation must be visible in the timeline instead of reading as
         # a clean change.
-        config, state, registry, runner, verifier = _engine(
-            security_review=True)
+        config, state, registry, runner, verifier = _engine(security_review=True)
         try:
-            engine = WorkflowEngine(config, state, registry, runner,
-                                    _ok_verifier(),
-                                    metadata_collector=_evidence_collector())
+            engine = WorkflowEngine(
+                config,
+                state,
+                registry,
+                runner,
+                _ok_verifier(),
+                metadata_collector=_evidence_collector(),
+            )
             workflow_id = state.create_workflow("prescan unavailable")
-            task = state.add_task(Task("Security-review", "security",
-                                       workflow_id, max_attempts=1))
+            task = state.add_task(Task("Security-review", "security", workflow_id, max_attempts=1))
             with tempfile.TemporaryDirectory() as plain:
-                self.assertIsNone(
-                    engine._security_prescan_reason(task, plain))
+                self.assertIsNone(engine._security_prescan_reason(task, plain))
             events = state.query_events(event_type=EventType.NOTE)
             self.assertTrue(events)
             self.assertEqual(events[0].severity.value, "warning")
@@ -545,7 +585,8 @@ class SecurityGateTests(unittest.TestCase):
         root = self._repo_with_secret()
         try:
             config, state, registry, runner, verifier = _engine(
-                security_review=True, max_review_rounds=1)
+                security_review=True, max_review_rounds=1
+            )
 
             class SecurityTaskFailingState:
                 """State proxy that fails only the post-repair security task."""
@@ -554,22 +595,30 @@ class SecurityGateTests(unittest.TestCase):
                     self._inner = inner
 
                 def add_task(self, task):
-                    if (getattr(task, "role", None) == "security"
-                            and "repaired" in (task.description or "")):
+                    if getattr(task, "role", None) == "security" and "repaired" in (
+                        task.description or ""
+                    ):
                         raise RuntimeError("state unavailable")
                     return self._inner.add_task(task)
 
                 def __getattr__(self, name):
                     return getattr(self._inner, name)
 
-            runner.run_agent = _dispatch_runner(state, {
-                "review": [REJECT, APPROVE],
-            })
-            engine = WorkflowEngine(config, SecurityTaskFailingState(state),
-                                    registry, runner, _ok_verifier(),
-                                    metadata_collector=_evidence_collector())
-            result = asyncio.run(engine.run_high_level("Add the feature",
-                                                        root))
+            runner.run_agent = _dispatch_runner(
+                state,
+                {
+                    "review": [REJECT, APPROVE],
+                },
+            )
+            engine = WorkflowEngine(
+                config,
+                SecurityTaskFailingState(state),
+                registry,
+                runner,
+                _ok_verifier(),
+                metadata_collector=_evidence_collector(),
+            )
+            result = asyncio.run(engine.run_high_level("Add the feature", root))
             self.assertFalse(result.ready, result.summary)
             self.assertIn("security", result.summary.lower())
         finally:
@@ -585,12 +634,15 @@ class RoleScopeTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as directory:
                 Path(directory, "roles").mkdir()
                 Path(directory, "roles", "review.md").write_text(
-                    "Always check the changelog.", encoding="utf-8")
+                    "Always check the changelog.", encoding="utf-8"
+                )
                 self.assertIn(
                     "Always check the changelog.",
-                    engine._prompt(Task("r", "review", "w"), directory))
-                self.assertEqual(_role_scope_text("review", directory),
-                                 "Always check the changelog.")
+                    engine._prompt(Task("r", "review", "w"), directory),
+                )
+                self.assertEqual(
+                    _role_scope_text("review", directory), "Always check the changelog."
+                )
         finally:
             state.close()
 
@@ -608,11 +660,11 @@ class RoleScopeTests(unittest.TestCase):
 
 class WorkflowsConfigTests(unittest.TestCase):
     def test_workflows_section_parses(self):
-        with tempfile.NamedTemporaryFile("w", suffix=".json",
-                                         delete=False) as handle:
-            json.dump({"agents": {},
-                       "workflows": {"security_review": True,
-                                     "max_review_rounds": 3}}, handle)
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
+            json.dump(
+                {"agents": {}, "workflows": {"security_review": True, "max_review_rounds": 3}},
+                handle,
+            )
             path = handle.name
         try:
             config = load_config(path)
@@ -622,8 +674,7 @@ class WorkflowsConfigTests(unittest.TestCase):
             Path(path).unlink()
 
     def test_workflows_defaults_are_off_and_two(self):
-        with tempfile.NamedTemporaryFile("w", suffix=".json",
-                                         delete=False) as handle:
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
             json.dump({"agents": {}}, handle)
             path = handle.name
         try:
@@ -634,10 +685,8 @@ class WorkflowsConfigTests(unittest.TestCase):
             Path(path).unlink()
 
     def test_invalid_workflows_section_rejected(self):
-        with tempfile.NamedTemporaryFile("w", suffix=".json",
-                                         delete=False) as handle:
-            json.dump({"agents": {},
-                       "workflows": {"security_review": "yes"}}, handle)
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
+            json.dump({"agents": {}, "workflows": {"security_review": "yes"}}, handle)
             path = handle.name
         try:
             with self.assertRaises(ValueError):
@@ -648,8 +697,7 @@ class WorkflowsConfigTests(unittest.TestCase):
 
 class VerdictSummaryTests(unittest.TestCase):
     def test_summary_reports_blocking_role_and_findings(self):
-        task = Task("Review", "review", "w",
-                    result=f"notes\n{APPROVE_BLOCKING}")
+        task = Task("Review", "review", "w", result=f"notes\n{APPROVE_BLOCKING}")
         summary = verdict_summary_for_task(task)
         self.assertIsNotNone(summary)
         assert summary is not None
@@ -659,14 +707,14 @@ class VerdictSummaryTests(unittest.TestCase):
         self.assertEqual(list(summary["blocking"]), ["missing test"])
 
     def test_summary_ignores_non_review_roles(self):
-        self.assertIsNone(verdict_summary_for_task(
-            Task("Build", "implementation", "w", result="done")))
+        self.assertIsNone(
+            verdict_summary_for_task(Task("Build", "implementation", "w", result="done"))
+        )
 
     def test_serialize_task_carries_review_verdict(self):
         from agentops.gui_controller import serialize_task
 
-        payload = serialize_task(
-            Task("Review", "review", "w", result=APPROVE))
+        payload = serialize_task(Task("Review", "review", "w", result=APPROVE))
         self.assertEqual(payload["review_verdict"]["verdict"], "approve")
         self.assertTrue(payload["review_verdict"]["approved"])
         plain = serialize_task(Task("Build", "implementation", "w"))

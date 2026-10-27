@@ -52,8 +52,11 @@ class TestNotebook(unittest.TestCase):
         return ["".join(c["source"]) for c in self.nb["cells"] if c["cell_type"] == "code"]
 
     def test_committed_notebook_is_what_the_builder_writes(self):
-        self.assertEqual(self.raw, build_notebook.render(),
-                         "run python kaggle/build_notebook.py and commit the result")
+        self.assertEqual(
+            self.raw,
+            build_notebook.render(),
+            "run python kaggle/build_notebook.py and commit the result",
+        )
 
     def test_is_nbformat_4_with_clean_code_cells(self):
         self.assertEqual(self.nb["nbformat"], 4)
@@ -79,8 +82,9 @@ class TestNotebook(unittest.TestCase):
 
     def test_smoke_runs_before_full_and_export_last(self):
         src = "\n".join(self.code())
-        order = [src.index(f'recipe("{stage}")') for stage in
-                 ("smoke", "full", "export", "summary")]
+        order = [
+            src.index(f'recipe("{stage}")') for stage in ("smoke", "full", "export", "summary")
+        ]
         self.assertEqual(order, sorted(order))
 
     def test_settings_name_the_ref_and_the_gpu_check_refuses_cpu(self):
@@ -139,8 +143,9 @@ class TestRendering(unittest.TestCase):
             doc = f.read()
         self.assertIn(r["name"], doc)
         self.assertIn(f"{tokens:,}", doc)
-        self.assertEqual((r["vocab_size"], r["d_model"], r["n_layers"], r["amp"]),
-                         (8192, 384, 6, "fp16"))
+        self.assertEqual(
+            (r["vocab_size"], r["d_model"], r["n_layers"], r["amp"]), (8192, 384, 6, "fp16")
+        )
 
     def test_bad_override_and_unknown_seed_are_refused(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -154,10 +159,26 @@ class TestRendering(unittest.TestCase):
 class TestCpuEndToEnd(unittest.TestCase):
     """The whole recipe, tiny, on CPU: every stage runs and every number is measured."""
 
-    TINY = ["vocab_size=300", "context_length=16", "n_layers=1", "n_heads=2", "d_model=16",
-            "d_ff=32", "batch_size=2", "max_steps=6", "warmup_steps=2", "eval_interval=3",
-            "eval_batches=2", "smoke_steps=4", "smoke_resume_steps=2", "seeds=11,12",
-            "amp=bf16", "eval_batch_size=4", "min_frequency=1", "val_frac=0.1"]
+    TINY = [
+        "vocab_size=300",
+        "context_length=16",
+        "n_layers=1",
+        "n_heads=2",
+        "d_model=16",
+        "d_ff=32",
+        "batch_size=2",
+        "max_steps=6",
+        "warmup_steps=2",
+        "eval_interval=3",
+        "eval_batches=2",
+        "smoke_steps=4",
+        "smoke_resume_steps=2",
+        "seeds=11,12",
+        "amp=bf16",
+        "eval_batch_size=4",
+        "min_frequency=1",
+        "val_frac=0.1",
+    ]
 
     @classmethod
     def setUpClass(cls):
@@ -166,8 +187,17 @@ class TestCpuEndToEnd(unittest.TestCase):
         with open(cls.corpus, "w", encoding="utf-8") as f:
             f.write(tinystories_text(60))
         cls.out = os.path.join(cls.tmp.name, "out")
-        cls.args = ["--device", "cpu", "--input", cls.corpus, "--out-dir", cls.out,
-                    "--data-dir", os.path.join(cls.tmp.name, "data"), "--no-quantize"]
+        cls.args = [
+            "--device",
+            "cpu",
+            "--input",
+            cls.corpus,
+            "--out-dir",
+            cls.out,
+            "--data-dir",
+            os.path.join(cls.tmp.name, "data"),
+            "--no-quantize",
+        ]
         for item in cls.TINY:
             cls.args += ["--override", item]
         with contextlib.redirect_stdout(io.StringIO()) as log:
@@ -197,8 +227,10 @@ class TestCpuEndToEnd(unittest.TestCase):
             self.assertTrue(math.isfinite(entry["eval"]["val_bpb"]))
             self.assertTrue(os.path.exists(entry["checkpoint"]))
             self.assertEqual(len(entry["eval"]["samples"]), 5)
-        self.assertNotEqual(self.state["seeds"]["11"]["eval"]["val_loss"],
-                            self.state["seeds"]["12"]["eval"]["val_loss"])
+        self.assertNotEqual(
+            self.state["seeds"]["11"]["eval"]["val_loss"],
+            self.state["seeds"]["12"]["eval"]["val_loss"],
+        )
 
     def test_provenance_and_data_identity_are_recorded(self):
         data = self.state["data"]

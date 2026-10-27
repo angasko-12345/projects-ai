@@ -54,7 +54,10 @@ if _IS_WINDOWS:
     kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
     kernel32.OpenProcess.restype = wintypes.HANDLE
     kernel32.QueryFullProcessImageNameW.argtypes = [
-        wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)
+        wintypes.HANDLE,
+        wintypes.DWORD,
+        wintypes.LPWSTR,
+        ctypes.POINTER(wintypes.DWORD),
     ]
     kernel32.QueryFullProcessImageNameW.restype = wintypes.BOOL
     kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
@@ -101,9 +104,12 @@ def find_main_window(title: str, executable: str) -> int | None:
 
 def python_free_environment(appdata: Path) -> dict[str, str]:
     """A copy of the environment with no Python reachable and an isolated APPDATA."""
-    env = {key: value for key, value in os.environ.items() if key not in ("PYTHONHOME", "PYTHONPATH")}
+    env = {
+        key: value for key, value in os.environ.items() if key not in ("PYTHONHOME", "PYTHONPATH")
+    }
     kept = [
-        entry for entry in env.get("PATH", "").split(os.pathsep)
+        entry
+        for entry in env.get("PATH", "").split(os.pathsep)
         if not (Path(entry or ".") / "python.exe").exists()
     ]
     env["PATH"] = os.pathsep.join(kept)
@@ -164,12 +170,15 @@ def smoke(exe: Path, timeout: float) -> int:
         # can extract its temp dir in a location with no ACL restrictions.
         local_exe = workdir / exe.name
         import shutil
+
         shutil.copy2(exe, local_exe)
 
         print(f"Executable  {exe} ({exe.stat().st_size:,} bytes)")
         print(f"Working dir {workdir}")
         print(f"APPDATA     {appdata} (isolated from the developer's own settings)")
-        print(f"PATH        {len([e for e in env['PATH'].split(os.pathsep) if e])} entries, none containing python.exe")
+        print(
+            f"PATH        {len([e for e in env['PATH'].split(os.pathsep) if e])} entries, none containing python.exe"
+        )
 
         started = time.monotonic()
         process = subprocess.Popen([str(local_exe)], cwd=str(workdir), env=env)
@@ -206,7 +215,9 @@ def smoke(exe: Path, timeout: float) -> int:
                 return 1
             print("PASS: closed the window and the process exited with code 0")
 
-            leftover = sorted(item.name for item in workdir.iterdir() if item.name != local_exe.name)
+            leftover = sorted(
+                item.name for item in workdir.iterdir() if item.name != local_exe.name
+            )
             if leftover:
                 print(f"FAIL: executable wrote into its working directory: {leftover}")
                 return 1
@@ -220,7 +231,9 @@ def smoke(exe: Path, timeout: float) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Launch AgentOps.exe and verify the GUI starts.")
     parser.add_argument("--exe", type=Path, default=DEFAULT_EXE, help="executable to launch")
-    parser.add_argument("--timeout", type=float, default=90.0, help="seconds to wait for the window")
+    parser.add_argument(
+        "--timeout", type=float, default=90.0, help="seconds to wait for the window"
+    )
     args = parser.parse_args(argv)
     return smoke(args.exe.resolve(), args.timeout)
 

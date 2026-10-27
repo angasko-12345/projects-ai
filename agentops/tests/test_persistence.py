@@ -95,7 +95,8 @@ class DegradationRecorderTests(unittest.TestCase):
     def test_recorder_emits_warning_event_best_effort(self):
         emitted: list[Event] = []
         recorder = DegradationRecorder(
-            emit=event_emitter(emitted.append), )
+            emit=event_emitter(emitted.append),
+        )
         recorder.record("agent_run.create", RuntimeError("locked"), workflow_id="w-1")
         self.assertEqual(len(emitted), 1)
         event = emitted[0]
@@ -154,12 +155,12 @@ class DegradationRecorderTests(unittest.TestCase):
             thread.join()
         self.assertEqual(errors, [])
         self.assertEqual(len(recorder.degradations), 200)
-        self.assertEqual(
-            len({item.message for item in recorder.degradations}), 200)
+        self.assertEqual(len({item.message for item in recorder.degradations}), 200)
 
     def test_degradation_is_json_shaped(self):
-        payload = Degradation("task.update", PersistencePolicy.MUST_FAIL_CLOSED,
-                              "sqlite3.OperationalError", "locked").to_dict()
+        payload = Degradation(
+            "task.update", PersistencePolicy.MUST_FAIL_CLOSED, "sqlite3.OperationalError", "locked"
+        ).to_dict()
         self.assertEqual(payload["operation"], "task.update")
         self.assertEqual(payload["policy"], "must_fail_closed")
         self.assertEqual(payload["error_type"], "sqlite3.OperationalError")
@@ -179,9 +180,7 @@ class PersistencePolicyTests(unittest.TestCase):
             "task.update",
             "merge.conflict_task",
         ):
-            self.assertIs(
-                policy_for(operation), PersistencePolicy.MUST_FAIL_CLOSED, operation
-            )
+            self.assertIs(policy_for(operation), PersistencePolicy.MUST_FAIL_CLOSED, operation)
 
     def test_diagnostic_writes_are_safe_to_degrade(self):
         for operation in (
@@ -190,16 +189,13 @@ class PersistencePolicyTests(unittest.TestCase):
             "failure.create",
             "event.routing_decision",
         ):
-            self.assertIs(
-                policy_for(operation), PersistencePolicy.SAFE_TO_DEGRADE, operation
-            )
+            self.assertIs(policy_for(operation), PersistencePolicy.SAFE_TO_DEGRADE, operation)
 
     def test_unknown_operation_is_treated_as_fail_closed(self):
         self.assertIs(policy_for("something.new"), PersistencePolicy.MUST_FAIL_CLOSED)
 
     def test_worktree_provenance_is_classified_safe_to_degrade(self):
-        self.assertIs(
-            policy_for("worktree_ref.create"), PersistencePolicy.SAFE_TO_DEGRADE)
+        self.assertIs(policy_for("worktree_ref.create"), PersistencePolicy.SAFE_TO_DEGRADE)
 
 
 class KernelFailClosedTests(unittest.TestCase):
@@ -218,13 +214,14 @@ class KernelFailClosedTests(unittest.TestCase):
             try:
                 workflow_id = state.create_workflow("persistence degradation")
                 with patch.object(
-                    state, "finish_verification_check",
+                    state,
+                    "finish_verification_check",
                     side_effect=KeyError("check row vanished"),
                 ):
-                    report = asyncio.run(
-                        kernel.run_verification(workflow_id, "task-1", directory))
+                    report = asyncio.run(kernel.run_verification(workflow_id, "task-1", directory))
                 self.assertIsNot(
-                    report.overall_status, VerificationReportStatus.PASSED,
+                    report.overall_status,
+                    VerificationReportStatus.PASSED,
                     "a report must never claim PASSED when check state was not persisted",
                 )
                 self.assertIs(report.overall_status, VerificationReportStatus.FAILED)
@@ -244,8 +241,7 @@ class KernelFailClosedTests(unittest.TestCase):
             kernel = _harness(directory, profile, state, process_factory=factory)
             try:
                 workflow_id = state.create_workflow("healthy")
-                report = asyncio.run(
-                    kernel.run_verification(workflow_id, "task-1", directory))
+                report = asyncio.run(kernel.run_verification(workflow_id, "task-1", directory))
                 self.assertIs(report.overall_status, VerificationReportStatus.PASSED)
             finally:
                 state.close()
@@ -257,7 +253,10 @@ class KernelFailClosedTests(unittest.TestCase):
         profile = _profile(
             VerificationCheckSpec("unit", VerificationCheckClass.TESTS, ("unit",)),
             VerificationCheckSpec(
-                "lint", VerificationCheckClass.LINT, ("lint",), required=False,
+                "lint",
+                VerificationCheckClass.LINT,
+                ("lint",),
+                required=False,
             ),
         )
         with tempfile.TemporaryDirectory() as directory:
@@ -266,11 +265,11 @@ class KernelFailClosedTests(unittest.TestCase):
             try:
                 workflow_id = state.create_workflow("optional check")
                 with patch.object(
-                    state, "finish_verification_check",
+                    state,
+                    "finish_verification_check",
                     side_effect=KeyError("check row vanished"),
                 ):
-                    report = asyncio.run(
-                        kernel.run_verification(workflow_id, "task-1", directory))
+                    report = asyncio.run(kernel.run_verification(workflow_id, "task-1", directory))
                 self.assertIs(report.overall_status, VerificationReportStatus.FAILED)
             finally:
                 state.close()
@@ -286,11 +285,13 @@ class KernelFailClosedTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             state = StateStore(":memory:")
             kernel = _harness(
-                directory, profile, state, process_factory=factory, degradation=recorder)
+                directory, profile, state, process_factory=factory, degradation=recorder
+            )
             try:
                 workflow_id = state.create_workflow("recorded degradation")
                 with patch.object(
-                    state, "finish_verification_check",
+                    state,
+                    "finish_verification_check",
                     side_effect=KeyError("check row vanished"),
                 ):
                     asyncio.run(kernel.run_verification(workflow_id, "task-1", directory))
@@ -305,6 +306,7 @@ class KernelFailClosedTests(unittest.TestCase):
         An error the kernel never swallowed (a real SQLite failure) keeps
         aborting the run, which is already fail-closed.
         """
+
         async def factory(*command, **kwargs):
             return FakeProcess(b"ok", b"", 0)
 
@@ -317,12 +319,12 @@ class KernelFailClosedTests(unittest.TestCase):
             try:
                 workflow_id = state.create_workflow("hard failure")
                 with patch.object(
-                    state, "finish_verification_check",
+                    state,
+                    "finish_verification_check",
                     side_effect=sqlite3.OperationalError("disk I/O error"),
                 ):
                     with self.assertRaises(sqlite3.OperationalError):
-                        asyncio.run(
-                            kernel.run_verification(workflow_id, "task-1", directory))
+                        asyncio.run(kernel.run_verification(workflow_id, "task-1", directory))
             finally:
                 state.close()
 
@@ -339,11 +341,11 @@ class KernelFailClosedTests(unittest.TestCase):
             try:
                 workflow_id = state.create_workflow("cannot start")
                 with patch.object(
-                    state, "start_verification_check",
+                    state,
+                    "start_verification_check",
                     side_effect=KeyError("check row vanished"),
                 ):
-                    report = asyncio.run(
-                        kernel.run_verification(workflow_id, "task-1", directory))
+                    report = asyncio.run(kernel.run_verification(workflow_id, "task-1", directory))
                 self.assertIs(report.overall_status, VerificationReportStatus.FAILED)
             finally:
                 state.close()
@@ -355,22 +357,27 @@ class SafeToDegradeTests(unittest.TestCase):
     def test_runner_records_a_lost_run_row_and_still_executes(self):
         recorder = DegradationRecorder()
         with tempfile.TemporaryDirectory() as directory:
+
             async def factory(*command, **kwargs):
                 return FakeProcess(b"done", b"", 0)
 
             runner = AgentRunner(
                 LogManager(Path(directory) / "logs"),
-                run_observer=MagicMock(**{
-                    "create_run.side_effect": sqlite3.OperationalError("locked"),
-                }),
+                run_observer=MagicMock(
+                    **{
+                        "create_run.side_effect": sqlite3.OperationalError("locked"),
+                    }
+                ),
                 runtime=ProcessRuntime(spawn=factory),
                 degradation=recorder,
             )
             agent = DetectedAgent(
                 AgentConfig("pi", "pi", ("--print", "{prompt}"), ("implementation",)),
-                True, "pi", "1.0.0")
-            result = asyncio.run(
-                runner.run_agent(agent, "hello", directory, task_id="t-1"))
+                True,
+                "pi",
+                "1.0.0",
+            )
+            result = asyncio.run(runner.run_agent(agent, "hello", directory, task_id="t-1"))
             self.assertEqual(result.exit_code, 0)
         operations = [item.operation for item in recorder.degradations]
         self.assertIn("agent_run.create", operations)
@@ -380,6 +387,7 @@ class SafeToDegradeTests(unittest.TestCase):
         """A stranded RUNNING run is recoverable, so it degrades — loudly."""
         recorder = DegradationRecorder()
         with tempfile.TemporaryDirectory() as directory:
+
             async def factory(*command, **kwargs):
                 return FakeProcess(b"done", b"", 0)
 
@@ -393,9 +401,11 @@ class SafeToDegradeTests(unittest.TestCase):
             )
             agent = DetectedAgent(
                 AgentConfig("pi", "pi", ("--print", "{prompt}"), ("implementation",)),
-                True, "pi", "1.0.0")
-            result = asyncio.run(
-                runner.run_agent(agent, "hello", directory, task_id="t-1"))
+                True,
+                "pi",
+                "1.0.0",
+            )
+            result = asyncio.run(runner.run_agent(agent, "hello", directory, task_id="t-1"))
             self.assertEqual(result.exit_code, 0)
         operations = [item.operation for item in recorder.degradations]
         self.assertIn("agent_run.transition", operations)
@@ -406,19 +416,27 @@ class SafeToDegradeTests(unittest.TestCase):
         state = StateStore(":memory:")
         try:
             workflow_id = state.create_workflow("recovery degradation")
-            task = state.add_task(
-                Task("do", "implementation", workflow_id, max_attempts=1))
+            task = state.add_task(Task("do", "implementation", workflow_id, max_attempts=1))
             # A stranded task: FAILED with an interrupted result is what
             # recover_incomplete actually looks for.
-            state.update_task(replace(
-                task, status=TaskStatus.FAILED,
-                result="Task execution was interrupted before completion."))
+            state.update_task(
+                replace(
+                    task,
+                    status=TaskStatus.FAILED,
+                    result="Task execution was interrupted before completion.",
+                )
+            )
             engine = WorkflowEngine(
-                AppConfig({}, {}), state, MagicMock(), MagicMock(), MagicMock(),
+                AppConfig({}, {}),
+                state,
+                MagicMock(),
+                MagicMock(),
+                MagicMock(),
                 degradation=recorder,
             )
             with patch.object(
-                state, "create_failure",
+                state,
+                "create_failure",
                 side_effect=sqlite3.OperationalError("locked"),
             ):
                 engine.recover_incomplete(workflow_id)
@@ -434,15 +452,16 @@ class SafeToDegradeTests(unittest.TestCase):
         try:
             workflow_id = state.create_workflow("provenance")
             worktree = Worktree(
-                Path("C:/repo"), Path("C:/wt"), "agentops/demo-12345678", "main", "abc123")
-            with patch.object(state, "record_worktree_ref",
-                              side_effect=sqlite3.OperationalError("locked")):
-                stored = record_worktree_provenance(
-                    state, worktree, workflow_id, recorder)
+                Path("C:/repo"), Path("C:/wt"), "agentops/demo-12345678", "main", "abc123"
+            )
+            with patch.object(
+                state, "record_worktree_ref", side_effect=sqlite3.OperationalError("locked")
+            ):
+                stored = record_worktree_provenance(state, worktree, workflow_id, recorder)
             self.assertFalse(stored)
             self.assertEqual(
-                [item.operation for item in recorder.degradations],
-                ["worktree_ref.create"])
+                [item.operation for item in recorder.degradations], ["worktree_ref.create"]
+            )
         finally:
             state.close()
 
@@ -452,9 +471,9 @@ class SafeToDegradeTests(unittest.TestCase):
         try:
             workflow_id = state.create_workflow("provenance ok")
             worktree = Worktree(
-                Path("C:/repo"), Path("C:/wt"), "agentops/demo-87654321", "main", "abc123")
-            self.assertTrue(
-                record_worktree_provenance(state, worktree, workflow_id, recorder))
+                Path("C:/repo"), Path("C:/wt"), "agentops/demo-87654321", "main", "abc123"
+            )
+            self.assertTrue(record_worktree_provenance(state, worktree, workflow_id, recorder))
             self.assertEqual(recorder.degradations, ())
             refs = state.list_worktree_refs(workflow_id)
             self.assertEqual(len(refs), 1)
@@ -469,11 +488,16 @@ class SafeToDegradeTests(unittest.TestCase):
             workflow_id = state.create_workflow("degraded failure row")
             task = state.add_task(Task("do", "implementation", workflow_id, max_attempts=1))
             engine = WorkflowEngine(
-                AppConfig({}, {}), state, MagicMock(), MagicMock(), MagicMock(),
+                AppConfig({}, {}),
+                state,
+                MagicMock(),
+                MagicMock(),
+                MagicMock(),
                 degradation=recorder,
             )
             with patch.object(
-                state, "create_failure",
+                state,
+                "create_failure",
                 side_effect=sqlite3.OperationalError("locked"),
             ):
                 failure = engine.record_failure(
@@ -495,14 +519,15 @@ class SafeToDegradeTests(unittest.TestCase):
             manager.commit_changes.return_value = True
             manager.merge.side_effect = GitError("conflict")
             worktree = Worktree(
-                Path("C:/repo"), Path("C:/wt"), "agentops/demo-12345678", "main", "abc123")
+                Path("C:/repo"), Path("C:/wt"), "agentops/demo-12345678", "main", "abc123"
+            )
             with patch.object(
-                state, "add_task",
+                state,
+                "add_task",
                 side_effect=sqlite3.OperationalError("locked"),
             ):
                 with self.assertRaises(sqlite3.OperationalError):
-                    finalize_worktree(
-                        manager, state, worktree, "thing", workflow_id, 2)
+                    finalize_worktree(manager, state, worktree, "thing", workflow_id, 2)
         finally:
             state.close()
 

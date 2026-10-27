@@ -8,10 +8,11 @@
 # E9 and W are the E/W basics: import placement, statement layout, syntax
 # errors, and whitespace.
 #
-# E5 (line length) is deliberately not selected. No product configures a
-# formatter, most files are written to ~100 columns, and roughly 1,900 lines
-# exceed the 88-column default; wrapping them would bury the dead-code
-# findings this lint exists to surface. Add a formatter before adding E5.
+# E5 (line length) is deliberately not selected. `ruff format` (configured
+# below, line-length 100) now covers agentops, ai-token-tracker, mini-llm,
+# tools and the root scripts, but long strings and comments it does not wrap
+# still leave E501 findings at 100 columns, most of them in the products the
+# formatter excludes. Clear those before selecting E5.
 
 [tool.ruff]
 # Youngest interpreter any product supports (ai-token-tracker: 3.10+), so
@@ -23,6 +24,12 @@ target-version = "py310"
 # are not repository source. Everything else (node_modules, dist, .git) is in
 # Ruff's default exclude list.
 extend-exclude = [".agents"]
+
+# Most files are already written to ~100 columns; formatting to 100 rather than
+# the 88 default keeps the one-time `ruff format` commit (listed in
+# .git-blame-ignore-revs) as small as possible. Also the E501 limit if E5 is
+# ever selected.
+line-length = 100
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "W", "F", "B", "UP"]
@@ -45,3 +52,24 @@ select = ["E4", "E7", "E9", "W", "F", "B", "UP"]
 # pytest inserts the project root for tests; the fixture module follows the
 # same path bootstrap before importing the app package.
 "tiktok-slop-factory/tests/conftest.py" = ["E402"]
+
+[tool.ruff.format]
+# Formatted: agentops/, ai-token-tracker/, small-projects/mini-llm/, tools/ and
+# the root .py files. Not formatted yet, on purpose: universal-game-agent has a
+# draft PR stack in flight that a reformat would conflict with; qr-generator
+# and tiktok-slop-factory await a decision on where they live; the privacy
+# audit tool is out of this pass. Remove an entry here when that product is
+# formatted (as its own formatting-only commit, added to .git-blame-ignore-revs).
+exclude = [
+    "universal-game-agent/**",
+    "qr-generator/**",
+    "tiktok-slop-factory/**",
+    "small-projects/privacy_audit_tool/**",
+    # Python files only: leave code blocks in Markdown and the Kaggle
+    # notebook's JSON exactly as written.
+    "*.md",
+    "*.ipynb",
+]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
