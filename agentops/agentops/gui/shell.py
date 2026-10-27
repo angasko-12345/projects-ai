@@ -141,7 +141,7 @@ class MainWindow(QMainWindow, AsyncMixin):
         topbar = QWidget()
         topbar.setObjectName("TopBar")
         bar = QHBoxLayout(topbar)
-        bar.setContentsMargins(18, DARK.space_sm, 18, DARK.space_sm)
+        bar.setContentsMargins(DARK.space_page, DARK.space_sm, DARK.space_page, DARK.space_sm)
         bar.setSpacing(DARK.space_sm)
 
         # Lives in the top bar, not the sidebar, so collapsing the sidebar
@@ -193,7 +193,7 @@ class MainWindow(QMainWindow, AsyncMixin):
         self._recovery_banner = QFrame()
         self._recovery_banner.setObjectName("RecoveryBanner")
         banner = QHBoxLayout(self._recovery_banner)
-        banner.setContentsMargins(18, DARK.space_sm, 18, DARK.space_sm)
+        banner.setContentsMargins(DARK.space_page, DARK.space_sm, DARK.space_page, DARK.space_sm)
         banner.setSpacing(DARK.space_sm)
         heading = QLabel("Interrupted work detected")
         heading.setProperty("role", "title")
@@ -227,7 +227,7 @@ class MainWindow(QMainWindow, AsyncMixin):
         self._sidebar.setFixedWidth(216)
         side = QVBoxLayout(self._sidebar)
         side.setContentsMargins(DARK.space_sm, DARK.space_md, DARK.space_sm, DARK.space_sm)
-        side.setSpacing(2)
+        side.setSpacing(DARK.space_xs)
 
         brand_row = QHBoxLayout()
         brand_row.setSpacing(DARK.space_sm)
@@ -242,7 +242,7 @@ class MainWindow(QMainWindow, AsyncMixin):
         side.addLayout(brand_row)
 
         self._nav_layout = QVBoxLayout()
-        self._nav_layout.setSpacing(2)
+        self._nav_layout.setSpacing(DARK.space_xs)
         side.addLayout(self._nav_layout)
         side.addStretch(1)
         side.addWidget(faint("Ctrl+K  command palette"))

@@ -94,8 +94,9 @@ class DashboardView(BaseView):
         inner = QWidget()
         scroll.setWidget(inner)
         root = QVBoxLayout(inner)
-        root.setContentsMargins(18, 18, 18, 18)
-        root.setSpacing(12)
+        page = DARK.space_page
+        root.setContentsMargins(page, page, page, page)
+        root.setSpacing(DARK.space_md)
 
         self._page_header = PageHeader(self.title)
         refresh = ghost_button("Refresh")
@@ -140,7 +141,7 @@ class DashboardView(BaseView):
         root.addWidget(hero)
 
         stats = QHBoxLayout()
-        stats.setSpacing(12)
+        stats.setSpacing(DARK.space_md)
         (self._workflows_card, self._workflows_stat, self._workflows_detail) = self._stat_card(
             "Active workflows", "workflows", "Open the workflow control center"
         )
@@ -163,10 +164,10 @@ class DashboardView(BaseView):
         root.addLayout(stats)
 
         main = QHBoxLayout()
-        main.setSpacing(12)
+        main.setSpacing(DARK.space_md)
 
         left = QVBoxLayout()
-        left.setSpacing(12)
+        left.setSpacing(DARK.space_md)
         attention_card = Card("Needs attention")
         attention_body = attention_card.body()
         self._attention_count = muted("")
@@ -195,7 +196,7 @@ class DashboardView(BaseView):
         main.addLayout(left, stretch=3)
 
         right = QVBoxLayout()
-        right.setSpacing(12)
+        right.setSpacing(DARK.space_md)
         activity_card = Card("Recent activity")
         activity_body = activity_card.body()
         # The activity card stretches to fill its column; without an

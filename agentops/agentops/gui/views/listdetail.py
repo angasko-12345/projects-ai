@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QHBoxLayout, QMessageBox, QSplitter, QVBoxLayout
 
 from ..detail import DetailPanel
 from ..format import elide
+from ..tokens import DARK
 from ..widgets import PageHeader, SearchBox, TablePanel, TableColumn, faint
 from .base import BaseView
 
@@ -30,14 +31,15 @@ class ListDetailView(BaseView):
     # ------------------------------------------------------------------
     def _build(self) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(18, 18, 18, 18)
-        root.setSpacing(12)
+        page = DARK.space_page
+        root.setContentsMargins(page, page, page, page)
+        root.setSpacing(DARK.space_md)
 
         self._page_header = PageHeader(self.title, self.page_subtitle)
         root.addWidget(self._page_header)
 
         toolbar = QHBoxLayout()
-        toolbar.setSpacing(8)
+        toolbar.setSpacing(DARK.space_sm)
         self._search = SearchBox(self.search_placeholder)
         self._search.textChanged.connect(self._apply_filters)
         toolbar.addWidget(self._search, stretch=1)
