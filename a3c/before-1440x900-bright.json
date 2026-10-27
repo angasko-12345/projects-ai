@@ -1,0 +1,10 @@
+{
+ "mode": "apply_theme:dark",
+ "dashboard": 0.0029,
+ "workflows": 0.002,
+ "runs": 0.0036,
+ "failures": 0.0023,
+ "settings": 0.0019,
+ "workflow-running": 0.0031,
+ "workflow-failed": 0.003
+}
