@@ -23,7 +23,9 @@ try:
 except ImportError:
     _yaml = None
 HAS_YAML = _yaml is not None
-_YAML_ERRORS = (OSError, ValueError, ImportError) if _yaml is None else (OSError, ValueError, _yaml.YAMLError)
+_YAML_ERRORS = (
+    (OSError, ValueError, ImportError) if _yaml is None else (OSError, ValueError, _yaml.YAMLError)
+)
 
 
 class BundleRootTests(unittest.TestCase):
@@ -88,11 +90,13 @@ class ConfigShadowingTests(unittest.TestCase):
 
     def test_empty_file_does_not_shadow_bundled_config(self):
         self._assert_real_bundle(
-            self._resolve(lambda target: target.write_text("", encoding="utf-8")))
+            self._resolve(lambda target: target.write_text("", encoding="utf-8"))
+        )
 
     def test_stale_unparseable_file_does_not_shadow_bundled_config(self):
         self._assert_real_bundle(
-            self._resolve(lambda target: target.write_text('{"agents":', encoding="utf-8")))
+            self._resolve(lambda target: target.write_text('{"agents":', encoding="utf-8"))
+        )
 
 
 class ConfigPreferenceWinTests(unittest.TestCase):
@@ -155,8 +159,9 @@ class BundledConfigValidatorContractTests(unittest.TestCase):
         self._rejections_agree(self._write_case(lambda base: base.write_text("", encoding="utf-8")))
 
     def test_malformed_file_rejected_by_both(self):
-        self._rejections_agree(self._write_case(
-            lambda base: base.write_text(self.MALFORMED, encoding="utf-8")))
+        self._rejections_agree(
+            self._write_case(lambda base: base.write_text(self.MALFORMED, encoding="utf-8"))
+        )
 
     def test_valid_json_config_accepted_by_both(self):
         self._acceptances_agree(
@@ -166,9 +171,12 @@ class BundledConfigValidatorContractTests(unittest.TestCase):
 
     def test_conventional_yaml_matches_loader_contract(self):
         path = self._write_case(
-            lambda base: base.write_text(self.CONVENTIONAL_YAML, encoding="utf-8"))
+            lambda base: base.write_text(self.CONVENTIONAL_YAML, encoding="utf-8")
+        )
         if HAS_YAML:
-            self._acceptances_agree(path, {"agents": {"a": {"command": "yaml-cmd", "args": ["{prompt}"]}}})
+            self._acceptances_agree(
+                path, {"agents": {"a": {"command": "yaml-cmd", "args": ["{prompt}"]}}}
+            )
         else:
             # Without PyYAML the loader's contract is JSON-only; the shadowing
             # guard must reject so the packaged copy is used instead of an

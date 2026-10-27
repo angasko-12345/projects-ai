@@ -40,14 +40,22 @@ def build_data(tmp: str, context_length: int = 16) -> str:
     argv = sys.argv
     sys.argv = [
         "prepare_data.py",
-        "--input", corpus,
-        "--tokenizer-out", os.path.join(tmp, "tokenizer.json"),
-        "--train-out", os.path.join(tmp, "train.bin"),
-        "--val-out", os.path.join(tmp, "val.bin"),
-        "--vocab-size", "512",
-        "--min-frequency", "1",
-        "--val-frac", "0.2",
-        "--context-length", str(context_length),
+        "--input",
+        corpus,
+        "--tokenizer-out",
+        os.path.join(tmp, "tokenizer.json"),
+        "--train-out",
+        os.path.join(tmp, "train.bin"),
+        "--val-out",
+        os.path.join(tmp, "val.bin"),
+        "--vocab-size",
+        "512",
+        "--min-frequency",
+        "1",
+        "--val-frac",
+        "0.2",
+        "--context-length",
+        str(context_length),
     ]
     try:
         prepare_data.main()
@@ -95,8 +103,9 @@ class TestGradientEquivalence(unittest.TestCase):
         return from_config(cfg)
 
     def test_accumulated_gradient_matches_one_big_batch(self):
-        cfg = Config(vocab_size=32, context_length=8, n_layers=1, n_heads=2,
-                     d_model=16, d_ff=32, dropout=0.0)
+        cfg = Config(
+            vocab_size=32, context_length=8, n_layers=1, n_heads=2, d_model=16, d_ff=32, dropout=0.0
+        )
         x_all = torch.randint(0, cfg.vocab_size, (4, cfg.context_length))
         y_all = torch.randint(0, cfg.vocab_size, (4, cfg.context_length))
 
@@ -109,8 +118,8 @@ class TestGradientEquivalence(unittest.TestCase):
         split = self.model(cfg)
         split.zero_grad()
         for i in range(accum):
-            x = x_all[i * 2:(i + 1) * 2]
-            y = y_all[i * 2:(i + 1) * 2]
+            x = x_all[i * 2 : (i + 1) * 2]
+            y = y_all[i * 2 : (i + 1) * 2]
             _, micro_loss = split(x, y)
             (micro_loss / accum).backward()
 
@@ -122,8 +131,9 @@ class TestGradientEquivalence(unittest.TestCase):
 
     def test_accumulation_without_scaling_would_not_match(self):
         """Guards the 1/accum scaling: three unscaled microbatches overshoot."""
-        cfg = Config(vocab_size=32, context_length=8, n_layers=1, n_heads=2,
-                     d_model=16, d_ff=32, dropout=0.0)
+        cfg = Config(
+            vocab_size=32, context_length=8, n_layers=1, n_heads=2, d_model=16, d_ff=32, dropout=0.0
+        )
         x_all = torch.randint(0, cfg.vocab_size, (4, cfg.context_length))
         y_all = torch.randint(0, cfg.vocab_size, (4, cfg.context_length))
 
@@ -135,7 +145,7 @@ class TestGradientEquivalence(unittest.TestCase):
         unscaled = self.model(cfg)
         unscaled.zero_grad()
         for i in range(accum):
-            _, micro_loss = unscaled(x_all[i * 2:(i + 1) * 2], y_all[i * 2:(i + 1) * 2])
+            _, micro_loss = unscaled(x_all[i * 2 : (i + 1) * 2], y_all[i * 2 : (i + 1) * 2])
             micro_loss.backward()
 
         big_norm = torch.sqrt(sum(p.grad.pow(2).sum() for p in big.parameters()))
@@ -151,13 +161,25 @@ class TestTrainingLoopAccumulation(unittest.TestCase):
         self.ckpt_dir = os.path.join(self.tmp.name, "ckpts")
 
     def tiny(self, **over) -> Config:
-        kw = dict(vocab_size=load_data_meta(self.train_bin)["vocab_size"],
-                  context_length=16, n_layers=2, n_heads=2, d_model=32, d_ff=64,
-                  batch_size=2, max_steps=3, warmup_steps=1, eval_interval=1,
-                  eval_batches=1, grad_accum_steps=2, train_bin=self.train_bin,
-                  val_bin=os.path.join(self.tmp.name, "val.bin"),
-                  tokenizer_path=os.path.join(self.tmp.name, "tokenizer.json"),
-                  checkpoint_dir=self.ckpt_dir, seed=0)
+        kw = dict(
+            vocab_size=load_data_meta(self.train_bin)["vocab_size"],
+            context_length=16,
+            n_layers=2,
+            n_heads=2,
+            d_model=32,
+            d_ff=64,
+            batch_size=2,
+            max_steps=3,
+            warmup_steps=1,
+            eval_interval=1,
+            eval_batches=1,
+            grad_accum_steps=2,
+            train_bin=self.train_bin,
+            val_bin=os.path.join(self.tmp.name, "val.bin"),
+            tokenizer_path=os.path.join(self.tmp.name, "tokenizer.json"),
+            checkpoint_dir=self.ckpt_dir,
+            seed=0,
+        )
         kw.update(over)
         return Config(**kw)
 
@@ -177,8 +199,9 @@ class TestTrainingLoopAccumulation(unittest.TestCase):
     def test_tokens_seen_counts_every_microbatch(self):
         cfg = self.tiny()
         train(cfg)
-        progress = read_checkpoint(
-            os.path.join(self.ckpt_dir, "final.pt"))["checkpoint_metadata"]["progress"]
+        progress = read_checkpoint(os.path.join(self.ckpt_dir, "final.pt"))["checkpoint_metadata"][
+            "progress"
+        ]
         expected = cfg.max_steps * cfg.grad_accum_steps * cfg.batch_size * cfg.context_length
         self.assertEqual(progress["tokens_seen"], expected)
 
@@ -216,8 +239,11 @@ class TestTrainingLoopAccumulation(unittest.TestCase):
     def test_resume_continues_with_accumulation(self):
         cfg = self.tiny(max_steps=2)
         train(cfg)
-        train(self.tiny(max_steps=4),
-              resume_from=os.path.join(self.ckpt_dir, "step_2.pt"), start_step=3)
+        train(
+            self.tiny(max_steps=4),
+            resume_from=os.path.join(self.ckpt_dir, "step_2.pt"),
+            start_step=3,
+        )
         final = os.path.join(self.ckpt_dir, "final.pt")
         self.assertEqual(read_checkpoint(final)["step"], 4)
         # Steps 3 and 4 update the optimizer two more times, on top of 2 already.
@@ -242,15 +268,30 @@ class TestGradAccumCliEndToEnd(unittest.TestCase):
             sys.argv = saved
 
     def data_flags(self) -> list[str]:
-        return ["--train-bin", self.train_bin, "--val-bin", self.val_bin,
-                "--tokenizer", self.tokenizer, "--checkpoint-dir", self.ckpt_dir,
-                "--context-length", "16", "--max-steps", "2", "--batch-size", "2",
-                "--eval-interval", "2", "--eval-batches", "2"]
+        return [
+            "--train-bin",
+            self.train_bin,
+            "--val-bin",
+            self.val_bin,
+            "--tokenizer",
+            self.tokenizer,
+            "--checkpoint-dir",
+            self.ckpt_dir,
+            "--context-length",
+            "16",
+            "--max-steps",
+            "2",
+            "--batch-size",
+            "2",
+            "--eval-interval",
+            "2",
+            "--eval-batches",
+            "2",
+        ]
 
     def test_flag_reaches_the_checkpoint(self):
         self.run_main(*self.data_flags(), "--grad-accum-steps", "3", "--seed", "0")
-        cfg = Config.from_dict(
-            read_checkpoint(os.path.join(self.ckpt_dir, "final.pt"))["config"])
+        cfg = Config.from_dict(read_checkpoint(os.path.join(self.ckpt_dir, "final.pt"))["config"])
         self.assertEqual(cfg.grad_accum_steps, 3)
 
     def test_invalid_value_is_a_clear_usage_error(self):

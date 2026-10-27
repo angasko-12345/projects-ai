@@ -32,9 +32,13 @@ CONTEXT = 8
 VAL_FRAC = 0.2
 
 
-def run_prepare(tmp: str, corpus_text: str = BIG_CORPUS,
-                context_length: int = CONTEXT, val_frac: float = VAL_FRAC,
-                extra_argv=()) -> str:
+def run_prepare(
+    tmp: str,
+    corpus_text: str = BIG_CORPUS,
+    context_length: int = CONTEXT,
+    val_frac: float = VAL_FRAC,
+    extra_argv=(),
+) -> str:
     """Run prepare_data.main() over a temporary corpus; return the train .bin path."""
     corpus = os.path.join(tmp, "corpus.txt")
     with open(corpus, "w", encoding="utf-8") as f:
@@ -42,14 +46,22 @@ def run_prepare(tmp: str, corpus_text: str = BIG_CORPUS,
     argv = sys.argv
     sys.argv = [
         "prepare_data.py",
-        "--input", corpus,
-        "--tokenizer-out", os.path.join(tmp, "tokenizer.json"),
-        "--train-out", os.path.join(tmp, "train.bin"),
-        "--val-out", os.path.join(tmp, "val.bin"),
-        "--vocab-size", "512",
-        "--min-frequency", "1",
-        "--val-frac", str(val_frac),
-        "--context-length", str(context_length),
+        "--input",
+        corpus,
+        "--tokenizer-out",
+        os.path.join(tmp, "tokenizer.json"),
+        "--train-out",
+        os.path.join(tmp, "train.bin"),
+        "--val-out",
+        os.path.join(tmp, "val.bin"),
+        "--vocab-size",
+        "512",
+        "--min-frequency",
+        "1",
+        "--val-frac",
+        str(val_frac),
+        "--context-length",
+        str(context_length),
     ] + list(extra_argv)
     try:
         prepare_data.main()
@@ -82,8 +94,8 @@ class TestStreamingParity(unittest.TestCase):
         ref = reference_ids(self.tmp.name)
         meta = load_data_meta(train_bin)
         self.assertEqual(len(ref), meta["train_tokens"] + meta["val_tokens"])
-        self.assertTrue(np.array_equal(train, ref[:meta["train_tokens"]]))
-        self.assertTrue(np.array_equal(val, ref[meta["train_tokens"]:]))
+        self.assertTrue(np.array_equal(train, ref[: meta["train_tokens"]]))
+        self.assertTrue(np.array_equal(val, ref[meta["train_tokens"] :]))
         self.assertEqual(train.dtype, np.int64)  # comparison domain only
         self.assertEqual(load_token_ids(train_bin).dtype, np.uint16)
 
@@ -114,9 +126,7 @@ class TestStreamingParity(unittest.TestCase):
         bos, eos = tok.token_to_id("<bos>"), tok.token_to_id("<eos>")
         train, val = load_bins(self.tmp.name)
         full = np.concatenate([train, val])
-        n_passages = sum(
-            1 for p in BIG_CORPUS.split("\n\n") if p.strip()
-        )
+        n_passages = sum(1 for p in BIG_CORPUS.split("\n\n") if p.strip())
         self.assertEqual(full[0], bos)
         self.assertEqual(full[-1], eos)
         self.assertEqual(int((full == bos).sum()), n_passages)
@@ -130,9 +140,19 @@ class TestStreamingParity(unittest.TestCase):
         meta = load_data_meta(train_bin)
         self.assertEqual(
             set(meta),
-            {"vocab_size", "train_tokens", "val_tokens", "dtype", "context_length",
-             "train_bin", "val_bin", "tokenizer_path",
-             "train_sha256", "val_sha256", "tokenizer_sha256"},
+            {
+                "vocab_size",
+                "train_tokens",
+                "val_tokens",
+                "dtype",
+                "context_length",
+                "train_bin",
+                "val_bin",
+                "tokenizer_path",
+                "train_sha256",
+                "val_sha256",
+                "tokenizer_sha256",
+            },
         )
         tok = load_tokenizer(os.path.join(self.tmp.name, "tokenizer.json"))
         self.assertEqual(meta["vocab_size"], tok.get_vocab_size())
@@ -146,8 +166,7 @@ class TestStreamingParity(unittest.TestCase):
 
     def test_chunk_boundaries_do_not_change_bytes(self):
         """7-char reads split every passage and delimiter; output must not move."""
-        for name, value in (("READ_CHARS", 7), ("WRITE_TOKENS", 5),
-                            ("COPY_TOKENS", 3)):
+        for name, value in (("READ_CHARS", 7), ("WRITE_TOKENS", 5), ("COPY_TOKENS", 3)):
             old = getattr(prepare_data, name)
             setattr(prepare_data, name, value)
             self.addCleanup(setattr, prepare_data, name, old)
@@ -175,8 +194,7 @@ class TestStreamingParity(unittest.TestCase):
             for p in ("train.bin", "val.bin")
         }
         self.assertEqual(before, after)
-        leftovers = [p for p in os.listdir(self.tmp.name)
-                     if p.startswith(".encode_all_")]
+        leftovers = [p for p in os.listdir(self.tmp.name) if p.startswith(".encode_all_")]
         self.assertEqual(leftovers, [])
         self.assertTrue(os.path.exists(train_bin))
 
@@ -190,12 +208,22 @@ class TestStreamingParity(unittest.TestCase):
         with open(blank, "w", encoding="utf-8") as f:
             f.write("  \n  \n")
         argv = sys.argv
-        sys.argv = ["prepare_data.py", "--input", blank,
-                    "--tokenizer-out", tok_path,
-                    "--train-out", os.path.join(self.tmp.name, "t.bin"),
-                    "--val-out", os.path.join(self.tmp.name, "v.bin"),
-                    "--min-frequency", "1", "--context-length", "8",
-                    "--skip-training"]
+        sys.argv = [
+            "prepare_data.py",
+            "--input",
+            blank,
+            "--tokenizer-out",
+            tok_path,
+            "--train-out",
+            os.path.join(self.tmp.name, "t.bin"),
+            "--val-out",
+            os.path.join(self.tmp.name, "v.bin"),
+            "--min-frequency",
+            "1",
+            "--context-length",
+            "8",
+            "--skip-training",
+        ]
         try:
             with self.assertRaises(SystemExit) as ctx:
                 prepare_data.main()

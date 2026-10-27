@@ -40,8 +40,7 @@ class SettingsView(BaseView):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(18, 18, 18, 18)
         outer.setSpacing(12)
-        self._page_header = PageHeader(
-            self.title, "Client-side preferences for this desktop app")
+        self._page_header = PageHeader(self.title, "Client-side preferences for this desktop app")
         outer.addWidget(self._page_header)
         area = QScrollArea()
         area.setWidgetResizable(True)
@@ -87,8 +86,7 @@ class SettingsView(BaseView):
         )
         desktop_card.add(self._sidebar)
         desktop_note = QLabel(
-            "Window geometry, sidebar state, and the active view are remembered "
-            "automatically."
+            "Window geometry, sidebar state, and the active view are remembered automatically."
         )
         desktop_note.setProperty("role", "muted")
         desktop_note.setWordWrap(True)
@@ -174,6 +172,7 @@ class SettingsView(BaseView):
 def _version() -> str:
     try:
         from importlib.metadata import version
+
         return version("agentops")
     except Exception:
         return "development build"

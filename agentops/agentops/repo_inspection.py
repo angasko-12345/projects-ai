@@ -21,24 +21,26 @@ from pathlib import Path
 
 #: Only these root-level files are ever opened, and each read stops at
 #: ``max_manifest_bytes``.  Everything else is inspected by name only.
-MANIFEST_NAMES: frozenset[str] = frozenset({
-    "pyproject.toml",
-    "setup.py",
-    "setup.cfg",
-    "requirements.txt",
-    "package.json",
-    "Cargo.toml",
-    "go.mod",
-    "pom.xml",
-    "build.gradle",
-    "build.gradle.kts",
-    "Gemfile",
-    "meson.build",
-    "CMakeLists.txt",
-    "Makefile",
-    "tox.ini",
-    "pytest.ini",
-})
+MANIFEST_NAMES: frozenset[str] = frozenset(
+    {
+        "pyproject.toml",
+        "setup.py",
+        "setup.cfg",
+        "requirements.txt",
+        "package.json",
+        "Cargo.toml",
+        "go.mod",
+        "pom.xml",
+        "build.gradle",
+        "build.gradle.kts",
+        "Gemfile",
+        "meson.build",
+        "CMakeLists.txt",
+        "Makefile",
+        "tox.ini",
+        "pytest.ini",
+    }
+)
 
 _SOURCE_LANGUAGE_BY_SUFFIX: dict[str, str] = {
     ".py": "Python",
@@ -69,19 +71,21 @@ _SOURCE_LANGUAGE_BY_SUFFIX: dict[str, str] = {
 
 # Dependency/vendor directories add thousands of irrelevant entries; a hidden
 # (dot-prefixed) name also skips, which covers .git, .venv, .agentops, .tox.
-_SKIP_DIRECTORIES: frozenset[str] = frozenset({
-    "node_modules",
-    "__pycache__",
-    "venv",
-    ".venv",
-    "site-packages",
-    "target",
-    "build",
-    "dist",
-    ".pytest_cache",
-    ".mypy_cache",
-    ".eggs",
-})
+_SKIP_DIRECTORIES: frozenset[str] = frozenset(
+    {
+        "node_modules",
+        "__pycache__",
+        "venv",
+        ".venv",
+        "site-packages",
+        "target",
+        "build",
+        "dist",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".eggs",
+    }
+)
 
 _SIZE_SMALL_MAX = 100
 _SIZE_MEDIUM_MAX = 1000
@@ -140,9 +144,7 @@ def _read_capped(root: str, name: str, max_bytes: int) -> str:
         return handle.read(max_bytes).decode("utf-8")
 
 
-def _manifest_test_runner(
-    root: str, manifest_names: tuple[str, ...], max_bytes: int
-) -> str | None:
+def _manifest_test_runner(root: str, manifest_names: tuple[str, ...], max_bytes: int) -> str | None:
     """Read the allowlisted manifests only; unparseable content yields no signal.
 
     A pytest signal outranks the other runners, so the go/Cargo checks wait
@@ -305,7 +307,11 @@ def inspect_repository(
         queue: deque[tuple[str, tuple[os.DirEntry, ...]]] = deque()
         queue.append((str(root), _list_sorted(root, budget)))
         return _scan_tree(
-            root, queue, budget, max_files=max_files, max_depth=max_depth,
+            root,
+            queue,
+            budget,
+            max_files=max_files,
+            max_depth=max_depth,
             max_manifest_bytes=max_manifest_bytes,
         )
     except Exception:
@@ -387,8 +393,7 @@ def _scan_tree(
         test_runner = None
 
     languages = tuple(
-        name
-        for name, _ in sorted(language_counts.items(), key=lambda item: (-item[1], item[0]))
+        name for name, _ in sorted(language_counts.items(), key=lambda item: (-item[1], item[0]))
     )
     return RepoCharacteristics(
         languages=languages,

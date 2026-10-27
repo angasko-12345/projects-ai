@@ -71,7 +71,9 @@ class AppSettings:
         recent = data.get("recent_repositories")
         if isinstance(recent, list):
             settings.recent_repositories = [
-                str(item) for item in recent[:RECENT_REPOSITORY_LIMIT] if isinstance(item, str) and item
+                str(item)
+                for item in recent[:RECENT_REPOSITORY_LIMIT]
+                if isinstance(item, str) and item
             ]
         geometry = data.get("geometry")
         if isinstance(geometry, str) and geometry:

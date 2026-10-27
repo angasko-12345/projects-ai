@@ -16,20 +16,22 @@ def _words(value: object) -> str:
 
 
 _COLUMNS = (
-    TableColumn("id", "Failure", 150,
-                format=lambda value: short_id(value, 8, tail=True)),
+    TableColumn("id", "Failure", 150, format=lambda value: short_id(value, 8, tail=True)),
     TableColumn("severity", "Severity", 90),
     TableColumn("category", "Category", 150, format=_words),
     TableColumn("source", "Source", 110, format=_words),
     TableColumn("recovery_state", "Recovery", 130, format=_words),
-    TableColumn("recommended_action", "Recommended action", 220,
-                format=lambda value: elide(_words(value), 48)),
-    TableColumn("primary_error", "Primary error", 240,
-                format=lambda value: elide(str(value or ""), 52)),
-    TableColumn("retryable", "Retryable", 90,
-                format=lambda value: "yes" if value else "no"),
-    TableColumn("repairable", "Repairable", 90,
-                format=lambda value: "yes" if value else "no"),
+    TableColumn(
+        "recommended_action",
+        "Recommended action",
+        220,
+        format=lambda value: elide(_words(value), 48),
+    ),
+    TableColumn(
+        "primary_error", "Primary error", 240, format=lambda value: elide(str(value or ""), 52)
+    ),
+    TableColumn("retryable", "Retryable", 90, format=lambda value: "yes" if value else "no"),
+    TableColumn("repairable", "Repairable", 90, format=lambda value: "yes" if value else "no"),
     TableColumn("created_at", "Created", 150, format=format_timestamp),
     TableColumn("workflow_id", "Workflow", 90, format=lambda value: short_id(value, 8)),
 )
@@ -58,9 +60,7 @@ class FailuresView(ListDetailView):
         toolbar.addWidget(self._severity)
         self._severity.currentIndexChanged.connect(self._apply_filters)
         self._actionable = QCheckBox("Actionable only")
-        self._actionable.setToolTip(
-            "Show only failures marked retryable or repairable."
-        )
+        self._actionable.setToolTip("Show only failures marked retryable or repairable.")
         self._actionable.toggled.connect(lambda _on: self._set_rows(self._all_rows))
         toolbar.addWidget(self._actionable)
         self._delete_btn = danger_button("Delete")
@@ -76,8 +76,8 @@ class FailuresView(ListDetailView):
         self._all_rows: list[dict] = []
         self._detail.changed.connect(self.refresh)
         self._table.selection_changed.connect(
-            lambda _row: self._delete_btn.setEnabled(
-                self._table.selected_row() is not None))
+            lambda _row: self._delete_btn.setEnabled(self._table.selected_row() is not None)
+        )
         self._delete_btn.setEnabled(False)
 
     def _delete_selected_failure(self) -> None:
@@ -85,7 +85,8 @@ class FailuresView(ListDetailView):
         self.delete_selected(
             "failure",
             lambda repository, failure_id: self.ctx.controller.delete_failure(
-                repository, failure_id),
+                repository, failure_id
+            ),
             detail=str(row.get("primary_error") or row.get("category") or ""),
         )
 
@@ -98,10 +99,7 @@ class FailuresView(ListDetailView):
     def _set_rows(self, rows: list[dict]) -> None:
         self._all_rows = list(rows)
         if self._actionable.isChecked():
-            rows = [
-                row for row in self._all_rows
-                if row.get("retryable") or row.get("repairable")
-            ]
+            rows = [row for row in self._all_rows if row.get("retryable") or row.get("repairable")]
         super()._set_rows(rows)
 
     def fill_detail(self, row: dict | None) -> None:

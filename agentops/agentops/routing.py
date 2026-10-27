@@ -154,7 +154,11 @@ class AgentProfile:
         object.__setattr__(self, "identifier", str(self.identifier))
         object.__setattr__(self, "display_name", str(self.display_name or self.identifier))
         object.__setattr__(self, "roles", tuple(dict.fromkeys(str(item) for item in self.roles)))
-        object.__setattr__(self, "capabilities", frozenset(_normalise_capability(item) for item in self.capabilities))
+        object.__setattr__(
+            self,
+            "capabilities",
+            frozenset(_normalise_capability(item) for item in self.capabilities),
+        )
         object.__setattr__(self, "metadata", dict(self.metadata or {}))
 
     @property
@@ -272,7 +276,9 @@ class RoutingDecision:
     def to_dict(self) -> dict[str, object]:
         return {
             "selected_agent": self.selected_identifier,
-            "selected_profile": self.selected_agent.to_dict() if self.selected_agent is not None else None,
+            "selected_profile": self.selected_agent.to_dict()
+            if self.selected_agent is not None
+            else None,
             "score": self.score,
             "alternatives": [item.to_dict() for item in self.alternatives],
             "reasons": list(self.reasons),
@@ -307,7 +313,8 @@ class AgentCapabilityResolver:
 
     def __init__(self, capabilities: Iterable[str] | None = None):
         self.capabilities = frozenset(
-            item for item in (_INITIAL_CAPABILITIES if capabilities is None else capabilities)
+            item
+            for item in (_INITIAL_CAPABILITIES if capabilities is None else capabilities)
             if _normalise_capability(item)
         )
 
@@ -391,25 +398,29 @@ class AgentCapabilityResolver:
             executable_path=getattr(agent, "executable", None),
             detected_version=getattr(agent, "version", None),
             availability=(
-                bool(getattr(agent, "available", False))
-                and bool(getattr(config, "enabled", True))
+                bool(getattr(agent, "available", False)) and bool(getattr(config, "enabled", True))
             ),
             roles=tuple(getattr(config, "roles", ()) or ()),
             capabilities=capabilities,
             supported_structured_output=_optional_bool(
-                getattr(config, "structured_output", None), True,
+                getattr(config, "structured_output", None),
+                True,
             ),
             cancellation_support=_optional_bool(
-                getattr(config, "cancellation_support", None), True,
+                getattr(config, "cancellation_support", None),
+                True,
             ),
             timeout_support=_optional_bool(
-                getattr(config, "timeout_support", None), True,
+                getattr(config, "timeout_support", None),
+                True,
             ),
             interactive_support=_optional_bool(
-                getattr(config, "interactive_support", None), False,
+                getattr(config, "interactive_support", None),
+                False,
             ),
             noninteractive_support=_optional_bool(
-                getattr(config, "noninteractive_support", None), True,
+                getattr(config, "noninteractive_support", None),
+                True,
             ),
             configured_priority=int(getattr(config, "priority", 0) or 0),
             metadata=metadata,
@@ -491,22 +502,30 @@ class AgentRouter:
                     executable_path=value.get("executable_path") or value.get("executable"),
                     detected_version=value.get("detected_version") or value.get("version"),
                     availability=_optional_bool(
-                        value.get("availability", value.get("available", True)), True,
+                        value.get("availability", value.get("available", True)),
+                        True,
                     ),
                     roles=tuple(_as_tuple_strings(value.get("roles", ()))),
                     capabilities=frozenset(capabilities or ()),
                     supported_structured_output=_optional_bool(
-                        value.get("supported_structured_output", True), True,
+                        value.get("supported_structured_output", True),
+                        True,
                     ),
                     cancellation_support=_optional_bool(
-                        value.get("cancellation_support", True), True,
+                        value.get("cancellation_support", True),
+                        True,
                     ),
                     timeout_support=_optional_bool(value.get("timeout_support", True), True),
-                    interactive_support=_optional_bool(value.get("interactive_support", False), False),
-                    noninteractive_support=_optional_bool(
-                        value.get("noninteractive_support", True), True,
+                    interactive_support=_optional_bool(
+                        value.get("interactive_support", False), False
                     ),
-                    configured_priority=int(value.get("configured_priority", value.get("priority", 0)) or 0),
+                    noninteractive_support=_optional_bool(
+                        value.get("noninteractive_support", True),
+                        True,
+                    ),
+                    configured_priority=int(
+                        value.get("configured_priority", value.get("priority", 0)) or 0
+                    ),
                     metadata=dict(value.get("metadata", {}) or {}),
                 )
             except (TypeError, ValueError):
@@ -519,7 +538,9 @@ class AgentRouter:
         return None
 
     @staticmethod
-    def _preference_order(user_preferences: Iterable[object] | Mapping[str, object] | None) -> dict[str, int]:
+    def _preference_order(
+        user_preferences: Iterable[object] | Mapping[str, object] | None,
+    ) -> dict[str, int]:
         if isinstance(user_preferences, Mapping):
             raw = user_preferences.get("preferred_agents", user_preferences.get("agents", ()))
             if isinstance(raw, str):
@@ -527,10 +548,7 @@ class AgentRouter:
             return {str(item): index for index, item in enumerate(raw or ())}
         if isinstance(user_preferences, str):
             return {user_preferences: 0}
-        return {
-            str(item): index
-            for index, item in enumerate(user_preferences or ())
-        }
+        return {str(item): index for index, item in enumerate(user_preferences or ())}
 
     def _static_decision(
         self,
@@ -546,13 +564,21 @@ class AgentRouter:
         rejected: list[RoutingRejection] = []
         for profile in profiles:
             if profile.identifier in excluded_names:
-                rejected.append(RoutingRejection(profile.identifier, ("excluded after a previous attempt",), constraints))
+                rejected.append(
+                    RoutingRejection(
+                        profile.identifier, ("excluded after a previous attempt",), constraints
+                    )
+                )
                 continue
             if not profile.availability:
-                rejected.append(RoutingRejection(profile.identifier, ("agent unavailable",), constraints))
+                rejected.append(
+                    RoutingRejection(profile.identifier, ("agent unavailable",), constraints)
+                )
                 continue
             if not profile.supports_role(role):
-                rejected.append(RoutingRejection(profile.identifier, (f"role {role} unsupported",), constraints))
+                rejected.append(
+                    RoutingRejection(profile.identifier, (f"role {role} unsupported",), constraints)
+                )
                 continue
             order = preferences.get(profile.identifier, len(preferences))
             eligible.append((order, profile))
@@ -566,10 +592,14 @@ class AgentRouter:
                 reasons.append("fallback agent")
             reasons.append("available")
         alternatives = tuple(
-            RoutingAlternative(item.identifier, 0.0, ("static fallback candidate",), item.capabilities)
+            RoutingAlternative(
+                item.identifier, 0.0, ("static fallback candidate",), item.capabilities
+            )
             for _, item in eligible[1:]
         )
-        return RoutingDecision(selected, 0.0, alternatives, tuple(reasons), tuple(rejected), constraints, "static")
+        return RoutingDecision(
+            selected, 0.0, alternatives, tuple(reasons), tuple(rejected), constraints, "static"
+        )
 
     def route(
         self,
@@ -605,19 +635,27 @@ class AgentRouter:
         elif isinstance(available_agents, AgentProfile):
             available_values = (available_agents,)
         else:
-            available_values = tuple((available_agents or ()) if not isinstance(available_agents, str) else (available_agents,))
+            available_values = tuple(
+                (available_agents or ())
+                if not isinstance(available_agents, str)
+                else (available_agents,)
+            )
         profiles = tuple(
             profile
             for item in available_values
             if (profile := self._coerce_profile(item, self.resolver)) is not None
         )
-        requested = set(self.resolver.normalise(item) for item in _as_tuple_strings(required_capabilities))
+        requested = set(
+            self.resolver.normalise(item) for item in _as_tuple_strings(required_capabilities)
+        )
         desired = set(requested)
-        desired.update(self.resolver.required_capabilities(
-            str(role or ""),
-            task_description if isinstance(task_description, str) else "",
-            repository_characteristics,
-        ))
+        desired.update(
+            self.resolver.required_capabilities(
+                str(role or ""),
+                task_description if isinstance(task_description, str) else "",
+                repository_characteristics,
+            )
+        )
         constraints = (
             f"role: {role}",
             "required capabilities: " + (", ".join(sorted(requested)) if requested else "none"),
@@ -627,7 +665,9 @@ class AgentRouter:
         )
         verdicts = dict(gate_verdicts or {})
         if not self.enabled:
-            return self._static_decision(profiles, str(role or ""), user_preferences, constraints, excluded)
+            return self._static_decision(
+                profiles, str(role or ""), user_preferences, constraints, excluded
+            )
 
         preferences = self._preference_order(user_preferences)
         excluded_names = set(_as_tuple_strings(excluded))
@@ -641,7 +681,8 @@ class AgentRouter:
                 rejection_reasons.append("excluded after a previous attempt")
             if not profile.availability:
                 rejection_reasons.append(
-                    "agent disabled" if profile.metadata.get("enabled") is False
+                    "agent disabled"
+                    if profile.metadata.get("enabled") is False
                     else "agent unavailable"
                 )
             if not profile.supports_role(role):
@@ -655,7 +696,9 @@ class AgentRouter:
             if verdict_action == "reject":
                 rejection_reasons.extend(verdict_reasons or ("rejected by routing gate",))
             if rejection_reasons:
-                rejected.append(RoutingRejection(profile.identifier, tuple(rejection_reasons), constraints))
+                rejected.append(
+                    RoutingRejection(profile.identifier, tuple(rejection_reasons), constraints)
+                )
                 continue
 
             score = 20.0
@@ -683,7 +726,16 @@ class AgentRouter:
             reasons.append("available")
             if not excluded_names:
                 reasons.append("fallback not required")
-            scored.append((score, preferences.get(profile.identifier, len(preferences)), profile.configured_priority, profile.identifier, profile, tuple(reasons)))
+            scored.append(
+                (
+                    score,
+                    preferences.get(profile.identifier, len(preferences)),
+                    profile.configured_priority,
+                    profile.identifier,
+                    profile,
+                    tuple(reasons),
+                )
+            )
 
         scored.sort(key=lambda item: (-item[0], item[1], item[2], item[3]))
         if not scored and allow_capability_fallback:
@@ -691,13 +743,26 @@ class AgentRouter:
             # meets every inferred capability, while keeping the rejection
             # evidence in the decision.
             for profile in profiles:
-                if not profile.availability or not profile.supports_role(role) or profile.identifier in excluded_names:
+                if (
+                    not profile.availability
+                    or not profile.supports_role(role)
+                    or profile.identifier in excluded_names
+                ):
                     continue
                 if getattr(verdicts.get(profile.identifier), "action", None) == "reject":
                     continue
                 score = 5.0 - float(profile.configured_priority)
                 reasons = ("fallback used; required capabilities unavailable", "available")
-                scored.append((score, preferences.get(profile.identifier, len(preferences)), profile.configured_priority, profile.identifier, profile, reasons))
+                scored.append(
+                    (
+                        score,
+                        preferences.get(profile.identifier, len(preferences)),
+                        profile.configured_priority,
+                        profile.identifier,
+                        profile,
+                        reasons,
+                    )
+                )
             scored.sort(key=lambda item: (-item[0], item[1], item[2], item[3]))
 
         selected = scored[0] if scored else None

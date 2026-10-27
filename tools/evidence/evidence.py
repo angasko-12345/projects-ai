@@ -163,8 +163,11 @@ def parse_unittest_summary(output: str) -> dict:
 
 def git(*args: str, cwd: Path | None = None) -> str:
     completed = subprocess.run(
-        ["git", *args], cwd=str(cwd or REPO_ROOT), capture_output=True,
-        text=True, check=False,
+        ["git", *args],
+        cwd=str(cwd or REPO_ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if completed.returncode != 0:
         raise RuntimeError(
@@ -177,8 +180,13 @@ def git(*args: str, cwd: Path | None = None) -> str:
 def _git_paths(*args: str, cwd: Path | None = None) -> list[str]:
     """Run a `-z` git command and return its NUL-separated paths, unstripped."""
     completed = subprocess.run(
-        ["git", *args], cwd=str(cwd or REPO_ROOT), capture_output=True,
-        text=True, encoding="utf-8", errors="surrogateescape", check=False,
+        ["git", *args],
+        cwd=str(cwd or REPO_ROOT),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="surrogateescape",
+        check=False,
     )
     if completed.returncode != 0:
         raise RuntimeError(
@@ -190,8 +198,9 @@ def _git_paths(*args: str, cwd: Path | None = None) -> list[str]:
 
 def _dirty_paths(directory: str, repo_root: Path) -> list[str]:
     """Paths under `directory` that differ from HEAD in the working tree."""
-    entries = _git_paths("status", "--porcelain", "-z", "--untracked-files=all",
-                         "--", directory, cwd=repo_root)
+    entries = _git_paths(
+        "status", "--porcelain", "-z", "--untracked-files=all", "--", directory, cwd=repo_root
+    )
     paths: list[str] = []
     index = 0
     while index < len(entries):
@@ -261,29 +270,36 @@ def check_schema(document: object) -> list[str]:
         if label in known and record["directory"] != known[label]["directory"]:
             problems.append(
                 f"{label}: directory is {record['directory']!r}, but this product's "
-                f"suite runs from {known[label]['directory']!r}")
+                f"suite runs from {known[label]['directory']!r}"
+            )
         if not re.fullmatch(r"[0-9a-f]{40}", str(record["commit"])):
-            problems.append(f"{label}: commit {record['commit']!r} is not a full "
-                            "40-character SHA")
+            problems.append(f"{label}: commit {record['commit']!r} is not a full 40-character SHA")
         for field in ("total", "skipped", "failures", "errors"):
-            if not isinstance(record[field], int) or isinstance(record[field], bool) or record[field] < 0:
-                problems.append(f"{label}: {field} must be a non-negative integer, "
-                                f"got {record[field]!r}")
+            if (
+                not isinstance(record[field], int)
+                or isinstance(record[field], bool)
+                or record[field] < 0
+            ):
+                problems.append(
+                    f"{label}: {field} must be a non-negative integer, got {record[field]!r}"
+                )
         if record["result"] not in ("pass", "fail"):
-            problems.append(f"{label}: result must be 'pass' or 'fail', "
-                            f"got {record['result']!r}")
+            problems.append(f"{label}: result must be 'pass' or 'fail', got {record['result']!r}")
         if record["total"] <= 0:
-            problems.append(f"{label}: total is {record['total']}; an empty run is "
-                            "never a pass")
+            problems.append(f"{label}: total is {record['total']}; an empty run is never a pass")
         if record["skipped"] > record["total"]:
-            problems.append(f"{label}: skipped ({record['skipped']}) exceeds total "
-                            f"({record['total']})")
+            problems.append(
+                f"{label}: skipped ({record['skipped']}) exceeds total ({record['total']})"
+            )
         if record["result"] == "pass" and (record["failures"] or record["errors"]):
-            problems.append(f"{label}: recorded pass with failures="
-                            f"{record['failures']} errors={record['errors']}")
+            problems.append(
+                f"{label}: recorded pass with failures="
+                f"{record['failures']} errors={record['errors']}"
+            )
         if record["result"] == "fail" and not (record["failures"] or record["errors"]):
-            problems.append(f"{label}: recorded fail with no failures or errors, so "
-                            "the run was not understood")
+            problems.append(
+                f"{label}: recorded fail with no failures or errors, so the run was not understood"
+            )
         if record["result"] == "pass" and record["skipped"] == record["total"]:
             problems.append(f"{label}: every test skipped, which is never a pass")
         # A recorded failure is a measurement too, but it can never anchor a
@@ -293,32 +309,39 @@ def check_schema(document: object) -> list[str]:
             problems.append(
                 f"{label}: result is {record['result']!r}; only a passing "
                 "result can anchor verification evidence -- fix the suite "
-                "and regenerate")
+                "and regenerate"
+            )
 
         # Re-derive the counts from the recorded runner output. This is what
         # catches a hand-edited number: the fields and the summary lines the
         # runner actually printed have to agree.
         recorded = record.get("summary")
-        if not (isinstance(recorded, list) and recorded
-                and all(isinstance(entry, str) for entry in recorded)):
+        if not (
+            isinstance(recorded, list)
+            and recorded
+            and all(isinstance(entry, str) for entry in recorded)
+        ):
             # Without this, a non-list summary skipped the re-derivation
             # entirely and any hand-edited count passed unchallenged.
             problems.append(
                 f"{label}: summary must be a non-empty list of the runner's "
-                f"summary lines, got {recorded!r}")
+                f"summary lines, got {recorded!r}"
+            )
         else:
             derived = parse_unittest_summary("\n".join(recorded))
             if not derived:
                 problems.append(
                     f"{label}: summary {recorded!r} cannot be parsed, so the "
-                    "recorded counts have no runner output behind them")
+                    "recorded counts have no runner output behind them"
+                )
             else:
                 for field in ("total", "skipped", "failures", "errors", "result"):
                     if derived[field] != record[field]:
                         problems.append(
                             f"{label}: {field} is recorded as {record[field]!r} but "
                             f"the recorded runner summary says {derived[field]!r} "
-                            f"({recorded!r})")
+                            f"({recorded!r})"
+                        )
 
     expected = set(known)
     recorded = seen
@@ -365,12 +388,12 @@ def check_staleness(document: dict, repo_root: Path = REPO_ROOT) -> list[str]:
                 f"{label}: evidence is stale: {len(dirty)} uncommitted change(s) "
                 f"under {record['directory']}/ ({shown}{more}). Commit or discard "
                 f"them, then regenerate with `python tools/evidence/generate.py "
-                f"{label}`.")
+                f"{label}`."
+            )
         try:
             git("cat-file", "-e", f"{commit}^{{commit}}", cwd=repo_root)
         except RuntimeError as error:
-            problems.append(f"{label}: cannot resolve the recorded commit "
-                            f"{commit}: {error}")
+            problems.append(f"{label}: cannot resolve the recorded commit {commit}: {error}")
             continue
         if head == commit:
             continue
@@ -379,7 +402,8 @@ def check_staleness(document: dict, repo_root: Path = REPO_ROOT) -> list[str]:
         except RuntimeError:
             problems.append(
                 f"{label}: evidence was measured at {commit[:12]}, which is not an "
-                f"ancestor of HEAD {head[:12]}; the history it described is gone")
+                f"ancestor of HEAD {head[:12]}; the history it described is gone"
+            )
             continue
         directory = record["directory"]
         # -z: paths come back raw and NUL-separated; without it git C-quotes a
@@ -387,11 +411,11 @@ def check_staleness(document: dict, repo_root: Path = REPO_ROOT) -> list[str]:
         # match below, and a change to agentops/café.py goes unnoticed.
         # --no-renames: a rename out of the directory is listed as a deletion
         # of the old path, not only as an addition of the new one elsewhere.
-        changed = _git_paths("diff", "--name-only", "--no-renames", "-z",
-                             f"{commit}..{head}", cwd=repo_root)
+        changed = _git_paths(
+            "diff", "--name-only", "--no-renames", "-z", f"{commit}..{head}", cwd=repo_root
+        )
         touched = sorted(
-            path for path in changed
-            if path == directory or path.startswith(directory + "/")
+            path for path in changed if path == directory or path.startswith(directory + "/")
         )
         if touched:
             shown = ", ".join(touched[:5])
@@ -417,8 +441,7 @@ def check_documents(document: dict, repo_root: Path = REPO_ROOT) -> list[str]:
     for relative in BASELINE_FILES:
         path = repo_root / relative
         if not path.exists():
-            problems.append(f"{relative} is missing, so it cannot point at "
-                            f"{EVIDENCE_REFERENCE}")
+            problems.append(f"{relative} is missing, so it cannot point at {EVIDENCE_REFERENCE}")
             continue
         if EVIDENCE_REFERENCE not in path.read_text(encoding="utf-8"):
             problems.append(

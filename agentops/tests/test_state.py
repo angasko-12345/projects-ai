@@ -14,15 +14,21 @@ class StateStoreTests(unittest.TestCase):
 
     def test_ready_tasks_follow_dependencies(self):
         first = self.state.add_task(Task("first", "implementation", self.workflow_id))
-        second = self.state.add_task(Task("second", "review", self.workflow_id, dependencies=(first.id,)))
+        second = self.state.add_task(
+            Task("second", "review", self.workflow_id, dependencies=(first.id,))
+        )
         self.assertEqual([task.id for task in self.state.ready_tasks(self.workflow_id)], [first.id])
         first.status = TaskStatus.PASSED
         self.state.update_task(first)
-        self.assertEqual([task.id for task in self.state.ready_tasks(self.workflow_id)], [second.id])
+        self.assertEqual(
+            [task.id for task in self.state.ready_tasks(self.workflow_id)], [second.id]
+        )
 
     def test_failed_dependency_blocks_dependent_task(self):
         first = self.state.add_task(Task("first", "implementation", self.workflow_id))
-        second = self.state.add_task(Task("second", "review", self.workflow_id, dependencies=(first.id,)))
+        second = self.state.add_task(
+            Task("second", "review", self.workflow_id, dependencies=(first.id,))
+        )
         first.status = TaskStatus.FAILED
         self.state.update_task(first)
         self.assertEqual(self.state.ready_tasks(self.workflow_id), [])
@@ -30,9 +36,9 @@ class StateStoreTests(unittest.TestCase):
 
     def test_delete_task_refuses_to_orphan_pending_dependents(self):
         upstream = self.state.add_task(Task("upstream", "implementation", self.workflow_id))
-        downstream = self.state.add_task(Task(
-            "downstream", "review", self.workflow_id, dependencies=(upstream.id,)
-        ))
+        downstream = self.state.add_task(
+            Task("downstream", "review", self.workflow_id, dependencies=(upstream.id,))
+        )
 
         with self.assertRaisesRegex(ValueError, "dependency"):
             self.state.delete_task(upstream.id)
@@ -48,8 +54,9 @@ class StateStoreTests(unittest.TestCase):
         task = self.state.add_task(Task("stranded", "implementation", self.workflow_id))
         claimed = self.state.claim_task(task.id)
         self.assertIsNotNone(claimed)  # RUNNING -> counted and recoverable
-        self.state.create_agent_run(AgentRunContext(
-            workflow_id=self.workflow_id, task_id=task.id))  # PENDING
+        self.state.create_agent_run(
+            AgentRunContext(workflow_id=self.workflow_id, task_id=task.id)
+        )  # PENDING
         counted = self.state.count_interrupted_work()
         recovered = self.state.recover_all()
         self.assertEqual(counted, recovered)
@@ -114,8 +121,10 @@ class StateStoreTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             state_dir = Path(directory) / ".agentops"
-            with patch("agentops.state.tempfile.NamedTemporaryFile",
-                       side_effect=PermissionError(13, "Permission denied")):
+            with patch(
+                "agentops.state.tempfile.NamedTemporaryFile",
+                side_effect=PermissionError(13, "Permission denied"),
+            ):
                 with self.assertRaises(OSError) as failure:
                     StateStore(state_dir / "state.sqlite")
             self.assertIn(str(state_dir), str(failure.exception))

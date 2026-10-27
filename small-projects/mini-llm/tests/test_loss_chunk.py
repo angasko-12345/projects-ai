@@ -21,8 +21,7 @@ import prepare_data
 from src.config import Config, load_data_meta
 from src.generate import generate_tokens
 from src.model import from_config
-from src.train import (apply_cli_config, evaluate, load_model, make_parser,
-                       read_checkpoint, train)
+from src.train import apply_cli_config, evaluate, load_model, make_parser, read_checkpoint, train
 from src.train import main as train_main
 
 CORPUS = (
@@ -40,14 +39,22 @@ def build_data(tmp: str, context_length: int = 16) -> str:
     argv = sys.argv
     sys.argv = [
         "prepare_data.py",
-        "--input", corpus,
-        "--tokenizer-out", os.path.join(tmp, "tokenizer.json"),
-        "--train-out", os.path.join(tmp, "train.bin"),
-        "--val-out", os.path.join(tmp, "val.bin"),
-        "--vocab-size", "512",
-        "--min-frequency", "1",
-        "--val-frac", "0.2",
-        "--context-length", str(context_length),
+        "--input",
+        corpus,
+        "--tokenizer-out",
+        os.path.join(tmp, "tokenizer.json"),
+        "--train-out",
+        os.path.join(tmp, "train.bin"),
+        "--val-out",
+        os.path.join(tmp, "val.bin"),
+        "--vocab-size",
+        "512",
+        "--min-frequency",
+        "1",
+        "--val-frac",
+        "0.2",
+        "--context-length",
+        str(context_length),
     ]
     try:
         prepare_data.main()
@@ -57,8 +64,9 @@ def build_data(tmp: str, context_length: int = 16) -> str:
 
 
 def small_cfg(**over) -> Config:
-    kw = dict(vocab_size=64, context_length=16, n_layers=2, n_heads=2, d_model=32,
-              d_ff=64, dropout=0.0)
+    kw = dict(
+        vocab_size=64, context_length=16, n_layers=2, n_heads=2, d_model=32, d_ff=64, dropout=0.0
+    )
     kw.update(over)
     return Config(**kw)
 
@@ -108,8 +116,10 @@ class TestChunkedLossEquivalence(unittest.TestCase):
         for chunk in (1, 3, 7, 16, 100):
             with self.subTest(chunk_size=chunk):
                 chunked = self.model.chunked_loss(self.x, self.y, chunk)
-                self.assertTrue(torch.allclose(plain, chunked, atol=1e-6),
-                                f"{plain.item()} != {chunked.item()} at chunk {chunk}")
+                self.assertTrue(
+                    torch.allclose(plain, chunked, atol=1e-6),
+                    f"{plain.item()} != {chunked.item()} at chunk {chunk}",
+                )
 
     def test_uneven_final_chunk_matches(self):
         # T=10 with chunk 3 -> 3, 3, 3, 1: the last chunk is short.
@@ -140,8 +150,10 @@ class TestChunkedLossEquivalence(unittest.TestCase):
         for chunk in (2, 5, 16):
             with self.subTest(chunk_size=chunk):
                 chunked = self.model.chunked_loss(self.x, y, chunk)
-                self.assertTrue(torch.allclose(plain, chunked, atol=1e-6),
-                                f"{plain.item()} != {chunked.item()} at chunk {chunk}")
+                self.assertTrue(
+                    torch.allclose(plain, chunked, atol=1e-6),
+                    f"{plain.item()} != {chunked.item()} at chunk {chunk}",
+                )
 
     def test_direct_call_rejects_a_non_positive_chunk(self):
         with self.assertRaises(ValueError):
@@ -162,13 +174,24 @@ class TestChunkedTrainingLoop(unittest.TestCase):
         self.ckpt_dir = os.path.join(self.tmp.name, "ckpts")
 
     def tiny(self, **over) -> Config:
-        kw = dict(vocab_size=load_data_meta(self.train_bin)["vocab_size"],
-                  context_length=16, n_layers=2, n_heads=2, d_model=32, d_ff=64,
-                  batch_size=2, max_steps=3, warmup_steps=1, eval_interval=3,
-                  eval_batches=1, train_bin=self.train_bin,
-                  val_bin=os.path.join(self.tmp.name, "val.bin"),
-                  tokenizer_path=os.path.join(self.tmp.name, "tokenizer.json"),
-                  checkpoint_dir=self.ckpt_dir, seed=0)
+        kw = dict(
+            vocab_size=load_data_meta(self.train_bin)["vocab_size"],
+            context_length=16,
+            n_layers=2,
+            n_heads=2,
+            d_model=32,
+            d_ff=64,
+            batch_size=2,
+            max_steps=3,
+            warmup_steps=1,
+            eval_interval=3,
+            eval_batches=1,
+            train_bin=self.train_bin,
+            val_bin=os.path.join(self.tmp.name, "val.bin"),
+            tokenizer_path=os.path.join(self.tmp.name, "tokenizer.json"),
+            checkpoint_dir=self.ckpt_dir,
+            seed=0,
+        )
         kw.update(over)
         return Config(**kw)
 
@@ -189,22 +212,22 @@ class TestChunkedTrainingLoop(unittest.TestCase):
         plain = read_checkpoint(os.path.join(plain_dir, "final.pt"))["model_state"]
         chunk = read_checkpoint(os.path.join(chunk_dir, "final.pt"))["model_state"]
         for name, tensor in plain.items():
-            self.assertTrue(torch.allclose(tensor, chunk[name], atol=1e-4, rtol=1e-4),
-                            f"weights diverged on {name}")
+            self.assertTrue(
+                torch.allclose(tensor, chunk[name], atol=1e-4, rtol=1e-4),
+                f"weights diverged on {name}",
+            )
 
     def test_evaluation_chunk_size_matches_plain(self):
         from src.dataset import build_dataloader
 
         cfg = self.tiny()
         model = from_config(cfg)
-        loader = build_dataloader(os.path.join(self.tmp.name, "val.bin"),
-                                  16, 2, shuffle=False)
+        loader = build_dataloader(os.path.join(self.tmp.name, "val.bin"), 16, 2, shuffle=False)
         device = torch.device("cpu")
         plain = evaluate(model, loader, 1, device, 0)
         for chunk in (4, 7):
             with self.subTest(chunk_size=chunk):
-                self.assertAlmostEqual(evaluate(model, loader, 1, device, chunk), plain,
-                                       places=5)
+                self.assertAlmostEqual(evaluate(model, loader, 1, device, chunk), plain, places=5)
 
     def test_checkpoint_loads_and_generates_after_chunked_training(self):
         cfg = self.tiny(loss_chunk_size=5)
@@ -212,8 +235,9 @@ class TestChunkedTrainingLoop(unittest.TestCase):
         path = os.path.join(self.ckpt_dir, "final.pt")
         model, loaded_cfg = load_model(path)
         self.assertEqual(loaded_cfg.loss_chunk_size, 5)
-        logits, loss = model(torch.randint(0, cfg.vocab_size, (1, 8)),
-                             torch.randint(0, cfg.vocab_size, (1, 8)))
+        logits, loss = model(
+            torch.randint(0, cfg.vocab_size, (1, 8)), torch.randint(0, cfg.vocab_size, (1, 8))
+        )
         self.assertEqual(logits.shape, (1, 8, cfg.vocab_size))
         self.assertTrue(torch.isfinite(loss))
         out = generate_tokens(model, torch.tensor([[2]]), n_tokens=5, temperature=1.0)
@@ -238,15 +262,30 @@ class TestLossChunkCliEndToEnd(unittest.TestCase):
             sys.argv = saved
 
     def data_flags(self) -> list[str]:
-        return ["--train-bin", self.train_bin, "--val-bin", self.val_bin,
-                "--tokenizer", self.tokenizer, "--checkpoint-dir", self.ckpt_dir,
-                "--context-length", "16", "--max-steps", "2", "--batch-size", "2",
-                "--eval-interval", "2", "--eval-batches", "2"]
+        return [
+            "--train-bin",
+            self.train_bin,
+            "--val-bin",
+            self.val_bin,
+            "--tokenizer",
+            self.tokenizer,
+            "--checkpoint-dir",
+            self.ckpt_dir,
+            "--context-length",
+            "16",
+            "--max-steps",
+            "2",
+            "--batch-size",
+            "2",
+            "--eval-interval",
+            "2",
+            "--eval-batches",
+            "2",
+        ]
 
     def test_flag_reaches_the_checkpoint(self):
         self.run_main(*self.data_flags(), "--loss-chunk-size", "8", "--seed", "0")
-        cfg = Config.from_dict(
-            read_checkpoint(os.path.join(self.ckpt_dir, "final.pt"))["config"])
+        cfg = Config.from_dict(read_checkpoint(os.path.join(self.ckpt_dir, "final.pt"))["config"])
         self.assertEqual(cfg.loss_chunk_size, 8)
 
     def test_invalid_value_is_a_clear_usage_error(self):

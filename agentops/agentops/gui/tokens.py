@@ -378,7 +378,7 @@ QComboBox::drop-down {{
     width: {t.space_lg}px;
 }}
 QComboBox::down-arrow {{
-    image: url("{(ASSET_DIR / 'chevron-down.svg').as_posix()}");
+    image: url("{(ASSET_DIR / "chevron-down.svg").as_posix()}");
     margin-right: {t.space_sm}px;
 }}
 QComboBox QAbstractItemView {{

@@ -74,9 +74,17 @@ class GitWorktreeManager:
         environment = os.environ.copy()
         environment["GIT_TERMINAL_PROMPT"] = "0"
         try:
-            return subprocess.run(["git", "-C", str(repository), *args], text=True, capture_output=True,
-                                  check=False, timeout=120, env=environment,
-                                  encoding="utf-8", errors="replace", **_no_window_kwargs())  # type: ignore[arg-type]
+            return subprocess.run(
+                ["git", "-C", str(repository), *args],
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=120,
+                env=environment,
+                encoding="utf-8",
+                errors="replace",
+                **_no_window_kwargs(),
+            )  # type: ignore[arg-type]
         except (OSError, subprocess.TimeoutExpired) as error:
             raise GitError(f"Git command {' '.join(args)} failed: {error}") from error
 
@@ -90,7 +98,9 @@ class GitWorktreeManager:
         repository = self.repository_root(directory)
         head = self._run(repository, "rev-parse", "--verify", "HEAD")
         if head.returncode:
-            raise GitError("Cannot create an isolated worktree before the repository has an initial commit.")
+            raise GitError(
+                "Cannot create an isolated worktree before the repository has an initial commit."
+            )
         base_branch_result = self._run(repository, "branch", "--show-current")
         base_branch = base_branch_result.stdout.strip()
         if base_branch_result.returncode or not base_branch:
@@ -200,21 +210,28 @@ class GitWorktreeManager:
         def flush() -> None:
             if path is not None:
                 resolved = path.resolve()
-                worktrees.append(WorktreeInfo(
-                    root, resolved, branch, head,
-                    resolved.is_relative_to(managed_root.resolve()) if managed_root.exists() else False,
-                ))
+                worktrees.append(
+                    WorktreeInfo(
+                        root,
+                        resolved,
+                        branch,
+                        head,
+                        resolved.is_relative_to(managed_root.resolve())
+                        if managed_root.exists()
+                        else False,
+                    )
+                )
 
         for line in result.stdout.splitlines():
             if line.startswith("worktree "):
                 flush()
-                path = Path(line[len("worktree "):].strip())
+                path = Path(line[len("worktree ") :].strip())
                 head = ""
                 branch = None
             elif line.startswith("HEAD "):
-                head = line[len("HEAD "):].strip()
+                head = line[len("HEAD ") :].strip()
             elif line.startswith("branch refs/heads/"):
-                branch = line[len("branch refs/heads/"):].strip() or None
+                branch = line[len("branch refs/heads/") :].strip() or None
             elif not line.strip():
                 flush()
                 path = None
@@ -274,8 +291,12 @@ class GitWorktreeManager:
             if deleted.returncode and delete_unmerged_branch:
                 deleted = self._run(root, "branch", "-D", branch)
             if deleted.returncode:
-                return {"removed_worktree": True, "deleted_branch": False, "branch": branch,
-                        "detail": deleted.stderr.strip() or "Unmerged branch was preserved."}
+                return {
+                    "removed_worktree": True,
+                    "deleted_branch": False,
+                    "branch": branch,
+                    "detail": deleted.stderr.strip() or "Unmerged branch was preserved.",
+                }
             deleted_branch = True
         return {"removed_worktree": True, "deleted_branch": deleted_branch, "branch": branch}
 
@@ -306,16 +327,27 @@ class GitWorktreeManager:
         if clean.returncode:
             raise GitError(clean.stderr.strip() or "Could not inspect base worktree status.")
         if clean.stdout.strip():
-            raise GitError("Base worktree has uncommitted changes; refusing to merge agent worktree.")
+            raise GitError(
+                "Base worktree has uncommitted changes; refusing to merge agent worktree."
+            )
         branch = self._run(worktree.repository, "branch", "--show-current")
         if branch.returncode or branch.stdout.strip() != worktree.base_branch:
             raise GitError(f"Base branch changed from '{worktree.base_branch}'; refusing to merge.")
         commit = self._run(worktree.repository, "rev-parse", "HEAD")
         if commit.returncode or commit.stdout.strip() != worktree.base_commit:
             raise GitError("Base commit changed while the agent worked; refusing to merge.")
-        result = self._run(worktree.repository, "merge", "--no-ff", worktree.branch, "-m", f"agentops: merge {worktree.branch}")
+        result = self._run(
+            worktree.repository,
+            "merge",
+            "--no-ff",
+            worktree.branch,
+            "-m",
+            f"agentops: merge {worktree.branch}",
+        )
         if result.returncode:
-            raise GitError(result.stderr.strip() or "Git merge failed; resolve the conflict manually.")
+            raise GitError(
+                result.stderr.strip() or "Git merge failed; resolve the conflict manually."
+            )
 
     def remove(self, worktree: Worktree) -> None:
         result = self._run(worktree.repository, "worktree", "remove", "--force", str(worktree.path))
@@ -324,4 +356,6 @@ class GitWorktreeManager:
         self._run(worktree.repository, "worktree", "prune")
         deleted = self._run(worktree.repository, "branch", "-d", worktree.branch)
         if deleted.returncode:
-            raise GitError(deleted.stderr.strip() or f"Could not delete merged branch {worktree.branch}.")
+            raise GitError(
+                deleted.stderr.strip() or f"Could not delete merged branch {worktree.branch}."
+            )

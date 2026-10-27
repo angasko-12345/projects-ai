@@ -70,8 +70,19 @@ class ProcessRuntime:
     ) -> dict[str, str]:
         """Build the reduced environment inherited by every child process."""
         allowed = {
-            "PATH", "PATHEXT", "SystemRoot", "WINDIR", "COMSPEC", "TEMP", "TMP",
-            "USERPROFILE", "APPDATA", "LOCALAPPDATA", "HOME", "LANG", "LC_ALL",
+            "PATH",
+            "PATHEXT",
+            "SystemRoot",
+            "WINDIR",
+            "COMSPEC",
+            "TEMP",
+            "TMP",
+            "USERPROFILE",
+            "APPDATA",
+            "LOCALAPPDATA",
+            "HOME",
+            "LANG",
+            "LC_ALL",
             "DBUS_SESSION_BUS_ADDRESS",
         }
         # Windows environment variables are case-insensitive, but iterating
@@ -90,7 +101,9 @@ class ProcessRuntime:
             folded = fold(name)
             if folded in allowed_folded:
                 env.setdefault(canonical[folded], value)
-            elif folded in pass_names_folded or any(folded.startswith(prefix) for prefix in pass_prefixes_folded):
+            elif folded in pass_names_folded or any(
+                folded.startswith(prefix) for prefix in pass_prefixes_folded
+            ):
                 env.setdefault(name, value)
         if os.name == "nt":
             # Bun-based CLIs (e.g. claude) require %SystemRoot% for network
@@ -148,10 +161,14 @@ class ProcessRuntime:
     def _build_systemd_run_prefix(self) -> tuple[str, ...]:
         """Return the systemd-run argv prefix for cgroup isolation."""
         return (
-            "systemd-run", "--user", "--scope",
+            "systemd-run",
+            "--user",
+            "--scope",
             "--expand-environment=no",
-            "-p", "MemoryMax=1500M",
-            "-p", "CPUQuota=150%",
+            "-p",
+            "MemoryMax=1500M",
+            "-p",
+            "CPUQuota=150%",
             "--",
         )
 
@@ -226,6 +243,7 @@ class ProcessRuntime:
         It is only forwarded when given, so process doubles whose
         ``communicate()`` takes no arguments keep working.
         """
+
         def _communicate() -> Any:
             if input_bytes is None:
                 return process.communicate()
@@ -240,7 +258,8 @@ class ProcessRuntime:
         try:
             while True:
                 done, _ = await asyncio.wait(
-                    {communicate}, timeout=ProcessRuntime.CANCEL_POLL_SECONDS,
+                    {communicate},
+                    timeout=ProcessRuntime.CANCEL_POLL_SECONDS,
                 )
                 if communicate in done:
                     stdout, stderr = communicate.result()
@@ -278,7 +297,11 @@ class ProcessRuntime:
                 pid = getattr(process, "pid", None)
                 if current == "win32" and isinstance(pid, int):
                     cleanup = await asyncio.create_subprocess_exec(
-                        "taskkill", "/PID", str(pid), "/T", "/F",
+                        "taskkill",
+                        "/PID",
+                        str(pid),
+                        "/T",
+                        "/F",
                         stdout=asyncio.subprocess.DEVNULL,
                         stderr=asyncio.subprocess.DEVNULL,
                         **self.spawn_options(platform=current),
@@ -333,7 +356,11 @@ class ProcessRuntime:
         if input_bytes is not None:
             stdin = asyncio.subprocess.PIPE
         process = await self.spawn_process(
-            *argv, cwd=cwd, env=env, stdout=asyncio.subprocess.PIPE, stderr=stderr,
+            *argv,
+            cwd=cwd,
+            env=env,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=stderr,
             stdin=stdin,
         )
         if on_running is not None:
@@ -352,19 +379,31 @@ class ProcessRuntime:
                 )
             except TimeoutError:
                 stdout_bytes, stderr_bytes = await self.terminate_process(
-                    process, process_group=owns_process_group,
+                    process,
+                    process_group=owns_process_group,
                 )
                 return ProcessResult(
-                    argv, None, stdout_bytes, stderr_bytes,
-                    monotonic() - started, True, False,
+                    argv,
+                    None,
+                    stdout_bytes,
+                    stderr_bytes,
+                    monotonic() - started,
+                    True,
+                    False,
                 )
             except OperationCancelled:
                 stdout_bytes, stderr_bytes = await self.terminate_process(
-                    process, process_group=owns_process_group,
+                    process,
+                    process_group=owns_process_group,
                 )
                 return ProcessResult(
-                    argv, getattr(process, "returncode", None), stdout_bytes, stderr_bytes,
-                    monotonic() - started, False, True,
+                    argv,
+                    getattr(process, "returncode", None),
+                    stdout_bytes,
+                    stderr_bytes,
+                    monotonic() - started,
+                    False,
+                    True,
                 )
         except asyncio.CancelledError:
             # An external task cancellation must not orphan the child: make a
@@ -376,8 +415,13 @@ class ProcessRuntime:
             raise
         duration = monotonic() - started
         return ProcessResult(
-            argv, getattr(process, "returncode", None), stdout_bytes, stderr_bytes,
-            duration, False, False,
+            argv,
+            getattr(process, "returncode", None),
+            stdout_bytes,
+            stderr_bytes,
+            duration,
+            False,
+            False,
         )
 
 

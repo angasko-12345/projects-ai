@@ -118,7 +118,11 @@ def is_cmd_safe(text: str) -> bool:
 
 
 def _suffix(executable: str) -> str:
-    name = ntpath.basename(executable) if ("\\" in executable or ":" in executable) else posixpath.basename(executable)
+    name = (
+        ntpath.basename(executable)
+        if ("\\" in executable or ":" in executable)
+        else posixpath.basename(executable)
+    )
     _, dot, extension = name.rpartition(".")
     return f".{extension.lower()}" if dot and _ else ""
 
@@ -147,8 +151,13 @@ def resolve_opencode_native(
     base = ntpath.dirname(shim)
     for arch in _windows_arch_candidates(machine):
         candidate = ntpath.join(
-            base, "node_modules", "opencode-ai", "node_modules",
-            f"opencode-windows-{arch}", "bin", "opencode.exe",
+            base,
+            "node_modules",
+            "opencode-ai",
+            "node_modules",
+            f"opencode-windows-{arch}",
+            "bin",
+            "opencode.exe",
         )
         if exists(candidate):
             return candidate
@@ -198,8 +207,8 @@ def _substitute(args: tuple[str, ...], placeholder: str, value: str) -> tuple[st
 
 def _fix_hint(name: str) -> str:
     return (
-        f"Fix: set agents.{name}.prompt_transport to \"stdin\" (with agents.{name}.stdin_args "
-        f"if the CLI needs a marker such as \"-\"), or to \"file\" with a "
+        f'Fix: set agents.{name}.prompt_transport to "stdin" (with agents.{name}.stdin_args '
+        f'if the CLI needs a marker such as "-"), or to "file" with a '
         f"{PROMPT_FILE_PLACEHOLDER} placeholder in agents.{name}.args, or point "
         f"agents.{name}.command at the native .exe instead of the shim."
     )
@@ -247,19 +256,25 @@ def prepare_prompt_delivery(
     def argv_delivery(prefix: tuple[str, ...], resolution: str) -> PromptDelivery:
         return PromptDelivery(
             argv=(*prefix, *_substitute(args, PROMPT_PLACEHOLDER, prompt)),
-            transport=PromptTransport.ARGV, executable=prefix[0],
-            executable_kind=executable_kind(prefix[0]), resolution=resolution,
+            transport=PromptTransport.ARGV,
+            executable=prefix[0],
+            executable_kind=executable_kind(prefix[0]),
+            resolution=resolution,
         )
 
     def stdin_delivery(prefix: tuple[str, ...], resolution: str) -> PromptDelivery:
         selected = stdin_args if stdin_args is not None else args
         if any(PROMPT_PLACEHOLDER in argument for argument in selected):
-            raise ValueError(f"agents.{name}: stdin transport arguments must not contain {PROMPT_PLACEHOLDER}.")
+            raise ValueError(
+                f"agents.{name}: stdin transport arguments must not contain {PROMPT_PLACEHOLDER}."
+            )
         return PromptDelivery(
             argv=(*prefix, *selected),
-            transport=PromptTransport.STDIN, executable=prefix[0],
+            transport=PromptTransport.STDIN,
+            executable=prefix[0],
             executable_kind=executable_kind(prefix[0]),
-            stdin_bytes=prompt.encode("utf-8"), resolution=resolution,
+            stdin_bytes=prompt.encode("utf-8"),
+            resolution=resolution,
         )
 
     def file_delivery(prefix: tuple[str, ...], resolution: str) -> PromptDelivery:
@@ -267,9 +282,11 @@ def prepare_prompt_delivery(
             raise ValueError("file transport needs a prompt_file path from the caller.")
         return PromptDelivery(
             argv=(*prefix, *_substitute(args, PROMPT_FILE_PLACEHOLDER, prompt_file)),
-            transport=PromptTransport.FILE, executable=prefix[0],
+            transport=PromptTransport.FILE,
+            executable=prefix[0],
             executable_kind=executable_kind(prefix[0]),
-            prompt_file=prompt_file, resolution=resolution,
+            prompt_file=prompt_file,
+            resolution=resolution,
         )
 
     batch_shim = current == "win32" and kind == "cmd"
@@ -283,12 +300,18 @@ def prepare_prompt_delivery(
         # (checked anyway: a metacharacter in a configured arg is still unsafe).
         delivery = stdin_delivery((executable,), "direct")
         if batch_shim and not all(is_cmd_safe(item) for item in delivery.argv[1:]):
-            raise _refuse(name, executable, "a configured stdin argument contains a cmd.exe metacharacter.")
+            raise _refuse(
+                name, executable, "a configured stdin argument contains a cmd.exe metacharacter."
+            )
         return delivery
     if requested is PromptTransport.FILE:
         delivery = file_delivery((executable,), "direct")
         if batch_shim and not all(is_cmd_safe(item) for item in delivery.argv[1:]):
-            raise _refuse(name, executable, "the prompt file path or an argument contains a cmd.exe metacharacter.")
+            raise _refuse(
+                name,
+                executable,
+                "the prompt file path or an argument contains a cmd.exe metacharacter.",
+            )
         return delivery
 
     if not batch_shim:
@@ -302,15 +325,18 @@ def prepare_prompt_delivery(
             return argv_delivery((native,), "opencode_native_exe")
     resolved = resolve_npm_shim(executable, exists=exists, read_text=read_text, which=which)
     if resolved is not None:
-        return argv_delivery(resolved, "npm_shim_node_entry" if len(resolved) == 2 else "npm_shim_exe")
+        return argv_delivery(
+            resolved, "npm_shim_node_entry" if len(resolved) == 2 else "npm_shim_exe"
+        )
 
     through_shim = argv_delivery((executable,), "batch_shim")
     if all(is_cmd_safe(item) for item in through_shim.argv[1:]):
         return through_shim
     if requested is PromptTransport.ARGV:
         raise _refuse(
-            name, executable,
-            "prompt_transport is \"argv\", the shim could not be resolved to a native "
+            name,
+            executable,
+            'prompt_transport is "argv", the shim could not be resolved to a native '
             "entry point, and the prompt contains a newline or a cmd.exe metacharacter.",
         )
     if stdin_declared:
@@ -318,7 +344,8 @@ def prepare_prompt_delivery(
     if file_declared and prompt_file is not None:
         return file_delivery((executable,), "batch_shim")
     raise _refuse(
-        name, executable,
+        name,
+        executable,
         "the shim could not be resolved to a native entry point, the prompt contains a "
         "newline or a cmd.exe metacharacter, and the agent declares neither stdin_args "
         f"nor a {PROMPT_FILE_PLACEHOLDER} argument.",

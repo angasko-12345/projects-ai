@@ -36,45 +36,96 @@ NOW = datetime(2026, 10, 3, 12, 35, 0, tzinfo=timezone.utc)
 
 
 def _workflow(status: str = "running") -> dict:
-    return {"id": "wf-1", "description": "ship the control center",
-            "status": status, "created_at": "2026-10-03T12:00:00+00:00",
-            "updated_at": "2026-10-03T12:34:00+00:00"}
+    return {
+        "id": "wf-1",
+        "description": "ship the control center",
+        "status": status,
+        "created_at": "2026-10-03T12:00:00+00:00",
+        "updated_at": "2026-10-03T12:34:00+00:00",
+    }
 
 
 def _task(task_id: str, role: str, status: str, **extra) -> dict:
-    return {"id": task_id, "workflow_id": "wf-1", "role": role, "status": status,
-            "description": f"{role} work", "assigned_agent": "opencode",
-            "attempts": 1, "max_attempts": 3, "result": None, "verified": False,
-            "dependencies": (), "created_at": "2026-10-03T12:00:00+00:00",
-            "started_at": None, "finished_at": None, **extra}
+    return {
+        "id": task_id,
+        "workflow_id": "wf-1",
+        "role": role,
+        "status": status,
+        "description": f"{role} work",
+        "assigned_agent": "opencode",
+        "attempts": 1,
+        "max_attempts": 3,
+        "result": None,
+        "verified": False,
+        "dependencies": (),
+        "created_at": "2026-10-03T12:00:00+00:00",
+        "started_at": None,
+        "finished_at": None,
+        **extra,
+    }
 
 
 def _run(run_id: str, task_id: str, status: str, **extra) -> dict:
-    return {"id": run_id, "workflow_id": "wf-1", "task_id": task_id, "attempt": 1,
-            "agent": "opencode", "model": "gpt-5-codex", "role": "implementation",
-            "status": status, "exit_code": None, "duration_seconds": None,
-            "started_at": "2026-10-03T12:30:00+00:00", "ended_at": None,
-            "worktree": "D:/repo/.agentops/worktrees/wf-1", "files_changed": [],
-            "diff_stat": None, "error": None, "structured_result": None, **extra}
+    return {
+        "id": run_id,
+        "workflow_id": "wf-1",
+        "task_id": task_id,
+        "attempt": 1,
+        "agent": "opencode",
+        "model": "gpt-5-codex",
+        "role": "implementation",
+        "status": status,
+        "exit_code": None,
+        "duration_seconds": None,
+        "started_at": "2026-10-03T12:30:00+00:00",
+        "ended_at": None,
+        "worktree": "D:/repo/.agentops/worktrees/wf-1",
+        "files_changed": [],
+        "diff_stat": None,
+        "error": None,
+        "structured_result": None,
+        **extra,
+    }
 
 
 def _verification(run_id: str, task_id: str, **extra) -> dict:
-    return {"id": run_id, "workflow_id": "wf-1", "task_id": task_id,
-            "profile_name": "default", "status": "completed",
-            "overall_status": None, "total_checks": 0, "passed_checks": 0,
-            "failed_checks": 0, "skipped_checks": 0,
-            "started_at": "2026-10-03T12:20:00+00:00", **extra}
+    return {
+        "id": run_id,
+        "workflow_id": "wf-1",
+        "task_id": task_id,
+        "profile_name": "default",
+        "status": "completed",
+        "overall_status": None,
+        "total_checks": 0,
+        "passed_checks": 0,
+        "failed_checks": 0,
+        "skipped_checks": 0,
+        "started_at": "2026-10-03T12:20:00+00:00",
+        **extra,
+    }
 
 
 def _failure(failure_id: str, task_id: str, **extra) -> dict:
-    return {"id": failure_id, "workflow_id": "wf-1", "task_id": task_id,
-            "agent_run_id": None, "source": "verification", "category": "test_failure",
-            "severity": "high", "retryable": True, "repairable": True,
-            "evidence": None, "primary_error": "assert 1 == 2",
-            "recommended_action": "retry_same_agent", "attempt": 1,
-            "recovery_state": None, "structured_evidence": None,
-            "created_at": "2026-10-03T12:22:00+00:00",
-            "updated_at": "2026-10-03T12:22:00+00:00", **extra}
+    return {
+        "id": failure_id,
+        "workflow_id": "wf-1",
+        "task_id": task_id,
+        "agent_run_id": None,
+        "source": "verification",
+        "category": "test_failure",
+        "severity": "high",
+        "retryable": True,
+        "repairable": True,
+        "evidence": None,
+        "primary_error": "assert 1 == 2",
+        "recommended_action": "retry_same_agent",
+        "attempt": 1,
+        "recovery_state": None,
+        "structured_evidence": None,
+        "created_at": "2026-10-03T12:22:00+00:00",
+        "updated_at": "2026-10-03T12:22:00+00:00",
+        **extra,
+    }
 
 
 def _standard_tasks(**statuses) -> list[dict]:
@@ -86,11 +137,16 @@ def _standard_tasks(**statuses) -> list[dict]:
     roles = ("architecture", "implementation", "verification", "review")
     terminal = ("passed", "failed", "blocked", "cancelled")
     return [
-        _task(f"t-{index + 1}", role, statuses.get(role, "pending"),
-              verified=role == "verification" and statuses.get("verification") == "passed",
-              result="evidence" if role == "verification" else None,
-              finished_at="2026-10-03T12:30:00+00:00"
-              if statuses.get(role, "pending") in terminal else None)
+        _task(
+            f"t-{index + 1}",
+            role,
+            statuses.get(role, "pending"),
+            verified=role == "verification" and statuses.get("verification") == "passed",
+            result="evidence" if role == "verification" else None,
+            finished_at="2026-10-03T12:30:00+00:00"
+            if statuses.get(role, "pending") in terminal
+            else None,
+        )
         for index, role in enumerate(roles)
     ]
 
@@ -129,16 +185,17 @@ class ControlCenterProjectionTests(unittest.TestCase):
         # A run with no recorded duration must not read as "0.0s complete".
         tasks = _standard_tasks(architecture="passed")
         stages = projection.build_stage_flow(
-            _workflow(), tasks, [_run("r-1", "t-1", "completed", duration_seconds=None)])
+            _workflow(), tasks, [_run("r-1", "t-1", "completed", duration_seconds=None)]
+        )
         self.assertIsNone(stages[0]["duration_seconds"])
         self.assertEqual(stages[0]["duration_text"], "-")
 
     def test_verification_state_comes_from_the_linked_run(self):
         tasks = _standard_tasks(verification="passed")
-        verifications = [_verification("v-1", "t-3", overall_status="failed",
-                                       failed_checks=1, total_checks=2)]
-        stage = projection.build_stage_flow(
-            _workflow("completed"), tasks, (), verifications)[2]
+        verifications = [
+            _verification("v-1", "t-3", overall_status="failed", failed_checks=1, total_checks=2)
+        ]
+        stage = projection.build_stage_flow(_workflow("completed"), tasks, (), verifications)[2]
         self.assertEqual(stage["verification"], "failed")
         self.assertEqual(stage["state"], "passed")
 
@@ -159,8 +216,9 @@ class ControlCenterProjectionTests(unittest.TestCase):
         ]
         stages = projection.build_stage_flow(_workflow(), tasks)
         self.assertTrue(projection.is_custom_dag(tasks))
-        self.assertEqual([stage["key"] for stage in stages],
-                         ["t-a", "t-b", "t-c", projection.FINALIZE_KEY])
+        self.assertEqual(
+            [stage["key"] for stage in stages], ["t-a", "t-b", "t-c", projection.FINALIZE_KEY]
+        )
         self.assertEqual(stages[1]["depends_on"], ["t-a"])
         self.assertEqual(stages[2]["depends_on"], ["t-a", "t-b"])
         self.assertEqual(stages[1]["label"], "Threat Model")
@@ -171,25 +229,33 @@ class ControlCenterProjectionTests(unittest.TestCase):
         self.assertEqual(stages[0]["depends_on"], [])
 
     def test_standard_stage_transitions_track_the_advance(self):
-        first = projection.build_stage_flow(
-            _workflow(), _standard_tasks(architecture="passed"))
+        first = projection.build_stage_flow(_workflow(), _standard_tasks(architecture="passed"))
         self.assertEqual(projection.current_stage(first)["label"], "IMPLEMENT")
         second = projection.build_stage_flow(
-            _workflow(), _standard_tasks(architecture="passed", implementation="passed",
-                                         verification="running"))
+            _workflow(),
+            _standard_tasks(architecture="passed", implementation="passed", verification="running"),
+        )
         self.assertEqual(projection.current_stage(second)["label"], "VERIFY")
         self.assertEqual(projection.next_stage(second)["label"], "REVIEW")
 
     def test_a_finished_workflow_points_at_its_last_finished_stage(self):
-        tasks = _standard_tasks(**{role: "passed" for role in
-                                   ("architecture", "implementation", "verification", "review")})
+        tasks = _standard_tasks(
+            **{
+                role: "passed"
+                for role in ("architecture", "implementation", "verification", "review")
+            }
+        )
         stages = projection.build_stage_flow(_workflow("completed"), tasks)
         self.assertEqual(projection.current_stage(stages)["label"], "FINALIZE")
         self.assertIsNone(projection.next_stage(stages))
 
     def test_finalize_is_running_only_once_every_task_stage_is_behind_it(self):
-        tasks = _standard_tasks(**{role: "passed" for role in
-                                   ("architecture", "implementation", "verification", "review")})
+        tasks = _standard_tasks(
+            **{
+                role: "passed"
+                for role in ("architecture", "implementation", "verification", "review")
+            }
+        )
         stages = projection.build_stage_flow(_workflow("running"), tasks)
         self.assertEqual(stages[-1]["state"], "running")
         self.assertEqual(projection.current_stage(stages)["label"], "FINALIZE")
@@ -197,14 +263,15 @@ class ControlCenterProjectionTests(unittest.TestCase):
     def test_next_is_the_stage_after_the_current_one_when_an_earlier_stage_failed(self):
         """A failed stage earlier in the flow is not the stage being worked."""
         stages = projection.build_stage_flow(
-            _workflow("failed"),
-            _standard_tasks(architecture="failed"))
+            _workflow("failed"), _standard_tasks(architecture="failed")
+        )
         self.assertEqual(projection.current_stage(stages)["label"], "IMPLEMENT")
         self.assertEqual(projection.next_stage(stages)["label"], "VERIFY")
 
     def test_next_is_never_the_stage_that_is_currently_running(self):
-        tasks = _standard_tasks(architecture="passed", implementation="failed",
-                                verification="running")
+        tasks = _standard_tasks(
+            architecture="passed", implementation="failed", verification="running"
+        )
         stages = projection.build_stage_flow(_workflow(), tasks)
         current = projection.current_stage(stages)
         upcoming = projection.next_stage(stages)
@@ -238,8 +305,7 @@ class ControlCenterProjectionTests(unittest.TestCase):
         self.assertEqual(live["next_stage"], "VERIFY")
 
     def test_live_panel_is_idle_when_nothing_is_running(self):
-        live = projection.build_live_panel(
-            _workflow("completed"), _standard_tasks(), now=NOW)
+        live = projection.build_live_panel(_workflow("completed"), _standard_tasks(), now=NOW)
         self.assertFalse(live["running"])
         self.assertEqual(live["agent"], "")
 
@@ -263,10 +329,16 @@ class ControlCenterProjectionTests(unittest.TestCase):
 
     def test_recent_activity_is_newest_first_and_labelled(self):
         events = [
-            {"timestamp": "2026-10-03T12:10:00+00:00", "type": "task.started",
-             "message": "implement started"},
-            {"timestamp": "2026-10-03T12:34:00+00:00", "type": "verification.completed",
-             "message": "checks finished"},
+            {
+                "timestamp": "2026-10-03T12:10:00+00:00",
+                "type": "task.started",
+                "message": "implement started",
+            },
+            {
+                "timestamp": "2026-10-03T12:34:00+00:00",
+                "type": "verification.completed",
+                "message": "checks finished",
+            },
         ]
         activity = projection.recent_activity(events)
         self.assertEqual(len(activity), 2)
@@ -274,8 +346,14 @@ class ControlCenterProjectionTests(unittest.TestCase):
         self.assertEqual(activity[0]["type"], "verification.completed")
 
     def test_recent_activity_respects_its_limit(self):
-        events = [{"timestamp": f"2026-10-03T12:{minute:02d}:00+00:00",
-                   "type": "note", "message": str(minute)} for minute in range(20)]
+        events = [
+            {
+                "timestamp": f"2026-10-03T12:{minute:02d}:00+00:00",
+                "type": "note",
+                "message": str(minute),
+            }
+            for minute in range(20)
+        ]
         self.assertEqual(len(projection.recent_activity(events, limit=5)), 5)
 
     # ------------------------------------------------------------------
@@ -283,8 +361,9 @@ class ControlCenterProjectionTests(unittest.TestCase):
     # ------------------------------------------------------------------
     def test_verification_totals_sum_recorded_counts(self):
         runs = [
-            _verification("v-1", "t-3", total_checks=21, passed_checks=18,
-                          failed_checks=1, skipped_checks=2),
+            _verification(
+                "v-1", "t-3", total_checks=21, passed_checks=18, failed_checks=1, skipped_checks=2
+            ),
             _verification("v-2", "t-4", total_checks=3, passed_checks=3),
         ]
         totals = projection.verification_totals(runs)
@@ -296,13 +375,14 @@ class ControlCenterProjectionTests(unittest.TestCase):
         self.assertIn("21 passed", totals["summary"])
 
     def test_check_rows_outrank_a_lagging_run_counter(self):
-        checks = [{"name": "unit", "status": "passed"},
-                  {"name": "lint", "status": "failed"},
-                  {"name": "docs", "status": "skipped"}]
+        checks = [
+            {"name": "unit", "status": "passed"},
+            {"name": "lint", "status": "failed"},
+            {"name": "docs", "status": "skipped"},
+        ]
         runs = [_verification("v-1", "t-3", total_checks=99, passed_checks=99)]
         totals = projection.verification_totals(runs, checks)
-        self.assertEqual((totals["passed"], totals["failed"], totals["skipped"]),
-                         (1, 1, 1))
+        self.assertEqual((totals["passed"], totals["failed"], totals["skipped"]), (1, 1, 1))
         self.assertEqual(totals["total"], 3)
 
     def test_no_verification_reads_as_pending_not_passed(self):
@@ -313,7 +393,8 @@ class ControlCenterProjectionTests(unittest.TestCase):
     # ------------------------------------------------------------------
     def test_failure_summary_exposes_the_actionable_fields_only(self):
         summary = projection.failure_summary(
-            _failure("f-1", "t-3"), [_run("r-9", "t-3", "failed")], _standard_tasks())
+            _failure("f-1", "t-3"), [_run("r-9", "t-3", "failed")], _standard_tasks()
+        )
         self.assertEqual(summary["category"], "test failure")
         self.assertEqual(summary["severity"], "high")
         self.assertIn("assert 1 == 2", summary["error"])
@@ -326,10 +407,10 @@ class ControlCenterProjectionTests(unittest.TestCase):
         self.assertNotIn("workflow_id", summary)
 
     def test_failure_summary_falls_back_to_structured_evidence(self):
-        failure = _failure("f-1", "t-3", evidence=None,
-                           structured_evidence={"summary": "exit code 1 on lint"})
-        self.assertEqual(projection.failure_summary(failure)["evidence"],
-                         "exit code 1 on lint")
+        failure = _failure(
+            "f-1", "t-3", evidence=None, structured_evidence={"summary": "exit code 1 on lint"}
+        )
+        self.assertEqual(projection.failure_summary(failure)["evidence"], "exit code 1 on lint")
 
     def test_failure_summary_labels_an_unrelated_run_as_none(self):
         summary = projection.failure_summary(_failure("f-1", "t-3"), [], [])
@@ -339,10 +420,15 @@ class ControlCenterProjectionTests(unittest.TestCase):
     # worktree and readiness
     # ------------------------------------------------------------------
     def test_worktree_summary_reports_provenance_and_changed_files(self):
-        ref = {"path": "D:/repo/.agentops/worktrees/wf-1", "branch": "agentops/wf-1",
-               "base_branch": "main", "base_commit": "abc1234"}
-        runs = [_run("r-1", "t-2", "completed", files_changed=("a.py", "b.py"),
-                     diff_stat="a.py | 2 +")]
+        ref = {
+            "path": "D:/repo/.agentops/worktrees/wf-1",
+            "branch": "agentops/wf-1",
+            "base_branch": "main",
+            "base_commit": "abc1234",
+        }
+        runs = [
+            _run("r-1", "t-2", "completed", files_changed=("a.py", "b.py"), diff_stat="a.py | 2 +")
+        ]
         worktree = projection.worktree_summary(ref, runs)
         self.assertTrue(worktree["present"])
         self.assertTrue(worktree["managed"])
@@ -354,10 +440,11 @@ class ControlCenterProjectionTests(unittest.TestCase):
 
     def test_worktree_summary_deduplicates_changed_files_across_runs(self):
         ref = {"path": "D:/repo/.agentops/worktrees/wf-1"}
-        runs = [_run("r-1", "t-1", "completed", files_changed=("a.py",)),
-                _run("r-2", "t-2", "completed", files_changed=("a.py", "b.py"))]
-        self.assertEqual(projection.worktree_summary(ref, runs)["changed_files"],
-                         ["a.py", "b.py"])
+        runs = [
+            _run("r-1", "t-1", "completed", files_changed=("a.py",)),
+            _run("r-2", "t-2", "completed", files_changed=("a.py", "b.py")),
+        ]
+        self.assertEqual(projection.worktree_summary(ref, runs)["changed_files"], ["a.py", "b.py"])
 
     def test_worktree_summary_is_empty_without_provenance(self):
         worktree = projection.worktree_summary(None, [])
@@ -370,7 +457,8 @@ class ControlCenterProjectionTests(unittest.TestCase):
         self.assertTrue(ready["ready"])
         self.assertEqual(ready["label"], "Ready to merge")
         blocked = projection.merge_readiness(
-            {"ready": False, "reasons": ["no passed review task"]}, has_worktree=True)
+            {"ready": False, "reasons": ["no passed review task"]}, has_worktree=True
+        )
         self.assertFalse(blocked["ready"])
         self.assertEqual(blocked["reasons"], ["no passed review task"])
         self.assertEqual(blocked["label"], "Not ready to merge")
@@ -388,15 +476,19 @@ class ControlCenterProjectionTests(unittest.TestCase):
     # ------------------------------------------------------------------
     def _running_live(self) -> dict:
         return projection.build_live_panel(
-            _workflow(), _standard_tasks(implementation="running"),
-            [_run("r-1", "t-2", "running")], now=NOW)
+            _workflow(),
+            _standard_tasks(implementation="running"),
+            [_run("r-1", "t-2", "running")],
+            now=NOW,
+        )
 
     def test_cancellation_is_offered_only_while_running(self):
         running = projection.cancellation_state(self._running_live())
         self.assertTrue(running["cancellable"])
         self.assertEqual(running["state"], "running")
         idle = projection.cancellation_state(
-            projection.build_live_panel(_workflow("completed"), _standard_tasks(), now=NOW))
+            projection.build_live_panel(_workflow("completed"), _standard_tasks(), now=NOW)
+        )
         self.assertFalse(idle["cancellable"])
         self.assertEqual(idle["state"], "idle")
 
@@ -427,8 +519,7 @@ class ControlCenterProjectionTests(unittest.TestCase):
     def test_an_operation_in_flight_makes_a_stopped_workflow_cancellable(self):
         # The shell may be running a task that has not persisted a run row yet.
         live = projection.build_live_panel(_workflow("pending"), _standard_tasks(), now=NOW)
-        self.assertTrue(
-            projection.cancellation_state(live, operation_active=True)["cancellable"])
+        self.assertTrue(projection.cancellation_state(live, operation_active=True)["cancellable"])
 
     # ------------------------------------------------------------------
     # task and run detail
@@ -436,10 +527,12 @@ class ControlCenterProjectionTests(unittest.TestCase):
     def test_task_detail_groups_what_the_task_owns(self):
         tasks = _standard_tasks(verification="passed")
         detail = projection.task_detail(
-            tasks[2], [_run("r-1", "t-3", "completed")],
+            tasks[2],
+            [_run("r-1", "t-3", "completed")],
             [_verification("v-1", "t-3", overall_status="passed")],
             [_failure("f-1", "t-3")],
-            [{"id": "a-1", "task_id": "t-3", "name": "report.md"}])
+            [{"id": "a-1", "task_id": "t-3", "name": "report.md"}],
+        )
         self.assertEqual(detail["role"], "verification")
         self.assertEqual(detail["attempts"], "1 / 3")
         self.assertEqual(len(detail["runs"]), 1)
@@ -450,14 +543,23 @@ class ControlCenterProjectionTests(unittest.TestCase):
 
     def test_task_detail_excludes_records_belonging_to_other_tasks(self):
         detail = projection.task_detail(
-            _standard_tasks()[0], [_run("r-1", "t-2", "completed")], [], [], [])
+            _standard_tasks()[0], [_run("r-1", "t-2", "completed")], [], [], []
+        )
         self.assertEqual(detail["runs"], [])
 
     def test_run_detail_carries_the_structured_result_and_diff(self):
-        run = _run("r-1", "t-2", "completed", exit_code=0, duration_seconds=12.5,
-                   ended_at="2026-10-03T12:30:12+00:00", files_changed=("a.py",),
-                   diff_stat="a.py | 1 +", structured_result={"changed": ["a.py"]},
-                   relationship="root")
+        run = _run(
+            "r-1",
+            "t-2",
+            "completed",
+            exit_code=0,
+            duration_seconds=12.5,
+            ended_at="2026-10-03T12:30:12+00:00",
+            files_changed=("a.py",),
+            diff_stat="a.py | 1 +",
+            structured_result={"changed": ["a.py"]},
+            relationship="root",
+        )
         detail = projection.run_detail(run)
         self.assertEqual(detail["agent"], "opencode")
         self.assertEqual(detail["model"], "gpt-5-codex")
@@ -480,7 +582,8 @@ class ControlCenterProjectionTests(unittest.TestCase):
     # ------------------------------------------------------------------
     def test_malformed_records_are_dropped_rather_than_rendered(self):
         stages = projection.build_stage_flow(
-            "not a dict", ["not a dict", None], [{"id": "r-1", "task_id": "t-1"}])
+            "not a dict", ["not a dict", None], [{"id": "r-1", "task_id": "t-1"}]
+        )
         self.assertEqual([stage["label"] for stage in stages], ["FINALIZE"])
 
     def test_projections_never_raise_on_missing_fields(self):
@@ -530,8 +633,9 @@ class ControlCenterViewTests(unittest.TestCase):
     def _teardown(self):
         from PySide6.QtWidgets import QMessageBox
 
-        with patch("agentops.gui.shell.QMessageBox.question",
-                   return_value=QMessageBox.StandardButton.Yes):
+        with patch(
+            "agentops.gui.shell.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes
+        ):
             destroy(self.window)
 
     def _select(self, table, item_id: str) -> None:
@@ -564,23 +668,34 @@ class ControlCenterViewTests(unittest.TestCase):
     def test_stage_transitions_are_reflected_on_refresh(self):
         self._activate()
         self.view._payload["tasks"] = [
-            {**self.view._payload["tasks"][0], "status": "passed",
-             "finished_at": "2026-10-03T12:20:00Z"},
+            {
+                **self.view._payload["tasks"][0],
+                "status": "passed",
+                "finished_at": "2026-10-03T12:20:00Z",
+            },
             {**self.view._payload["tasks"][1], "status": "running"},
         ]
-        self.view._payload["workflow"] = {**self.view._payload["workflow"],
-                                         "status": "running"}
-        self.view._on_payload({
-            "payload": {"workflow": self.view._payload["workflow"],
-                        "tasks": self.view._payload["tasks"],
-                        "runs": self.view._payload["runs"],
-                        "verifications": self.view._payload["verifications"],
-                        "failures": self.view._payload["failures"],
-                        "worktree_ref": {"path": "D:/repo/.agentops/worktrees/wf-1",
-                                         "branch": "agentops/wf-1",
-                                         "base_branch": "main", "base_commit": "1234567"}},
-            "artifacts": [], "events": [], "readiness": {"ready": False, "reasons": []},
-        })
+        self.view._payload["workflow"] = {**self.view._payload["workflow"], "status": "running"}
+        self.view._on_payload(
+            {
+                "payload": {
+                    "workflow": self.view._payload["workflow"],
+                    "tasks": self.view._payload["tasks"],
+                    "runs": self.view._payload["runs"],
+                    "verifications": self.view._payload["verifications"],
+                    "failures": self.view._payload["failures"],
+                    "worktree_ref": {
+                        "path": "D:/repo/.agentops/worktrees/wf-1",
+                        "branch": "agentops/wf-1",
+                        "base_branch": "main",
+                        "base_commit": "1234567",
+                    },
+                },
+                "artifacts": [],
+                "events": [],
+                "readiness": {"ready": False, "reasons": []},
+            }
+        )
         self.assertEqual(self.view._flow.stage_states()[0], "passed")
         self.assertEqual(self.view._live._stage_label.text(), "IMPLEMENT")
 
@@ -600,8 +715,7 @@ class ControlCenterViewTests(unittest.TestCase):
         self.assertTrue(wait_until(lambda: self.view._runs.proxy.rowCount() == 3))
         # r-1 is the completed implementation run: exit code, duration, diff.
         self._select(self.view._runs, "r-1")
-        self.assertTrue(wait_until(
-            lambda: "gpt-5-codex" in _grid_text(self.view._run_detail)))
+        self.assertTrue(wait_until(lambda: "gpt-5-codex" in _grid_text(self.view._run_detail)))
         rendered = _grid_text(self.view._run_detail)
         self.assertIn("codex", rendered)
         self.assertIn("implementation", rendered)
@@ -623,8 +737,7 @@ class ControlCenterViewTests(unittest.TestCase):
         self._activate()
         self.assertTrue(wait_until(lambda: self.view._failures.proxy.rowCount() == 1))
         self._select(self.view._failures, "f-1")
-        self.assertTrue(wait_until(
-            lambda: "test failure" in _grid_text(self.view._failure_grid)))
+        self.assertTrue(wait_until(lambda: "test failure" in _grid_text(self.view._failure_grid)))
         rendered = _grid_text(self.view._failure_grid)
         self.assertIn("high", rendered)
         self.assertIn("retry same agent", rendered)
@@ -660,16 +773,19 @@ class ControlCenterViewTests(unittest.TestCase):
     def test_worktree_actions_are_offered_when_nothing_is_running(self):
         self._activate()
         self.view._cancel_requested = False
-        self.view._payload["workflow"] = {**self.view._payload["workflow"],
-                                          "status": "completed"}
-        self.view._payload["tasks"] = [dict(task, status="passed")
-                                       for task in self.view._payload["tasks"]]
+        self.view._payload["workflow"] = {**self.view._payload["workflow"], "status": "completed"}
+        self.view._payload["tasks"] = [
+            dict(task, status="passed") for task in self.view._payload["tasks"]
+        ]
         self.view._payload["runs"] = []
         self.view._apply_state(
             projection.cancellation_state(
-                projection.build_live_panel(self.view._payload["workflow"],
-                                            self.view._payload["tasks"])),
-            self.view._payload["workflow"])
+                projection.build_live_panel(
+                    self.view._payload["workflow"], self.view._payload["tasks"]
+                )
+            ),
+            self.view._payload["workflow"],
+        )
         self.view._apply_worktree({"ready": True, "reasons": []})
         self.assertTrue(self.view._merge.isEnabled())
         self.assertTrue(self.view._cleanup.isEnabled())
@@ -686,13 +802,11 @@ class ControlCenterViewTests(unittest.TestCase):
     def test_no_repository_leaves_an_explicit_empty_state(self):
         self.window._repository = ""
         self.view.refresh()
-        self.assertEqual(self.view._list._empty._heading.text(),
-                         "No repository selected")
+        self.assertEqual(self.view._list._empty._heading.text(), "No repository selected")
 
     def test_deep_link_to_a_task_selects_it_after_the_payload_arrives(self):
         self.window.open_task("wf-1", "t-2")
         self.assertTrue(wait_until(lambda: self.view._selected_task_id == "t-2"))
-
 
     def test_the_pipeline_column_holds_every_stage_without_a_scrollbar(self):
         # The stage flow is the mission's main artifact: it must fit the pane

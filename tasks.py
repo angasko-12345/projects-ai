@@ -56,7 +56,9 @@ PRODUCTS: dict[str, dict] = {
     },
     "privacy-audit": {
         "directory": "small-projects/privacy_audit_tool",
-        "tests": [("small-projects/privacy_audit_tool", ["-m", "unittest", "discover", "-s", "tests"])],
+        "tests": [
+            ("small-projects/privacy_audit_tool", ["-m", "unittest", "discover", "-s", "tests"])
+        ],
         "evidence": None,
     },
     "tiktok-slop-factory": {
@@ -117,12 +119,16 @@ def cmd_test(names: list[str]) -> int:
 
 def cmd_lint(names: list[str]) -> int:
     # From the root so the repo-wide [tool.ruff] config in pyproject.toml applies.
-    targets = ["."] if names in ([], ["all"]) else [PRODUCTS[resolve(n)]["directory"] for n in names]
+    targets = (
+        ["."] if names in ([], ["all"]) else [PRODUCTS[resolve(n)]["directory"] for n in names]
+    )
     return run([*ruff_argv(), "check", *targets], ROOT)
 
 
 def cmd_format_check(names: list[str]) -> int:
-    targets = ["."] if names in ([], ["all"]) else [PRODUCTS[resolve(n)]["directory"] for n in names]
+    targets = (
+        ["."] if names in ([], ["all"]) else [PRODUCTS[resolve(n)]["directory"] for n in names]
+    )
     return run([*ruff_argv(), "format", "--check", *targets], ROOT)
 
 

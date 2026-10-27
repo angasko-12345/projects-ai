@@ -23,9 +23,9 @@ class InstallHookTests(unittest.TestCase):
         # Regression: `Set-Content -Encoding utf8NoBOM` is PowerShell 6+ only;
         # Windows PowerShell 5.1 (powershell.exe) rejects it and the install
         # aborts under $ErrorActionPreference = "Stop".
-        self.assertIsNone(re.search(r"-Encoding\s+utf8NoBOM",
-                                    SCRIPT.read_text(encoding="utf-8"),
-                                    re.IGNORECASE))
+        self.assertIsNone(
+            re.search(r"-Encoding\s+utf8NoBOM", SCRIPT.read_text(encoding="utf-8"), re.IGNORECASE)
+        )
 
     def test_hook_is_utf8_without_bom_with_lf_endings(self):
         shell = shutil.which("pwsh") or shutil.which("powershell")
@@ -38,8 +38,11 @@ class InstallHookTests(unittest.TestCase):
             copy = root / "tools" / "obsidian-sync" / "install-hook.ps1"
             shutil.copyfile(SCRIPT, copy)
             completed = subprocess.run(
-                [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
-                 str(copy)], capture_output=True, text=True, check=False)
+                [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(copy)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
             self.assertEqual(completed.returncode, 0, completed.stderr)
             hook = root / ".git" / "hooks" / "post-commit"
             data = hook.read_bytes()

@@ -121,9 +121,11 @@ class RunTests(unittest.TestCase):
         reported: list[BaseException] = []
         with tempfile.TemporaryDirectory() as temp:
             target = Path(temp) / "agentops.log"
-            with mock.patch.object(launcher, "log_path", return_value=target), \
-                    mock.patch.object(launcher, "install_handlers", return_value=target), \
-                    mock.patch.object(launcher, "report_fatal") as fatal:
+            with (
+                mock.patch.object(launcher, "log_path", return_value=target),
+                mock.patch.object(launcher, "install_handlers", return_value=target),
+                mock.patch.object(launcher, "report_fatal") as fatal,
+            ):
                 fatal.side_effect = lambda error, detail="": reported.append(error)
                 with mock.patch.dict(sys.modules, {"agentops.gui": None}):
                     self.assertEqual(launcher.run(), 1)
@@ -134,10 +136,12 @@ class RunTests(unittest.TestCase):
     def test_startup_failure_returns_nonzero(self):
         with tempfile.TemporaryDirectory() as temp:
             target = Path(temp) / "agentops.log"
-            with mock.patch.object(launcher, "log_path", return_value=target), \
-                    mock.patch.object(launcher, "install_handlers", return_value=target), \
-                    mock.patch.object(launcher, "report_fatal") as fatal, \
-                    mock.patch("agentops.gui.main", side_effect=OSError("no display")):
+            with (
+                mock.patch.object(launcher, "log_path", return_value=target),
+                mock.patch.object(launcher, "install_handlers", return_value=target),
+                mock.patch.object(launcher, "report_fatal") as fatal,
+                mock.patch("agentops.gui.main", side_effect=OSError("no display")),
+            ):
                 self.assertEqual(launcher.run(), 1)
             fatal.assert_called_once()
             self.assertIn("startup failed", target.read_text(encoding="utf-8"))
@@ -145,9 +149,11 @@ class RunTests(unittest.TestCase):
     def test_clean_exit_returns_zero(self):
         with tempfile.TemporaryDirectory() as temp:
             target = Path(temp) / "agentops.log"
-            with mock.patch.object(launcher, "log_path", return_value=target), \
-                    mock.patch.object(launcher, "install_handlers", return_value=target), \
-                    mock.patch("agentops.gui.main") as gui_main:
+            with (
+                mock.patch.object(launcher, "log_path", return_value=target),
+                mock.patch.object(launcher, "install_handlers", return_value=target),
+                mock.patch("agentops.gui.main") as gui_main,
+            ):
                 self.assertEqual(launcher.run(), 0)
             gui_main.assert_called_once_with()
             self.assertIn("exited cleanly", target.read_text(encoding="utf-8"))

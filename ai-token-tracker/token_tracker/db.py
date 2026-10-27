@@ -55,16 +55,14 @@ CREATE TABLE IF NOT EXISTS collector_status (
 );
 """
 
-_INSERT_SQL = (
-    "INSERT INTO events ({cols}) VALUES ({placeholders})"
-).format(
+_INSERT_SQL = ("INSERT INTO events ({cols}) VALUES ({placeholders})").format(
     cols=", ".join(EVENT_COLUMNS),
     placeholders=", ".join(f":{c}" for c in EVENT_COLUMNS),
 )
 
-_UPDATE_SQL = (
-    "UPDATE events SET {assign} WHERE id = :id"
-).format(assign=", ".join(f"{c} = :{c}" for c in EVENT_COLUMNS if c != "id"))
+_UPDATE_SQL = ("UPDATE events SET {assign} WHERE id = :id").format(
+    assign=", ".join(f"{c} = :{c}" for c in EVENT_COLUMNS if c != "id")
+)
 
 BREAKDOWN_COLUMNS = {"provider", "model", "agent", "project", "tool"}
 
@@ -150,9 +148,7 @@ def _rekey_v1(conn: sqlite3.Connection) -> None:
     Every step is idempotent, so a database already written by the current
     code (or already double-counted) comes out with one row per event.
     """
-    conn.execute(
-        "DELETE FROM events WHERE source = 'claude' AND model = '<synthetic>'"
-    )
+    conn.execute("DELETE FROM events WHERE source = 'claude' AND model = '<synthetic>'")
     for stored in conn.execute(
         "SELECT * FROM events WHERE source IN ('claude', 'hermes')"
     ).fetchall():
@@ -259,9 +255,7 @@ def clear_pending_resync(conn: sqlite3.Connection, source: str) -> None:
 
 def _backfill_identity(conn: sqlite3.Connection) -> None:
     """Fill tool attribution from the source and recompute dedup keys."""
-    rows = conn.execute(
-        "SELECT * FROM events WHERE dedup_key IS NULL OR tool IS NULL"
-    ).fetchall()
+    rows = conn.execute("SELECT * FROM events WHERE dedup_key IS NULL OR tool IS NULL").fetchall()
     for stored in rows:
         row = dict(stored)
         event = event_from_row(row)  # recomputes dedup_key when absent
@@ -289,7 +283,12 @@ def insert_events(conn: sqlite3.Connection, events: list[UsageEvent]) -> tuple[i
     inserted = updated = unchanged = 0
     _supersede_stale(conn, events)
     dedup: dict[str, dict] = {
-        row["dedup_key"]: {"id": row["id"], "tool": row["tool"], "agent": row["agent"], "source": row["source"]}
+        row["dedup_key"]: {
+            "id": row["id"],
+            "tool": row["tool"],
+            "agent": row["agent"],
+            "source": row["source"],
+        }
         for row in conn.execute(
             "SELECT id, dedup_key, tool, agent, source FROM events WHERE dedup_key IS NOT NULL"
         )
@@ -374,7 +373,9 @@ def totals(conn: sqlite3.Connection, since: str | None = None) -> dict:
     return dict(row)
 
 
-def daily_series(conn: sqlite3.Connection, days: int = 30, now: datetime | None = None) -> list[tuple[str, int]]:
+def daily_series(
+    conn: sqlite3.Connection, days: int = 30, now: datetime | None = None
+) -> list[tuple[str, int]]:
     """Zero-filled daily total_tokens for the last ``days`` UTC days inclusive."""
     now = now or datetime.now(timezone.utc)
     if now.tzinfo is None:
@@ -394,7 +395,9 @@ def daily_series(conn: sqlite3.Connection, days: int = 30, now: datetime | None 
     return series
 
 
-def breakdown(conn: sqlite3.Connection, column: str, since: str | None = None) -> list[tuple[str, int, int]]:
+def breakdown(
+    conn: sqlite3.Connection, column: str, since: str | None = None
+) -> list[tuple[str, int, int]]:
     """[(key, total_tokens, events)] for a schema column, largest first."""
     if column not in BREAKDOWN_COLUMNS:
         raise ValueError(f"cannot group by {column!r}")

@@ -85,8 +85,9 @@ def legacy_rollout():
     return [
         _meta(),
         _turn(),
-        _token_count("2026-03-01T10:00:05.000Z", None, None,
-                     rate_limits={"primary": {"used_percent": 3.0}}),
+        _token_count(
+            "2026-03-01T10:00:05.000Z", None, None, rate_limits={"primary": {"used_percent": 3.0}}
+        ),
         _token_count("2026-03-01T10:00:10.000Z", u1, t1),
         _token_count("2026-03-01T10:00:10.500Z", u1, t1),  # repeat, same total
         _token_count("2026-03-01T10:01:00.000Z", u2, t2),
@@ -105,8 +106,9 @@ class CodexCollectorTest(unittest.TestCase):
 
     def test_token_count_only_rollout_yields_events(self):
         sessions = self.codex / "sessions"
-        _write(sessions / "2026" / "03" / "01" / "rollout-2026-03-01-legacy.jsonl",
-               legacy_rollout())
+        _write(
+            sessions / "2026" / "03" / "01" / "rollout-2026-03-01-legacy.jsonl", legacy_rollout()
+        )
         events = collectors.collect_codex(sessions)
         self.assertEqual(len(events), 2)
         e1, e2 = events
@@ -127,18 +129,25 @@ class CodexCollectorTest(unittest.TestCase):
         sessions = self.codex / "sessions"
         t1 = _usage(1000, 400, 100, 20)
         t2 = _usage(3000, 1900, 400, 70)
-        _write(sessions / "2026" / "03" / "02" / "rollout-2026-03-02-delta.jsonl", [
-            _meta(),
-            _turn(),
-            _token_count("2026-03-02T10:00:10.000Z", None, t1),
-            _token_count("2026-03-02T10:01:00.000Z", None, t2),
-        ])
+        _write(
+            sessions / "2026" / "03" / "02" / "rollout-2026-03-02-delta.jsonl",
+            [
+                _meta(),
+                _turn(),
+                _token_count("2026-03-02T10:00:10.000Z", None, t1),
+                _token_count("2026-03-02T10:01:00.000Z", None, t2),
+            ],
+        )
         events = collectors.collect_codex(sessions)
         self.assertEqual([e.total_tokens for e in events], [1100, 2300])
         second = events[1]
         self.assertEqual(
-            (second.input_tokens, second.cache_read_tokens,
-             second.output_tokens, second.reasoning_tokens),
+            (
+                second.input_tokens,
+                second.cache_read_tokens,
+                second.output_tokens,
+                second.reasoning_tokens,
+            ),
             (500, 1500, 250, 50),
         )
 
@@ -147,14 +156,17 @@ class CodexCollectorTest(unittest.TestCase):
         u1 = _usage(1000, 600, 80, 30)
         u2 = _usage(500, 0, 40, 0)
         t2 = {k: u1[k] + u2[k] for k in u1}
-        _write(sessions / "2026" / "10" / "06" / "rollout-2026-10-06-dual.jsonl", [
-            _meta("sess-new", "D:/work/new"),
-            _turn("gpt-5.5"),
-            _record("2026-10-06T01:00:00.000Z", "resp_1", u1),
-            _token_count("2026-10-06T01:00:00.100Z", u1, u1),
-            _record("2026-10-06T01:01:00.000Z", "resp_2", u2),
-            _token_count("2026-10-06T01:01:00.100Z", u2, t2),
-        ])
+        _write(
+            sessions / "2026" / "10" / "06" / "rollout-2026-10-06-dual.jsonl",
+            [
+                _meta("sess-new", "D:/work/new"),
+                _turn("gpt-5.5"),
+                _record("2026-10-06T01:00:00.000Z", "resp_1", u1),
+                _token_count("2026-10-06T01:00:00.100Z", u1, u1),
+                _record("2026-10-06T01:01:00.000Z", "resp_2", u2),
+                _token_count("2026-10-06T01:01:00.100Z", u2, t2),
+            ],
+        )
         events = collectors.collect_codex(sessions)
         self.assertEqual(len(events), 2)  # not 4
         self.assertEqual([e.request_id for e in events], ["resp_1", "resp_2"])
@@ -164,12 +176,17 @@ class CodexCollectorTest(unittest.TestCase):
 
     def test_archived_sessions_are_scanned(self):
         sessions = self.codex / "sessions"
-        _write(sessions / "2026" / "10" / "06" / "rollout-2026-10-06-live.jsonl", [
-            _meta("sess-live"), _turn(),
-            _record("2026-10-06T01:00:00.000Z", "resp_live", _usage(100, 0, 10, 0)),
-        ])
-        _write(self.codex / "archived_sessions" / "rollout-2026-03-01-legacy.jsonl",
-               legacy_rollout())
+        _write(
+            sessions / "2026" / "10" / "06" / "rollout-2026-10-06-live.jsonl",
+            [
+                _meta("sess-live"),
+                _turn(),
+                _record("2026-10-06T01:00:00.000Z", "resp_live", _usage(100, 0, 10, 0)),
+            ],
+        )
+        _write(
+            self.codex / "archived_sessions" / "rollout-2026-03-01-legacy.jsonl", legacy_rollout()
+        )
         events = collectors.collect_codex(sessions)
         self.assertEqual(len(events), 3)
         self.assertEqual(sum(e.total_tokens for e in events), 110 + 3400)
@@ -177,8 +194,10 @@ class CodexCollectorTest(unittest.TestCase):
     def test_find_codex_falls_back_to_archived_only_home(self):
         archived = self.codex / "archived_sessions"
         _write(archived / "rollout-2026-03-01-legacy.jsonl", legacy_rollout())
-        with mock.patch.object(collectors, "_user_home", lambda: self.home), \
-                mock.patch.dict(os.environ, {}, clear=False):
+        with (
+            mock.patch.object(collectors, "_user_home", lambda: self.home),
+            mock.patch.dict(os.environ, {}, clear=False),
+        ):
             os.environ.pop("CODEX_SESSIONS", None)
             found = collectors.find_codex()
         self.assertEqual(found, archived)
@@ -199,8 +218,7 @@ class CodexCollectorTest(unittest.TestCase):
         events = collectors.collect_codex(sessions)
         self.assertEqual(len(events), 2)
         # Same result when collection starts from the archived side.
-        self.assertEqual(
-            len(collectors.collect_codex(self.codex / "archived_sessions")), 2)
+        self.assertEqual(len(collectors.collect_codex(self.codex / "archived_sessions")), 2)
 
     def test_repeated_sync_with_archive_is_idempotent_in_db(self):
         name = "rollout-2026-03-01-legacy.jsonl"

@@ -14,7 +14,11 @@ from .agent_run import AgentRunStatus, GitRunMetadataCollector
 from .artifacts import ArtifactError, ArtifactStore
 from .config import AppConfig, _load_data, load_config, resolve_config_source
 from .finalize import (
-    WorktreeFinalization, finalize_for_outcome, implementation_passed, record_worktree_provenance, retry_merge_for_worktree,
+    WorktreeFinalization,
+    finalize_for_outcome,
+    implementation_passed,
+    record_worktree_provenance,
+    retry_merge_for_worktree,
 )
 from .git import GitError, GitWorktreeManager
 from .registry import AgentRegistry
@@ -87,25 +91,46 @@ def _build_services(args: argparse.Namespace) -> CliServices:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="agentops", description="Local-first coding-agent orchestration")
+    parser = argparse.ArgumentParser(
+        prog="agentops", description="Local-first coding-agent orchestration"
+    )
     parser.add_argument("--config", type=Path, help="Path to YAML configuration")
     parser.add_argument("--version", action="version", version=f"agentops {__version__}")
     subcommands = parser.add_subparsers(dest="command", required=True)
     subcommands.add_parser("agents", help="Detect configured coding-agent CLIs")
     init = subcommands.add_parser(
-        "init", help="Detect this repository's stack and write .agentops/config.yaml")
-    init.add_argument("--cwd", type=Path, default=Path.cwd(),
-                      help="Directory inside the target repository (default: current directory)")
-    init.add_argument("--force", action="store_true", help="Overwrite an existing repository config")
-    init.add_argument("--print", dest="print_only", action="store_true",
-                      help="Print the config that would be written; write nothing")
+        "init", help="Detect this repository's stack and write .agentops/config.yaml"
+    )
+    init.add_argument(
+        "--cwd",
+        type=Path,
+        default=Path.cwd(),
+        help="Directory inside the target repository (default: current directory)",
+    )
+    init.add_argument(
+        "--force", action="store_true", help="Overwrite an existing repository config"
+    )
+    init.add_argument(
+        "--print",
+        dest="print_only",
+        action="store_true",
+        help="Print the config that would be written; write nothing",
+    )
     doctor = subcommands.add_parser(
-        "doctor", help="Check agents, prompt transport, config, verification, and Git state")
-    doctor.add_argument("--cwd", type=Path, default=Path.cwd(),
-                        help="Directory inside the target repository (default: current directory)")
+        "doctor", help="Check agents, prompt transport, config, verification, and Git state"
+    )
+    doctor.add_argument(
+        "--cwd",
+        type=Path,
+        default=Path.cwd(),
+        help="Directory inside the target repository (default: current directory)",
+    )
     doctor.add_argument("--json", action="store_true", help="Emit a machine-readable report")
-    doctor.add_argument("--probe", action="store_true",
-                        help="Also run each found agent's version command (up to 15 s each)")
+    doctor.add_argument(
+        "--probe",
+        action="store_true",
+        help="Also run each found agent's version command (up to 15 s each)",
+    )
     subcommands.add_parser("gui", help="Launch the AgentOps desktop client")
     subcommands.add_parser("status", help="Show persistent workflow status")
     run = subcommands.add_parser("run", help="Run one installed agent")
@@ -123,7 +148,9 @@ def build_parser() -> argparse.ArgumentParser:
     logs = subcommands.add_parser("logs", help="Inspect saved task and runner logs")
     logs.add_argument("--task")
     logs.add_argument("--tail", type=int, default=30)
-    verify = subcommands.add_parser("verify", help="Inspect persisted verification runs and reports")
+    verify = subcommands.add_parser(
+        "verify", help="Inspect persisted verification runs and reports"
+    )
     verify.add_argument("--workflow")
     verify.add_argument("--run")
     verify.add_argument("--task")
@@ -136,13 +163,18 @@ def build_parser() -> argparse.ArgumentParser:
     failures.add_argument("--limit", type=int, default=20)
     failures.add_argument("--offset", type=int, default=0)
     merge = subcommands.add_parser(
-        "retry-merge",
-        help="Merge a preserved worktree left in limbo by an unverified workflow")
-    merge.add_argument("worktree", type=Path,
-                       help="Path to the preserved agentops/* worktree")
-    merge.add_argument("--directory", type=Path, default=Path.cwd(),
-                       help="Repository root (default: current directory)")
-    subcommands.add_parser("recover", help="Recover interrupted agent runs, verification runs, and tasks")
+        "retry-merge", help="Merge a preserved worktree left in limbo by an unverified workflow"
+    )
+    merge.add_argument("worktree", type=Path, help="Path to the preserved agentops/* worktree")
+    merge.add_argument(
+        "--directory",
+        type=Path,
+        default=Path.cwd(),
+        help="Repository root (default: current directory)",
+    )
+    subcommands.add_parser(
+        "recover", help="Recover interrupted agent runs, verification runs, and tasks"
+    )
     events = subcommands.add_parser("events", help="Query the durable execution timeline")
     events.add_argument("--workflow")
     events.add_argument("--task")
@@ -160,8 +192,12 @@ def build_parser() -> argparse.ArgumentParser:
     artifacts.add_argument("--offset", type=int, default=0)
     workflow = subcommands.add_parser("workflow", help="Execute a YAML workflow file")
     workflow.add_argument("file", type=Path)
-    workflow.add_argument("--cwd", type=Path, default=Path.cwd(),
-                          help="Working directory of the target repository (defaults to cwd)")
+    workflow.add_argument(
+        "--cwd",
+        type=Path,
+        default=Path.cwd(),
+        help="Working directory of the target repository (defaults to cwd)",
+    )
     return parser
 
 
@@ -216,7 +252,9 @@ def _cmd_init(args: argparse.Namespace) -> int:
         required = "required" if check.required else "optional"
         print(f"  check {check.name:<14} {' '.join(check.command)}  ({required}; {check.evidence})")
     if detection.placeholder:
-        print("  no test command detected: wrote a TODO placeholder check that fails until you replace it")
+        print(
+            "  no test command detected: wrote a TODO placeholder check that fails until you replace it"
+        )
     for note in detection.notes:
         print(f"  note: {note}")
     installed = ", ".join(result.installed_agents) or "none found on PATH"
@@ -332,7 +370,9 @@ def main(argv: list[str] | None = None, services: CliServices | None = None) -> 
                     )
                 ref = state.get_worktree_ref(workflow.id)
                 if ref is not None:
-                    print(f"  worktree {ref.branch} base={ref.base_branch}@{ref.base_commit[:12]} path={ref.path}")
+                    print(
+                        f"  worktree {ref.branch} base={ref.base_branch}@{ref.base_commit[:12]} path={ref.path}"
+                    )
         finally:
             state.close()
         return 0
@@ -342,15 +382,22 @@ def main(argv: list[str] | None = None, services: CliServices | None = None) -> 
         try:
             agent = registry.get(args.agent)
             observer = state.agent_run_observer()
-            runner = services.agent_runner(logs, config.pass_env_names, config.pass_env_prefixes,
-                                           run_observer=observer, systemd_run_enabled=config.systemd_run_enabled)
+            runner = services.agent_runner(
+                logs,
+                config.pass_env_names,
+                config.pass_env_prefixes,
+                run_observer=observer,
+                systemd_run_enabled=config.systemd_run_enabled,
+            )
             result = asyncio.run(runner.run_agent(agent, args.prompt, Path.cwd()))
         except (KeyError, RuntimeError, OSError) as error:
             print(f"ERROR: {error}")
             return 1
         finally:
             state.close()
-        print(f"[{result.agent}] {'PASSED' if result.succeeded else 'FAILED'} ({result.duration_seconds:.1f}s)")
+        print(
+            f"[{result.agent}] {'PASSED' if result.succeeded else 'FAILED'} ({result.duration_seconds:.1f}s)"
+        )
         if result.run_id is not None:
             print(f"run: {result.run_id}")
         print(f"log: {result.log_path}")
@@ -368,14 +415,18 @@ def main(argv: list[str] | None = None, services: CliServices | None = None) -> 
         try:
             try:
                 status = AgentRunStatus(args.status) if args.status else None
-                runs = state.list_agent_runs(args.workflow, args.task, status, args.limit, args.offset)
+                runs = state.list_agent_runs(
+                    args.workflow, args.task, status, args.limit, args.offset
+                )
             except ValueError as error:
                 print(f"ERROR: {error}")
                 return 2
             if not runs:
                 print("No persisted agent runs.")
             for run in runs:
-                duration = f"{run.duration_seconds:.1f}s" if run.duration_seconds is not None else "-"
+                duration = (
+                    f"{run.duration_seconds:.1f}s" if run.duration_seconds is not None else "-"
+                )
                 print(
                     f"{run.id}  {run.status.value}  {run.agent or '<no-agent>'}  "
                     f"task={run.task_id or '-'} attempt={run.attempt} "
@@ -403,7 +454,9 @@ def main(argv: list[str] | None = None, services: CliServices | None = None) -> 
                         f"required={check.required} reason={check.failure_reason or '-'}"
                     )
             else:
-                runs = state.list_verification_runs(args.workflow, args.task, limit=args.limit, offset=args.offset)
+                runs = state.list_verification_runs(
+                    args.workflow, args.task, limit=args.limit, offset=args.offset
+                )
                 if not runs:
                     print("No persisted verification runs.")
                 for run in runs:
@@ -418,9 +471,11 @@ def main(argv: list[str] | None = None, services: CliServices | None = None) -> 
                         # A skipped check is an ABSENT signal, not a pass. Say so
                         # here rather than letting the count speak for itself,
                         # and point at the detail view.
-                        print(f"  ^ {run.skipped_checks} check(s) did not run. "
-                              f"This run is UNVERIFIED, not verified-and-fine. "
-                              f"Run `agentops verify --run {run.id}` for per-check reasons.")
+                        print(
+                            f"  ^ {run.skipped_checks} check(s) did not run. "
+                            f"This run is UNVERIFIED, not verified-and-fine. "
+                            f"Run `agentops verify --run {run.id}` for per-check reasons."
+                        )
         except (KeyError, ValueError) as error:
             print(f"ERROR: {error}")
             return 2
@@ -511,8 +566,7 @@ def main(argv: list[str] | None = None, services: CliServices | None = None) -> 
         manager = services.worktree_manager()
         state = services.state_store(state_root / "state.sqlite")
         try:
-            outcome = services.retry_merge(manager, state, root,
-                                           args.worktree)
+            outcome = services.retry_merge(manager, state, root, args.worktree)
         except GitError as error:
             print(f"ERROR: {error}")
             return 1
@@ -520,8 +574,10 @@ def main(argv: list[str] | None = None, services: CliServices | None = None) -> 
             state.close()
         print(f"merged {outcome['branch']} into {outcome['base_branch']}")
         if not outcome.get("used_stored_provenance"):
-            print("WARNING: no stored provenance for this worktree; merged "
-                  "against the current HEAD of the base branch.")
+            print(
+                "WARNING: no stored provenance for this worktree; merged "
+                "against the current HEAD of the base branch."
+            )
         return 0
     if args.command == "recover":
         state = services.state_store(state_root / "state.sqlite")
@@ -548,12 +604,20 @@ def main(argv: list[str] | None = None, services: CliServices | None = None) -> 
     state = services.state_store(state_root / "state.sqlite")
     registry = services.agent_registry(config)
     run_observer = state.agent_run_observer()
-    runner = services.agent_runner(logs, config.pass_env_names, config.pass_env_prefixes,
-                                  run_observer=run_observer, metadata_collector=GitRunMetadataCollector(),
-                                  systemd_run_enabled=config.systemd_run_enabled)
-    verifier = services.verifier(config.verification_commands, pass_env_names=config.pass_env_names,
-                                 pass_env_prefixes=config.pass_env_prefixes,
-                                 systemd_run_enabled=config.systemd_run_enabled)
+    runner = services.agent_runner(
+        logs,
+        config.pass_env_names,
+        config.pass_env_prefixes,
+        run_observer=run_observer,
+        metadata_collector=GitRunMetadataCollector(),
+        systemd_run_enabled=config.systemd_run_enabled,
+    )
+    verifier = services.verifier(
+        config.verification_commands,
+        pass_env_names=config.pass_env_names,
+        pass_env_prefixes=config.pass_env_prefixes,
+        systemd_run_enabled=config.systemd_run_enabled,
+    )
     verification_kernel = services.verification_kernel(
         profiles=config.verification_profiles,
         default_profile=config.default_verification_profile,
@@ -564,9 +628,16 @@ def main(argv: list[str] | None = None, services: CliServices | None = None) -> 
         state=state,
         systemd_run_enabled=config.systemd_run_enabled,
     )
-    engine = services.workflow_engine(config, state, registry, runner, verifier,
-                                      run_observer=run_observer, metadata_collector=GitRunMetadataCollector(),
-                                      verification_kernel=verification_kernel)
+    engine = services.workflow_engine(
+        config,
+        state,
+        registry,
+        runner,
+        verifier,
+        run_observer=run_observer,
+        metadata_collector=GitRunMetadataCollector(),
+        verification_kernel=verification_kernel,
+    )
     manager = services.worktree_manager()
     worktree = None
     workflow_id = None
@@ -598,8 +669,12 @@ def main(argv: list[str] | None = None, services: CliServices | None = None) -> 
         workflow_id = result.workflow_id
         # Phase 3: persist provenance so retry/merge validate against the
         # stored base even after restart (never memory-only).
-        services.record_provenance(state, worktree, workflow_id, DegradationRecorder(
-            emit=event_emitter(state.record_typed_event)))
+        services.record_provenance(
+            state,
+            worktree,
+            workflow_id,
+            DegradationRecorder(emit=event_emitter(state.record_typed_event)),
+        )
         finalization = WorktreeFinalization(changed=False, merged=False, conflict_error=None)
         # One authoritative rule, shared with the desktop client:
         # READY merges; not READY commits and PRESERVES the worktree. Unverified
@@ -615,11 +690,19 @@ def main(argv: list[str] | None = None, services: CliServices | None = None) -> 
         merged = False
         if result.ready or _implementation_passed(state, workflow_id):
             finalization = services.finalize(
-                manager, state, worktree, description, workflow_id,
-                config.max_attempts, ready=result.ready)
+                manager,
+                state,
+                worktree,
+                description,
+                workflow_id,
+                config.max_attempts,
+                ready=result.ready,
+            )
             if finalization.conflict_error is not None:
                 print(f"CONFLICT: {finalization.conflict_error}")
-                print("A persisted conflict-resolution task was created; the worktree is preserved.")
+                print(
+                    "A persisted conflict-resolution task was created; the worktree is preserved."
+                )
                 return 1
             changed = finalization.changed
             merged = finalization.merged
@@ -634,12 +717,17 @@ def main(argv: list[str] | None = None, services: CliServices | None = None) -> 
                 report = state.get_verification_report_by_run(run.id)
             except (KeyError, ValueError):
                 continue
-            if report.skipped_checks and report.overall_status is not VerificationReportStatus.PASSED:
-                print(f"verification {report.overall_status.value}: "
-                      f"{report.skipped_checks} of {report.total_checks} check(s) SKIPPED "
-                      f"-- no evidence was gathered for them, so this is UNVERIFIED "
-                      f"rather than verified. `agentops verify --run {run.id}` "
-                      f"lists each reason.")
+            if (
+                report.skipped_checks
+                and report.overall_status is not VerificationReportStatus.PASSED
+            ):
+                print(
+                    f"verification {report.overall_status.value}: "
+                    f"{report.skipped_checks} of {report.total_checks} check(s) SKIPPED "
+                    f"-- no evidence was gathered for them, so this is UNVERIFIED "
+                    f"rather than verified. `agentops verify --run {run.id}` "
+                    f"lists each reason."
+                )
         if merged:
             print("merged worktree changes")
         elif changed:

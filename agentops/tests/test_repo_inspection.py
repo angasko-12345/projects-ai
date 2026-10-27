@@ -68,17 +68,22 @@ class InspectRepositoryTests(unittest.TestCase):
         self.assertIsNone(result.test_runner)
 
     def test_inaccessible_root_is_unknown_and_never_raises(self):
-        with patch("agentops.repo_inspection.os.scandir", side_effect=PermissionError(13, "locked")):
+        with patch(
+            "agentops.repo_inspection.os.scandir", side_effect=PermissionError(13, "locked")
+        ):
             result = inspect_repository(self._tree())
         self.assertIs(result.size, RepositorySize.UNKNOWN)
         self.assertEqual(result.languages, ())
 
     def test_inaccessible_subdirectory_is_skipped_without_failing_the_walk(self):
         root = self._tree("flaky-root")
-        _build_tree(root, {
-            "src/main.py": "print('x')\n",
-            "locked/vendor.js": "x",
-        })
+        _build_tree(
+            root,
+            {
+                "src/main.py": "print('x')\n",
+                "locked/vendor.js": "x",
+            },
+        )
 
         real_scandir = os.scandir
 
@@ -95,12 +100,15 @@ class InspectRepositoryTests(unittest.TestCase):
 
     def test_mixed_language_repo_orders_by_count_then_name(self):
         root = self._tree("mixed")
-        _build_tree(root, {
-            "a.py": "x",
-            "b.py": "x",
-            "c.go": "x",
-            "d.ts": "x",
-        })
+        _build_tree(
+            root,
+            {
+                "a.py": "x",
+                "b.py": "x",
+                "c.go": "x",
+                "d.ts": "x",
+            },
+        )
         result = inspect_repository(root)
         self.assertEqual(result.languages, ("Python", "Go", "TypeScript"))
         self.assertEqual(result.language_counts, {"Python": 2, "Go": 1, "TypeScript": 1})
@@ -111,9 +119,7 @@ class InspectRepositoryTests(unittest.TestCase):
     def test_equal_counts_break_ties_alphabetically(self):
         root = self._tree("tie")
         _build_tree(root, {"x.go": "}", "y.ts": "x", "z.rb": "x"})
-        self.assertEqual(
-            inspect_repository(root).languages, ("Go", "Ruby", "TypeScript")
-        )
+        self.assertEqual(inspect_repository(root).languages, ("Go", "Ruby", "TypeScript"))
 
     def test_unknown_suffixes_count_toward_size_but_not_languages(self):
         root = self._tree("blobs")
@@ -125,14 +131,17 @@ class InspectRepositoryTests(unittest.TestCase):
 
     def test_hidden_and_vendor_directories_are_skipped(self):
         root = self._tree("skips")
-        _build_tree(root, {
-            "main.py": "x",
-            "node_modules/left-pad/index.js": "x",
-            ".git/config": "x",
-            ".agentops/state.sqlite": "",
-            ".venv/pyvenv.cfg": "x",
-            "__pycache__/main.cpython-311.pyc": "x",
-        })
+        _build_tree(
+            root,
+            {
+                "main.py": "x",
+                "node_modules/left-pad/index.js": "x",
+                ".git/config": "x",
+                ".agentops/state.sqlite": "",
+                ".venv/pyvenv.cfg": "x",
+                "__pycache__/main.cpython-311.pyc": "x",
+            },
+        )
         result = inspect_repository(root)
         self.assertEqual(result.languages, ("Python",))
         self.assertEqual(result.source_file_count, 1)
@@ -254,13 +263,16 @@ class ManifestReadTests(unittest.TestCase):
 
     def test_only_allowlisted_manifests_are_ever_opened(self):
         root = self._tree("privacy")
-        _build_tree(root, {
-            ".env": "SECRET=1\nAPI_KEY=anything\n",
-            "secrets/credentials.txt": "SECRET=2\n",
-            "id_rsa": "-----BEGIN FAKE-----\n",
-            "package.json": '{"name": "x", "scripts": {"test": "jest"}}\n',
-            "pyproject.toml": "[project]\nname = 'x'\n",
-        })
+        _build_tree(
+            root,
+            {
+                ".env": "SECRET=1\nAPI_KEY=anything\n",
+                "secrets/credentials.txt": "SECRET=2\n",
+                "id_rsa": "-----BEGIN FAKE-----\n",
+                "package.json": '{"name": "x", "scripts": {"test": "jest"}}\n',
+                "pyproject.toml": "[project]\nname = 'x'\n",
+            },
+        )
         result, opened = self._inspect_with_open_spy(root)
         self.assertTrue(opened)
         self.assertTrue(set(opened) <= set(MANIFEST_NAMES), opened)
@@ -278,10 +290,13 @@ class ManifestReadTests(unittest.TestCase):
 
     def test_unparseable_manifest_yields_no_signal_instead_of_raising(self):
         root = self._tree("broken-manifests")
-        _build_tree(root, {
-            "package.json": "<html>not json",
-            "pyproject.toml": "☃ not toml",
-        })
+        _build_tree(
+            root,
+            {
+                "package.json": "<html>not json",
+                "pyproject.toml": "☃ not toml",
+            },
+        )
         result = inspect_repository(root)
         self.assertEqual(result.manifests, ("package.json", "pyproject.toml"))
         self.assertIsNone(result.test_runner)
@@ -307,9 +322,11 @@ class TestRunnerDetectionTests(unittest.TestCase):
 
     def test_pyproject_pytest_section_is_pytest(self):
         self.assertEqual(
-            self._runner_for({
-                "pyproject.toml": "[tool.pytest.ini_options]\naddopts = '-q'\n",
-            }),
+            self._runner_for(
+                {
+                    "pyproject.toml": "[tool.pytest.ini_options]\naddopts = '-q'\n",
+                }
+            ),
             "pytest",
         )
 
@@ -351,10 +368,12 @@ class TestRunnerDetectionTests(unittest.TestCase):
 
     def test_npm_test_outranks_python_tests_directory(self):
         self.assertEqual(
-            self._runner_for({
-                "package.json": '{"scripts": {"test": "jest"}}',
-                "tests/test_x.py": "",
-            }),
+            self._runner_for(
+                {
+                    "package.json": '{"scripts": {"test": "jest"}}',
+                    "tests/test_x.py": "",
+                }
+            ),
             "npm test",
         )
 
@@ -366,12 +385,15 @@ class ConsistencyAndCacheTests(unittest.TestCase):
         self.base = Path(self._tmp.name)
         self.root = self.base / "stable"
         self.root.mkdir()
-        _build_tree(self.root, {
-            "a.py": "x",
-            "b.py": "x",
-            "go.mod": "module example\n",
-            "tests/conftest.py": "",
-        })
+        _build_tree(
+            self.root,
+            {
+                "a.py": "x",
+                "b.py": "x",
+                "go.mod": "module example\n",
+                "tests/conftest.py": "",
+            },
+        )
 
     def test_repeated_inspections_are_identical(self):
         first = inspect_repository(self.root)
@@ -479,7 +501,8 @@ class ManifestSymlinkSafetyTests(unittest.TestCase):
         os.mkfifo(fifo)
         self._symlink_or_skip(fifo, self.root / "package.json")
         result = self._run_with_deadline(
-            lambda: RepositoryInspector().characteristics(self.root), fifo,
+            lambda: RepositoryInspector().characteristics(self.root),
+            fifo,
         )
         self.assertEqual(result.manifests, ("package.json",))
         self.assertIsNone(result.test_runner)
@@ -503,11 +526,14 @@ class ManifestSymlinkSafetyTests(unittest.TestCase):
 
     def test_regular_manifest_is_still_read(self):
         (self.root / "package.json").write_text(
-            '{"scripts": {"test": "jest"}}\n', encoding="utf-8",
+            '{"scripts": {"test": "jest"}}\n',
+            encoding="utf-8",
         )
         self.assertEqual(inspect_repository(self.root).test_runner, "npm test")
 
-    @unittest.skipUnless(hasattr(os, "mkfifo") and hasattr(os, "O_NONBLOCK"), "POSIX FIFOs required")
+    @unittest.skipUnless(
+        hasattr(os, "mkfifo") and hasattr(os, "O_NONBLOCK"), "POSIX FIFOs required"
+    )
     def test_manifest_swapped_to_fifo_after_lstat_returns_promptly(self):
         # TOCTOU: lstat sees a regular file, then it is replaced by a FIFO
         # before open.  Only O_NONBLOCK on the open (plus the fstat re-check)

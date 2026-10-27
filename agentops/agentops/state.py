@@ -57,7 +57,11 @@ def _jsonable(value: object) -> object:
         if value is None or isinstance(value, (bool, int, str)):
             return value
         if isinstance(value, float):
-            return value if value == value and value not in (float("inf"), float("-inf")) else str(value)
+            return (
+                value
+                if value == value and value not in (float("inf"), float("-inf"))
+                else str(value)
+            )
         if isinstance(value, dict):
             return {str(_jsonable_key(key)): _jsonable(item) for key, item in value.items()}
         if isinstance(value, (list, tuple)):
@@ -111,21 +115,21 @@ class StateStore:
                 parent.mkdir(parents=True, exist_ok=True)
             except OSError as error:
                 raise OSError(
-                    f"AgentOps cannot use state directory {parent}: "
-                    f"{error.strerror or error}") from error
+                    f"AgentOps cannot use state directory {parent}: {error.strerror or error}"
+                ) from error
             # SQLite opens with WAL, which needs directory write access
             # even for reads. Probe first so an unusable location fails
             # here with the path in the message instead of surfacing as
             # a raw "unable to open database file" on first load.
             try:
                 with tempfile.NamedTemporaryFile(
-                        dir=str(parent), prefix=".agentops-write-probe-",
-                        delete=True):
+                    dir=str(parent), prefix=".agentops-write-probe-", delete=True
+                ):
                     pass
             except OSError as error:
                 raise OSError(
-                    f"AgentOps cannot write to state directory {parent}: "
-                    f"{error.strerror or error}") from error
+                    f"AgentOps cannot write to state directory {parent}: {error.strerror or error}"
+                ) from error
         # RLock (not Lock): public methods nest (e.g. ready_tasks -> update_task).
         # check_same_thread=False + the lock make one store safe to share
         # across threads; across processes the conditional UPDATE in
@@ -399,10 +403,13 @@ class StateStore:
         # columns additively instead of failing.
         expected_columns: dict[str, dict[str, str]] = {
             "verification_runs": {
-                "profile_snapshot": "TEXT", "mode": "TEXT NOT NULL",
+                "profile_snapshot": "TEXT",
+                "mode": "TEXT NOT NULL",
                 "concurrency": "INTEGER NOT NULL DEFAULT 1",
                 "source_agent_run_id": "TEXT REFERENCES agent_runs(id)",
-                "started_at": "TEXT", "ended_at": "TEXT", "duration_seconds": "REAL",
+                "started_at": "TEXT",
+                "ended_at": "TEXT",
+                "duration_seconds": "REAL",
                 "total_checks": "INTEGER NOT NULL DEFAULT 0",
                 "passed_checks": "INTEGER NOT NULL DEFAULT 0",
                 "failed_checks": "INTEGER NOT NULL DEFAULT 0",
@@ -411,11 +418,16 @@ class StateStore:
                 "overall_status": "TEXT",
             },
             "verification_checks": {
-                "working_directory": "TEXT", "timeout_seconds": "INTEGER",
+                "working_directory": "TEXT",
+                "timeout_seconds": "INTEGER",
                 "required": "INTEGER NOT NULL DEFAULT 1",
                 "policy": "TEXT NOT NULL DEFAULT 'sequential'",
-                "started_at": "TEXT", "ended_at": "TEXT", "duration_seconds": "REAL",
-                "stdout_path": "TEXT", "stderr_path": "TEXT", "failure_reason": "TEXT",
+                "started_at": "TEXT",
+                "ended_at": "TEXT",
+                "duration_seconds": "REAL",
+                "stdout_path": "TEXT",
+                "stderr_path": "TEXT",
+                "failure_reason": "TEXT",
             },
         }
         for table, columns in expected_columns.items():
@@ -437,11 +449,12 @@ class StateStore:
 
     def _ensure_task_verification_columns(self) -> None:
         existing = {
-            row["name"]
-            for row in self.connection.execute("PRAGMA table_info(tasks)").fetchall()
+            row["name"] for row in self.connection.execute("PRAGMA table_info(tasks)").fetchall()
         }
         if "verified" not in existing:
-            self.connection.execute("ALTER TABLE tasks ADD COLUMN verified INTEGER NOT NULL DEFAULT 0")
+            self.connection.execute(
+                "ALTER TABLE tasks ADD COLUMN verified INTEGER NOT NULL DEFAULT 0"
+            )
         if "verification_run_id" not in existing:
             self.connection.execute("ALTER TABLE tasks ADD COLUMN verification_run_id TEXT")
 
@@ -471,13 +484,22 @@ class StateStore:
 
     def _task_from_row(self, row: sqlite3.Row) -> Task:
         return Task(
-            id=row["id"], workflow_id=row["workflow_id"], description=row["description"], role=row["role"],
-            assigned_agent=row["assigned_agent"], dependencies=tuple(json.loads(row["dependencies"])),
-            status=TaskStatus(row["status"]), attempts=row["attempts"], max_attempts=row["max_attempts"],
-            result=row["result"], verified=bool(row["verified"]),
+            id=row["id"],
+            workflow_id=row["workflow_id"],
+            description=row["description"],
+            role=row["role"],
+            assigned_agent=row["assigned_agent"],
+            dependencies=tuple(json.loads(row["dependencies"])),
+            status=TaskStatus(row["status"]),
+            attempts=row["attempts"],
+            max_attempts=row["max_attempts"],
+            result=row["result"],
+            verified=bool(row["verified"]),
             verification_run_id=row["verification_run_id"],
-            created_at=row["created_at"], started_at=row["started_at"],
-            finished_at=row["finished_at"], updated_at=row["updated_at"],
+            created_at=row["created_at"],
+            started_at=row["started_at"],
+            finished_at=row["finished_at"],
+            updated_at=row["updated_at"],
         )
 
     def _agent_run_from_row(self, row: sqlite3.Row) -> AgentRun:
@@ -545,10 +567,24 @@ class StateStore:
                     status, attempts, max_attempts, result, verified, verification_run_id,
                     created_at, started_at, finished_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (task.id, task.workflow_id, task.description, task.role, task.assigned_agent,
-                 json.dumps(task.dependencies), task.status, task.attempts, task.max_attempts,
-                 task.result, int(task.verified), task.verification_run_id,
-                 task.created_at, task.started_at, task.finished_at, task.updated_at),
+                (
+                    task.id,
+                    task.workflow_id,
+                    task.description,
+                    task.role,
+                    task.assigned_agent,
+                    json.dumps(task.dependencies),
+                    task.status,
+                    task.attempts,
+                    task.max_attempts,
+                    task.result,
+                    int(task.verified),
+                    task.verification_run_id,
+                    task.created_at,
+                    task.started_at,
+                    task.finished_at,
+                    task.updated_at,
+                ),
             )
             self._event(task.workflow_id, task.id, "task-created", task.description)
             self.connection.commit()
@@ -562,7 +598,11 @@ class StateStore:
         return self._task_from_row(row)
 
     def list_tasks(self, workflow_id: str | None = None) -> list[Task]:
-        query = "SELECT * FROM tasks" + (" WHERE workflow_id = ?" if workflow_id else "") + " ORDER BY created_at"
+        query = (
+            "SELECT * FROM tasks"
+            + (" WHERE workflow_id = ?" if workflow_id else "")
+            + " ORDER BY created_at"
+        )
         with self._lock:
             rows = self.connection.execute(query, (workflow_id,) if workflow_id else ()).fetchall()
         return [self._task_from_row(row) for row in rows]
@@ -570,7 +610,9 @@ class StateStore:
     def latest_workflow(self) -> Workflow | None:
         """Newest workflow as a DTO (Phase 1: no Row leakage)."""
         with self._lock:
-            row = self.connection.execute("SELECT * FROM workflows ORDER BY rowid DESC LIMIT 1").fetchone()
+            row = self.connection.execute(
+                "SELECT * FROM workflows ORDER BY rowid DESC LIMIT 1"
+            ).fetchone()
         return self._workflow_from_row(row) if row is not None else None
 
     def count_workflows(self, status: str | None = None) -> int:
@@ -598,7 +640,9 @@ class StateStore:
     def count_verification_runs(self) -> int:
         """Total verification-run rows; lets callers window the newest runs."""
         with self._lock:
-            row = self.connection.execute("SELECT COUNT(*) AS total FROM verification_runs").fetchone()
+            row = self.connection.execute(
+                "SELECT COUNT(*) AS total FROM verification_runs"
+            ).fetchone()
         return int(row["total"])
 
     def count_failures(self) -> int:
@@ -607,7 +651,9 @@ class StateStore:
             row = self.connection.execute("SELECT COUNT(*) AS total FROM failures").fetchone()
         return int(row["total"])
 
-    def list_workflows(self, limit: int = 50, offset: int = 0, status: str | None = None) -> list[Workflow]:
+    def list_workflows(
+        self, limit: int = 50, offset: int = 0, status: str | None = None
+    ) -> list[Workflow]:
         if not isinstance(limit, int) or not isinstance(offset, int) or limit < 0 or offset < 0:
             raise ValueError("Workflow list limit and offset must be non-negative integers.")
         query = "SELECT * FROM workflows"
@@ -623,7 +669,9 @@ class StateStore:
     def get_workflow(self, workflow_id: str) -> Workflow | None:
         """Fetch one workflow header as a DTO (Phase 1: no Row leakage)."""
         with self._lock:
-            row = self.connection.execute("SELECT * FROM workflows WHERE id = ?", (workflow_id,)).fetchone()
+            row = self.connection.execute(
+                "SELECT * FROM workflows WHERE id = ?", (workflow_id,)
+            ).fetchone()
         return self._workflow_from_row(row) if row is not None else None
 
     def update_task(self, task: Task) -> None:
@@ -632,8 +680,20 @@ class StateStore:
             self.connection.execute(
                 """UPDATE tasks SET description=?, role=?, assigned_agent=?, status=?, attempts=?, result=?, verified=?,
                    verification_run_id=?, started_at=?, finished_at=?, updated_at=? WHERE id=?""",
-                (task.description, task.role, task.assigned_agent, task.status, task.attempts, task.result, int(task.verified),
-                 task.verification_run_id, task.started_at, task.finished_at, task.updated_at, task.id),
+                (
+                    task.description,
+                    task.role,
+                    task.assigned_agent,
+                    task.status,
+                    task.attempts,
+                    task.result,
+                    int(task.verified),
+                    task.verification_run_id,
+                    task.started_at,
+                    task.finished_at,
+                    task.updated_at,
+                    task.id,
+                ),
             )
             self._event(task.workflow_id, task.id, "task-updated", task.status)
             self.connection.commit()
@@ -680,20 +740,18 @@ class StateStore:
     def delete_failure(self, failure_id: str) -> bool:
         """Remove one failure row; True when a row was removed."""
         with self._lock:
-            cursor = self.connection.execute(
-                "DELETE FROM failures WHERE id = ?", (failure_id,))
+            cursor = self.connection.execute("DELETE FROM failures WHERE id = ?", (failure_id,))
             self.connection.commit()
             return cursor.rowcount == 1
 
     def delete_verification_run(self, run_id: str) -> bool:
         """Remove a verification run with its checks and report."""
         with self._lock:
-            self.connection.execute(
-                "DELETE FROM verification_checks WHERE run_id = ?", (run_id,))
-            self.connection.execute(
-                "DELETE FROM verification_reports WHERE run_id = ?", (run_id,))
+            self.connection.execute("DELETE FROM verification_checks WHERE run_id = ?", (run_id,))
+            self.connection.execute("DELETE FROM verification_reports WHERE run_id = ?", (run_id,))
             cursor = self.connection.execute(
-                "DELETE FROM verification_runs WHERE id = ?", (run_id,))
+                "DELETE FROM verification_runs WHERE id = ?", (run_id,)
+            )
             self.connection.commit()
             return cursor.rowcount == 1
 
@@ -715,7 +773,8 @@ class StateStore:
             if child is not None:
                 return False
             linked = [
-                row["id"] for row in self.connection.execute(
+                row["id"]
+                for row in self.connection.execute(
                     "SELECT id FROM verification_runs WHERE source_agent_run_id = ?",
                     (run_id,),
                 ).fetchall()
@@ -730,9 +789,9 @@ class StateStore:
                     (verification_id,),
                 )
                 self.connection.execute(
-                    "DELETE FROM verification_runs WHERE id = ?", (verification_id,))
-            cursor = self.connection.execute(
-                "DELETE FROM agent_runs WHERE id = ?", (run_id,))
+                    "DELETE FROM verification_runs WHERE id = ?", (verification_id,)
+                )
+            cursor = self.connection.execute("DELETE FROM agent_runs WHERE id = ?", (run_id,))
             self.connection.commit()
             return cursor.rowcount == 1
 
@@ -747,7 +806,8 @@ class StateStore:
         removed: dict[str, int] = {}
         with self._lock:
             run_ids = [
-                row["id"] for row in self.connection.execute(
+                row["id"]
+                for row in self.connection.execute(
                     "SELECT id FROM verification_runs WHERE workflow_id = ?",
                     (workflow_id,),
                 ).fetchall()
@@ -767,7 +827,8 @@ class StateStore:
             )
             removed["reports"] = cursor.rowcount
             cursor = self.connection.execute(
-                "DELETE FROM verification_runs WHERE workflow_id = ?", (workflow_id,))
+                "DELETE FROM verification_runs WHERE workflow_id = ?", (workflow_id,)
+            )
             removed["verification_runs"] = cursor.rowcount
             runs = 0
             run_total = self.connection.execute(
@@ -787,13 +848,19 @@ class StateStore:
                 if cursor.rowcount == 0:
                     break
             removed["agent_runs"] = runs
-            for table in ("failures", "tasks", "artifacts", "worktree_refs",
-                          "events", "typed_events"):
+            for table in (
+                "failures",
+                "tasks",
+                "artifacts",
+                "worktree_refs",
+                "events",
+                "typed_events",
+            ):
                 cursor = self.connection.execute(
-                    f"DELETE FROM {table} WHERE workflow_id = ?", (workflow_id,))
+                    f"DELETE FROM {table} WHERE workflow_id = ?", (workflow_id,)
+                )
                 removed[table] = cursor.rowcount
-            cursor = self.connection.execute(
-                "DELETE FROM workflows WHERE id = ?", (workflow_id,))
+            cursor = self.connection.execute("DELETE FROM workflows WHERE id = ?", (workflow_id,))
             removed["workflows"] = cursor.rowcount
             self.connection.commit()
             return removed
@@ -822,17 +889,21 @@ class StateStore:
             self.connection.commit()
         # Notify outside the lock: subscribers run on the publisher thread
         # and must never stall other store users (see EventBus docs).
-        self._notify_bus(Event(
-            workflow_id=workflow_id,
-            task_id=task_id,
-            type=EventType.NOTE,
-            message=detail,
-            payload={"legacy_kind": kind},
-        ))
+        self._notify_bus(
+            Event(
+                workflow_id=workflow_id,
+                task_id=task_id,
+                type=EventType.NOTE,
+                message=detail,
+                payload={"legacy_kind": kind},
+            )
+        )
 
     def list_events(self, workflow_id: str, task_id: str | None = None) -> list[dict[str, object]]:
         """Legacy events as plain dicts (Phase 1: no Row leakage)."""
-        query = "SELECT * FROM events WHERE workflow_id = ?" + (" AND task_id = ?" if task_id else "")
+        query = "SELECT * FROM events WHERE workflow_id = ?" + (
+            " AND task_id = ?" if task_id else ""
+        )
         query += " ORDER BY rowid"
         params: tuple[str, ...] = (workflow_id,) if not task_id else (workflow_id, task_id)
         with self._lock:
@@ -876,8 +947,12 @@ class StateStore:
                     normalized.workflow_id,
                     normalized.task_id,
                     normalized.agent_run_id,
-                    normalized.type.value if isinstance(normalized.type, EventType) else str(normalized.type),
-                    normalized.severity.value if isinstance(normalized.severity, EventSeverity) else str(normalized.severity),
+                    normalized.type.value
+                    if isinstance(normalized.type, EventType)
+                    else str(normalized.type),
+                    normalized.severity.value
+                    if isinstance(normalized.severity, EventSeverity)
+                    else str(normalized.severity),
                     normalized.message,
                     _json(_jsonable(normalized.payload)),
                     normalized.schema_version,
@@ -888,7 +963,9 @@ class StateStore:
                 self._event(
                     normalized.workflow_id,
                     normalized.task_id,
-                    normalized.type.value if isinstance(normalized.type, EventType) else str(normalized.type),
+                    normalized.type.value
+                    if isinstance(normalized.type, EventType)
+                    else str(normalized.type),
                     normalized.message or "",
                 )
             self.connection.commit()
@@ -922,7 +999,9 @@ class StateStore:
             params.append(agent_run_id)
         if event_type is not None:
             clauses.append("type = ?")
-            params.append(event_type.value if isinstance(event_type, EventType) else str(event_type))
+            params.append(
+                event_type.value if isinstance(event_type, EventType) else str(event_type)
+            )
         query = "SELECT * FROM typed_events"
         if clauses:
             query += " WHERE " + " AND ".join(clauses)
@@ -967,12 +1046,20 @@ class StateStore:
                     artifact.workflow_id,
                     artifact.task_id,
                     artifact.agent_run_id,
-                    artifact.kind.value if isinstance(artifact.kind, ArtifactKind) else str(artifact.kind),
+                    artifact.kind.value
+                    if isinstance(artifact.kind, ArtifactKind)
+                    else str(artifact.kind),
                     artifact.name,
                     artifact.rel_path,
                     artifact.sha256,
                     artifact.size_bytes,
-                    _json(_jsonable(artifact.metadata.to_dict() if isinstance(artifact.metadata, ArtifactMetadata) else {})),
+                    _json(
+                        _jsonable(
+                            artifact.metadata.to_dict()
+                            if isinstance(artifact.metadata, ArtifactMetadata)
+                            else {}
+                        )
+                    ),
                     artifact.created_at,
                 ),
             )
@@ -1057,7 +1144,10 @@ class StateStore:
             if task.status is not TaskStatus.PENDING:
                 continue
             dependencies = [by_id.get(task_id) for task_id in task.dependencies]
-            if any(dependency is None or dependency.status in {TaskStatus.FAILED, TaskStatus.BLOCKED} for dependency in dependencies):
+            if any(
+                dependency is None or dependency.status in {TaskStatus.FAILED, TaskStatus.BLOCKED}
+                for dependency in dependencies
+            ):
                 task.status = TaskStatus.BLOCKED
                 task.result = "Blocked by an unsuccessful dependency."
                 task.finished_at = utc_now()
@@ -1078,15 +1168,26 @@ class StateStore:
         """
         tasks = self.list_tasks(workflow_id)
         statuses = {task.status for task in tasks}
-        status = TaskStatus.PASSED if tasks and statuses == {TaskStatus.PASSED} else (
-            TaskStatus.FAILED if TaskStatus.FAILED in statuses else
-            TaskStatus.BLOCKED if TaskStatus.BLOCKED in statuses and TaskStatus.PENDING not in statuses else
-            TaskStatus.RUNNING if TaskStatus.RUNNING in statuses else TaskStatus.PENDING
+        status = (
+            TaskStatus.PASSED
+            if tasks and statuses == {TaskStatus.PASSED}
+            else (
+                TaskStatus.FAILED
+                if TaskStatus.FAILED in statuses
+                else TaskStatus.BLOCKED
+                if TaskStatus.BLOCKED in statuses and TaskStatus.PENDING not in statuses
+                else TaskStatus.RUNNING
+                if TaskStatus.RUNNING in statuses
+                else TaskStatus.PENDING
+            )
         )
         if cancelled and status in (TaskStatus.PENDING, TaskStatus.RUNNING):
             status = TaskStatus.FAILED
         with self._lock:
-            self.connection.execute("UPDATE workflows SET status=?, updated_at=? WHERE id=?", (status, utc_now(), workflow_id))
+            self.connection.execute(
+                "UPDATE workflows SET status=?, updated_at=? WHERE id=?",
+                (status, utc_now(), workflow_id),
+            )
             self.connection.commit()
         return status
 
@@ -1146,7 +1247,9 @@ class StateStore:
 
     def get_agent_run(self, run_id: str) -> AgentRun:
         with self._lock:
-            row = self.connection.execute("SELECT * FROM agent_runs WHERE id = ?", (run_id,)).fetchone()
+            row = self.connection.execute(
+                "SELECT * FROM agent_runs WHERE id = ?", (run_id,)
+            ).fetchone()
         if row is None:
             raise KeyError(f"Unknown AgentRun: {run_id}")
         return self._agent_run_from_row(row)
@@ -1207,7 +1310,9 @@ class StateStore:
 
     def _transition(self, run_id: str, target: AgentRunStatus, **changes: object) -> AgentRun:
         with self._lock:
-            row = self.connection.execute("SELECT status FROM agent_runs WHERE id = ?", (run_id,)).fetchone()
+            row = self.connection.execute(
+                "SELECT status FROM agent_runs WHERE id = ?", (run_id,)
+            ).fetchone()
             if row is None:
                 raise KeyError(f"Unknown AgentRun: {run_id}")
             current = AgentRunStatus(row["status"])
@@ -1248,7 +1353,9 @@ class StateStore:
     def finish_agent_run(self, run_id: str, outcome: AgentRunOutcome) -> AgentRun:
         status = self._status_value(outcome.status)
         with self._lock:
-            row = self.connection.execute("SELECT status, started_at FROM agent_runs WHERE id = ?", (run_id,)).fetchone()
+            row = self.connection.execute(
+                "SELECT status, started_at FROM agent_runs WHERE id = ?", (run_id,)
+            ).fetchone()
             if row is None:
                 raise KeyError(f"Unknown AgentRun: {run_id}")
             current = AgentRunStatus(row["status"])
@@ -1275,7 +1382,9 @@ class StateStore:
             }
         return self._transition(run_id, status, **values)
 
-    def fail_agent_run(self, run_id: str, error: BaseException, classification: str = "execution_error") -> AgentRun:
+    def fail_agent_run(
+        self, run_id: str, error: BaseException, classification: str = "execution_error"
+    ) -> AgentRun:
         if classification == "cancelled":
             status = AgentRunStatus.CANCELLED
         elif classification == "timeout":
@@ -1333,8 +1442,14 @@ class StateStore:
         """Update safe post-execution metadata without changing lifecycle state."""
 
         allowed = {
-            "stdout_path", "stderr_path", "log_path", "files_changed", "diff_stat",
-            "error", "failure_classification", "structured_result",
+            "stdout_path",
+            "stderr_path",
+            "log_path",
+            "files_changed",
+            "diff_stat",
+            "error",
+            "failure_classification",
+            "structured_result",
         }
         unknown = set(changes) - allowed
         if unknown:
@@ -1364,7 +1479,12 @@ class StateStore:
             if workflow_id is not None:
                 rows = self.connection.execute(
                     "SELECT id FROM agent_runs WHERE status IN (?, ?, ?) AND workflow_id = ?",
-                    (AgentRunStatus.PENDING, AgentRunStatus.STARTING, AgentRunStatus.RUNNING, workflow_id),
+                    (
+                        AgentRunStatus.PENDING,
+                        AgentRunStatus.STARTING,
+                        AgentRunStatus.RUNNING,
+                        workflow_id,
+                    ),
                 ).fetchall()
             else:
                 rows = self.connection.execute(
@@ -1497,9 +1617,18 @@ class StateStore:
                     created_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    run_id, workflow_id, task_id, profile.name, _json(profile_to_dict(profile)),
-                    profile.mode, profile.concurrency, VerificationRunStatus.PENDING,
-                    source_agent_run_id, now, now, now,
+                    run_id,
+                    workflow_id,
+                    task_id,
+                    profile.name,
+                    _json(profile_to_dict(profile)),
+                    profile.mode,
+                    profile.concurrency,
+                    VerificationRunStatus.PENDING,
+                    source_agent_run_id,
+                    now,
+                    now,
+                    now,
                 ),
             )
             if workflow_id is not None:
@@ -1525,7 +1654,9 @@ class StateStore:
         offset: int = 0,
     ) -> list[VerificationRun]:
         if not isinstance(limit, int) or not isinstance(offset, int) or limit < 0 or offset < 0:
-            raise ValueError("Verification run list limit and offset must be non-negative integers.")
+            raise ValueError(
+                "Verification run list limit and offset must be non-negative integers."
+            )
         clauses: list[str] = []
         params: list[str | int] = []
         if workflow_id is not None:
@@ -1536,7 +1667,11 @@ class StateStore:
             params.append(task_id)
         if status is not None:
             clauses.append("status = ?")
-            params.append(status if isinstance(status, VerificationRunStatus) else VerificationRunStatus(status))
+            params.append(
+                status
+                if isinstance(status, VerificationRunStatus)
+                else VerificationRunStatus(status)
+            )
         query = "SELECT * FROM verification_runs"
         if clauses:
             query += " WHERE " + " AND ".join(clauses)
@@ -1549,12 +1684,20 @@ class StateStore:
         with self._lock:
             cursor = self.connection.execute(
                 "UPDATE verification_runs SET status=?, started_at=?, updated_at=? WHERE id=? AND status=?",
-                (VerificationRunStatus.RUNNING, utc_now(), utc_now(), run_id, VerificationRunStatus.PENDING),
+                (
+                    VerificationRunStatus.RUNNING,
+                    utc_now(),
+                    utc_now(),
+                    run_id,
+                    VerificationRunStatus.PENDING,
+                ),
             )
             if cursor.rowcount != 1:
                 current = self.get_verification_run(run_id)
                 if current.status is not VerificationRunStatus.RUNNING:
-                    raise ValueError(f"Invalid verification run transition to running from {current.status.value}.")
+                    raise ValueError(
+                        f"Invalid verification run transition to running from {current.status.value}."
+                    )
                 return current
             self.connection.commit()
         return self.get_verification_run(run_id)
@@ -1577,8 +1720,19 @@ class StateStore:
                 """UPDATE verification_runs SET status=?, ended_at=?, duration_seconds=?,
                    total_checks=?, passed_checks=?, failed_checks=?, skipped_checks=?,
                    required_failures=?, overall_status=?, updated_at=? WHERE id=?""",
-                (status, now, duration_seconds, total_checks, passed_checks, failed_checks,
-                 skipped_checks, required_failures, overall_status, now, run_id),
+                (
+                    status,
+                    now,
+                    duration_seconds,
+                    total_checks,
+                    passed_checks,
+                    failed_checks,
+                    skipped_checks,
+                    required_failures,
+                    overall_status,
+                    now,
+                    run_id,
+                ),
             )
             if cursor.rowcount != 1:
                 raise KeyError(f"Unknown verification run: {run_id}")
@@ -1586,7 +1740,9 @@ class StateStore:
                 "SELECT workflow_id, task_id FROM verification_runs WHERE id = ?", (run_id,)
             ).fetchone()
             if row["workflow_id"] is not None:
-                self._event(row["workflow_id"], row["task_id"], "verification-run-finished", status.value)
+                self._event(
+                    row["workflow_id"], row["task_id"], "verification-run-finished", status.value
+                )
             self.connection.commit()
         return self.get_verification_run(run_id)
 
@@ -1613,9 +1769,23 @@ class StateStore:
                     command, working_directory, timeout_seconds, required, policy, status,
                     created_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (check_id, run_id, workflow_id, task_id, profile_name, name, check_class,
-                 _json(command), working_directory, timeout_seconds, int(required), policy,
-                 VerificationCheckStatus.PENDING, now, now),
+                (
+                    check_id,
+                    run_id,
+                    workflow_id,
+                    task_id,
+                    profile_name,
+                    name,
+                    check_class,
+                    _json(command),
+                    working_directory,
+                    timeout_seconds,
+                    int(required),
+                    policy,
+                    VerificationCheckStatus.PENDING,
+                    now,
+                    now,
+                ),
             )
             self.connection.commit()
             row = self.connection.execute(
@@ -1627,12 +1797,20 @@ class StateStore:
         with self._lock:
             cursor = self.connection.execute(
                 "UPDATE verification_checks SET status=?, started_at=?, updated_at=? WHERE id=? AND status=?",
-                (VerificationCheckStatus.RUNNING, utc_now(), utc_now(), check_id, VerificationCheckStatus.PENDING),
+                (
+                    VerificationCheckStatus.RUNNING,
+                    utc_now(),
+                    utc_now(),
+                    check_id,
+                    VerificationCheckStatus.PENDING,
+                ),
             )
             if cursor.rowcount != 1:
                 current = self.get_verification_check(check_id)
                 if current.status is not VerificationCheckStatus.RUNNING:
-                    raise ValueError(f"Invalid verification check transition to running from {current.status.value}.")
+                    raise ValueError(
+                        f"Invalid verification check transition to running from {current.status.value}."
+                    )
                 return current
             self.connection.commit()
         return self.get_verification_check(check_id)
@@ -1653,8 +1831,17 @@ class StateStore:
                 """UPDATE verification_checks SET status=?, ended_at=?, duration_seconds=?,
                    exit_code=?, stdout_path=?, stderr_path=?, failure_reason=?, updated_at=?
                    WHERE id=?""",
-                (status, now, duration_seconds, exit_code, stdout_path, stderr_path,
-                 failure_reason, now, check_id),
+                (
+                    status,
+                    now,
+                    duration_seconds,
+                    exit_code,
+                    stdout_path,
+                    stderr_path,
+                    failure_reason,
+                    now,
+                    check_id,
+                ),
             )
             if cursor.rowcount != 1:
                 raise KeyError(f"Unknown verification check: {check_id}")
@@ -1686,9 +1873,21 @@ class StateStore:
                     passed_checks, failed_checks, skipped_checks, required_failures,
                     duration_seconds, overall_status, generated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (report.id, report.run_id, report.workflow_id, report.task_id, report.profile_name,
-                 report.total_checks, report.passed_checks, report.failed_checks, report.skipped_checks,
-                 report.required_failures, report.duration_seconds, report.overall_status, report.generated_at),
+                (
+                    report.id,
+                    report.run_id,
+                    report.workflow_id,
+                    report.task_id,
+                    report.profile_name,
+                    report.total_checks,
+                    report.passed_checks,
+                    report.failed_checks,
+                    report.skipped_checks,
+                    report.required_failures,
+                    report.duration_seconds,
+                    report.overall_status,
+                    report.generated_at,
+                ),
             )
             self.connection.commit()
             row = self.connection.execute(
@@ -1725,7 +1924,11 @@ class StateStore:
                     placeholders = ",".join("?" for _ in run_ids)
                     checks = self.connection.execute(
                         f"SELECT id FROM verification_checks WHERE status IN (?, ?) AND run_id IN ({placeholders})",
-                        (VerificationCheckStatus.PENDING, VerificationCheckStatus.RUNNING, *run_ids),
+                        (
+                            VerificationCheckStatus.PENDING,
+                            VerificationCheckStatus.RUNNING,
+                            *run_ids,
+                        ),
                     ).fetchall()
                 else:
                     checks = []
@@ -1741,7 +1944,13 @@ class StateStore:
             for check in checks:
                 self.connection.execute(
                     "UPDATE verification_checks SET status=?, ended_at=?, failure_reason=?, updated_at=? WHERE id=?",
-                    (VerificationCheckStatus.FAILED, utc_now(), "interrupted", utc_now(), check["id"]),
+                    (
+                        VerificationCheckStatus.FAILED,
+                        utc_now(),
+                        "interrupted",
+                        utc_now(),
+                        check["id"],
+                    ),
                 )
             recovered: list[VerificationRun] = []
             for run in runs:
@@ -1764,18 +1973,31 @@ class StateStore:
                     """UPDATE verification_runs SET status=?, ended_at=?, overall_status=?,
                        total_checks=?, passed_checks=?, failed_checks=?, skipped_checks=?,
                        required_failures=?, updated_at=? WHERE id=?""",
-                    (VerificationRunStatus.FAILED, utc_now(), VerificationReportStatus.FAILED,
-                     counts["total"] or 0, counts["passed"] or 0, counts["failed"] or 0,
-                     counts["skipped"] or 0, counts["required_failures"] or 0, utc_now(), run["id"]),
+                    (
+                        VerificationRunStatus.FAILED,
+                        utc_now(),
+                        VerificationReportStatus.FAILED,
+                        counts["total"] or 0,
+                        counts["passed"] or 0,
+                        counts["failed"] or 0,
+                        counts["skipped"] or 0,
+                        counts["required_failures"] or 0,
+                        utc_now(),
+                        run["id"],
+                    ),
                 )
                 if run["workflow_id"] is not None:
-                    self._event(run["workflow_id"], run["task_id"], "verification-run-recovered", run["id"])
+                    self._event(
+                        run["workflow_id"], run["task_id"], "verification-run-recovered", run["id"]
+                    )
                 recovered.append(self.get_verification_run(run["id"]))
             if runs or checks:
                 self.connection.commit()
         # A1 honesty post-condition: recovery must never mint success.
         for run in recovered:
-            assert_no_fabricated_success(run.status.value, False, f"recover_verification_runs({run.id})")
+            assert_no_fabricated_success(
+                run.status.value, False, f"recover_verification_runs({run.id})"
+            )
         return recovered
 
     def agent_run_observer(self) -> StateAgentRunObserver:
@@ -1833,8 +2055,7 @@ class StateStore:
         """Apply additive structured-evidence migration without rewriting tables."""
 
         existing = {
-            row["name"]
-            for row in self.connection.execute("PRAGMA table_info(failures)").fetchall()
+            row["name"] for row in self.connection.execute("PRAGMA table_info(failures)").fetchall()
         }
         if "structured_evidence" not in existing:
             self.connection.execute("ALTER TABLE failures ADD COLUMN structured_evidence TEXT")
@@ -2018,8 +2239,16 @@ class StateStore:
                 """INSERT OR REPLACE INTO agent_cooldowns (
                     agent, until_epoch, until_at, reason, failure_id, workflow_id, task_id, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (str(agent), float(until_epoch), until_at, reason, failure_id,
-                 workflow_id, task_id, utc_now()),
+                (
+                    str(agent),
+                    float(until_epoch),
+                    until_at,
+                    reason,
+                    failure_id,
+                    workflow_id,
+                    task_id,
+                    utc_now(),
+                ),
             )
             self.connection.commit()
 
@@ -2056,8 +2285,15 @@ class StateStore:
                 """INSERT OR REPLACE INTO worktree_refs (
                     id, workflow_id, path, branch, base_branch, base_commit, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (ref.id, ref.workflow_id, ref.path, ref.branch,
-                 ref.base_branch, ref.base_commit, ref.created_at),
+                (
+                    ref.id,
+                    ref.workflow_id,
+                    ref.path,
+                    ref.branch,
+                    ref.base_branch,
+                    ref.base_commit,
+                    ref.created_at,
+                ),
             )
             self.connection.commit()
         return ref
@@ -2130,21 +2366,46 @@ class StateStore:
                     recovery_state, created_at, updated_at, structured_evidence
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    failure.id, failure.workflow_id, failure.task_id, failure.agent_run_id,
-                    failure.source.value if isinstance(failure.source, FailureSource) else str(failure.source),
-                    failure.category.value if isinstance(failure.category, FailureCategory) else str(failure.category),
-                    failure.severity.value if isinstance(failure.severity, FailureSeverity) else str(failure.severity),
-                    int(failure.retryable), int(failure.repairable), failure.evidence,
-                    failure.primary_error, failure.verification_run_id,
-                    failure.recommended_action.value if isinstance(failure.recommended_action, RepairAction) else str(failure.recommended_action),
-                    failure.attempt, failure.repair_cycle,
-                    failure.recovery_state.value if isinstance(failure.recovery_state, RecoveryState) else failure.recovery_state,
-                    failure.created_at, failure.updated_at,
+                    failure.id,
+                    failure.workflow_id,
+                    failure.task_id,
+                    failure.agent_run_id,
+                    failure.source.value
+                    if isinstance(failure.source, FailureSource)
+                    else str(failure.source),
+                    failure.category.value
+                    if isinstance(failure.category, FailureCategory)
+                    else str(failure.category),
+                    failure.severity.value
+                    if isinstance(failure.severity, FailureSeverity)
+                    else str(failure.severity),
+                    int(failure.retryable),
+                    int(failure.repairable),
+                    failure.evidence,
+                    failure.primary_error,
+                    failure.verification_run_id,
+                    failure.recommended_action.value
+                    if isinstance(failure.recommended_action, RepairAction)
+                    else str(failure.recommended_action),
+                    failure.attempt,
+                    failure.repair_cycle,
+                    failure.recovery_state.value
+                    if isinstance(failure.recovery_state, RecoveryState)
+                    else failure.recovery_state,
+                    failure.created_at,
+                    failure.updated_at,
                     _json(failure.structured_evidence),
                 ),
             )
             if failure.workflow_id is not None:
-                self._event(failure.workflow_id, failure.task_id, "failure-recorded", failure.category.value if isinstance(failure.category, FailureCategory) else str(failure.category))
+                self._event(
+                    failure.workflow_id,
+                    failure.task_id,
+                    "failure-recorded",
+                    failure.category.value
+                    if isinstance(failure.category, FailureCategory)
+                    else str(failure.category),
+                )
             self.connection.commit()
             row = self.connection.execute(
                 "SELECT * FROM failures WHERE id = ?", (failure.id,)
@@ -2180,7 +2441,9 @@ class StateStore:
             params.append(task_id)
         if category is not None:
             clauses.append("category = ?")
-            params.append(category.value if isinstance(category, FailureCategory) else str(category))
+            params.append(
+                category.value if isinstance(category, FailureCategory) else str(category)
+            )
         query = "SELECT * FROM failures"
         if clauses:
             query += " WHERE " + " AND ".join(clauses)
@@ -2219,7 +2482,9 @@ class StateStore:
                         TaskStatus.FAILED,
                         "Task was interrupted before a terminal outcome was recorded; "
                         "recovered as failed (never success without evidence).",
-                        now, now, task_id,
+                        now,
+                        now,
+                        task_id,
                     ),
                 )
                 task_row = self.connection.execute(

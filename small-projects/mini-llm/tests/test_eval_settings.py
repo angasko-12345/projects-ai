@@ -44,14 +44,22 @@ def build_data(tmp: str, context_length: int = 16) -> str:
     argv = sys.argv
     sys.argv = [
         "prepare_data.py",
-        "--input", corpus,
-        "--tokenizer-out", os.path.join(tmp, "tokenizer.json"),
-        "--train-out", os.path.join(tmp, "train.bin"),
-        "--val-out", os.path.join(tmp, "val.bin"),
-        "--vocab-size", "512",
-        "--min-frequency", "1",
-        "--val-frac", "0.2",
-        "--context-length", str(context_length),
+        "--input",
+        corpus,
+        "--tokenizer-out",
+        os.path.join(tmp, "tokenizer.json"),
+        "--train-out",
+        os.path.join(tmp, "train.bin"),
+        "--val-out",
+        os.path.join(tmp, "val.bin"),
+        "--vocab-size",
+        "512",
+        "--min-frequency",
+        "1",
+        "--val-frac",
+        "0.2",
+        "--context-length",
+        str(context_length),
     ]
     try:
         prepare_data.main()
@@ -98,15 +106,28 @@ class TestCliRefusesInvalidEvalSettings(unittest.TestCase):
             sys.argv = saved
 
     def data_flags(self) -> list[str]:
-        return ["--train-bin", self.train_bin,
-                "--val-bin", os.path.join(self.tmp.name, "val.bin"),
-                "--tokenizer", os.path.join(self.tmp.name, "tokenizer.json"),
-                "--checkpoint-dir", self.ckpt_dir,
-                "--context-length", "16", "--max-steps", "2", "--batch-size", "2"]
+        return [
+            "--train-bin",
+            self.train_bin,
+            "--val-bin",
+            os.path.join(self.tmp.name, "val.bin"),
+            "--tokenizer",
+            os.path.join(self.tmp.name, "tokenizer.json"),
+            "--checkpoint-dir",
+            self.ckpt_dir,
+            "--context-length",
+            "16",
+            "--max-steps",
+            "2",
+            "--batch-size",
+            "2",
+        ]
 
     def test_zero_values_are_usage_errors_before_any_checkpoint(self):
-        for flag, field in (("--eval-interval", "eval_interval"),
-                            ("--eval-batches", "eval_batches")):
+        for flag, field in (
+            ("--eval-interval", "eval_interval"),
+            ("--eval-batches", "eval_batches"),
+        ):
             with self.subTest(flag=flag):
                 err = io.StringIO()
                 with contextlib.redirect_stderr(err):
@@ -127,9 +148,23 @@ class TestCliRefusesInvalidEvalSettings(unittest.TestCase):
         self.assertIn("eval_interval", err.getvalue())
 
     def test_positive_values_still_train(self):
-        self.run_main(*self.data_flags(), "--eval-interval", "1", "--eval-batches", "1",
-                      "--n-layers", "1", "--n-heads", "2", "--d-model", "16",
-                      "--d-ff", "32", "--seed", "0")
+        self.run_main(
+            *self.data_flags(),
+            "--eval-interval",
+            "1",
+            "--eval-batches",
+            "1",
+            "--n-layers",
+            "1",
+            "--n-heads",
+            "2",
+            "--d-model",
+            "16",
+            "--d-ff",
+            "32",
+            "--seed",
+            "0",
+        )
         ckpt = read_checkpoint(os.path.join(self.ckpt_dir, "final.pt"))
         cfg = Config.from_dict(ckpt["config"])
         self.assertEqual((cfg.eval_interval, cfg.eval_batches), (1, 1))
@@ -139,12 +174,12 @@ class TestCliRefusesInvalidEvalSettings(unittest.TestCase):
 
 class TestEvaluateRefusesNonPositiveLimit(unittest.TestCase):
     def model(self):
-        return from_config(Config(vocab_size=32, context_length=16, n_layers=1,
-                                  n_heads=2, d_model=16, d_ff=32))
+        return from_config(
+            Config(vocab_size=32, context_length=16, n_layers=1, n_heads=2, d_model=16, d_ff=32)
+        )
 
     def loader(self):
-        return DataLoader(TokenDataset(np.arange(17 * 6) % 32, 16), batch_size=2,
-                          shuffle=False)
+        return DataLoader(TokenDataset(np.arange(17 * 6) % 32, 16), batch_size=2, shuffle=False)
 
     def test_zero_limit_raises_instead_of_returning_a_fake_zero(self):
         with self.assertRaises(ValueError) as ctx:

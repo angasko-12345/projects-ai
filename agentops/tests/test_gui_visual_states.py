@@ -21,11 +21,25 @@ from agentops.gui.tokens import ASSET_DIR, DARK, build_stylesheet
 try:  # `discover -s tests` puts tests/ on sys.path; direct runs do not.
     from tests.qt_display import destroy, make_context, qt_app, requires_qt, wait, wait_until
     from tests.test_gui_qt import (
-        FAILURES, PROFILES, REPOSITORY, RUNS, TASKS, VERIFICATIONS, FakeController)
+        FAILURES,
+        PROFILES,
+        REPOSITORY,
+        RUNS,
+        TASKS,
+        VERIFICATIONS,
+        FakeController,
+    )
 except ModuleNotFoundError:
     from qt_display import destroy, make_context, qt_app, requires_qt, wait, wait_until
     from test_gui_qt import (
-        FAILURES, PROFILES, REPOSITORY, RUNS, TASKS, VERIFICATIONS, FakeController)
+        FAILURES,
+        PROFILES,
+        REPOSITORY,
+        RUNS,
+        TASKS,
+        VERIFICATIONS,
+        FakeController,
+    )
 
 
 # Every test in this class builds a real MainWindow, and `setUp` imports
@@ -50,8 +64,9 @@ class VisualStateTest(unittest.TestCase):
     def _teardown(self):
         from PySide6.QtWidgets import QMessageBox
 
-        with patch("agentops.gui.shell.QMessageBox.question",
-                   return_value=QMessageBox.StandardButton.Yes):
+        with patch(
+            "agentops.gui.shell.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes
+        ):
             destroy(self.window)
 
     def _activate(self, view_id: str) -> None:
@@ -66,8 +81,9 @@ class VisualStateTest(unittest.TestCase):
         grouped = [view_id for _name, ids in _NAV_GROUPS for view_id in ids]
         declared = [view_id for view_id, _title, _factory in VIEW_SPECS]
         self.assertEqual(sorted(grouped), sorted(declared))
-        self.assertEqual(len(grouped), len(set(grouped)),
-                         "a view id appears in more than one nav group")
+        self.assertEqual(
+            len(grouped), len(set(grouped)), "a view id appears in more than one nav group"
+        )
 
     def test_every_view_has_a_matching_page_header(self):
         for view_id, view in self.window._views.items():
@@ -99,17 +115,21 @@ class VisualStateTest(unittest.TestCase):
         populated = dict(
             empty_payload,
             total_workflows=3,
-            needs_attention=[{
-                "category": "test_failure",
-                "severity": "high",
-                "recommended_action": "retry_same_agent",
-                "primary_error": "assertion failed",
-                "created_at": "2026-10-04 10:00:00",
-            }],
-            recent_events=[{
-                "timestamp": "2026-10-04 10:00:00",
-                "message": "workflow started",
-            }],
+            needs_attention=[
+                {
+                    "category": "test_failure",
+                    "severity": "high",
+                    "recommended_action": "retry_same_agent",
+                    "primary_error": "assertion failed",
+                    "created_at": "2026-10-04 10:00:00",
+                }
+            ],
+            recent_events=[
+                {
+                    "timestamp": "2026-10-04 10:00:00",
+                    "message": "workflow started",
+                }
+            ],
         )
         view._on_summary(populated)
         self.assertTrue(view._attention_list.isVisible())
@@ -128,14 +148,12 @@ class VisualStateTest(unittest.TestCase):
         view = self.window._views["tasks"]
         self.assertFalse(view._loaded)
         view._on_load_error("state store unavailable")
-        self.assertEqual(view._table._empty._heading.text(),
-                         "State unavailable")
+        self.assertEqual(view._table._empty._heading.text(), "State unavailable")
 
         # Once rows arrive the normal empty heading is restored.
         self._activate("tasks")
         self.assertTrue(wait_until(lambda: view._loaded))
-        self.assertTrue(wait_until(
-            lambda: view._table._empty._heading.text() == "No tasks yet"))
+        self.assertTrue(wait_until(lambda: view._table._empty._heading.text() == "No tasks yet"))
 
     def test_sidebar_toggle_is_always_visible_in_the_top_bar(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -211,24 +229,21 @@ class VisualStateTest(unittest.TestCase):
         panel = self.window._views["workflows"]._list
         keys = [column.key for column in panel.model.columns]
         pill_index = keys.index("status")
-        self.assertIsInstance(
-            panel.view.itemDelegateForColumn(pill_index), StatusPillDelegate)
+        self.assertIsInstance(panel.view.itemDelegateForColumn(pill_index), StatusPillDelegate)
         text_index = keys.index("description")
-        self.assertNotIsInstance(
-            panel.view.itemDelegateForColumn(text_index), StatusPillDelegate)
+        self.assertNotIsInstance(panel.view.itemDelegateForColumn(text_index), StatusPillDelegate)
 
     def test_truncated_cells_expose_their_full_text_as_tooltips(self):
         from PySide6.QtCore import Qt
         from agentops.gui.widgets import TableColumn, TableModel
 
-        model = TableModel(
-            [TableColumn("id", "ID", 90)], [{"id": "failure-1234"}])
+        model = TableModel([TableColumn("id", "ID", 90)], [{"id": "failure-1234"}])
         index = model.index(0, 0)
-        self.assertEqual(
-            model.data(index, Qt.ItemDataRole.ToolTipRole), "failure-1234")
+        self.assertEqual(model.data(index, Qt.ItemDataRole.ToolTipRole), "failure-1234")
         self.assertEqual(
             model.data(index, Qt.ItemDataRole.ToolTipRole),
-            model.data(index, Qt.ItemDataRole.DisplayRole))
+            model.data(index, Qt.ItemDataRole.DisplayRole),
+        )
 
     def test_combo_arrow_asset_exists_and_is_referenced(self):
         asset = ASSET_DIR / "chevron-down.svg"
@@ -250,19 +265,18 @@ class VisualStateTest(unittest.TestCase):
             (view._verification_card, "verification"),
         ):
             card.clicked.emit()
-            self.assertIs(
-                self.window._stack.currentWidget(),
-                self.window._views[target])
+            self.assertIs(self.window._stack.currentWidget(), self.window._views[target])
         # The real path matters too: a mouse press must navigate, and every
         # card must stay keyboard-focusable for Enter/Space activation.
         self._activate("dashboard")
-        QTest.mouseClick(view._agents_card,
-                         Qt.MouseButton.LeftButton)
-        self.assertIs(
-            self.window._stack.currentWidget(),
-            self.window._views["agents"])
-        for card in (view._workflows_card, view._tasks_card,
-                     view._verification_card, view._agents_card):
+        QTest.mouseClick(view._agents_card, Qt.MouseButton.LeftButton)
+        self.assertIs(self.window._stack.currentWidget(), self.window._views["agents"])
+        for card in (
+            view._workflows_card,
+            view._tasks_card,
+            view._verification_card,
+            view._agents_card,
+        ):
             self.assertTrue(card.focusPolicy() != Qt.FocusPolicy.NoFocus)
 
     def test_verification_health_stat_turns_red_on_failure(self):
@@ -274,16 +288,18 @@ class VisualStateTest(unittest.TestCase):
         self.assertTrue(wait_until(lambda: view._summary_loaded))
         self.assertEqual(view._verification_stat.text(), "1")
         self.assertIn(DARK.danger, view._verification_stat.styleSheet())
-        view._on_summary({
-            "repository": REPOSITORY,
-            "total_workflows": 1,
-            "active_workflows": {"running": 0, "pending": 0},
-            "task_counts": {},
-            "verification_status": {"passed": 2},
-            "needs_attention": [],
-            "recent_workflows": [],
-            "recent_events": [],
-        })
+        view._on_summary(
+            {
+                "repository": REPOSITORY,
+                "total_workflows": 1,
+                "active_workflows": {"running": 0, "pending": 0},
+                "task_counts": {},
+                "verification_status": {"passed": 2},
+                "needs_attention": [],
+                "recent_workflows": [],
+                "recent_events": [],
+            }
+        )
         self.assertEqual(view._verification_stat.text(), "2")
         self.assertIn(DARK.success, view._verification_stat.styleSheet())
 
@@ -317,10 +333,11 @@ class VisualStateTest(unittest.TestCase):
     def test_rename_task_calls_through_with_the_edited_text(self):
         calls: list[tuple] = []
         self.controller.rename_task = (  # type: ignore[attr-defined]
-            lambda directory, task_id, description: calls.append(
-                (directory, task_id, description)) or {
-                    "id": task_id, "description": description,
-                    "workflow_id": "wf-1"})
+            lambda directory, task_id, description: (
+                calls.append((directory, task_id, description))
+                or {"id": task_id, "description": description, "workflow_id": "wf-1"}
+            )
+        )
         view = self.window._views["tasks"]
         self._activate("tasks")
         self.assertTrue(wait_until(lambda: view._table.proxy.rowCount() == 4))
@@ -328,8 +345,9 @@ class VisualStateTest(unittest.TestCase):
         row = view._table.selected_row()
         assert row is not None
         expected_id = str(row.get("id") or "")
-        with patch("agentops.gui.views.tasks.QInputDialog.getText",
-                   return_value=("renamed from GUI", True)):
+        with patch(
+            "agentops.gui.views.tasks.QInputDialog.getText", return_value=("renamed from GUI", True)
+        ):
             view._rename_selected()
         self.assertTrue(wait_until(lambda: len(calls) == 1))
         self.assertEqual(calls[0][1], expected_id)
@@ -338,8 +356,11 @@ class VisualStateTest(unittest.TestCase):
     def test_delete_task_confirms_and_clears_the_selection(self):
         calls: list[tuple] = []
         self.controller.delete_task = (  # type: ignore[attr-defined]
-            lambda directory, task_id: calls.append((directory, task_id)) or {
-                "id": task_id, "description": "gone", "workflow_id": "wf-1"})
+            lambda directory, task_id: (
+                calls.append((directory, task_id))
+                or {"id": task_id, "description": "gone", "workflow_id": "wf-1"}
+            )
+        )
         from PySide6.QtWidgets import QMessageBox
 
         view = self.window._views["tasks"]
@@ -347,8 +368,10 @@ class VisualStateTest(unittest.TestCase):
         self.assertTrue(wait_until(lambda: view._table.proxy.rowCount() == 4))
         view._table.select_row_index(0)
         self.assertTrue(wait_until(lambda: view._delete_btn.isEnabled()))
-        with patch("agentops.gui.views.tasks.QMessageBox.question",
-                   return_value=QMessageBox.StandardButton.Yes):
+        with patch(
+            "agentops.gui.views.tasks.QMessageBox.question",
+            return_value=QMessageBox.StandardButton.Yes,
+        ):
             view._delete_selected()
         self.assertTrue(wait_until(lambda: len(calls) == 1))
 
@@ -361,29 +384,40 @@ class VisualStateTest(unittest.TestCase):
         view = self.window._views["agents"]
         self.assertIsInstance(view._detail, AgentDetailPanel)
         view.fill_detail(None)
-        self.assertNotEqual(
-            view._detail._stack.currentWidget(), view._detail._content)
-        view.fill_detail({
-            "display_name": "hermes-agent", "identifier": "hermes-agent",
-            "executable_path": None, "detected_version": None,
-            "availability": False, "configured_priority": 0,
-            "metadata": {}, "roles": [], "capabilities": [],
-        })
-        self.assertEqual(
-            view._detail._stack.currentWidget(), view._detail._content)
+        self.assertNotEqual(view._detail._stack.currentWidget(), view._detail._content)
+        view.fill_detail(
+            {
+                "display_name": "hermes-agent",
+                "identifier": "hermes-agent",
+                "executable_path": None,
+                "detected_version": None,
+                "availability": False,
+                "configured_priority": 0,
+                "metadata": {},
+                "roles": [],
+                "capabilities": [],
+            }
+        )
+        self.assertEqual(view._detail._stack.currentWidget(), view._detail._content)
         grid_texts = [
             view._detail._grid._slots[column].itemAt(row).layout().itemAt(1).widget().text()
             for column in range(2)
             for row in range(view._detail._grid._slots[column].count())
         ]
         self.assertTrue(any("Executable not found" in text for text in grid_texts))
-        view.fill_detail({
-            "display_name": "kilo", "identifier": "kilo",
-            "executable_path": "D:/kilo.CMD",
-            "detected_version": "EPERM: operation not permitted",
-            "availability": False, "configured_priority": 0,
-            "metadata": {}, "roles": [], "capabilities": [],
-        })
+        view.fill_detail(
+            {
+                "display_name": "kilo",
+                "identifier": "kilo",
+                "executable_path": "D:/kilo.CMD",
+                "detected_version": "EPERM: operation not permitted",
+                "availability": False,
+                "configured_priority": 0,
+                "metadata": {},
+                "roles": [],
+                "capabilities": [],
+            }
+        )
         grid_texts = [
             view._detail._grid._slots[column].itemAt(row).layout().itemAt(1).widget().text()
             for column in range(2)
@@ -405,10 +439,11 @@ class VisualStateTest(unittest.TestCase):
         self.assertTrue(identity.endswith(rendered))
         self.assertEqual(
             by_key["recovery_state"].format("interrupted_agent_execution"),
-            "interrupted agent execution")
+            "interrupted agent execution",
+        )
         self.assertEqual(
-            by_key["recommended_action"].format("retry_same_agent"),
-            "retry same agent")
+            by_key["recommended_action"].format("retry_same_agent"), "retry same agent"
+        )
 
     def test_dashboard_hero_hands_its_text_to_task_creation(self):
         from dataclasses import replace
@@ -417,8 +452,8 @@ class VisualStateTest(unittest.TestCase):
         self._activate("dashboard")
         view = self.window._views["dashboard"]
         view.ctx = replace(
-            view.ctx, new_task=lambda text, agent=None: received.append(
-                (text, agent)))
+            view.ctx, new_task=lambda text, agent=None: received.append((text, agent))
+        )
         view._hero_input.setPlainText("  hero task  ")
         view._start_hero_task()
         self.assertEqual(received, [("hero task", None)])
@@ -432,8 +467,7 @@ class VisualStateTest(unittest.TestCase):
         context = make_context(object())
         dialog = NewTaskDialog(context, initial_description="prefilled work")
         try:
-            self.assertEqual(
-                dialog._description.toPlainText(), "prefilled work")
+            self.assertEqual(dialog._description.toPlainText(), "prefilled work")
         finally:
             dialog.deleteLater()
 
@@ -462,19 +496,24 @@ class VisualStateTest(unittest.TestCase):
         self.assertTrue(wait_until(lambda: view._tasks.proxy.rowCount() == 4))
         renamed: list[tuple] = []
         self.controller.rename_workflow = (  # type: ignore[attr-defined]
-            lambda directory, workflow_id, description: renamed.append(
-                (workflow_id, description)) or {"id": workflow_id})
-        with patch("agentops.gui.views.workflows.QInputDialog.getText",
-                   return_value=("renamed flow", True)):
+            lambda directory, workflow_id, description: (
+                renamed.append((workflow_id, description)) or {"id": workflow_id}
+            )
+        )
+        with patch(
+            "agentops.gui.views.workflows.QInputDialog.getText", return_value=("renamed flow", True)
+        ):
             view._rename_workflow()
         self.assertTrue(wait_until(lambda: len(renamed) == 1))
         self.assertEqual(renamed[0], ("wf-1", "renamed flow"))
         deleted: list[tuple] = []
         self.controller.delete_workflow = (  # type: ignore[attr-defined]
-            lambda directory, workflow_id: deleted.append(workflow_id) or {
-                "id": workflow_id})
-        with patch("agentops.gui.views.workflows.QMessageBox.question",
-                   return_value=QMessageBox.StandardButton.Yes):
+            lambda directory, workflow_id: deleted.append(workflow_id) or {"id": workflow_id}
+        )
+        with patch(
+            "agentops.gui.views.workflows.QMessageBox.question",
+            return_value=QMessageBox.StandardButton.Yes,
+        ):
             view._delete_workflow()
         self.assertTrue(wait_until(lambda: len(deleted) == 1))
         self.assertEqual(deleted[0], "wf-1")
@@ -492,18 +531,23 @@ class VisualStateTest(unittest.TestCase):
 
                 view = self.window._views[view_id]
                 calls: list[str] = []
-                setattr(self.controller, method, (
-                    lambda directory, item_id, calls=calls: calls.append(item_id)
-                    or {"id": item_id}))
+                setattr(
+                    self.controller,
+                    method,
+                    (
+                        lambda directory, item_id, calls=calls: (
+                            calls.append(item_id) or {"id": item_id}
+                        )
+                    ),
+                )
                 self._activate(view_id)
-                self.assertTrue(
-                    wait_until(lambda v=view, n=rows: v._table.proxy.rowCount() == n))
+                self.assertTrue(wait_until(lambda v=view, n=rows: v._table.proxy.rowCount() == n))
                 view._table.select_row_index(0)
-                self.assertTrue(
-                    wait_until(lambda v=view: v._delete_btn.isEnabled()))
+                self.assertTrue(wait_until(lambda v=view: v._delete_btn.isEnabled()))
                 with patch(
-                        "agentops.gui.views.listdetail.QMessageBox.question",
-                        return_value=QMessageBox.StandardButton.Yes):
+                    "agentops.gui.views.listdetail.QMessageBox.question",
+                    return_value=QMessageBox.StandardButton.Yes,
+                ):
                     view._delete_btn.click()
                 self.assertTrue(wait_until(lambda bucket=calls: len(bucket) == 1))
 
@@ -520,12 +564,16 @@ class VisualStateTest(unittest.TestCase):
         self.assertEqual(view._table.proxy.rowCount(), 1)
         calls: list[tuple] = []
         self.controller.cleanup_worktree = (  # type: ignore[attr-defined]
-            lambda directory, path, delete_branch=False: calls.append(
-                (directory, path, delete_branch)) or {"removed_worktree": True})
+            lambda directory, path, delete_branch=False: (
+                calls.append((directory, path, delete_branch)) or {"removed_worktree": True}
+            )
+        )
         view._table.select_row_index(0)
         self.assertTrue(wait_until(lambda: view._delete_btn.isEnabled()))
-        with patch("agentops.gui.views.worktrees.QMessageBox.question",
-                   return_value=QMessageBox.StandardButton.Yes):
+        with patch(
+            "agentops.gui.views.worktrees.QMessageBox.question",
+            return_value=QMessageBox.StandardButton.Yes,
+        ):
             view._delete_btn.click()
         self.assertTrue(wait_until(lambda: len(calls) == 1))
         self.assertTrue(str(calls[0][1]).endswith("wf-1"))
@@ -534,8 +582,7 @@ class VisualStateTest(unittest.TestCase):
         view = self.window._views["artifacts"]
         self._activate("artifacts")
         self.assertTrue(wait_until(lambda: view._table.proxy.rowCount() == 1))
-        kinds = [view._kind.itemText(index)
-                 for index in range(view._kind.count())]
+        kinds = [view._kind.itemText(index) for index in range(view._kind.count())]
         self.assertIn("All kinds", kinds)
         self.assertIn("plans", kinds)
         view._kind.setCurrentIndex(view._kind.findText("plans"))
@@ -567,8 +614,8 @@ class VisualStateTest(unittest.TestCase):
         self.assertEqual(view._hero_agent.currentData(), "codex")
         received: list[tuple] = []
         view.ctx = replace(
-            view.ctx, new_task=lambda text, agent=None: received.append(
-                (text, agent)))
+            view.ctx, new_task=lambda text, agent=None: received.append((text, agent))
+        )
         view._hero_input.setPlainText("hero work")
         view._start_hero_task()
         self.assertEqual(received, [("hero work", "codex")])
@@ -602,7 +649,6 @@ class VisualStateTest(unittest.TestCase):
         self.assertIsNotNone(view.findChild(QScrollArea))
         self.assertEqual(self.window.minimumWidth(), 960)
         self.assertEqual(self.window.minimumHeight(), 620)
-
 
 
 if __name__ == "__main__":

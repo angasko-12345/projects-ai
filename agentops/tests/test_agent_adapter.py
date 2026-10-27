@@ -14,7 +14,10 @@ from agentops.config import AgentConfig
 
 def _config(name="a", roles=("implementation",), args=("{prompt}",), **overrides) -> AgentConfig:
     values = {
-        "name": name, "command": name, "args": tuple(args), "roles": tuple(roles),
+        "name": name,
+        "command": name,
+        "args": tuple(args),
+        "roles": tuple(roles),
     }
     values.update(overrides)
     return AgentConfig(**values)
@@ -22,41 +25,62 @@ def _config(name="a", roles=("implementation",), args=("{prompt}",), **overrides
 
 class DerivationHonestyTests(unittest.TestCase):
     def test_roles_derive_baseline_only(self):
-        self.assertEqual(capabilities_for_roles(("implementation",)), frozenset({Capability.CODING}))
+        self.assertEqual(
+            capabilities_for_roles(("implementation",)), frozenset({Capability.CODING})
+        )
         self.assertEqual(capabilities_for_roles(("debugging",)), frozenset({Capability.CODING}))
-        self.assertEqual(capabilities_for_roles(("architecture",)), frozenset({Capability.PLANNING}))
+        self.assertEqual(
+            capabilities_for_roles(("architecture",)), frozenset({Capability.PLANNING})
+        )
         self.assertEqual(capabilities_for_roles(("review",)), frozenset({Capability.REVIEW}))
         self.assertEqual(
             capabilities_for_roles(("implementation", "architecture", "review")),
-            frozenset({Capability.CODING, Capability.PLANNING, Capability.REVIEW}))
+            frozenset({Capability.CODING, Capability.PLANNING, Capability.REVIEW}),
+        )
 
     def test_empty_roles_derive_all_three(self):
         # Mirrors the registry's empty-means-all gate; nothing fabricated.
         self.assertEqual(
             capabilities_for_roles(()),
-            frozenset({Capability.CODING, Capability.PLANNING, Capability.REVIEW}))
+            frozenset({Capability.CODING, Capability.PLANNING, Capability.REVIEW}),
+        )
 
     def test_no_undeclared_advanced_capabilities(self):
         adapter = adapter_for(_config())
-        for advanced in (Capability.STRUCTURED_OUTPUT, Capability.STREAMING, Capability.MCP,
-                         Capability.MODEL_SELECTION, Capability.READ_ONLY,
-                         Capability.NON_INTERACTIVE):
+        for advanced in (
+            Capability.STRUCTURED_OUTPUT,
+            Capability.STREAMING,
+            Capability.MCP,
+            Capability.MODEL_SELECTION,
+            Capability.READ_ONLY,
+            Capability.NON_INTERACTIVE,
+        ):
             self.assertNotIn(advanced, adapter.capabilities())
 
     def test_roles_derive_task_capabilities(self):
         implementation = adapter_for(_config(roles=("implementation",)))
-        for capability in (Capability.IMPLEMENTATION, Capability.REFACTORING, Capability.TESTING,
-                           Capability.REPOSITORY_EXPLORATION):
+        for capability in (
+            Capability.IMPLEMENTATION,
+            Capability.REFACTORING,
+            Capability.TESTING,
+            Capability.REPOSITORY_EXPLORATION,
+        ):
             self.assertIn(capability, implementation.capabilities())
         reviewer = adapter_for(_config(roles=("review",)))
-        for capability in (Capability.CODE_REVIEW, Capability.SECURITY_REVIEW, Capability.DOCUMENTATION):
+        for capability in (
+            Capability.CODE_REVIEW,
+            Capability.SECURITY_REVIEW,
+            Capability.DOCUMENTATION,
+        ):
             if capability is Capability.SECURITY_REVIEW:
                 self.assertNotIn(capability, reviewer.capabilities())
             else:
                 self.assertIn(capability, reviewer.capabilities())
 
     def test_declared_extras_apply(self):
-        adapter = adapter_for(_config(), )
+        adapter = adapter_for(
+            _config(),
+        )
         self.assertEqual(adapter.extra_capabilities, ())
         adapter = CliAdapter(_config(), None, ("streaming", "telepathy"))
         self.assertIn(Capability.STREAMING, adapter.capabilities())

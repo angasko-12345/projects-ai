@@ -18,6 +18,7 @@ class ConfigAndRegistryTests(unittest.TestCase):
         # positionally with `--print` for non-interactive runs.
         from agentops.registry import DetectedAgent
         from agentops.runner import AgentRunner
+
         config = load_config()
         agent = DetectedAgent(config.agents["pi"], True, "/bin/pi")
         self.assertEqual(
@@ -34,18 +35,47 @@ class ConfigAndRegistryTests(unittest.TestCase):
         # no approval policy, so nothing is ever prompted. Allowlist comes from
         # `codex exec --help` on codex-cli 0.163.0.
         known = {
-            "-c", "--config", "--enable", "--disable", "--strict-config",
-            "-i", "--image", "-m", "--model", "--oss", "--local-provider",
-            "-p", "--profile", "-s", "--sandbox", "--approve-for-me",
+            "-c",
+            "--config",
+            "--enable",
+            "--disable",
+            "--strict-config",
+            "-i",
+            "--image",
+            "-m",
+            "--model",
+            "--oss",
+            "--local-provider",
+            "-p",
+            "--profile",
+            "-s",
+            "--sandbox",
+            "--approve-for-me",
             "--dangerously-bypass-approvals-and-sandbox",
-            "--dangerously-bypass-hook-trust", "-C", "--cd", "--worktree",
-            "--add-dir", "--thread-source", "--cyber-access-program",
-            "--skip-git-repo-check", "--ephemeral", "--ignore-user-config",
-            "--ignore-rules", "--output-schema", "--color", "--json",
-            "-o", "--output-last-message", "-h", "--help", "-V", "--version",
+            "--dangerously-bypass-hook-trust",
+            "-C",
+            "--cd",
+            "--worktree",
+            "--add-dir",
+            "--thread-source",
+            "--cyber-access-program",
+            "--skip-git-repo-check",
+            "--ephemeral",
+            "--ignore-user-config",
+            "--ignore-rules",
+            "--output-schema",
+            "--color",
+            "--json",
+            "-o",
+            "--output-last-message",
+            "-h",
+            "--help",
+            "-V",
+            "--version",
         }
         from agentops.registry import DetectedAgent
         from agentops.runner import AgentRunner
+
         config = load_config()
         args = config.agents["codex"].args
         self.assertEqual(args[0], "exec")
@@ -56,7 +86,8 @@ class ConfigAndRegistryTests(unittest.TestCase):
         self.assertEqual(args[args.index("--sandbox") + 1], "workspace-write")
         self.assertEqual(
             AgentRunner.build_command(
-                DetectedAgent(config.agents["codex"], True, "/bin/codex"), "do it"),
+                DetectedAgent(config.agents["codex"], True, "/bin/codex"), "do it"
+            ),
             ("/bin/codex", "exec", "--sandbox", "workspace-write", "do it"),
         )
 
@@ -77,10 +108,12 @@ class ConfigAndRegistryTests(unittest.TestCase):
 
     @patch("agentops.config._load_data")
     def test_agent_enabled_flag(self, load_data):
-        load_data.return_value = {"agents": {
-            "on": {"command": "on"},
-            "off": {"command": "off", "enabled": False},
-        }}
+        load_data.return_value = {
+            "agents": {
+                "on": {"command": "on"},
+                "off": {"command": "off", "enabled": False},
+            }
+        }
         config = load_config()
         self.assertTrue(config.agents["on"].enabled)
         self.assertFalse(config.agents["off"].enabled)
@@ -99,17 +132,21 @@ class ConfigAndRegistryTests(unittest.TestCase):
     def test_systemd_isolation_defaults_off_when_key_missing(self, load_data):
         load_data.return_value = {"agents": {"on": {"command": "on"}}}
         self.assertFalse(load_config().systemd_run_enabled)
-        load_data.return_value = {"agents": {"on": {"command": "on"}},
-                                  "runtime": {"systemd_run_enabled": "yes"}}
+        load_data.return_value = {
+            "agents": {"on": {"command": "on"}},
+            "runtime": {"systemd_run_enabled": "yes"},
+        }
         with self.assertRaises(ValueError):
             load_config()
 
     @patch("agentops.config._load_data")
     def test_agent_capabilities_parsed_and_default_empty(self, load_data):
-        load_data.return_value = {"agents": {
-            "a": {"command": "a", "capabilities": ["coding", " streaming ", "coding"]},
-            "b": {"command": "b"},
-        }}
+        load_data.return_value = {
+            "agents": {
+                "a": {"command": "a", "capabilities": ["coding", " streaming ", "coding"]},
+                "b": {"command": "b"},
+            }
+        }
         config = load_config()
         self.assertEqual(config.agents["a"].capabilities, ("coding", "streaming"))
         self.assertEqual(config.agents["b"].capabilities, ())
@@ -119,7 +156,9 @@ class ConfigAndRegistryTests(unittest.TestCase):
         load_data.return_value = {"agents": {"bad": {"command": "x", "capabilities": "coding"}}}
         with self.assertRaises(ValueError):
             load_config()
-        load_data.return_value = {"agents": {"bad": {"command": "x", "capabilities": ["coding", 42]}}}
+        load_data.return_value = {
+            "agents": {"bad": {"command": "x", "capabilities": ["coding", 42]}}
+        }
         with self.assertRaises(ValueError):
             load_config()
         load_data.return_value = {"agents": {"bad": {"command": "x", "capabilities": [""]}}}
@@ -163,11 +202,13 @@ class ConfigAndRegistryTests(unittest.TestCase):
     def test_declared_capability_unlocks_selection(self, which, run, load_data):
         which.side_effect = lambda command: f"C:/bin/{command}"
         run.return_value = MagicMock(stdout="1.0.0\n", stderr="", returncode=0)
-        load_data.return_value = {"agents": {
-            "plain": {"command": "plain", "roles": ["implementation"]},
-            "rich": {"command": "rich", "roles": ["implementation"],
-                       "capabilities": ["mcp"]},
-        }, "role_preferences": {"implementation": ["plain", "rich"]}}
+        load_data.return_value = {
+            "agents": {
+                "plain": {"command": "plain", "roles": ["implementation"]},
+                "rich": {"command": "rich", "roles": ["implementation"], "capabilities": ["mcp"]},
+            },
+            "role_preferences": {"implementation": ["plain", "rich"]},
+        }
         registry = AgentRegistry(load_config())
         selected = registry.select("implementation", required_capabilities=("mcp",))
         self.assertIsNotNone(selected)
@@ -239,6 +280,7 @@ class ConfigAndRegistryTests(unittest.TestCase):
     def test_omp_command_construction(self):
         from agentops.registry import DetectedAgent
         from agentops.runner import AgentRunner
+
         config = load_config()
         agent = DetectedAgent(config.agents["omp"], True, "/bin/omp")
         self.assertEqual(
@@ -249,6 +291,7 @@ class ConfigAndRegistryTests(unittest.TestCase):
     def test_kilo_command_construction(self):
         from agentops.registry import DetectedAgent
         from agentops.runner import AgentRunner
+
         config = load_config()
         agent = DetectedAgent(config.agents["kilo"], True, "/bin/kilo")
         self.assertEqual(
@@ -259,6 +302,7 @@ class ConfigAndRegistryTests(unittest.TestCase):
     def test_hermes_agent_command_construction(self):
         from agentops.registry import DetectedAgent
         from agentops.runner import AgentRunner
+
         config = load_config()
         agent = DetectedAgent(config.agents["hermes-agent"], True, "/bin/hermes-agent")
         self.assertEqual(
@@ -276,6 +320,7 @@ class ConfigAndRegistryTests(unittest.TestCase):
                 "hermes-agent": "/home/icy/.local/bin/hermes-agent",
             }
             return paths.get(command)
+
         which.side_effect = which_side_effect
         run.return_value = MagicMock(stdout="1.0.0\n", stderr="", returncode=0)
         registry = AgentRegistry(load_config())
@@ -298,6 +343,7 @@ class ConfigAndRegistryTests(unittest.TestCase):
                 "opencode": "/home/icy/.opencode/bin/opencode",
             }
             return paths.get(command)
+
         which.side_effect = which_side_effect
         run.return_value = MagicMock(stdout="1.0.0\n", stderr="", returncode=0)
         registry = AgentRegistry(load_config())

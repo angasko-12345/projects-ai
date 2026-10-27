@@ -85,7 +85,6 @@ def _scrub_structured(value: object) -> object:
     return value
 
 
-
 def _requires_review_verdict(role: object) -> bool:
     """Whether a task role is required to end with an explicit review verdict."""
     normalized = " ".join(
@@ -102,11 +101,20 @@ def verdict_summary_for_task(task: object) -> dict[str, object] | None:
             return None
         verdict = parse_verdict(getattr(task, "result", None))
         if verdict is None:
-            return {"role": role, "verdict": "missing", "approved": False,
-                    "blocking": [], "non_blocking": []}
-        return {"role": role, "verdict": verdict.verdict, "approved": verdict.is_approved,
-                "blocking": [redact_text(item)[:500] for item in verdict.blocking],
-                "non_blocking": [redact_text(item)[:500] for item in verdict.non_blocking]}
+            return {
+                "role": role,
+                "verdict": "missing",
+                "approved": False,
+                "blocking": [],
+                "non_blocking": [],
+            }
+        return {
+            "role": role,
+            "verdict": verdict.verdict,
+            "approved": verdict.is_approved,
+            "blocking": [redact_text(item)[:500] for item in verdict.blocking],
+            "non_blocking": [redact_text(item)[:500] for item in verdict.non_blocking],
+        }
     except Exception:
         return None
 
@@ -134,8 +142,12 @@ def _local_security_scan(working_directory: str | Path) -> tuple[list, bool]:
         try:
             diff = subprocess.run(
                 ("git", "diff", "HEAD", "--", "."),
-                cwd=root, capture_output=True, text=True, timeout=15,
-                encoding="utf-8", errors="replace",
+                cwd=root,
+                capture_output=True,
+                text=True,
+                timeout=15,
+                encoding="utf-8",
+                errors="replace",
                 creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
             )
             if diff.returncode == 0:
@@ -148,8 +160,12 @@ def _local_security_scan(working_directory: str | Path) -> tuple[list, bool]:
         try:
             status = subprocess.run(
                 ("git", "status", "--porcelain", "--", "."),
-                cwd=root, capture_output=True, text=True, timeout=15,
-                encoding="utf-8", errors="replace",
+                cwd=root,
+                capture_output=True,
+                text=True,
+                timeout=15,
+                encoding="utf-8",
+                errors="replace",
                 creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
             )
             if status.returncode == 0:
@@ -163,7 +179,9 @@ def _local_security_scan(working_directory: str | Path) -> tuple[list, bool]:
                         candidate = Path(root, name)
                         if candidate.stat().st_size > 100 * 1024:
                             continue
-                        parts.append((name, candidate.read_text(encoding="utf-8", errors="replace")))
+                        parts.append(
+                            (name, candidate.read_text(encoding="utf-8", errors="replace"))
+                        )
                     except (OSError, ValueError):
                         continue
             else:
@@ -195,7 +213,12 @@ def _role_scope_text(role: object, working_directory: str | Path) -> str:
             return ""
         variants: list[str] = []
         for variant in (normalized, normalized.replace(" ", "-"), normalized.replace(" ", "_")):
-            if variant and "/" not in variant and "\\" not in variant and variant not in {".", ".."}:
+            if (
+                variant
+                and "/" not in variant
+                and "\\" not in variant
+                and variant not in {".", ".."}
+            ):
                 if variant not in variants:
                     variants.append(variant)
         for variant in variants:
@@ -222,6 +245,7 @@ def _safe_workflow_structured(stdout: object) -> object | None:
         metadata = dict(result.metadata)
         metadata.setdefault("parse_mode", parsed.parse_mode.value)
         from dataclasses import replace
+
         return replace(result, warnings=extra_warnings, metadata=metadata).to_dict()
     except Exception:
         return None
@@ -333,9 +357,7 @@ def _structured_agent_status(result: object) -> AgentResultStatus | None:
             if coerced is not None:
                 return coerced.status
             return AgentResultStatus.UNKNOWN
-        verdict_only_candidates = [
-            item for item in stdout_candidates if _is_verdict_only(item)
-        ]
+        verdict_only_candidates = [item for item in stdout_candidates if _is_verdict_only(item)]
         if verdict_only_candidates:
             # The only structured JSON in stdout is a review verdict
             # object, which is not an agent-status signal. The real runner
@@ -385,7 +407,8 @@ def _explicit_success_denied(result: object) -> bool:
             if isinstance(legacy, dict):
                 payloads.append(legacy)
         payloads.extend(
-            item for item in _stdout_candidate_dicts(getattr(result, "stdout", None))
+            item
+            for item in _stdout_candidate_dicts(getattr(result, "stdout", None))
             if not _is_verdict_only(item)
         )
         return any(_payload_denies_success(payload) for payload in payloads)
@@ -438,8 +461,12 @@ def _is_git_working_tree(path: str | Path) -> bool:
     try:
         completed = subprocess.run(
             ("git", "rev-parse", "--is-inside-work-tree"),
-            cwd=str(path), capture_output=True, text=True, timeout=5,
-            encoding="utf-8", errors="replace",
+            cwd=str(path),
+            capture_output=True,
+            text=True,
+            timeout=5,
+            encoding="utf-8",
+            errors="replace",
             creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
         )
     except Exception:
@@ -457,16 +484,22 @@ HANDOFF_TOTAL_CHARS = 8000
 
 
 class WorkflowEngine:
-    def __init__(self, config: AppConfig, state: StateStore, registry: AgentRegistry,
-                 runner: AgentRunner, verifier: Verifier,
-                 run_observer: AgentRunObserver | None = None,
-                 metadata_collector: Callable[[str | Path], AgentRunMetadata] | None = None,
-                 verification_kernel: VerificationKernel | None = None,
-                 router: AgentRouter | None = None,
-                 degradation: DegradationRecorder | None = None,
-                 repo_inspector: RepositoryInspector | None = None,
-                 headroom_gate: HeadroomGate | None = None,
-                 clock: Callable[[], float] | None = None):
+    def __init__(
+        self,
+        config: AppConfig,
+        state: StateStore,
+        registry: AgentRegistry,
+        runner: AgentRunner,
+        verifier: Verifier,
+        run_observer: AgentRunObserver | None = None,
+        metadata_collector: Callable[[str | Path], AgentRunMetadata] | None = None,
+        verification_kernel: VerificationKernel | None = None,
+        router: AgentRouter | None = None,
+        degradation: DegradationRecorder | None = None,
+        repo_inspector: RepositoryInspector | None = None,
+        headroom_gate: HeadroomGate | None = None,
+        clock: Callable[[], float] | None = None,
+    ):
         self.config = config
         self.state = state
         self.registry = registry
@@ -478,13 +511,16 @@ class WorkflowEngine:
         self.router = router
         if self.router is None and getattr(config, "routing_enabled", True):
             self.router = AgentRouter()
-        self.repo_inspector = repo_inspector if repo_inspector is not None else RepositoryInspector()
+        self.repo_inspector = (
+            repo_inspector if repo_inspector is not None else RepositoryInspector()
+        )
         # Opt-in routing gates.  Without a ``headroom`` config section there
         # is no gate, and without ``usage_limits`` no cooldown is read or
         # written: routing and classification stay exactly as before.
         self.clock = clock if clock is not None else wall_clock
         self.headroom_gate = (
-            headroom_gate if headroom_gate is not None
+            headroom_gate
+            if headroom_gate is not None
             else build_headroom_gate(getattr(config, "headroom", None))
         )
         self._headroom_last_unavailable: str | None = None
@@ -493,8 +529,7 @@ class WorkflowEngine:
         # recorder emits a WARNING event through the same store it watches, so
         # it degrades to an in-memory entry when the store is the thing that broke.
         if degradation is None and getattr(state, "record_typed_event", None) is not None:
-            degradation = DegradationRecorder(
-                emit=event_emitter(state.record_typed_event))
+            degradation = DegradationRecorder(emit=event_emitter(state.record_typed_event))
         self.degradation = degradation if degradation is not None else DegradationRecorder()
 
     @property
@@ -561,7 +596,9 @@ class WorkflowEngine:
             structured_evidence=_scrub_structured(
                 structured_evidence.to_dict()
                 if isinstance(structured_evidence, FailureEvidence)
-                else dict(structured_evidence) if structured_evidence is not None else None
+                else dict(structured_evidence)
+                if structured_evidence is not None
+                else None
             ),
         )
         try:
@@ -570,8 +607,10 @@ class WorkflowEngine:
             # A8 SAFE_TO_DEGRADE: the failure row is diagnostics. Losing it must
             # not mask the task outcome, but the loss is now visible.
             self.degradation.record(
-                "failure.create", error,
-                workflow_id=failure.workflow_id, task_id=failure.task_id,
+                "failure.create",
+                error,
+                workflow_id=failure.workflow_id,
+                task_id=failure.task_id,
             )
             return failure
 
@@ -584,11 +623,15 @@ class WorkflowEngine:
         stay FAILED and recovered runs stay TERMINATED/FAILED. Worktrees are
         preserved by the caller (CLI/GUI never deletes on failure/conflict).
         """
-        summary = self.state.recover_all() if workflow_id is None else {
-            "agent_runs": len(self.state.recover_agent_runs(workflow_id)),
-            "verification_runs": len(self.state.recover_verification_runs(workflow_id)),
-            "tasks": len(self.state.recover_tasks(workflow_id)),
-        }
+        summary = (
+            self.state.recover_all()
+            if workflow_id is None
+            else {
+                "agent_runs": len(self.state.recover_agent_runs(workflow_id)),
+                "verification_runs": len(self.state.recover_verification_runs(workflow_id)),
+                "tasks": len(self.state.recover_tasks(workflow_id)),
+            }
+        )
         states: list[str] = []
         tasks = self.state.list_tasks(workflow_id) if workflow_id else []
         for task in tasks:
@@ -597,9 +640,11 @@ class WorkflowEngine:
             if task.result is None or "interrupted" not in task.result.lower():
                 continue
             context = (
-                InterruptionContext.VERIFICATION if task.role == "verification" else
-                InterruptionContext.REVIEW if task.role == "review" else
-                InterruptionContext.AGENT_EXECUTION
+                InterruptionContext.VERIFICATION
+                if task.role == "verification"
+                else InterruptionContext.REVIEW
+                if task.role == "review"
+                else InterruptionContext.AGENT_EXECUTION
             )
             recovery_state, category, action = FailureClassifier.classify_interruption(context)
             # Idempotency: a repeated recovery pass must not mint a fresh
@@ -640,37 +685,71 @@ class WorkflowEngine:
                 # A8: this path bypasses record_failure(), so it needs its own
                 # degradation record or a lost recovery row stays invisible.
                 self.degradation.record(
-                    "failure.create", error,
-                    workflow_id=failure.workflow_id, task_id=failure.task_id,
+                    "failure.create",
+                    error,
+                    workflow_id=failure.workflow_id,
+                    task_id=failure.task_id,
                 )
         summary["recovery_states"] = states
         return summary
 
     def create_standard_workflow(self, description: str) -> tuple[str, list[Task]]:
         workflow_id = self.state.create_workflow(description)
-        plan = self.state.add_task(Task(f"Plan a safe implementation for: {description}", STANDARD_TASK_ROLES[0], workflow_id,
-                                        max_attempts=self.config.max_attempts))
-        implementation = self.state.add_task(Task(f"Implement: {description}", STANDARD_TASK_ROLES[1], workflow_id,
-                                                  dependencies=(plan.id,), max_attempts=self.config.max_attempts))
-        verification = self.state.add_task(Task("Run configured project verification commands.", STANDARD_TASK_ROLES[2], workflow_id,
-                                                dependencies=(implementation.id,), max_attempts=1))
+        plan = self.state.add_task(
+            Task(
+                f"Plan a safe implementation for: {description}",
+                STANDARD_TASK_ROLES[0],
+                workflow_id,
+                max_attempts=self.config.max_attempts,
+            )
+        )
+        implementation = self.state.add_task(
+            Task(
+                f"Implement: {description}",
+                STANDARD_TASK_ROLES[1],
+                workflow_id,
+                dependencies=(plan.id,),
+                max_attempts=self.config.max_attempts,
+            )
+        )
+        verification = self.state.add_task(
+            Task(
+                "Run configured project verification commands.",
+                STANDARD_TASK_ROLES[2],
+                workflow_id,
+                dependencies=(implementation.id,),
+                max_attempts=1,
+            )
+        )
         # The reviewer judges the implementation, so it needs the implementation
         # result, not only the verification transcript. Both are PASSED before
         # review can be scheduled, so this adds context, not a gate.
-        review = self.state.add_task(Task(f"Review the completed change for: {description}", STANDARD_TASK_ROLES[3], workflow_id,
-                                          dependencies=(verification.id, implementation.id),
-                                          max_attempts=self.config.max_attempts))
+        review = self.state.add_task(
+            Task(
+                f"Review the completed change for: {description}",
+                STANDARD_TASK_ROLES[3],
+                workflow_id,
+                dependencies=(verification.id, implementation.id),
+                max_attempts=self.config.max_attempts,
+            )
+        )
         tasks = [plan, implementation, verification, review]
         if getattr(self.config, "security_review", False):
-            security = self.state.add_task(Task(
-                f"Security-review the completed change for: {description}",
-                "security", workflow_id,
-                dependencies=(review.id, implementation.id),
-                max_attempts=self.config.max_attempts))
+            security = self.state.add_task(
+                Task(
+                    f"Security-review the completed change for: {description}",
+                    "security",
+                    workflow_id,
+                    dependencies=(review.id, implementation.id),
+                    max_attempts=self.config.max_attempts,
+                )
+            )
             tasks.append(security)
         return workflow_id, tasks
 
-    def create_workflow(self, description: str, specifications: list[dict[str, object]]) -> tuple[str, list[Task]]:
+    def create_workflow(
+        self, description: str, specifications: list[dict[str, object]]
+    ) -> tuple[str, list[Task]]:
         """Create a user-defined dependency graph from a validated workflow file."""
         self.validate_workflow_specifications(specifications)
         identifiers: dict[str, str] = {}
@@ -685,9 +764,14 @@ class WorkflowEngine:
                 description_value = specification["description"]
                 role = specification["role"]
                 dependencies = specification.get("dependencies", [])
-                task = Task(description_value, role, workflow_id, id=identifiers[identifier],
-                            dependencies=tuple(identifiers[item] for item in dependencies),
-                            max_attempts=self.config.max_attempts)
+                task = Task(
+                    description_value,
+                    role,
+                    workflow_id,
+                    id=identifiers[identifier],
+                    dependencies=tuple(identifiers[item] for item in dependencies),
+                    max_attempts=self.config.max_attempts,
+                )
                 tasks.append(self.state.add_task(task))
         except Exception:
             # Each StateStore write commits independently. If persistence fails
@@ -699,7 +783,8 @@ class WorkflowEngine:
 
     @classmethod
     def validate_workflow_specifications(
-        cls, specifications: list[dict[str, object]],
+        cls,
+        specifications: list[dict[str, object]],
     ) -> None:
         """Validate all task fields and graph references before any side effect."""
         if not isinstance(specifications, list) or not all(
@@ -724,23 +809,40 @@ class WorkflowEngine:
         cls._validate_acyclic(specifications, identifiers)
 
     @staticmethod
-    def _validate_acyclic(specifications: list[dict[str, object]], identifiers: dict[str, str]) -> None:
+    def _validate_acyclic(
+        specifications: list[dict[str, object]], identifiers: dict[str, str]
+    ) -> None:
         dependencies_by_id: dict[str, set[str]] = {}
         for index, specification in enumerate(specifications):
             identifier = specification.get("id", f"task-{index + 1}")
             dependencies = specification.get("dependencies", [])
-            if not isinstance(identifier, str) or not isinstance(dependencies, list) or not all(isinstance(item, str) for item in dependencies):
+            if (
+                not isinstance(identifier, str)
+                or not isinstance(dependencies, list)
+                or not all(isinstance(item, str) for item in dependencies)
+            ):
                 raise ValueError("Workflow task dependencies must be a list of task ids.")
             if identifier in dependencies:
                 raise ValueError(f"Workflow task '{identifier}' cannot depend on itself.")
             dependencies_by_id[identifier] = set(dependencies)
-        unknown = sorted({dependency for dependencies in dependencies_by_id.values() for dependency in dependencies if dependency not in identifiers})
+        unknown = sorted(
+            {
+                dependency
+                for dependencies in dependencies_by_id.values()
+                for dependency in dependencies
+                if dependency not in identifiers
+            }
+        )
         if unknown:
             raise ValueError(f"Unknown task dependencies: {', '.join(unknown)}")
         resolved: set[str] = set()
         pending = dict(dependencies_by_id)
         while pending:
-            ready = [identifier for identifier, dependencies in pending.items() if dependencies <= resolved]
+            ready = [
+                identifier
+                for identifier, dependencies in pending.items()
+                if dependencies <= resolved
+            ]
             if not ready:
                 raise ValueError("Workflow task dependencies contain a cycle.")
             for identifier in ready:
@@ -813,11 +915,7 @@ class WorkflowEngine:
                     successes[run.agent] = successes.get(run.agent, 0) + 1
         except Exception:
             return {}
-        return {
-            agent: successes.get(agent, 0) / total
-            for agent, total in totals.items()
-            if total
-        }
+        return {agent: successes.get(agent, 0) / total for agent, total in totals.items() if total}
 
     def _repository_characteristics(self, working_directory: object) -> dict[str, object]:
         """Bounded repository hints for the router.
@@ -875,8 +973,11 @@ class WorkflowEngine:
                         user_preferences=self.config.role_preferences.get(task.role, ()),
                         historical_performance=self._historical_performance(task.workflow_id),
                         excluded=excluded,
-                        **({"gate_verdicts": gate_verdicts, "gate_notes": gate_notes}
-                           if gate_verdicts or gate_notes else {}),
+                        **(
+                            {"gate_verdicts": gate_verdicts, "gate_notes": gate_notes}
+                            if gate_verdicts or gate_notes
+                            else {}
+                        ),
                     )
                 except Exception:
                     return self.registry.select(task.role, set(excluded) | gate_rejected)
@@ -904,8 +1005,10 @@ class WorkflowEngine:
         return self.registry.select(task.role, excluded)
 
     def _routing_gate_active(self) -> bool:
-        return (getattr(self, "headroom_gate", None) is not None
-                or getattr(self.config, "usage_limits", None) is not None)
+        return (
+            getattr(self, "headroom_gate", None) is not None
+            or getattr(self.config, "usage_limits", None) is not None
+        )
 
     def _routing_gate(self, task: Task) -> tuple[dict[str, GateVerdict], list[str]]:
         """Opt-in verdicts from the headroom gate and usage-limit cooldowns.
@@ -936,21 +1039,27 @@ class WorkflowEngine:
                     self._headroom_last_unavailable = key
                     try:
                         self.state.event(
-                            task.workflow_id, task.id, "headroom-unavailable",
+                            task.workflow_id,
+                            task.id,
+                            "headroom-unavailable",
                             f"Headroom gate inactive ({key}); routing unchanged.",
                         )
                     except Exception as error:
                         self.degradation.record(
-                            "event.headroom_unavailable", error,
-                            workflow_id=task.workflow_id, task_id=task.id,
+                            "event.headroom_unavailable",
+                            error,
+                            workflow_id=task.workflow_id,
+                            task_id=task.id,
                         )
         if getattr(self.config, "usage_limits", None) is not None:
             try:
                 cooldowns = self.state.active_agent_cooldowns(now)
             except Exception as error:
                 self.degradation.record(
-                    "state.agent_cooldowns", error,
-                    workflow_id=task.workflow_id, task_id=task.id,
+                    "state.agent_cooldowns",
+                    error,
+                    workflow_id=task.workflow_id,
+                    task_id=task.id,
                 )
                 cooldowns = {}
             for agent, row in cooldowns.items():
@@ -980,21 +1089,30 @@ class WorkflowEngine:
         until = now + wait
         try:
             self.state.set_agent_cooldown(
-                agent, until, f"usage limit hit; {basis}",
+                agent,
+                until,
+                f"usage limit hit; {basis}",
                 failure_id=getattr(failure, "id", None),
-                workflow_id=task.workflow_id, task_id=task.id,
+                workflow_id=task.workflow_id,
+                task_id=task.id,
             )
             self.state.event(
-                task.workflow_id, task.id, "agent-cooldown",
+                task.workflow_id,
+                task.id,
+                "agent-cooldown",
                 f"{agent} hit a usage limit; not routed until {format_utc(until)} ({basis}).",
             )
         except Exception as error:
             self.degradation.record(
-                "state.agent_cooldowns", error,
-                workflow_id=task.workflow_id, task_id=task.id,
+                "state.agent_cooldowns",
+                error,
+                workflow_id=task.workflow_id,
+                task_id=task.id,
             )
 
-    def _record_routing_decision(self, task: Task, decision, executed_agent: str | None = None) -> None:
+    def _record_routing_decision(
+        self, task: Task, decision, executed_agent: str | None = None
+    ) -> None:
         """Persist an explainable routing decision without leaking metadata."""
         try:
             payload = decision.to_dict()
@@ -1003,20 +1121,28 @@ class WorkflowEngine:
                 selected_profile["metadata"] = {}
             payload["executed_agent"] = executed_agent
             selected = payload.get("selected_agent") or "no agent"
-            detail = selected if executed_agent in (None, selected) else f"{selected} (executed {executed_agent})"
-            self.state.record_typed_event(Event(
-                workflow_id=task.workflow_id,
-                task_id=task.id,
-                type=EventType.ROUTING_DECISION,
-                message=f"Routed {task.role} to {detail}",
-                payload=payload,
-            ))
+            detail = (
+                selected
+                if executed_agent in (None, selected)
+                else f"{selected} (executed {executed_agent})"
+            )
+            self.state.record_typed_event(
+                Event(
+                    workflow_id=task.workflow_id,
+                    task_id=task.id,
+                    type=EventType.ROUTING_DECISION,
+                    message=f"Routed {task.role} to {detail}",
+                    payload=payload,
+                )
+            )
         except Exception as error:
             # A8 SAFE_TO_DEGRADE: selection already happened and the run must
             # proceed. The explainability record is reported as degraded.
             self.degradation.record(
-                "event.routing_decision", error,
-                workflow_id=task.workflow_id, task_id=task.id,
+                "event.routing_decision",
+                error,
+                workflow_id=task.workflow_id,
+                task_id=task.id,
             )
 
     async def _execute_task(
@@ -1043,7 +1169,9 @@ class WorkflowEngine:
             if task.role == "verification":
                 if self.verification_kernel is not None:
                     report = await self.verification_kernel.run_verification(
-                        task.workflow_id, task.id, working_directory,
+                        task.workflow_id,
+                        task.id,
+                        working_directory,
                         source_agent_run_id=self._verification_source_run(task),
                         cancel_event=cancel_event,
                     )
@@ -1093,15 +1221,19 @@ class WorkflowEngine:
                         self.record_failure(
                             task,
                             FailureClassifier.classify(
-                                source=FailureSource.REVIEW, error=prescan_reason,
+                                source=FailureSource.REVIEW,
+                                error=prescan_reason,
                                 role=task.role,
                             ),
-                            evidence=prescan_reason, primary_error=prescan_reason,
+                            evidence=prescan_reason,
+                            primary_error=prescan_reason,
                         )
                         task.finished_at = utc_now()
                         self.state.update_task(task)
                         return
-                excluded = {task.assigned_agent} if task.assigned_agent and task.attempts > 1 else set()
+                excluded = (
+                    {task.assigned_agent} if task.assigned_agent and task.attempts > 1 else set()
+                )
                 repository_characteristics = None
                 if getattr(self, "router", None) is not None:
                     # The bounded filesystem walk runs in a worker thread so a
@@ -1112,7 +1244,8 @@ class WorkflowEngine:
                     # the call sat inside _select_agent's router guard.
                     try:
                         repository_characteristics = await asyncio.to_thread(
-                            self._repository_characteristics, working_directory,
+                            self._repository_characteristics,
+                            working_directory,
                         )
                     except Exception:
                         repository_characteristics = {}
@@ -1128,7 +1261,10 @@ class WorkflowEngine:
                 else:
                     routing_gate = None
                 agent = self._select_agent(
-                    task, excluded, working_directory, repository_characteristics,
+                    task,
+                    excluded,
+                    working_directory,
+                    repository_characteristics,
                     routing_gate=routing_gate,
                 )
                 if agent is None:
@@ -1137,18 +1273,23 @@ class WorkflowEngine:
                     if gate_rejections:
                         task.result = (
                             f"No eligible agent for role '{task.role}': no installed agent supports it "
-                            "after routing-gate rejections ("
-                            + " | ".join(gate_rejections) + ")."
+                            "after routing-gate rejections (" + " | ".join(gate_rejections) + ")."
                         )
                         if excluded:
-                            task.result += f" Already tried and excluded: {', '.join(sorted(excluded))}."
-                        self.state.event(task.workflow_id, task.id, "no-agent-fallback", task.result)
+                            task.result += (
+                                f" Already tried and excluded: {', '.join(sorted(excluded))}."
+                            )
+                        self.state.event(
+                            task.workflow_id, task.id, "no-agent-fallback", task.result
+                        )
                     elif excluded:
                         task.result = (
                             f"No installed agent supports role '{task.role}' "
                             f"(already tried and excluded: {', '.join(sorted(excluded))})."
                         )
-                        self.state.event(task.workflow_id, task.id, "no-agent-fallback", task.result)
+                        self.state.event(
+                            task.workflow_id, task.id, "no-agent-fallback", task.result
+                        )
                     else:
                         task.result = f"No installed agent supports role '{task.role}'."
                     self._record_no_agent_run(task, working_directory)
@@ -1157,15 +1298,19 @@ class WorkflowEngine:
                     # category; the full text is still the recorded evidence.
                     classify_text = (
                         f"No installed agent supports role '{task.role}'."
-                        if gate_rejections else task.result
+                        if gate_rejections
+                        else task.result
                     )
                     self.record_failure(
                         task,
                         FailureClassifier.classify(
-                            source=FailureSource.ENVIRONMENT, error=classify_text,
-                            role=task.role, agent_available=False,
+                            source=FailureSource.ENVIRONMENT,
+                            error=classify_text,
+                            role=task.role,
+                            agent_available=False,
                         ),
-                        evidence=task.result, primary_error=task.result,
+                        evidence=task.result,
+                        primary_error=task.result,
                     )
                 else:
                     task.assigned_agent = agent.config.name
@@ -1216,10 +1361,17 @@ class WorkflowEngine:
                                 verdict_reason = "review verdict rejected the change"
                     self._record_review_verdict(task, verdict)
                     verdict_rejected = verdict is not None and not verdict.is_approved
-                    task.status = TaskStatus.PASSED if (
-                        result.succeeded and satisfied and structured_ok
-                        and not success_denied and verdict_ok
-                    ) else TaskStatus.FAILED
+                    task.status = (
+                        TaskStatus.PASSED
+                        if (
+                            result.succeeded
+                            and satisfied
+                            and structured_ok
+                            and not success_denied
+                            and verdict_ok
+                        )
+                        else TaskStatus.FAILED
+                    )
                     if not satisfied and result.succeeded:
                         task.result = f"{task.result}\n\n{reason}".strip()
                     if not structured_ok and result.succeeded and satisfied:
@@ -1251,14 +1403,17 @@ class WorkflowEngine:
                     self.record_failure(
                         task,
                         FailureClassifier.classify(source=FailureSource.SYSTEM, cancelled=True),
-                        evidence=task.result, primary_error="Task was cancelled.",
+                        evidence=task.result,
+                        primary_error="Task was cancelled.",
                     )
                 except Exception as persist_error:
                     # A8: a lost failure row must stay visible even while
                     # the cancellation outcome itself is being recorded.
                     self.degradation.record(
-                        "failure.create", persist_error,
-                        workflow_id=task.workflow_id, task_id=task.id,
+                        "failure.create",
+                        persist_error,
+                        workflow_id=task.workflow_id,
+                        task_id=task.id,
                     )
                 self.state.update_task(task)
             raise
@@ -1271,14 +1426,17 @@ class WorkflowEngine:
                     self.record_failure(
                         task,
                         FailureClassifier.classify(source=FailureSource.SYSTEM, cancelled=True),
-                        evidence=task.result, primary_error="Task was cancelled.",
+                        evidence=task.result,
+                        primary_error="Task was cancelled.",
                     )
                 except Exception as persist_error:
                     # A8: a lost failure row must stay visible even while
                     # the cancellation outcome itself is being recorded.
                     self.degradation.record(
-                        "failure.create", persist_error,
-                        workflow_id=task.workflow_id, task_id=task.id,
+                        "failure.create",
+                        persist_error,
+                        workflow_id=task.workflow_id,
+                        task_id=task.id,
                     )
                 self.state.update_task(task)
             raise
@@ -1290,15 +1448,21 @@ class WorkflowEngine:
                 self.record_failure(
                     task,
                     FailureClassifier.classify(source=FailureSource.SYSTEM, error=str(error)),
-                    evidence=task.result, primary_error=str(error),
+                    evidence=task.result,
+                    primary_error=str(error),
                 )
             except Exception as persist_error:
                 self.degradation.record(
-                    "failure.create", persist_error,
-                    workflow_id=task.workflow_id, task_id=task.id,
+                    "failure.create",
+                    persist_error,
+                    workflow_id=task.workflow_id,
+                    task_id=task.id,
                 )
-        if (task.status is TaskStatus.FAILED and task.attempts < task.max_attempts
-                and not verdict_rejected):
+        if (
+            task.status is TaskStatus.FAILED
+            and task.attempts < task.max_attempts
+            and not verdict_rejected
+        ):
             # Bounded retry: consult the deterministic policy (attempt budget
             # enforced by max_attempts) and back off, respecting cancellation.
             # Every retry creates a distinct AgentRun linked to its parent via
@@ -1392,19 +1556,25 @@ class WorkflowEngine:
         failure = None
         try:
             failure = self.record_failure(
-                task, classification, agent_run_id=run_id,
+                task,
+                classification,
+                agent_run_id=run_id,
                 verification_run_id=task.verification_run_id,
-                evidence=task.result, primary_error=task.result,
+                evidence=task.result,
+                primary_error=task.result,
                 structured_evidence=evidence,
             )
         except Exception as persist_error:
             self.degradation.record(
-                "failure.create", persist_error,
-                workflow_id=task.workflow_id, task_id=task.id,
+                "failure.create",
+                persist_error,
+                workflow_id=task.workflow_id,
+                task_id=task.id,
             )
         if classification.category is FailureCategory.USAGE_LIMIT:
             self._record_usage_limit_cooldown(
-                task, failure, f"{task.result or ''}\n{redact_text(stderr)[-500:]}")
+                task, failure, f"{task.result or ''}\n{redact_text(stderr)[-500:]}"
+            )
 
     def _usage_limit_kwargs(self, task: Task) -> dict[str, object]:
         """Classifier opt-in: patterns only when ``usage_limits`` is configured."""
@@ -1428,20 +1598,25 @@ class WorkflowEngine:
         )
         classification = FailureClassifier.classify(
             source=FailureSource.VERIFICATION,
-            error=task.result, role=task.role,
+            error=task.result,
+            role=task.role,
             evidence=evidence,
         )
         try:
             self.record_failure(
-                task, classification,
+                task,
+                classification,
                 verification_run_id=task.verification_run_id,
-                evidence=task.result, primary_error="Legacy verification commands failed.",
+                evidence=task.result,
+                primary_error="Legacy verification commands failed.",
                 structured_evidence=evidence,
             )
         except Exception as persist_error:
             self.degradation.record(
-                "failure.create", persist_error,
-                workflow_id=task.workflow_id, task_id=task.id,
+                "failure.create",
+                persist_error,
+                workflow_id=task.workflow_id,
+                task_id=task.id,
             )
 
     @staticmethod
@@ -1453,7 +1628,8 @@ class WorkflowEngine:
 
     def _record_verification_failure(self, task: Task, report) -> None:
         failing = [
-            check for check in getattr(report, "checks", ()) or ()
+            check
+            for check in getattr(report, "checks", ()) or ()
             if self._check_attribute(check, "status") is None
             or getattr(self._check_attribute(check, "status"), "value", None) != "passed"
         ]
@@ -1484,21 +1660,30 @@ class WorkflowEngine:
         )
         classification = FailureClassifier.classify(
             source=FailureSource.VERIFICATION,
-            error=task.result, check_class=check_class, role=task.role,
+            error=task.result,
+            check_class=check_class,
+            role=task.role,
             evidence=evidence,
         )
         try:
             verification_run_id = self._check_attribute(report, "run_id")
             self.record_failure(
-                task, classification, agent_run_id=run_id,
-                verification_run_id=verification_run_id if isinstance(verification_run_id, str) else None,
-                evidence=task.result, primary_error="Verification report did not pass.",
+                task,
+                classification,
+                agent_run_id=run_id,
+                verification_run_id=verification_run_id
+                if isinstance(verification_run_id, str)
+                else None,
+                evidence=task.result,
+                primary_error="Verification report did not pass.",
                 structured_evidence=evidence,
             )
         except Exception as persist_error:
             self.degradation.record(
-                "failure.create", persist_error,
-                workflow_id=task.workflow_id, task_id=task.id,
+                "failure.create",
+                persist_error,
+                workflow_id=task.workflow_id,
+                task_id=task.id,
             )
 
     def _verification_source_run(self, task: Task) -> str | None:
@@ -1523,10 +1708,11 @@ class WorkflowEngine:
         definition used by READY gating everywhere (Track A1).
         """
         return [
-            task for task in self.state.list_tasks(workflow_id)
-            if task.role == "verification" and task.verified and (
-                task.verification_run_id or (task.result or "").strip()
-            )
+            task
+            for task in self.state.list_tasks(workflow_id)
+            if task.role == "verification"
+            and task.verified
+            and (task.verification_run_id or (task.result or "").strip())
         ]
 
     def workflow_readiness(
@@ -1544,7 +1730,8 @@ class WorkflowEngine:
         flow.
         """
         return assess_workflow_readiness(
-            self.state.list_tasks(workflow_id), workflow_id,
+            self.state.list_tasks(workflow_id),
+            workflow_id,
             verification_task_id=verification_task_id,
             review_task_id=review_task_id,
         )
@@ -1572,7 +1759,9 @@ class WorkflowEngine:
                 if candidates:
                     parent = max(candidates, key=lambda run: (run.created_at, run.id))
                     return AgentRunRelationship.REPAIR, parent.id
-                parent = self.state.latest_agent_run(task.workflow_id, statuses=(AgentRunStatus.FAILED,))
+                parent = self.state.latest_agent_run(
+                    task.workflow_id, statuses=(AgentRunStatus.FAILED,)
+                )
                 return AgentRunRelationship.REPAIR, parent.id if parent is not None else None
             if task.attempts > 1:
                 parent = self.state.latest_agent_run(task.workflow_id, task.id)
@@ -1678,9 +1867,11 @@ class WorkflowEngine:
             except Exception:
                 metadata = AgentRunMetadata()
             status = (
-                AgentRunStatus.TIMED_OUT if result.timed_out else
-                AgentRunStatus.COMPLETED if result.succeeded else
-                AgentRunStatus.FAILED
+                AgentRunStatus.TIMED_OUT
+                if result.timed_out
+                else AgentRunStatus.COMPLETED
+                if result.succeeded
+                else AgentRunStatus.FAILED
             )
             stdout = getattr(result, "stdout", "")
             created = observer.create_run(context)
@@ -1700,9 +1891,11 @@ class WorkflowEngine:
                     files_changed=metadata.files_changed,
                     diff_stat=metadata.diff_stat,
                     failure_classification=(
-                        None if status is AgentRunStatus.COMPLETED else
-                        "timeout" if status is AgentRunStatus.TIMED_OUT else
-                        "nonzero_exit"
+                        None
+                        if status is AgentRunStatus.COMPLETED
+                        else "timeout"
+                        if status is AgentRunStatus.TIMED_OUT
+                        else "nonzero_exit"
                     ),
                     structured_result=getattr(result, "structured_result", None)
                     or _safe_workflow_structured(stdout),
@@ -1731,7 +1924,11 @@ class WorkflowEngine:
             self._note_run_degradation(error, run_id=run_id, context=context)
 
     def _record_failed_run(
-        self, observer: AgentRunObserver, context: AgentRunContext, error: BaseException, classification: str
+        self,
+        observer: AgentRunObserver,
+        context: AgentRunContext,
+        error: BaseException,
+        classification: str,
     ) -> None:
         run_id: str | None = None
         try:
@@ -1787,8 +1984,12 @@ class WorkflowEngine:
             call_kwargs["run_observer"] = recorder
             try:
                 result = await self.runner.run_agent(
-                    agent, prompt, working_directory, task.id,
-                    cancel_event=cancel_event, **call_kwargs,  # type: ignore[arg-type]
+                    agent,
+                    prompt,
+                    working_directory,
+                    task.id,
+                    cancel_event=cancel_event,
+                    **call_kwargs,  # type: ignore[arg-type]
                 )
             except OperationCancelled:
                 if recorder.created_run_id is None:
@@ -1804,8 +2005,12 @@ class WorkflowEngine:
             return result
         if "run_observer" in supported:
             return await self.runner.run_agent(
-                agent, prompt, working_directory, task.id,
-                cancel_event=cancel_event, **call_kwargs,  # type: ignore[arg-type]
+                agent,
+                prompt,
+                working_directory,
+                task.id,
+                cancel_event=cancel_event,
+                **call_kwargs,  # type: ignore[arg-type]
             )
         run_id: str | None = None
         started = monotonic()
@@ -1816,13 +2021,16 @@ class WorkflowEngine:
                 observer.mark_starting(run_id)
                 observer.mark_running(run_id)
             except Exception as error:
-                self._note_run_degradation(
-                    error, run_id=run_id, context=context)
+                self._note_run_degradation(error, run_id=run_id, context=context)
                 run_id = None
         try:
             result = await self.runner.run_agent(
-                agent, prompt, working_directory, task.id,
-                cancel_event=cancel_event, **call_kwargs,  # type: ignore[arg-type]
+                agent,
+                prompt,
+                working_directory,
+                task.id,
+                cancel_event=cancel_event,
+                **call_kwargs,  # type: ignore[arg-type]
             )
         except OperationCancelled:
             if observer is not None and run_id is not None:
@@ -1837,16 +2045,14 @@ class WorkflowEngine:
                         ),
                     )
                 except Exception as error:
-                    self._note_run_degradation(
-                        error, run_id=run_id, context=context)
+                    self._note_run_degradation(error, run_id=run_id, context=context)
             raise
         except Exception as error:
             if observer is not None and run_id is not None:
                 try:
                     observer.fail_run(run_id, error, "process_error")
                 except Exception as persist_error:
-                    self._note_run_degradation(
-                        persist_error, run_id=run_id, context=context)
+                    self._note_run_degradation(persist_error, run_id=run_id, context=context)
             raise
         if observer is not None and run_id is not None:
             try:
@@ -1856,9 +2062,11 @@ class WorkflowEngine:
                 except Exception:
                     pass
                 status = (
-                    AgentRunStatus.TIMED_OUT if result.timed_out else
-                    AgentRunStatus.COMPLETED if result.succeeded else
-                    AgentRunStatus.FAILED
+                    AgentRunStatus.TIMED_OUT
+                    if result.timed_out
+                    else AgentRunStatus.COMPLETED
+                    if result.succeeded
+                    else AgentRunStatus.FAILED
                 )
                 observer.finish_run(
                     run_id,
@@ -1874,14 +2082,15 @@ class WorkflowEngine:
                         log_path=str(result.log_path),
                         files_changed=metadata.files_changed,
                         diff_stat=metadata.diff_stat,
-                        failure_classification=None if status is AgentRunStatus.COMPLETED else "nonzero_exit",
+                        failure_classification=None
+                        if status is AgentRunStatus.COMPLETED
+                        else "nonzero_exit",
                         structured_result=getattr(result, "structured_result", None)
                         or _safe_workflow_structured(result.stdout),
                     ),
                 )
             except Exception as persist_error:
-                self._note_run_degradation(
-                    persist_error, run_id=run_id, context=context)
+                self._note_run_degradation(persist_error, run_id=run_id, context=context)
         return result
 
     def _dependency_handoff(self, task: Task) -> str:
@@ -1956,9 +2165,10 @@ class WorkflowEngine:
             try:
                 findings, completed = _local_security_scan(working_directory)
                 scan_report = (
-                    findings_for_prompt(findings) if completed
+                    findings_for_prompt(findings)
+                    if completed
                     else "Local secret scan: unavailable (the scan did not "
-                         "complete; no prescan findings either way)."
+                    "complete; no prescan findings either way)."
                 )
             except Exception:
                 scan_report = "Local secret scan: unavailable."
@@ -1976,7 +2186,7 @@ class WorkflowEngine:
                 "MUST be one valid JSON object using this schema: "
                 '{"schema_version": 1, "verdict": "approve", "blocking": [], '
                 '"non_blocking": [], "confidence": 0.9}. '
-                "Use verdict=\"reject\" if any blocking issue remains or you cannot approve safely. "
+                'Use verdict="reject" if any blocking issue remains or you cannot approve safely. '
                 "Both finding fields must be arrays of strings; include every field. Approve only with "
                 "an empty blocking array. Do not put any other JSON object after the verdict, and do not "
                 "write anything after its final line."
@@ -1987,7 +2197,7 @@ class WorkflowEngine:
                 "MUST be one valid JSON object using this schema: "
                 '{"schema_version": 1, "verdict": "approve", "blocking": [], '
                 '"non_blocking": [], "confidence": 0.9}. '
-                "Use verdict=\"reject\" if any blocking issue remains or you cannot approve safely. "
+                'Use verdict="reject" if any blocking issue remains or you cannot approve safely. '
                 "Both finding fields must be arrays of strings; include every field. Approve only with "
                 "an empty blocking array. Do not put any other JSON object after the verdict, and do not "
                 "write anything after its final line."
@@ -2057,29 +2267,43 @@ class WorkflowEngine:
             if not _requires_review_verdict(task.role):
                 return
             if verdict is None:
-                payload: dict[str, object] = {"verdict": "missing", "approved": False,
-                                             "blocking": [], "non_blocking": []}
+                payload: dict[str, object] = {
+                    "verdict": "missing",
+                    "approved": False,
+                    "blocking": [],
+                    "non_blocking": [],
+                }
                 severity = EventSeverity.WARNING
             else:
-                payload = {"verdict": verdict.verdict, "approved": verdict.is_approved,
-                           "blocking": [redact_text(item)[:500] for item in verdict.blocking],
-                           "non_blocking": [redact_text(item)[:500] for item in verdict.non_blocking]}
+                payload = {
+                    "verdict": verdict.verdict,
+                    "approved": verdict.is_approved,
+                    "blocking": [redact_text(item)[:500] for item in verdict.blocking],
+                    "non_blocking": [redact_text(item)[:500] for item in verdict.non_blocking],
+                }
                 severity = EventSeverity.INFO if verdict.is_approved else EventSeverity.WARNING
-            self.state.record_typed_event(Event(
-                workflow_id=task.workflow_id, task_id=task.id,
-                type=EventType.REVIEW_COMPLETED, severity=severity,
-                message=f"{task.role} verdict: {payload['verdict']}",
-                payload=_scrub_structured(payload),
-            ))
+            self.state.record_typed_event(
+                Event(
+                    workflow_id=task.workflow_id,
+                    task_id=task.id,
+                    type=EventType.REVIEW_COMPLETED,
+                    severity=severity,
+                    message=f"{task.role} verdict: {payload['verdict']}",
+                    payload=_scrub_structured(payload),
+                )
+            )
         except Exception as error:
             self.degradation.record(
-                "event.review_verdict", error,
+                "event.review_verdict",
+                error,
                 workflow_id=getattr(task, "workflow_id", None),
                 task_id=getattr(task, "id", None),
             )
 
     def _security_prescan_reason(
-        self, task: Task, working_directory: str | Path,
+        self,
+        task: Task,
+        working_directory: str | Path,
     ) -> str | None:
         """Fail-closed secret screen for the security role.
 
@@ -2100,14 +2324,19 @@ class WorkflowEngine:
             completed = False
         if not completed:
             try:
-                self.state.record_typed_event(Event(
-                    workflow_id=task.workflow_id, task_id=task.id,
-                    type=EventType.NOTE, severity=EventSeverity.WARNING,
-                    message="local secret prescan did not complete; the "
-                            "security agent reviews without prescan findings",
-                    payload=_scrub_structured({"role": task.role,
-                                               "reason": "prescan_unavailable"}),
-                ))
+                self.state.record_typed_event(
+                    Event(
+                        workflow_id=task.workflow_id,
+                        task_id=task.id,
+                        type=EventType.NOTE,
+                        severity=EventSeverity.WARNING,
+                        message="local secret prescan did not complete; the "
+                        "security agent reviews without prescan findings",
+                        payload=_scrub_structured(
+                            {"role": task.role, "reason": "prescan_unavailable"}
+                        ),
+                    )
+                )
             except Exception:
                 pass
         if not findings:
@@ -2147,11 +2376,15 @@ class WorkflowEngine:
         try:
             if not getattr(self.config, "security_review", False):
                 return None
-            security = self.state.add_task(Task(
-                f"Security-review the repaired change for: {description}",
-                "security", workflow_id,
-                dependencies=(review_id, implementation_id),
-                max_attempts=self.config.max_attempts))
+            security = self.state.add_task(
+                Task(
+                    f"Security-review the repaired change for: {description}",
+                    "security",
+                    workflow_id,
+                    dependencies=(review_id, implementation_id),
+                    max_attempts=self.config.max_attempts,
+                )
+            )
         except Exception:
             return None
         await self.execute(workflow_id, working_directory, cancel_event)
@@ -2184,7 +2417,8 @@ class WorkflowEngine:
             # review never ran, so repairing would invent a defect -- the
             # review-side twin of the UNVERIFIED rule in `run_high_level`.
             return WorkflowResult(
-                workflow_id, False,
+                workflow_id,
+                False,
                 f"Review was {review.status.value}; no review failure was "
                 f"demonstrated, so no repair was attempted.",
             )
@@ -2195,17 +2429,33 @@ class WorkflowEngine:
             max_rounds = 2
         review_context = self._review_failure_context(review)
         for _ in range(max_rounds):
-            repair = self.state.add_task(Task(
-                "Repair the review findings.\n" + review_context,
-                "debugging", workflow_id, dependencies=(implementation_id,),
-                max_attempts=self.config.max_attempts))
-            reverify = self.state.add_task(Task(
-                "Re-run configured project verification commands after a review repair.",
-                "verification", workflow_id, dependencies=(repair.id,), max_attempts=1))
-            re_review = self.state.add_task(Task(
-                f"Re-review the repaired change for: {description}",
-                "review", workflow_id, dependencies=(reverify.id, implementation_id),
-                max_attempts=self.config.max_attempts))
+            repair = self.state.add_task(
+                Task(
+                    "Repair the review findings.\n" + review_context,
+                    "debugging",
+                    workflow_id,
+                    dependencies=(implementation_id,),
+                    max_attempts=self.config.max_attempts,
+                )
+            )
+            reverify = self.state.add_task(
+                Task(
+                    "Re-run configured project verification commands after a review repair.",
+                    "verification",
+                    workflow_id,
+                    dependencies=(repair.id,),
+                    max_attempts=1,
+                )
+            )
+            re_review = self.state.add_task(
+                Task(
+                    f"Re-review the repaired change for: {description}",
+                    "review",
+                    workflow_id,
+                    dependencies=(reverify.id, implementation_id),
+                    max_attempts=self.config.max_attempts,
+                )
+            )
             await self.execute(workflow_id, working_directory, cancel_event)
             verification = self.state.get_task(reverify.id)
             review = self.state.get_task(re_review.id)
@@ -2215,35 +2465,43 @@ class WorkflowEngine:
                 # the rejection this cycle was opened for, and re-sending the
                 # same findings would not address it.
                 return WorkflowResult(
-                    workflow_id, False,
+                    workflow_id,
+                    False,
                     f"Verification was {verification.status.value} after the "
                     f"review repair; the repaired change does not verify.",
                 )
             if review.status is TaskStatus.PASSED:
                 if getattr(self.config, "security_review", False):
                     security = await self._gate_repair_security(
-                        workflow_id, description, working_directory, cancel_event,
-                        implementation_id, review.id,
+                        workflow_id,
+                        description,
+                        working_directory,
+                        cancel_event,
+                        implementation_id,
+                        review.id,
                     )
                     # An enabled gate must never read as a disabled one: None
                     # here means the security task could not be created or
                     # read, which is a failure, not a waiver.
                     if security is None or security.status is not TaskStatus.PASSED:
-                        shown = (security.status.value if security is not None
-                                 else "unavailable")
+                        shown = security.status.value if security is not None else "unavailable"
                         return WorkflowResult(
-                            workflow_id, False,
+                            workflow_id,
+                            False,
                             f"Security review was {shown} after repair; "
                             "the repaired change is not ready.",
                         )
                 ready = assert_tasks_ready(
-                    self.state.list_tasks(workflow_id), workflow_id,
-                    verification_task_id=verification.id, review_task_id=review.id,
+                    self.state.list_tasks(workflow_id),
+                    workflow_id,
+                    verification_task_id=verification.id,
+                    review_task_id=review.id,
                 )
                 return WorkflowResult(workflow_id, True, ready.summary())
             if review.status is not TaskStatus.FAILED:
                 return WorkflowResult(
-                    workflow_id, False,
+                    workflow_id,
+                    False,
                     f"Review was {review.status.value} after repair; no further "
                     f"review failure was demonstrated.",
                 )
@@ -2254,8 +2512,10 @@ class WorkflowEngine:
         if blocked:
             suffix += f" Blocking findings: {redact_text(blocked)[:1000]}"
         return WorkflowResult(
-            workflow_id, False,
-            f"Review did not pass after {max_rounds} review round(s); the workflow is BLOCKED." + suffix,
+            workflow_id,
+            False,
+            f"Review did not pass after {max_rounds} review round(s); the workflow is BLOCKED."
+            + suffix,
         )
 
     async def run_high_level(
@@ -2274,26 +2534,35 @@ class WorkflowEngine:
                     security = self.state.get_task(tasks[4].id)
                     if security.status is not TaskStatus.PASSED:
                         return WorkflowResult(
-                            workflow_id, False,
+                            workflow_id,
+                            False,
                             f"Security review was {security.status.value}; "
                             "the change is not ready.",
                         )
                 # One authoritative READY rule: verification + review + evidence.
                 ready = assert_tasks_ready(
-                    self.state.list_tasks(workflow_id), workflow_id,
-                    verification_task_id=verification.id, review_task_id=review.id,
+                    self.state.list_tasks(workflow_id),
+                    workflow_id,
+                    verification_task_id=verification.id,
+                    review_task_id=review.id,
                 )
                 return WorkflowResult(workflow_id, True, ready.summary())
             # Verification passed and the review rejected the change: a
             # demonstrated defect, so the same bounded repair policy that
             # covers a failed verification applies here.
             return await self._repair_failed_review(
-                workflow_id, description, working_directory, cancel_event,
-                tasks[1].id, review,
+                workflow_id,
+                description,
+                working_directory,
+                cancel_event,
+                tasks[1].id,
+                review,
             )
         implementation = self.state.get_task(tasks[1].id)
         if implementation.status is not TaskStatus.PASSED:
-            return WorkflowResult(workflow_id, False, "Implementation did not pass; verification was not run.")
+            return WorkflowResult(
+                workflow_id, False, "Implementation did not pass; verification was not run."
+            )
         if verification.status is not TaskStatus.FAILED:
             # A repair cycle is warranted only by a DEMONSTRATED verification
             # failure. BLOCKED means verification could not obtain applicable
@@ -2305,18 +2574,39 @@ class WorkflowEngine:
             # review to gate. An operator needs applicable verification, not a
             # repair loop against an absent signal.
             return WorkflowResult(
-                workflow_id, False,
+                workflow_id,
+                False,
                 f"Verification was {verification.status.value}; no verification "
                 f"failure was demonstrated, so no repair was attempted.",
             )
         for _ in range(self.config.max_repair_cycles):
-            repair = self.state.add_task(Task("Repair the configured verification failure.\n" + (verification.result or ""),
-                                              "debugging", workflow_id, dependencies=(implementation.id,),
-                                              max_attempts=self.config.max_attempts))
-            reverify = self.state.add_task(Task("Re-run configured project verification commands.", "verification", workflow_id,
-                                                dependencies=(repair.id,), max_attempts=1))
-            final_review = self.state.add_task(Task(f"Review repaired change for: {description}", "review", workflow_id,
-                                                    dependencies=(reverify.id,), max_attempts=self.config.max_attempts))
+            repair = self.state.add_task(
+                Task(
+                    "Repair the configured verification failure.\n" + (verification.result or ""),
+                    "debugging",
+                    workflow_id,
+                    dependencies=(implementation.id,),
+                    max_attempts=self.config.max_attempts,
+                )
+            )
+            reverify = self.state.add_task(
+                Task(
+                    "Re-run configured project verification commands.",
+                    "verification",
+                    workflow_id,
+                    dependencies=(repair.id,),
+                    max_attempts=1,
+                )
+            )
+            final_review = self.state.add_task(
+                Task(
+                    f"Review repaired change for: {description}",
+                    "review",
+                    workflow_id,
+                    dependencies=(reverify.id,),
+                    max_attempts=self.config.max_attempts,
+                )
+            )
             await self.execute(workflow_id, working_directory, cancel_event)
             verification = self.state.get_task(reverify.id)
             final_review = self.state.get_task(final_review.id)
@@ -2324,22 +2614,28 @@ class WorkflowEngine:
                 if final_review.status is TaskStatus.PASSED:
                     if getattr(self.config, "security_review", False):
                         security = await self._gate_repair_security(
-                            workflow_id, description, working_directory,
-                            cancel_event, implementation.id, final_review.id,
+                            workflow_id,
+                            description,
+                            working_directory,
+                            cancel_event,
+                            implementation.id,
+                            final_review.id,
                         )
                         # An enabled gate must never read as a disabled one:
                         # None means the security task could not be created or
                         # read, which is a failure, not a waiver.
                         if security is None or security.status is not TaskStatus.PASSED:
                             return WorkflowResult(
-                                workflow_id, False,
+                                workflow_id,
+                                False,
                                 "Repair or review did not pass; the security "
                                 "review could not be completed.",
                             )
                     # One authoritative READY rule, scoped to this repair cycle's
                     # verification/review pair.
                     ready = assert_tasks_ready(
-                        self.state.list_tasks(workflow_id), workflow_id,
+                        self.state.list_tasks(workflow_id),
+                        workflow_id,
                         verification_task_id=verification.id,
                         review_task_id=final_review.id,
                     )

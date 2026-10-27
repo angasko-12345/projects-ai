@@ -11,16 +11,15 @@ from .listdetail import ListDetailView
 
 _COLUMNS = (
     TableColumn("id", "Task", 90, format=lambda value: short_id(value, 8)),
-    TableColumn("description", "Description", 260,
-                format=lambda value: elide(str(value or ""), 64)),
+    TableColumn(
+        "description", "Description", 260, format=lambda value: elide(str(value or ""), 64)
+    ),
     TableColumn("role", "Role", 130),
     TableColumn("status", "Status", 110),
     TableColumn("assigned_agent", "Agent", 140),
     TableColumn("attempts", "Attempts", 90),
-    TableColumn("verified", "Verified", 80,
-                format=lambda value: "yes" if value else "no"),
-    TableColumn("result", "Result", 180,
-                format=lambda value: elide(str(value or ""), 40)),
+    TableColumn("verified", "Verified", 80, format=lambda value: "yes" if value else "no"),
+    TableColumn("result", "Result", 180, format=lambda value: elide(str(value or ""), 40)),
     TableColumn("created_at", "Created", 150, format=format_timestamp),
     TableColumn("updated_at", "Updated", 150, format=format_timestamp),
     TableColumn("workflow_id", "Workflow", 90, format=lambda value: short_id(value, 8)),
@@ -87,9 +86,11 @@ class TasksView(ListDetailView):
         self._table.set_column_filter("status", self._status.currentData() or "")
 
     # -- mutations ------------------------------------------------------
-    def _mutate(self, key: str, work, success: str, failure: str,
-                clear_selection: bool = False) -> None:
+    def _mutate(
+        self, key: str, work, success: str, failure: str, clear_selection: bool = False
+    ) -> None:
         """Run a task mutation off-thread; refresh on success, toast either way."""
+
         def done(result: object) -> None:
             detail = ""
             if isinstance(result, dict):
@@ -100,7 +101,9 @@ class TasksView(ListDetailView):
             self.refresh()
 
         self.submit(
-            key, work, done,
+            key,
+            work,
+            done,
             lambda message: self.ctx.toast(failure, message, "error"),
         )
 
@@ -110,27 +113,35 @@ class TasksView(ListDetailView):
             return
         task_id = str(row.get("id") or "")
         text, accepted = QInputDialog.getText(
-            self, "Rename task", "Description:",
-            text=str(row.get("description") or ""))
+            self, "Rename task", "Description:", text=str(row.get("description") or "")
+        )
         if not accepted:
             return
         repository = self.repository()
         self._mutate(
             "rename-task",
             lambda: self.ctx.controller.rename_task(repository, task_id, text),
-            "Task renamed", "Rename failed",
+            "Task renamed",
+            "Rename failed",
         )
 
     def _recategorize_selected(self) -> None:
         row = self._table.selected_row()
         if not row:
             return
-        roles = list(getattr(self.ctx.controller, "TASK_ROLES",
-                             ("architecture", "implementation", "verification",
-                              "review", "debugging")))
+        roles = list(
+            getattr(
+                self.ctx.controller,
+                "TASK_ROLES",
+                ("architecture", "implementation", "verification", "review", "debugging"),
+            )
+        )
         current = str(row.get("role") or "")
         role, accepted = QInputDialog.getItem(
-            self, "Change category", "Role:", roles,
+            self,
+            "Change category",
+            "Role:",
+            roles,
             current=roles.index(current) if current in roles else 0,
             editable=False,
         )
@@ -141,7 +152,8 @@ class TasksView(ListDetailView):
         self._mutate(
             "recategorize-task",
             lambda: self.ctx.controller.recategorize_task(repository, task_id, role),
-            "Task recategorized", "Recategorize failed",
+            "Task recategorized",
+            "Recategorize failed",
         )
 
     def _delete_selected(self) -> None:
@@ -150,7 +162,8 @@ class TasksView(ListDetailView):
             return
         task_id = str(row.get("id") or "")
         answer = QMessageBox.question(
-            self, "Delete task",
+            self,
+            "Delete task",
             f"Delete this task?\n\n{elide(row.get('description'), 80)}\n\n"
             "Recorded runs keep their history.",
         )
@@ -160,6 +173,7 @@ class TasksView(ListDetailView):
         self._mutate(
             "delete-task",
             lambda: self.ctx.controller.delete_task(repository, task_id),
-            "Task deleted", "Delete failed",
+            "Task deleted",
+            "Delete failed",
             clear_selection=True,
         )

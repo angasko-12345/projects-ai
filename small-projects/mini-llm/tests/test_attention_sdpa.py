@@ -47,8 +47,9 @@ def reference_attention(attn: MultiHeadAttention, x: torch.Tensor) -> torch.Tens
     return attn.drop(attn.proj(out))
 
 
-def make_attention(d_model: int = 16, n_heads: int = 2, dropout: float = 0.0,
-                   seed: int = 0) -> MultiHeadAttention:
+def make_attention(
+    d_model: int = 16, n_heads: int = 2, dropout: float = 0.0, seed: int = 0
+) -> MultiHeadAttention:
     torch.manual_seed(seed)
     attn = MultiHeadAttention(d_model, n_heads, dropout)
     attn.eval()
@@ -63,8 +64,10 @@ class TestMatchesManualAttention(unittest.TestCase):
         with torch.no_grad():
             got = head(x)
             want = reference_head(head, x)
-        self.assertTrue(torch.allclose(got, want, atol=ATOL, rtol=RTOL),
-                        f"max abs diff {(got - want).abs().max().item():.3e}")
+        self.assertTrue(
+            torch.allclose(got, want, atol=ATOL, rtol=RTOL),
+            f"max abs diff {(got - want).abs().max().item():.3e}",
+        )
 
     def test_multi_head_matches_reference(self):
         attn = make_attention(d_model=32, n_heads=4)
@@ -73,8 +76,10 @@ class TestMatchesManualAttention(unittest.TestCase):
             got = attn(x)
             want = reference_attention(attn, x)
         self.assertEqual(got.shape, (2, 16, 32))
-        self.assertTrue(torch.allclose(got, want, atol=ATOL, rtol=RTOL),
-                        f"max abs diff {(got - want).abs().max().item():.3e}")
+        self.assertTrue(
+            torch.allclose(got, want, atol=ATOL, rtol=RTOL),
+            f"max abs diff {(got - want).abs().max().item():.3e}",
+        )
 
     def test_matches_reference_for_several_shapes_and_dtypes_contexts(self):
         for d_model, n_heads, t, b in ((16, 2, 1, 1), (48, 6, 8, 2), (24, 3, 20, 3)):
@@ -89,14 +94,14 @@ class TestMatchesManualAttention(unittest.TestCase):
     def test_sdpa_is_the_code_path(self):
         attn = make_attention()
         x = torch.randn(2, 8, 16)
-        with mock.patch("src.model.F.scaled_dot_product_attention",
-                        wraps=F.scaled_dot_product_attention) as sdpa:
+        with mock.patch(
+            "src.model.F.scaled_dot_product_attention", wraps=F.scaled_dot_product_attention
+        ) as sdpa:
             with torch.no_grad():
                 attn(x)
         self.assertTrue(sdpa.called, "attention no longer goes through SDPA")
         for call in sdpa.call_args_list:
-            self.assertTrue(call.kwargs.get("is_causal"),
-                            "SDPA must be called with a causal mask")
+            self.assertTrue(call.kwargs.get("is_causal"), "SDPA must be called with a causal mask")
 
 
 class TestCausalMasking(unittest.TestCase):
@@ -153,14 +158,14 @@ class TestDropoutAndModes(unittest.TestCase):
         torch.manual_seed(0)
         b = head(x)
         self.assertTrue(torch.equal(a, b), "same seed must give the same dropout")
-        self.assertFalse(torch.allclose(a, eval_out),
-                         "training dropout should perturb the output")
+        self.assertFalse(torch.allclose(a, eval_out), "training dropout should perturb the output")
 
     def test_eval_mode_passes_zero_dropout_to_sdpa(self):
         attn = make_attention(dropout=0.5)
         x = torch.randn(2, 8, 16)
-        with mock.patch("src.model.F.scaled_dot_product_attention",
-                        wraps=F.scaled_dot_product_attention) as sdpa:
+        with mock.patch(
+            "src.model.F.scaled_dot_product_attention", wraps=F.scaled_dot_product_attention
+        ) as sdpa:
             with torch.no_grad():
                 attn(x)
         self.assertEqual(sdpa.call_args.kwargs["dropout_p"], 0.0)
@@ -196,8 +201,7 @@ class TestCheckpointCompatibility(unittest.TestCase):
         return keys
 
     def cfg(self) -> Config:
-        return Config(vocab_size=32, context_length=8, n_layers=1, n_heads=2,
-                      d_model=16, d_ff=32)
+        return Config(vocab_size=32, context_length=8, n_layers=1, n_heads=2, d_model=16, d_ff=32)
 
     def test_parameter_names_are_unchanged(self):
         model = from_config(self.cfg())
@@ -226,8 +230,7 @@ class TestCheckpointCompatibility(unittest.TestCase):
             load_checkpoint(path, fresh)
             for name in self.expected_attention_keys():
                 with self.subTest(param=name):
-                    self.assertTrue(torch.equal(model.state_dict()[name],
-                                                fresh.state_dict()[name]))
+                    self.assertTrue(torch.equal(model.state_dict()[name], fresh.state_dict()[name]))
 
 
 if __name__ == "__main__":

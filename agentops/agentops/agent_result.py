@@ -79,7 +79,9 @@ class AgentResult:
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
-        data["status"] = self.status.value if isinstance(self.status, AgentResultStatus) else str(self.status)
+        data["status"] = (
+            self.status.value if isinstance(self.status, AgentResultStatus) else str(self.status)
+        )
         data["files_changed"] = list(self.files_changed)
         data["verification_results"] = list(self.verification_results)
         data["review_findings"] = list(self.review_findings)
@@ -100,6 +102,7 @@ class ParsedAgentResult:
 # ---------------------------------------------------------------------------
 # Coercion helpers (tolerant, never raise)
 # ---------------------------------------------------------------------------
+
 
 def _coerce_status(value: object) -> AgentResultStatus:
     if isinstance(value, AgentResultStatus):
@@ -258,12 +261,14 @@ def agent_result_from_dict(data: dict[str, Any]) -> tuple[AgentResult, tuple[str
     try:
         version = payload.get("schema_version", RESULT_SCHEMA_VERSION)
     except Exception:
-        warnings.append("unreadable schema_version; defaulting to " f"{RESULT_SCHEMA_VERSION}")
+        warnings.append(f"unreadable schema_version; defaulting to {RESULT_SCHEMA_VERSION}")
         version = RESULT_SCHEMA_VERSION
     try:
         version_int = int(version)  # type: ignore[arg-type]
     except (TypeError, ValueError):
-        warnings.append(f"invalid schema_version {_safe_repr(version)}; defaulting to {RESULT_SCHEMA_VERSION}")
+        warnings.append(
+            f"invalid schema_version {_safe_repr(version)}; defaulting to {RESULT_SCHEMA_VERSION}"
+        )
         version_int = RESULT_SCHEMA_VERSION
     if version_int not in SUPPORTED_SCHEMA_VERSIONS:
         warnings.append(
@@ -279,7 +284,11 @@ def agent_result_from_dict(data: dict[str, Any]) -> tuple[AgentResult, tuple[str
         status_raw = payload.get("status")
     except Exception:
         status_raw = None
-    if "status" in payload and status is AgentResultStatus.UNKNOWN and status_raw not in (None, "unknown"):
+    if (
+        "status" in payload
+        and status is AgentResultStatus.UNKNOWN
+        and status_raw not in (None, "unknown")
+    ):
         warnings.append(f"unrecognized status {_safe_repr(status_raw)}; coerced to unknown")
     try:
         result = AgentResult(
@@ -292,12 +301,12 @@ def agent_result_from_dict(data: dict[str, Any]) -> tuple[AgentResult, tuple[str
             tests_failed=_coerce_int(_safe_get(payload, "tests_failed")),
             verification_results=_coerce_dict_list(_safe_get(payload, "verification_results")),
             review_findings=_coerce_dict_list(_safe_get(payload, "review_findings")),
-        requested_followup=_coerce_str(_safe_get(payload, "requested_followup")),
-        confidence=_coerce_confidence(_safe_get(payload, "confidence")),
-        errors=_coerce_str_list(_safe_get(payload, "errors")),
-        warnings=_coerce_str_list(_safe_get(payload, "warnings")),
-        metadata=_coerce_metadata(_safe_get(payload, "metadata")),
-    )
+            requested_followup=_coerce_str(_safe_get(payload, "requested_followup")),
+            confidence=_coerce_confidence(_safe_get(payload, "confidence")),
+            errors=_coerce_str_list(_safe_get(payload, "errors")),
+            warnings=_coerce_str_list(_safe_get(payload, "warnings")),
+            metadata=_coerce_metadata(_safe_get(payload, "metadata")),
+        )
     except Exception:
         return (
             AgentResult(status=AgentResultStatus.UNKNOWN, warnings=("payload coercion fallback",)),
@@ -366,10 +375,20 @@ def coerce_agent_result(value: object) -> AgentResult | None:
             # Old raw dicts carry no schema fields: keep their content visible
             # in metadata so the upgrade loses nothing.
             known = {
-                "schema_version", "status", "summary", "files_changed",
-                "tests_run", "tests_passed", "tests_failed",
-                "verification_results", "review_findings", "requested_followup",
-                "confidence", "errors", "warnings", "metadata",
+                "schema_version",
+                "status",
+                "summary",
+                "files_changed",
+                "tests_run",
+                "tests_passed",
+                "tests_failed",
+                "verification_results",
+                "review_findings",
+                "requested_followup",
+                "confidence",
+                "errors",
+                "warnings",
+                "metadata",
             }
             extra = {key: item for key, item in value.items() if key not in known}
             if extra and not result.metadata:
@@ -469,7 +488,9 @@ def _looks_like_truncated_json(stdout: str) -> bool:
             return False
         opens = text.count("{") + text.count("[")
         closes = text.count("}") + text.count("]")
-        return opens > closes and ("schema_version" in text or '"status"' in text or "'status'" in text)
+        return opens > closes and (
+            "schema_version" in text or '"status"' in text or "'status'" in text
+        )
     except Exception:
         return False
 
@@ -546,6 +567,7 @@ def parse_agent_result(stdout: object) -> ParsedAgentResult:
 # Five-way outcome distinction
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class ExecutionOutcome:
     """The five signals that must NOT be treated as equivalent."""
@@ -580,8 +602,14 @@ def evaluate_execution(
         else:
             normalized = None
         process_ok = _coerce_bool_signal(process_success)
-        agent_success = True if normalized is AgentResultStatus.SUCCESS else (
-            False if normalized in (AgentResultStatus.FAILURE, AgentResultStatus.PARTIAL) else None
+        agent_success = (
+            True
+            if normalized is AgentResultStatus.SUCCESS
+            else (
+                False
+                if normalized in (AgentResultStatus.FAILURE, AgentResultStatus.PARTIAL)
+                else None
+            )
         )
         # UNKNOWN / missing agent evidence is not success.
         if normalized is AgentResultStatus.UNKNOWN:

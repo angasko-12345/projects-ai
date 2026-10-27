@@ -41,13 +41,13 @@ def pe_subsystem(exe: Path) -> int | None:
     if len(data) < 0x40 or data[:2] != b"MZ":
         return None
     header = int.from_bytes(data[0x3C:0x40], "little")
-    if data[header:header + 4] != b"PE\0\0":
+    if data[header : header + 4] != b"PE\0\0":
         return None
     optional = header + 24
-    if int.from_bytes(data[optional:optional + 2], "little") not in (0x10B, 0x20B):
+    if int.from_bytes(data[optional : optional + 2], "little") not in (0x10B, 0x20B):
         return None
     return int.from_bytes(
-        data[optional + PE_SUBSYSTEM_OFFSET:optional + PE_SUBSYSTEM_OFFSET + 2], "little"
+        data[optional + PE_SUBSYSTEM_OFFSET : optional + PE_SUBSYSTEM_OFFSET + 2], "little"
     )
 
 
@@ -73,10 +73,15 @@ def build(skip_process_check: bool) -> int:
     print(f"Building {SPEC}")
     result = subprocess.run(
         [
-            sys.executable, "-m", "PyInstaller",
-            "--clean", "--noconfirm",
-            "--distpath", str(DIST),
-            "--workpath", str(BUILD),
+            sys.executable,
+            "-m",
+            "PyInstaller",
+            "--clean",
+            "--noconfirm",
+            "--distpath",
+            str(DIST),
+            "--workpath",
+            str(BUILD),
             str(SPEC),
         ],
         cwd=str(ROOT),
@@ -130,4 +135,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main())

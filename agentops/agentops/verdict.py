@@ -154,10 +154,14 @@ def _extract_candidate_objects(text: str) -> list[dict[str, Any]]:
     # malformed JSON response -- fenced or bare. The final review response is
     # the trust boundary, so malformed newer output must fail closed.
     boundaries = [
-        boundary for boundary in (
-            last_json_fence[0] if last_json_fence is not None and last_json_fence[1] is None else None,
+        boundary
+        for boundary in (
+            last_json_fence[0]
+            if last_json_fence is not None and last_json_fence[1] is None
+            else None,
             last_malformed_line if last_malformed_line >= 0 else None,
-        ) if boundary is not None
+        )
+        if boundary is not None
     ]
     if boundaries:
         boundary = max(boundaries)
@@ -210,9 +214,13 @@ def parse_verdict(stdout: str | None) -> Verdict | None:
     blocking_value = payload["blocking"]
     non_blocking_value = payload["non_blocking"]
     confidence_value = payload["confidence"]
-    if not isinstance(blocking_value, list) or any(not isinstance(item, str) for item in blocking_value):
+    if not isinstance(blocking_value, list) or any(
+        not isinstance(item, str) for item in blocking_value
+    ):
         return None
-    if not isinstance(non_blocking_value, list) or any(not isinstance(item, str) for item in non_blocking_value):
+    if not isinstance(non_blocking_value, list) or any(
+        not isinstance(item, str) for item in non_blocking_value
+    ):
         return None
     if isinstance(confidence_value, bool) or not isinstance(confidence_value, (int, float)):
         return None

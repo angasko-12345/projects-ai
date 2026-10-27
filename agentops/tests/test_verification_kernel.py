@@ -103,26 +103,37 @@ def _harness(directory, profile, **kernel_overrides):
 class ProfileConfigTests(unittest.TestCase):
     def test_valid_profiles_load(self):
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
-            json.dump({
-                "agents": {},
-                "verification": {
-                    "default_profile": "standard",
-                    "profiles": {
-                        "standard": {
-                            "mode": "continue_on_failure",
-                            "concurrency": 2,
-                            "default_timeout_seconds": 60,
-                            "checks": [
-                                {"name": "unit", "class": "tests",
-                                 "command": ["python", "-m", "unittest"]},
-                                {"name": "style", "class": "formatting",
-                                 "command": ["check-format"], "required": False,
-                                 "policy": "parallel", "timeout_seconds": 10},
-                            ],
-                        }
+            json.dump(
+                {
+                    "agents": {},
+                    "verification": {
+                        "default_profile": "standard",
+                        "profiles": {
+                            "standard": {
+                                "mode": "continue_on_failure",
+                                "concurrency": 2,
+                                "default_timeout_seconds": 60,
+                                "checks": [
+                                    {
+                                        "name": "unit",
+                                        "class": "tests",
+                                        "command": ["python", "-m", "unittest"],
+                                    },
+                                    {
+                                        "name": "style",
+                                        "class": "formatting",
+                                        "command": ["check-format"],
+                                        "required": False,
+                                        "policy": "parallel",
+                                        "timeout_seconds": 10,
+                                    },
+                                ],
+                            }
+                        },
                     },
                 },
-            }, handle)
+                handle,
+            )
             path = handle.name
         try:
             config = load_config(path)
@@ -180,20 +191,29 @@ class ProfileConfigTests(unittest.TestCase):
         )
         self.assertTrue(all("shell" not in kwargs for _, kwargs in calls))
         self.assertTrue(all(kwargs["cwd"] == str(root.resolve()) for _, kwargs in calls))
-        self.assertEqual(config.verification_commands, (
-            ("python", "-m", "unittest", "discover", "-s", "tests"),
-        ))
+        self.assertEqual(
+            config.verification_commands, (("python", "-m", "unittest", "discover", "-s", "tests"),)
+        )
 
     def test_invalid_profiles_rejected(self):
         cases = [
-            {"profiles": {"dup": {"checks": [
-                {"name": "a", "class": "tests", "command": ["x"]},
-                {"name": "a", "class": "tests", "command": ["x"]}]}}},
-            {"profiles": {"bad": {"checks": [
-                {"name": "a", "class": "nope", "command": ["x"]}]}}},
-            {"profiles": {
-                "one": {"checks": [{"name": "a", "class": "tests", "command": ["x"]}]},
-                "two": {"checks": [{"name": "b", "class": "tests", "command": ["x"]}]}}},
+            {
+                "profiles": {
+                    "dup": {
+                        "checks": [
+                            {"name": "a", "class": "tests", "command": ["x"]},
+                            {"name": "a", "class": "tests", "command": ["x"]},
+                        ]
+                    }
+                }
+            },
+            {"profiles": {"bad": {"checks": [{"name": "a", "class": "nope", "command": ["x"]}]}}},
+            {
+                "profiles": {
+                    "one": {"checks": [{"name": "a", "class": "tests", "command": ["x"]}]},
+                    "two": {"checks": [{"name": "b", "class": "tests", "command": ["x"]}]},
+                }
+            },
             {"profiles": {"bad": {"checks": []}}},
         ]
         for data in cases:
@@ -210,20 +230,24 @@ class ProfileConfigTests(unittest.TestCase):
 class ParseOutcomeTests(unittest.TestCase):
     def test_deterministic_mapping(self):
         self.assertEqual(
-            parse_check_outcome(0, False, False, b"ok", b""),
-            (VerificationCheckStatus.PASSED, None))
+            parse_check_outcome(0, False, False, b"ok", b""), (VerificationCheckStatus.PASSED, None)
+        )
         self.assertEqual(
             parse_check_outcome(2, False, False, b"boom", b""),
-            (VerificationCheckStatus.FAILED, "nonzero_exit"))
+            (VerificationCheckStatus.FAILED, "nonzero_exit"),
+        )
         self.assertEqual(
             parse_check_outcome(None, True, False, b"partial", b""),
-            (VerificationCheckStatus.TIMED_OUT, "timeout"))
+            (VerificationCheckStatus.TIMED_OUT, "timeout"),
+        )
         self.assertEqual(
             parse_check_outcome(None, False, True, b"", b""),
-            (VerificationCheckStatus.CANCELLED, "cancelled"))
+            (VerificationCheckStatus.CANCELLED, "cancelled"),
+        )
         self.assertEqual(
             parse_check_outcome(0, False, False, b"\xff\xfe invalid", b""),
-            (VerificationCheckStatus.FAILED, "malformed_output"))
+            (VerificationCheckStatus.FAILED, "malformed_output"),
+        )
         first = parse_check_outcome(3, False, False, b"same", b"same")
         second = parse_check_outcome(3, False, False, b"same", b"same")
         self.assertEqual(first, second)
@@ -239,11 +263,13 @@ class KernelExecutionTests(unittest.TestCase):
                 return FakeProcess(b"ok", b"", 0)
             return FakeProcess(b"boom", b"", 1)
 
-        profile = _profile(checks=(
-            VerificationCheckSpec("first", VerificationCheckClass.TESTS, ("t1",)),
-            VerificationCheckSpec("second", VerificationCheckClass.LINT, ("t2",)),
-            VerificationCheckSpec("third", VerificationCheckClass.BUILD, ("t3",)),
-        ))
+        profile = _profile(
+            checks=(
+                VerificationCheckSpec("first", VerificationCheckClass.TESTS, ("t1",)),
+                VerificationCheckSpec("second", VerificationCheckClass.LINT, ("t2",)),
+                VerificationCheckSpec("third", VerificationCheckClass.BUILD, ("t3",)),
+            )
+        )
         with tempfile.TemporaryDirectory() as directory:
             state, kernel = _harness(directory, profile, process_factory=factory)
             try:
@@ -270,8 +296,9 @@ class KernelExecutionTests(unittest.TestCase):
         profile = _profile(
             mode=VerificationProfileMode.CONTINUE_ON_FAILURE,
             checks=(
-                VerificationCheckSpec("optional", VerificationCheckClass.FORMATTING,
-                                      ("optional",), required=False),
+                VerificationCheckSpec(
+                    "optional", VerificationCheckClass.FORMATTING, ("optional",), required=False
+                ),
                 VerificationCheckSpec("required", VerificationCheckClass.TESTS, ("required",)),
             ),
         )
@@ -300,10 +327,18 @@ class KernelExecutionTests(unittest.TestCase):
             mode=VerificationProfileMode.CONTINUE_ON_FAILURE,
             concurrency=2,
             checks=(
-                VerificationCheckSpec("one", VerificationCheckClass.TESTS, ("one",),
-                                      policy=VerificationExecutionPolicy.PARALLEL),
-                VerificationCheckSpec("two", VerificationCheckClass.LINT, ("two",),
-                                      policy=VerificationExecutionPolicy.PARALLEL),
+                VerificationCheckSpec(
+                    "one",
+                    VerificationCheckClass.TESTS,
+                    ("one",),
+                    policy=VerificationExecutionPolicy.PARALLEL,
+                ),
+                VerificationCheckSpec(
+                    "two",
+                    VerificationCheckClass.LINT,
+                    ("two",),
+                    policy=VerificationExecutionPolicy.PARALLEL,
+                ),
             ),
         )
         with tempfile.TemporaryDirectory() as directory:
@@ -316,10 +351,14 @@ class KernelExecutionTests(unittest.TestCase):
                 state.close()
 
     def test_per_check_timeout(self):
-        profile = _profile(checks=(
-            VerificationCheckSpec("slow", VerificationCheckClass.TESTS, ("slow",),
-                                  timeout_seconds=1),
-        ))
+        profile = _profile(
+            checks=(
+                VerificationCheckSpec(
+                    "slow", VerificationCheckClass.TESTS, ("slow",), timeout_seconds=1
+                ),
+            )
+        )
+
         async def factory(*args, **kwargs):
             return HangingProcess()
 
@@ -339,26 +378,31 @@ class KernelExecutionTests(unittest.TestCase):
             calls.append(command)
             return FakeProcess(b"ok", b"", 0)
 
-        profile = _profile(checks=(
-            VerificationCheckSpec("one", VerificationCheckClass.TESTS, ("one",)),
-        ))
+        profile = _profile(
+            checks=(VerificationCheckSpec("one", VerificationCheckClass.TESTS, ("one",)),)
+        )
         with tempfile.TemporaryDirectory() as directory:
             state, kernel = _harness(directory, profile, process_factory=factory)
             try:
                 cancel_event = threading.Event()
                 cancel_event.set()
                 report = asyncio.run(
-                    kernel.run_verification(None, None, directory, cancel_event=cancel_event))
+                    kernel.run_verification(None, None, directory, cancel_event=cancel_event)
+                )
                 self.assertEqual(report.overall_status, VerificationReportStatus.CANCELLED)
                 self.assertEqual(calls, [])
             finally:
                 state.close()
 
     def test_cancel_mid_run(self):
-        profile = _profile(checks=(
-            VerificationCheckSpec("slow", VerificationCheckClass.TESTS, ("slow",),
-                                  timeout_seconds=30),
-        ))
+        profile = _profile(
+            checks=(
+                VerificationCheckSpec(
+                    "slow", VerificationCheckClass.TESTS, ("slow",), timeout_seconds=30
+                ),
+            )
+        )
+
         async def factory(*args, **kwargs):
             return HangingProcess()
 
@@ -369,8 +413,9 @@ class KernelExecutionTests(unittest.TestCase):
                 timer = threading.Timer(0.05, cancel_event.set)
                 timer.start()
                 try:
-                    report = asyncio.run(kernel.run_verification(
-                        None, None, directory, cancel_event=cancel_event))
+                    report = asyncio.run(
+                        kernel.run_verification(None, None, directory, cancel_event=cancel_event)
+                    )
                 finally:
                     timer.cancel()
                     timer.join(timeout=5)
@@ -382,9 +427,9 @@ class KernelExecutionTests(unittest.TestCase):
         async def factory(*command, **kwargs):
             return FakeProcess(b"\xff\xfe", b"", 0)
 
-        profile = _profile(checks=(
-            VerificationCheckSpec("odd", VerificationCheckClass.TESTS, ("odd",)),
-        ))
+        profile = _profile(
+            checks=(VerificationCheckSpec("odd", VerificationCheckClass.TESTS, ("odd",)),)
+        )
         with tempfile.TemporaryDirectory() as directory:
             state, kernel = _harness(directory, profile, process_factory=factory)
             try:
@@ -398,9 +443,9 @@ class KernelExecutionTests(unittest.TestCase):
         async def factory(*command, **kwargs):
             raise OSError("cannot start")
 
-        profile = _profile(checks=(
-            VerificationCheckSpec("broken", VerificationCheckClass.BUILD, ("broken",)),
-        ))
+        profile = _profile(
+            checks=(VerificationCheckSpec("broken", VerificationCheckClass.BUILD, ("broken",)),)
+        )
         with tempfile.TemporaryDirectory() as directory:
             state, kernel = _harness(directory, profile, process_factory=factory)
             try:
@@ -417,10 +462,13 @@ class KernelExecutionTests(unittest.TestCase):
             calls.append(command)
             return FakeProcess(b"ok", b"", 0)
 
-        profile = _profile(checks=(
-            VerificationCheckSpec("escaped", VerificationCheckClass.CUSTOM, ("x",),
-                                  working_directory=".."),
-        ))
+        profile = _profile(
+            checks=(
+                VerificationCheckSpec(
+                    "escaped", VerificationCheckClass.CUSTOM, ("x",), working_directory=".."
+                ),
+            )
+        )
         with tempfile.TemporaryDirectory() as directory:
             state, kernel = _harness(directory, profile, process_factory=factory)
             try:
@@ -439,10 +487,18 @@ class KernelExecutionTests(unittest.TestCase):
         profile = _profile(
             concurrency=2,
             checks=(
-                VerificationCheckSpec("fast", VerificationCheckClass.TESTS, ("fast",),
-                                      policy=VerificationExecutionPolicy.PARALLEL),
-                VerificationCheckSpec("slow", VerificationCheckClass.LINT, ("slow",),
-                                      policy=VerificationExecutionPolicy.PARALLEL),
+                VerificationCheckSpec(
+                    "fast",
+                    VerificationCheckClass.TESTS,
+                    ("fast",),
+                    policy=VerificationExecutionPolicy.PARALLEL,
+                ),
+                VerificationCheckSpec(
+                    "slow",
+                    VerificationCheckClass.LINT,
+                    ("slow",),
+                    policy=VerificationExecutionPolicy.PARALLEL,
+                ),
             ),
         )
         with tempfile.TemporaryDirectory() as directory:
@@ -450,27 +506,30 @@ class KernelExecutionTests(unittest.TestCase):
             try:
                 report = asyncio.run(kernel.run_verification(None, None, directory))
                 self.assertEqual(report.overall_status, VerificationReportStatus.PASSED)
-                self.assertTrue(all(
-                    check.status is VerificationCheckStatus.PASSED for check in report.checks))
+                self.assertTrue(
+                    all(check.status is VerificationCheckStatus.PASSED for check in report.checks)
+                )
             finally:
                 state.close()
 
     def test_external_cancellation_finalizes_run(self):
-        profile = _profile(checks=(
-            VerificationCheckSpec("slow", VerificationCheckClass.TESTS, ("slow",)),
-        ))
+        profile = _profile(
+            checks=(VerificationCheckSpec("slow", VerificationCheckClass.TESTS, ("slow",)),)
+        )
+
         async def factory(*args, **kwargs):
             return HangingProcess()
 
         with tempfile.TemporaryDirectory() as directory:
             state, kernel = _harness(directory, profile, process_factory=factory)
             try:
+
                 async def go():
-                    task = asyncio.create_task(
-                        kernel.run_verification(None, None, directory))
+                    task = asyncio.create_task(kernel.run_verification(None, None, directory))
                     await asyncio.sleep(0.05)
                     task.cancel()
                     await task
+
                 with self.assertRaises(asyncio.CancelledError):
                     asyncio.run(go())
                 runs = state.list_verification_runs()
@@ -525,10 +584,18 @@ class KernelExecutionTests(unittest.TestCase):
 
         profile = _profile(
             checks=(
-                VerificationCheckSpec("fast", VerificationCheckClass.TESTS, ("fast",),
-                                      policy=VerificationExecutionPolicy.PARALLEL),
-                VerificationCheckSpec("slow", VerificationCheckClass.LINT, ("slow",),
-                                      policy=VerificationExecutionPolicy.PARALLEL),
+                VerificationCheckSpec(
+                    "fast",
+                    VerificationCheckClass.TESTS,
+                    ("fast",),
+                    policy=VerificationExecutionPolicy.PARALLEL,
+                ),
+                VerificationCheckSpec(
+                    "slow",
+                    VerificationCheckClass.LINT,
+                    ("slow",),
+                    policy=VerificationExecutionPolicy.PARALLEL,
+                ),
             ),
         )
         with tempfile.TemporaryDirectory() as directory:
@@ -551,7 +618,10 @@ class KernelExecutionTests(unittest.TestCase):
             try:
                 kernel = VerificationKernel(
                     legacy_commands=(("legacy-one",), ("legacy-two",)),
-                    logs=logs, state=state, process_factory=factory)
+                    logs=logs,
+                    state=state,
+                    process_factory=factory,
+                )
                 report = asyncio.run(kernel.run_verification(None, None, directory))
                 self.assertEqual(report.profile_name, "legacy")
                 self.assertEqual(report.overall_status, VerificationReportStatus.PASSED)
@@ -564,8 +634,10 @@ class KernelExecutionTests(unittest.TestCase):
         from unittest.mock import AsyncMock as _AsyncMock
         from unittest.mock import patch as _patch
         from agentops.verification_kernel import _default_spawn
-        with _patch("agentops.verification_kernel.asyncio.create_subprocess_exec",
-                     new_callable=_AsyncMock) as spawn:
+
+        with _patch(
+            "agentops.verification_kernel.asyncio.create_subprocess_exec", new_callable=_AsyncMock
+        ) as spawn:
             spawn.return_value = object()
             asyncio.run(_default_spawn("prog", stdout=None))
         kwargs = spawn.call_args.kwargs
@@ -580,8 +652,7 @@ class KernelExecutionTests(unittest.TestCase):
             state = StateStore(":memory:")
             logs = LogManager(Path(directory) / "logs")
             try:
-                kernel = VerificationKernel(
-                    profiles={}, legacy_commands=(), logs=logs, state=state)
+                kernel = VerificationKernel(profiles={}, legacy_commands=(), logs=logs, state=state)
                 with self.assertRaises(ValueError):
                     asyncio.run(kernel.run_verification(None, None, directory))
             finally:
@@ -593,15 +664,14 @@ class KernelPersistenceTests(unittest.TestCase):
         async def factory(*command, **kwargs):
             return FakeProcess(b"evidence", b"", 0)
 
-        profile = _profile(checks=(
-            VerificationCheckSpec("unit", VerificationCheckClass.TESTS, ("unit",)),
-        ))
+        profile = _profile(
+            checks=(VerificationCheckSpec("unit", VerificationCheckClass.TESTS, ("unit",)),)
+        )
         with tempfile.TemporaryDirectory() as directory:
             state, kernel = _harness(directory, profile, process_factory=factory)
             try:
                 workflow_id = state.create_workflow("verification persistence")
-                report = asyncio.run(
-                    kernel.run_verification(workflow_id, "task-1", directory))
+                report = asyncio.run(kernel.run_verification(workflow_id, "task-1", directory))
                 stored = state.get_verification_run(report.run_id)
                 self.assertEqual(stored.overall_status, VerificationReportStatus.PASSED)
                 checks = state.list_verification_checks(report.run_id)
@@ -652,13 +722,31 @@ class KernelPersistenceTests(unittest.TestCase):
                 run = state.create_verification_run(workflow_id, "task-1", profile)
                 state.start_verification_run(run.id)
                 required = state.create_verification_check(
-                    run.id, workflow_id, "task-1", profile.name, "req",
-                    VerificationCheckClass.TESTS.value, ("req",), directory, 30, True,
-                    VerificationExecutionPolicy.SEQUENTIAL.value)
+                    run.id,
+                    workflow_id,
+                    "task-1",
+                    profile.name,
+                    "req",
+                    VerificationCheckClass.TESTS.value,
+                    ("req",),
+                    directory,
+                    30,
+                    True,
+                    VerificationExecutionPolicy.SEQUENTIAL.value,
+                )
                 optional = state.create_verification_check(
-                    run.id, workflow_id, "task-1", profile.name, "opt",
-                    VerificationCheckClass.LINT.value, ("opt",), directory, 30, False,
-                    VerificationExecutionPolicy.SEQUENTIAL.value)
+                    run.id,
+                    workflow_id,
+                    "task-1",
+                    profile.name,
+                    "opt",
+                    VerificationCheckClass.LINT.value,
+                    ("opt",),
+                    directory,
+                    30,
+                    False,
+                    VerificationExecutionPolicy.SEQUENTIAL.value,
+                )
                 state.start_verification_check(required.id)
                 state.start_verification_check(optional.id)
             finally:
@@ -670,8 +758,10 @@ class KernelPersistenceTests(unittest.TestCase):
                 finished = reopened.get_verification_run(run.id)
                 self.assertEqual(finished.failed_checks, 2)
                 self.assertEqual(finished.required_failures, 1)
-                reasons = {check.name: check.failure_reason
-                           for check in reopened.list_verification_checks(run.id)}
+                reasons = {
+                    check.name: check.failure_reason
+                    for check in reopened.list_verification_checks(run.id)
+                }
                 self.assertEqual(reasons, {"req": "interrupted", "opt": "interrupted"})
             finally:
                 reopened.close()
@@ -691,8 +781,7 @@ class KernelPersistenceTests(unittest.TestCase):
         state = StateStore(":memory:")
         try:
             with self.assertRaises(ValueError):
-                state.create_verification_run(None, None, _profile(),
-                                              source_agent_run_id="missing")
+                state.create_verification_run(None, None, _profile(), source_agent_run_id="missing")
         finally:
             state.close()
 
@@ -734,9 +823,9 @@ class KernelPersistenceTests(unittest.TestCase):
                 state.close()
 
     def test_concurrent_workflows_persist(self):
-        profile = _profile(checks=(
-            VerificationCheckSpec("unit", VerificationCheckClass.TESTS, ("unit",)),
-        ))
+        profile = _profile(
+            checks=(VerificationCheckSpec("unit", VerificationCheckClass.TESTS, ("unit",)),)
+        )
         state = StateStore(":memory:")
         try:
             run_ids: list[str] = []
@@ -748,8 +837,16 @@ class KernelPersistenceTests(unittest.TestCase):
                     run = state.create_verification_run(workflow_id, f"task-{index}", profile)
                     state.start_verification_run(run.id)
                     state.finish_verification_run(
-                        run.id, VerificationRunStatus.COMPLETED,
-                        VerificationReportStatus.PASSED, 1, 1, 0, 0, 0, 0.01)
+                        run.id,
+                        VerificationRunStatus.COMPLETED,
+                        VerificationReportStatus.PASSED,
+                        1,
+                        1,
+                        0,
+                        0,
+                        0,
+                        0.01,
+                    )
                     run_ids.append(run.id)
                 except BaseException as error:
                     errors.append(error)
@@ -768,26 +865,50 @@ class KernelPersistenceTests(unittest.TestCase):
 class WorkflowIntegrationTests(unittest.TestCase):
     def test_agent_success_does_not_verify_task(self):
         config = AppConfig(
-            {"worker": AgentConfig("worker", "fake", ("{prompt}",),
-                                   ("architecture", "implementation", "review", "debugging"))},
-            {role: ("worker",) for role in ("architecture", "implementation", "review", "debugging")},
-            (), max_attempts=1, concurrency=1, max_repair_cycles=1,
+            {
+                "worker": AgentConfig(
+                    "worker",
+                    "fake",
+                    ("{prompt}",),
+                    ("architecture", "implementation", "review", "debugging"),
+                )
+            },
+            {
+                role: ("worker",)
+                for role in ("architecture", "implementation", "review", "debugging")
+            },
+            (),
+            max_attempts=1,
+            concurrency=1,
+            max_repair_cycles=1,
         )
         state = StateStore(":memory:")
         registry = MagicMock()
-        registry.select.return_value = DetectedAgent(config.agents["worker"], True, "/resolved/fake")
+        registry.select.return_value = DetectedAgent(
+            config.agents["worker"], True, "/resolved/fake"
+        )
         runner = MagicMock()
 
-        async def _run_agent(agent, prompt, directory, task_id, cancel_event=None,
-                            run_context=None, run_observer=None, metadata_collector=None):
+        async def _run_agent(
+            agent,
+            prompt,
+            directory,
+            task_id,
+            cancel_event=None,
+            run_context=None,
+            run_observer=None,
+            metadata_collector=None,
+        ):
             role = state.get_task(task_id).role
             stdout = (
                 '{"schema_version":1,"verdict":"approve","blocking":[],'
                 '"non_blocking":[],"confidence":0.99}'
-                if role == "review" else "agent claims: verified: true"
+                if role == "review"
+                else "agent claims: verified: true"
             )
-            return RunResult(agent.config.name, ("fake",), 0, stdout,
-                             "", 0.01, False, Path(f"{task_id}.log"))
+            return RunResult(
+                agent.config.name, ("fake",), 0, stdout, "", 0.01, False, Path(f"{task_id}.log")
+            )
 
         runner.run_agent = _run_agent
         calls = []
@@ -800,22 +921,30 @@ class WorkflowIntegrationTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             logs = LogManager(Path(directory) / "logs")
-            profile = _profile(checks=(
-                VerificationCheckSpec("unit", VerificationCheckClass.TESTS, ("unit",)),
-            ))
+            profile = _profile(
+                checks=(VerificationCheckSpec("unit", VerificationCheckClass.TESTS, ("unit",)),)
+            )
             kernel = VerificationKernel(
-                profiles={profile.name: profile}, default_profile=profile.name,
-                logs=logs, state=state, process_factory=factory)
-            engine = WorkflowEngine(config, state, registry, runner, MagicMock(),
-                                    verification_kernel=kernel)
+                profiles={profile.name: profile},
+                default_profile=profile.name,
+                logs=logs,
+                state=state,
+                process_factory=factory,
+            )
+            engine = WorkflowEngine(
+                config, state, registry, runner, MagicMock(), verification_kernel=kernel
+            )
             try:
                 result = asyncio.run(engine.run_high_level("verify me", Path(directory)))
                 self.assertTrue(result.ready)
                 tasks = {task.role: task for task in state.list_tasks(result.workflow_id)}
                 self.assertEqual(tasks["implementation"].status, TaskStatus.PASSED)
                 self.assertFalse(tasks["implementation"].verified)
-                verifications = [task for task in state.list_tasks(result.workflow_id)
-                                 if task.role == "verification" and task.verified]
+                verifications = [
+                    task
+                    for task in state.list_tasks(result.workflow_id)
+                    if task.role == "verification" and task.verified
+                ]
                 self.assertTrue(verifications)
                 self.assertTrue(all(task.verification_run_id for task in verifications))
             finally:
@@ -832,13 +961,17 @@ class VerificationInspectionTests(unittest.TestCase):
             state = StateStore(root / ".agentops" / "state.sqlite")
             try:
                 workflow_id = state.create_workflow("verify inspection")
-                profile = _profile(checks=(
-                    VerificationCheckSpec("unit", VerificationCheckClass.TESTS, ("unit",)),
-                ))
+                profile = _profile(
+                    checks=(VerificationCheckSpec("unit", VerificationCheckClass.TESTS, ("unit",)),)
+                )
                 logs = LogManager(root / ".agentops" / "logs")
                 kernel = VerificationKernel(
-                    profiles={profile.name: profile}, default_profile=profile.name,
-                    logs=logs, state=state, process_factory=factory)
+                    profiles={profile.name: profile},
+                    default_profile=profile.name,
+                    logs=logs,
+                    state=state,
+                    process_factory=factory,
+                )
                 report = asyncio.run(kernel.run_verification(workflow_id, "task-1", root))
             finally:
                 state.close()
@@ -868,17 +1001,23 @@ class VerificationInspectionTests(unittest.TestCase):
             state = StateStore(root / ".agentops" / "state.sqlite")
             try:
                 workflow_id = state.create_workflow("controller verification")
-                profile = _profile(checks=(
-                    VerificationCheckSpec("unit", VerificationCheckClass.TESTS, ("unit",)),
-                ))
+                profile = _profile(
+                    checks=(VerificationCheckSpec("unit", VerificationCheckClass.TESTS, ("unit",)),)
+                )
                 logs = LogManager(root / ".agentops" / "logs")
                 kernel = VerificationKernel(
-                    profiles={profile.name: profile}, default_profile=profile.name,
-                    logs=logs, state=state, process_factory=factory)
+                    profiles={profile.name: profile},
+                    default_profile=profile.name,
+                    logs=logs,
+                    state=state,
+                    process_factory=factory,
+                )
                 report = asyncio.run(kernel.run_verification(workflow_id, "task-1", root))
             finally:
                 state.close()
-            controller = AgentOpsController(config=AppConfig({}, {}, (), max_attempts=1, concurrency=1))
+            controller = AgentOpsController(
+                config=AppConfig({}, {}, (), max_attempts=1, concurrency=1)
+            )
             runs = controller.list_verification_runs(root, workflow_id=workflow_id)
             self.assertEqual(len(runs), 1)
             detail = controller.get_verification_run(root, report.run_id)
@@ -904,33 +1043,43 @@ class VerificationGuiTests(unittest.TestCase):
             def latest_workflow(self, directory):
                 return None
 
-            def list_agent_runs(self, directory, workflow_id=None, task_id=None,
-                                status=None, limit=50, offset=0):
+            def list_agent_runs(
+                self, directory, workflow_id=None, task_id=None, status=None, limit=50, offset=0
+            ):
                 return []
 
-            def list_verification_runs(self, directory, workflow_id=None, task_id=None,
-                                       limit=50, offset=0):
-                return [{
-                    "id": "ver-1",
-                    "overall_status": "passed",
-                    "profile_name": "standard",
-                    "passed_checks": 2,
-                    "total_checks": 2,
-                    "failed_checks": 0,
-                }]
+            def list_verification_runs(
+                self, directory, workflow_id=None, task_id=None, limit=50, offset=0
+            ):
+                return [
+                    {
+                        "id": "ver-1",
+                        "overall_status": "passed",
+                        "profile_name": "standard",
+                        "passed_checks": 2,
+                        "total_checks": 2,
+                        "failed_checks": 0,
+                    }
+                ]
 
-            def list_failures(self, directory, workflow_id=None, task_id=None,
-                              limit=50, offset=0):
+            def list_failures(self, directory, workflow_id=None, task_id=None, limit=50, offset=0):
                 return []
 
         context = make_context(Controller())
         panel = TaskDetailPanel(context)
         self.addCleanup(destroy, panel)
-        panel.set_task({
-            "id": "verify-1", "role": "verification", "status": "passed",
-            "assigned_agent": "", "attempts": 1, "dependencies": (),
-            "description": "check", "result": "ok",
-        })
+        panel.set_task(
+            {
+                "id": "verify-1",
+                "role": "verification",
+                "status": "passed",
+                "assigned_agent": "",
+                "attempts": 1,
+                "dependencies": (),
+                "description": "check",
+                "result": "ok",
+            }
+        )
         wait_until(lambda: len(panel._verification_table.rows()) == 1)
         rows = panel._verification_table.rows()
         self.assertEqual(len(rows), 1)
@@ -950,12 +1099,17 @@ class VacuousPassAndArtifactDegradationTests(unittest.TestCase):
                 return FakeProcess(b"bad", b"", 1)
             return FakeProcess(b"ok", b"", 0)
 
-        profile = _profile(checks=(
-            VerificationCheckSpec("optional_first", VerificationCheckClass.FORMATTING,
-                                  ("optional-first",), required=False),
-            VerificationCheckSpec("never_runs", VerificationCheckClass.TESTS,
-                                  ("never-runs",)),
-        ))
+        profile = _profile(
+            checks=(
+                VerificationCheckSpec(
+                    "optional_first",
+                    VerificationCheckClass.FORMATTING,
+                    ("optional-first",),
+                    required=False,
+                ),
+                VerificationCheckSpec("never_runs", VerificationCheckClass.TESTS, ("never-runs",)),
+            )
+        )
         with tempfile.TemporaryDirectory() as directory:
             state, kernel = _harness(directory, profile, process_factory=factory)
             try:
@@ -963,8 +1117,7 @@ class VacuousPassAndArtifactDegradationTests(unittest.TestCase):
                 self.assertEqual(len(calls), 1)
                 # A1: a suite with zero passed checks must never be PASSED;
                 # the producer must agree with the validator.
-                self.assertEqual(report.overall_status,
-                                 VerificationReportStatus.FAILED)
+                self.assertEqual(report.overall_status, VerificationReportStatus.FAILED)
                 assert_report_consistent(report)
             finally:
                 state.close()
@@ -975,21 +1128,25 @@ class VacuousPassAndArtifactDegradationTests(unittest.TestCase):
         async def factory(*command, **kwargs):
             return FakeProcess(b"evidence", b"", 0)
 
-        profile = _profile(checks=(
-            VerificationCheckSpec("unit", VerificationCheckClass.TESTS, ("unit",)),
-        ))
+        profile = _profile(
+            checks=(VerificationCheckSpec("unit", VerificationCheckClass.TESTS, ("unit",)),)
+        )
         with tempfile.TemporaryDirectory() as directory:
-            state, kernel = _harness(directory, profile, process_factory=factory,
-                                     degradation=recorder)
+            state, kernel = _harness(
+                directory, profile, process_factory=factory, degradation=recorder
+            )
             try:
-                with patch.object(LogManager, "write_run_artifacts",
-                                  side_effect=OSError("disk full")):
-                    report = asyncio.run(
-                        kernel.run_verification(None, None, directory))
+                with patch.object(
+                    LogManager, "write_run_artifacts", side_effect=OSError("disk full")
+                ):
+                    report = asyncio.run(kernel.run_verification(None, None, directory))
             finally:
                 state.close()
-        entries = [entry for entry in recorder.degradations
-                   if entry.operation == "verification_check.artifacts"]
+        entries = [
+            entry
+            for entry in recorder.degradations
+            if entry.operation == "verification_check.artifacts"
+        ]
         self.assertEqual(len(entries), 1)
         self.assertIs(entries[0].policy, PersistencePolicy.SAFE_TO_DEGRADE)
         # Pointer loss must not flip or fabricate the verdict: the check
@@ -1011,34 +1168,56 @@ class RequiredSkipInvariantTests(unittest.TestCase):
     @staticmethod
     def _check(name, status, required):
         return VerificationCheck(
-            id="1", run_id="r", workflow_id="w", task_id="t", profile_name="p",
-            name=name, check_class=VerificationCheckClass.CUSTOM, command=("x",),
-            working_directory=None, timeout_seconds=None, required=required,
-            policy=None, status=status, exit_code=None, started_at=None, ended_at=None,
-            duration_seconds=0.0, stdout_path=None, stderr_path=None,
-            failure_reason=None, created_at=None, updated_at=None,
+            id="1",
+            run_id="r",
+            workflow_id="w",
+            task_id="t",
+            profile_name="p",
+            name=name,
+            check_class=VerificationCheckClass.CUSTOM,
+            command=("x",),
+            working_directory=None,
+            timeout_seconds=None,
+            required=required,
+            policy=None,
+            status=status,
+            exit_code=None,
+            started_at=None,
+            ended_at=None,
+            duration_seconds=0.0,
+            stdout_path=None,
+            stderr_path=None,
+            failure_reason=None,
+            created_at=None,
+            updated_at=None,
         )
 
     def test_required_skip_counts_as_unresolved_requirement(self):
-        counts = _summarize_counts([
-            self._check("tests", VerificationCheckStatus.SKIPPED, True),
-            self._check("lint", VerificationCheckStatus.PASSED, False),
-        ])
+        counts = _summarize_counts(
+            [
+                self._check("tests", VerificationCheckStatus.SKIPPED, True),
+                self._check("lint", VerificationCheckStatus.PASSED, False),
+            ]
+        )
         self.assertEqual(counts["passed"], 1)
         self.assertEqual(counts["required_failures"], 1)
 
     def test_optional_skip_does_not_block(self):
-        counts = _summarize_counts([
-            self._check("tests", VerificationCheckStatus.PASSED, True),
-            self._check("lint", VerificationCheckStatus.SKIPPED, False),
-        ])
+        counts = _summarize_counts(
+            [
+                self._check("tests", VerificationCheckStatus.PASSED, True),
+                self._check("lint", VerificationCheckStatus.SKIPPED, False),
+            ]
+        )
         self.assertEqual(counts["required_failures"], 0)
 
     def test_all_passed_still_passes(self):
-        counts = _summarize_counts([
-            self._check("tests", VerificationCheckStatus.PASSED, True),
-            self._check("lint", VerificationCheckStatus.PASSED, False),
-        ])
+        counts = _summarize_counts(
+            [
+                self._check("tests", VerificationCheckStatus.PASSED, True),
+                self._check("lint", VerificationCheckStatus.PASSED, False),
+            ]
+        )
         self.assertEqual(counts["required_failures"], 0)
         self.assertGreaterEqual(counts["passed"], 1)
 
@@ -1061,7 +1240,8 @@ class RequiredSkipInvariantTests(unittest.TestCase):
             try:
                 report = asyncio.run(kernel.run_verification(None, None, root))
                 rows = state.connection.execute(
-                    "select status, overall_status from verification_runs").fetchall()
+                    "select status, overall_status from verification_runs"
+                ).fetchall()
             finally:
                 state.close()
         statuses = {check.name: check.status for check in report.checks}

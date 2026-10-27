@@ -72,7 +72,6 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 
-
 @dataclass(frozen=True)
 class WorkflowReadiness:
     """Why a workflow is or is not READY, in terms an operator can act on."""
@@ -138,13 +137,9 @@ def assess_workflow_readiness(
         return task.status is TaskStatus.PASSED and task.verified is True
 
     verification_ok = any(
-        is_passed_and_verified(task)
-        for task in pool(verification_task_id, "verification")
+        is_passed_and_verified(task) for task in pool(verification_task_id, "verification")
     )
-    review_ok = any(
-        task.status is TaskStatus.PASSED
-        for task in pool(review_task_id, "review")
-    )
+    review_ok = any(task.status is TaskStatus.PASSED for task in pool(review_task_id, "review"))
     # Evidence counts only when it is carried by a verification task that is
     # itself PASSED and verified. Scanning the pool for evidence alone lets a
     # sibling task donate it: one task supplies the PASSED+verified signal
@@ -190,28 +185,34 @@ def layer_requires(layer: str) -> tuple[str, ...]:
 
 
 AGENT_RUN_TRANSITIONS: dict[AgentRunStatus, frozenset[AgentRunStatus]] = {
-    AgentRunStatus.PENDING: frozenset({
-        AgentRunStatus.STARTING,
-        AgentRunStatus.COMPLETED,
-        AgentRunStatus.FAILED,
-        AgentRunStatus.CANCELLED,
-        AgentRunStatus.TIMED_OUT,
-        AgentRunStatus.TERMINATED,
-    }),
-    AgentRunStatus.STARTING: frozenset({
-        AgentRunStatus.RUNNING,
-        AgentRunStatus.FAILED,
-        AgentRunStatus.CANCELLED,
-        AgentRunStatus.TIMED_OUT,
-        AgentRunStatus.TERMINATED,
-    }),
-    AgentRunStatus.RUNNING: frozenset({
-        AgentRunStatus.COMPLETED,
-        AgentRunStatus.FAILED,
-        AgentRunStatus.CANCELLED,
-        AgentRunStatus.TIMED_OUT,
-        AgentRunStatus.TERMINATED,
-    }),
+    AgentRunStatus.PENDING: frozenset(
+        {
+            AgentRunStatus.STARTING,
+            AgentRunStatus.COMPLETED,
+            AgentRunStatus.FAILED,
+            AgentRunStatus.CANCELLED,
+            AgentRunStatus.TIMED_OUT,
+            AgentRunStatus.TERMINATED,
+        }
+    ),
+    AgentRunStatus.STARTING: frozenset(
+        {
+            AgentRunStatus.RUNNING,
+            AgentRunStatus.FAILED,
+            AgentRunStatus.CANCELLED,
+            AgentRunStatus.TIMED_OUT,
+            AgentRunStatus.TERMINATED,
+        }
+    ),
+    AgentRunStatus.RUNNING: frozenset(
+        {
+            AgentRunStatus.COMPLETED,
+            AgentRunStatus.FAILED,
+            AgentRunStatus.CANCELLED,
+            AgentRunStatus.TIMED_OUT,
+            AgentRunStatus.TERMINATED,
+        }
+    ),
 }
 
 
@@ -292,7 +293,10 @@ def assert_task_completion(task: Task) -> None:
 
 
 def assert_workflow_ready(
-    *, verification_ok: bool, review_ok: bool, evidence_present: bool,
+    *,
+    verification_ok: bool,
+    review_ok: bool,
+    evidence_present: bool,
     workflow_id: str = "<unknown>",
 ) -> None:
     """Raise StateTransitionError if a READY claim lacks any required signal."""
@@ -300,8 +304,7 @@ def assert_workflow_ready(
         return
     raise StateTransitionError(
         f"Workflow {workflow_id} is not READY: "
-        + "; ".join(_missing_readiness_reasons(
-            verification_ok, review_ok, evidence_present))
+        + "; ".join(_missing_readiness_reasons(verification_ok, review_ok, evidence_present))
     )
 
 
@@ -319,7 +322,8 @@ def assert_tasks_ready(
     prerequisite is missing.
     """
     readiness = assess_workflow_readiness(
-        tasks, workflow_id,
+        tasks,
+        workflow_id,
         verification_task_id=verification_task_id,
         review_task_id=review_task_id,
     )
@@ -332,9 +336,7 @@ def assert_tasks_ready(
     return readiness
 
 
-def assert_no_fabricated_success(
-    status_value: str, evidence_present: bool, what: str
-) -> None:
+def assert_no_fabricated_success(status_value: str, evidence_present: bool, what: str) -> None:
     """Raise StateTransitionError if success is claimed without evidence.
 
     Shared by recovery paths (and any future writer): interrupted or unknown
@@ -342,9 +344,7 @@ def assert_no_fabricated_success(
     """
     normalized = status_value.strip().lower()
     if normalized in {"completed", "passed", "ready", "merged", "success"} and not evidence_present:
-        raise StateTransitionError(
-            f"{what}: success status {status_value!r} without evidence"
-        )
+        raise StateTransitionError(f"{what}: success status {status_value!r} without evidence")
 
 
 __all__ = [

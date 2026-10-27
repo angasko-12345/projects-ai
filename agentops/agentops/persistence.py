@@ -137,16 +137,20 @@ def event_emitter(record: Callable[..., object]) -> Callable[[Degradation], None
     emitted event is a WARNING because a lost write is a degraded operation,
     not a failed one.
     """
+
     def emit(entry: Degradation) -> None:
-        record(Event(
-            workflow_id=entry.workflow_id,
-            task_id=entry.task_id,
-            agent_run_id=entry.run_id,
-            type=EventType.PERSISTENCE_DEGRADED,
-            severity=EventSeverity.WARNING,
-            message=f"Persistence degraded: {entry.summary()}",
-            payload=entry.to_dict(),
-        ))
+        record(
+            Event(
+                workflow_id=entry.workflow_id,
+                task_id=entry.task_id,
+                agent_run_id=entry.run_id,
+                type=EventType.PERSISTENCE_DEGRADED,
+                severity=EventSeverity.WARNING,
+                message=f"Persistence degraded: {entry.summary()}",
+                payload=entry.to_dict(),
+            )
+        )
+
     return emit
 
 
@@ -180,8 +184,7 @@ class DegradationRecorder:
         """True when a must-fail-closed write was lost."""
         with self._lock:
             return any(
-                item.policy is PersistencePolicy.MUST_FAIL_CLOSED
-                for item in self._degradations
+                item.policy is PersistencePolicy.MUST_FAIL_CLOSED for item in self._degradations
             )
 
     def record(

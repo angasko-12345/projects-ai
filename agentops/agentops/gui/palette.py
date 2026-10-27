@@ -94,8 +94,7 @@ class CommandPalette(QDialog):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(frame)
         layout = QVBoxLayout(frame)
-        layout.setContentsMargins(DARK.space_md, DARK.space_sm,
-                                  DARK.space_md, DARK.space_sm)
+        layout.setContentsMargins(DARK.space_md, DARK.space_sm, DARK.space_md, DARK.space_sm)
         layout.setSpacing(DARK.space_sm)
 
         header = QHBoxLayout()
@@ -140,11 +139,15 @@ class CommandPalette(QDialog):
             scored.append((score, command.title.lower(), command))
         scored.sort(key=lambda item: (-item[0], item[1]))
         self._visible = [item[2] for item in scored]
-        self.commands_list.set_commands([
-            (command.title + (f"    {command.shortcut}" if command.shortcut else ""),
-             command.shortcut)
-            for command in self._visible
-        ])
+        self.commands_list.set_commands(
+            [
+                (
+                    command.title + (f"    {command.shortcut}" if command.shortcut else ""),
+                    command.shortcut,
+                )
+                for command in self._visible
+            ]
+        )
 
     # -- interaction --------------------------------------------------
     def handle_key(self, key: int) -> None:

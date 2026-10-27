@@ -22,9 +22,7 @@ def run(config_path: str | Path | None = None) -> int:
     app.setStyleSheet(build_stylesheet())
     app.setQuitOnLastWindowClosed(True)
 
-    controller = AgentOpsController(
-        config_path=Path(config_path) if config_path else None
-    )
+    controller = AgentOpsController(config_path=Path(config_path) if config_path else None)
     window = MainWindow(controller)
     window.restore_geometry()
     window.show()

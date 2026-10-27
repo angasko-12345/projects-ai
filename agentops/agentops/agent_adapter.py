@@ -83,21 +83,27 @@ def capabilities_for_roles(roles: tuple[str, ...]) -> frozenset[Capability]:
 
 TASK_CAPABILITIES_FOR_ROLES: dict[str, frozenset[Capability]] = {
     "architecture": frozenset({Capability.PLANNING, Capability.ARCHITECTURE}),
-    "implementation": frozenset({
-        Capability.IMPLEMENTATION,
-        Capability.REFACTORING,
-        Capability.TESTING,
-        Capability.REPOSITORY_EXPLORATION,
-    }),
-    "debugging": frozenset({
-        Capability.DEBUGGING,
-        Capability.TESTING,
-        Capability.REPOSITORY_EXPLORATION,
-    }),
-    "review": frozenset({
-        Capability.CODE_REVIEW,
-        Capability.DOCUMENTATION,
-    }),
+    "implementation": frozenset(
+        {
+            Capability.IMPLEMENTATION,
+            Capability.REFACTORING,
+            Capability.TESTING,
+            Capability.REPOSITORY_EXPLORATION,
+        }
+    ),
+    "debugging": frozenset(
+        {
+            Capability.DEBUGGING,
+            Capability.TESTING,
+            Capability.REPOSITORY_EXPLORATION,
+        }
+    ),
+    "review": frozenset(
+        {
+            Capability.CODE_REVIEW,
+            Capability.DOCUMENTATION,
+        }
+    ),
 }
 
 
@@ -110,9 +116,9 @@ def task_capabilities_for_roles(roles: tuple[str, ...]) -> frozenset[Capability]
     """
     if not roles:
         return frozenset().union(*TASK_CAPABILITIES_FOR_ROLES.values())
-    return frozenset().union(*(
-        TASK_CAPABILITIES_FOR_ROLES.get(role.lower(), frozenset()) for role in roles
-    ))
+    return frozenset().union(
+        *(TASK_CAPABILITIES_FOR_ROLES.get(role.lower(), frozenset()) for role in roles)
+    )
 
 
 @runtime_checkable
@@ -174,7 +180,10 @@ class CliAdapter:
         # (TOCTOU). Users who need a pinned binary can set an absolute
         # path as `command`; shutil.which passes absolute paths through.
         executable = self.executable or self.config.command
-        return (executable, *(argument.replace("{prompt}", prompt) for argument in self.config.args))
+        return (
+            executable,
+            *(argument.replace("{prompt}", prompt) for argument in self.config.args),
+        )
 
     def matches(self, required: Capability | str) -> bool:
         """True when one required capability (enum or raw string) is present."""

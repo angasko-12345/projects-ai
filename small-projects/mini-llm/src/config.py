@@ -13,8 +13,14 @@ HASH_CHUNK_BYTES = 1 << 20  # streaming read size for artifact digests
 
 # Provenance keys prepare_data.py writes and every run re-verifies. A meta.json
 # without all of them predates provenance tracking and cannot be trusted.
-PROVENANCE_KEYS = ("train_bin", "train_sha256", "val_bin", "val_sha256",
-                   "tokenizer_path", "tokenizer_sha256")
+PROVENANCE_KEYS = (
+    "train_bin",
+    "train_sha256",
+    "val_bin",
+    "val_sha256",
+    "tokenizer_path",
+    "tokenizer_sha256",
+)
 
 # Digests that decide whether two runs read the same data. Paths are recorded for
 # humans and for error messages; content, not location, is the contract.
@@ -89,8 +95,9 @@ def config_for_data(train_bin: str, **overrides) -> Config:
         if field in overrides or field not in meta:
             continue
         if getattr(cfg, field) != meta[field]:
-            print(f"{field} {getattr(cfg, field)} -> {meta[field]} "
-                  f"(from {meta_path_for(train_bin)})")
+            print(
+                f"{field} {getattr(cfg, field)} -> {meta[field]} (from {meta_path_for(train_bin)})"
+            )
         setattr(cfg, field, meta[field])
     cfg.validate_against_data()
     return cfg
@@ -153,29 +160,34 @@ class Config:
     def __post_init__(self) -> None:
         for name in ("n_layers", "n_heads", "d_model", "d_ff"):
             value = getattr(self, name)
-            assert isinstance(value, int) and value > 0, \
+            assert isinstance(value, int) and value > 0, (
                 f"{name} must be a positive int, got {value!r}"
+            )
         assert self.d_model % self.n_heads == 0, "d_model must be divisible by n_heads"
         assert self.vocab_size > 0 and self.context_length > 0
         assert self.batch_size > 0 and self.max_steps > 0
-        assert isinstance(self.grad_accum_steps, int) and self.grad_accum_steps >= 1, \
+        assert isinstance(self.grad_accum_steps, int) and self.grad_accum_steps >= 1, (
             f"grad_accum_steps must be a positive int (>= 1), got {self.grad_accum_steps!r}"
-        assert isinstance(self.loss_chunk_size, int) and self.loss_chunk_size >= 0, \
+        )
+        assert isinstance(self.loss_chunk_size, int) and self.loss_chunk_size >= 0, (
             f"loss_chunk_size must be an int >= 0 (0 disables), got {self.loss_chunk_size!r}"
+        )
         for name in ("eval_interval", "eval_batches"):
             value = getattr(self, name)
-            assert isinstance(value, int) and value >= 1, \
+            assert isinstance(value, int) and value >= 1, (
                 f"{name} must be a positive int (>= 1), got {value!r}"
+            )
         assert 0.0 < self.min_lr_ratio <= 1.0, "min_lr_ratio must be in (0, 1]"
         assert self.warmup_steps <= self.max_steps, "warmup_steps must fit in max_steps"
         for name in ("torch_threads", "torch_interop_threads"):
             value = getattr(self, name)
-            assert value is None or (isinstance(value, int) and value >= 1), \
+            assert value is None or (isinstance(value, int) and value >= 1), (
                 f"{name} must be a positive int or None, got {value!r}"
-        assert self.amp in AMP_MODES, \
-            f"amp must be one of {', '.join(AMP_MODES)}, got {self.amp!r}"
-        assert isinstance(self.keep_last, int) and self.keep_last >= 1, \
+            )
+        assert self.amp in AMP_MODES, f"amp must be one of {', '.join(AMP_MODES)}, got {self.amp!r}"
+        assert isinstance(self.keep_last, int) and self.keep_last >= 1, (
             f"keep_last must be a positive int (>= 1), got {self.keep_last!r}"
+        )
 
     def validate_against_data(self) -> dict | None:
         """Fail unless the model, data and tokenizer are one consistent set.
@@ -200,9 +212,11 @@ class Config:
                 f"{', '.join(missing)} - it predates provenance tracking, so the data, "
                 "tokenizer and their contents cannot be verified; re-run prepare_data.py"
             )
-        for key, path in (("train_sha256", self.train_bin),
-                          ("val_sha256", self.val_bin),
-                          ("tokenizer_sha256", self.tokenizer_path)):
+        for key, path in (
+            ("train_sha256", self.train_bin),
+            ("val_sha256", self.val_bin),
+            ("tokenizer_sha256", self.tokenizer_path),
+        ):
             if not os.path.exists(path):
                 raise FileNotFoundError(
                     f"{key} names {os.path.abspath(path)}, which does not exist - pass the "

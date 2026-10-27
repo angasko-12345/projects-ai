@@ -21,9 +21,16 @@ sys.path.insert(0, ROOT)
 import prepare_data
 from src.config import Config, load_data_meta
 from src.model import from_config
-from src.train import (apply_cli_config, build_param_groups, list_step_checkpoints,
-                       make_parser, read_checkpoint, rotate_checkpoints, save_checkpoint,
-                       train)
+from src.train import (
+    apply_cli_config,
+    build_param_groups,
+    list_step_checkpoints,
+    make_parser,
+    read_checkpoint,
+    rotate_checkpoints,
+    save_checkpoint,
+    train,
+)
 
 CORPUS = (
     "The tiny language model reads a sequence of tokens and guesses the next one.\n\n"
@@ -40,14 +47,22 @@ def build_data(tmp: str, context_length: int = 16) -> str:
     argv = sys.argv
     sys.argv = [
         "prepare_data.py",
-        "--input", corpus,
-        "--tokenizer-out", os.path.join(tmp, "tokenizer.json"),
-        "--train-out", os.path.join(tmp, "train.bin"),
-        "--val-out", os.path.join(tmp, "val.bin"),
-        "--vocab-size", "512",
-        "--min-frequency", "1",
-        "--val-frac", "0.2",
-        "--context-length", str(context_length),
+        "--input",
+        corpus,
+        "--tokenizer-out",
+        os.path.join(tmp, "tokenizer.json"),
+        "--train-out",
+        os.path.join(tmp, "train.bin"),
+        "--val-out",
+        os.path.join(tmp, "val.bin"),
+        "--vocab-size",
+        "512",
+        "--min-frequency",
+        "1",
+        "--val-frac",
+        "0.2",
+        "--context-length",
+        str(context_length),
     ]
     try:
         prepare_data.main()
@@ -71,12 +86,21 @@ class TestAtomicSave(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.cfg = Config(vocab_size=64, context_length=8, n_layers=2, n_heads=2,
-                          d_model=32, d_ff=64, max_steps=2, warmup_steps=1,
-                          checkpoint_dir=self.tmp.name)
+        self.cfg = Config(
+            vocab_size=64,
+            context_length=8,
+            n_layers=2,
+            n_heads=2,
+            d_model=32,
+            d_ff=64,
+            max_steps=2,
+            warmup_steps=1,
+            checkpoint_dir=self.tmp.name,
+        )
         self.model = from_config(self.cfg)
         self.optimizer = torch.optim.AdamW(
-            build_param_groups(self.model, self.cfg.weight_decay), lr=1e-3)
+            build_param_groups(self.model, self.cfg.weight_decay), lr=1e-3
+        )
 
     def save(self, path: str, step: int) -> None:
         save_checkpoint(path, self.model, self.optimizer, step, self.cfg, lr=1e-3)
@@ -127,13 +151,13 @@ class TestRotation(unittest.TestCase):
     def test_keeps_only_the_newest_numbered_checkpoints(self):
         touch(self.dir, "step_3.pt", "step_6.pt", "step_9.pt", "step_12.pt", "step_15.pt")
         removed = rotate_checkpoints(self.dir, keep_last=2)
-        self.assertEqual([os.path.basename(p) for p in removed],
-                         ["step_3.pt", "step_6.pt", "step_9.pt"])
+        self.assertEqual(
+            [os.path.basename(p) for p in removed], ["step_3.pt", "step_6.pt", "step_9.pt"]
+        )
         self.assertEqual(self.names(), ["step_12.pt", "step_15.pt"])
 
     def test_preserves_final_and_unrelated_files(self):
-        touch(self.dir, "step_1.pt", "step_2.pt", "step_3.pt",
-              "final.pt", "best.pt", "notes.txt")
+        touch(self.dir, "step_1.pt", "step_2.pt", "step_3.pt", "final.pt", "best.pt", "notes.txt")
         rotate_checkpoints(self.dir, keep_last=1)
         self.assertEqual(self.names(), ["best.pt", "final.pt", "notes.txt", "step_3.pt"])
 
@@ -203,13 +227,25 @@ class TestTrainingLoopRotates(unittest.TestCase):
         self.ckpt_dir = os.path.join(self.tmp.name, "ckpts")
 
     def tiny(self, **over) -> Config:
-        kw = dict(vocab_size=load_data_meta(self.train_bin)["vocab_size"],
-                  context_length=16, n_layers=2, n_heads=2, d_model=32, d_ff=64,
-                  batch_size=2, max_steps=4, warmup_steps=1, eval_interval=1,
-                  eval_batches=1, train_bin=self.train_bin,
-                  val_bin=os.path.join(self.tmp.name, "val.bin"),
-                  tokenizer_path=os.path.join(self.tmp.name, "tokenizer.json"),
-                  checkpoint_dir=self.ckpt_dir, seed=0, keep_last=2)
+        kw = dict(
+            vocab_size=load_data_meta(self.train_bin)["vocab_size"],
+            context_length=16,
+            n_layers=2,
+            n_heads=2,
+            d_model=32,
+            d_ff=64,
+            batch_size=2,
+            max_steps=4,
+            warmup_steps=1,
+            eval_interval=1,
+            eval_batches=1,
+            train_bin=self.train_bin,
+            val_bin=os.path.join(self.tmp.name, "val.bin"),
+            tokenizer_path=os.path.join(self.tmp.name, "tokenizer.json"),
+            checkpoint_dir=self.ckpt_dir,
+            seed=0,
+            keep_last=2,
+        )
         kw.update(over)
         return Config(**kw)
 
@@ -218,16 +254,13 @@ class TestTrainingLoopRotates(unittest.TestCase):
             train(self.tiny())
         # eval on every step writes step_1..step_4; keep_last=2 leaves the newest
         # two, and final.pt is written separately and never rotated.
-        self.assertEqual(sorted(os.listdir(self.ckpt_dir)),
-                         ["final.pt", "step_3.pt", "step_4.pt"])
-        self.assertEqual(read_checkpoint(
-            os.path.join(self.ckpt_dir, "final.pt"))["step"], 4)
+        self.assertEqual(sorted(os.listdir(self.ckpt_dir)), ["final.pt", "step_3.pt", "step_4.pt"])
+        self.assertEqual(read_checkpoint(os.path.join(self.ckpt_dir, "final.pt"))["step"], 4)
 
     def test_keep_last_one_keeps_only_the_latest(self):
         with contextlib.redirect_stdout(io.StringIO()):
             train(self.tiny(keep_last=1))
-        self.assertEqual(sorted(os.listdir(self.ckpt_dir)),
-                         ["final.pt", "step_4.pt"])
+        self.assertEqual(sorted(os.listdir(self.ckpt_dir)), ["final.pt", "step_4.pt"])
 
 
 if __name__ == "__main__":

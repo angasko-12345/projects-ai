@@ -1,4 +1,5 @@
 """Regression tests for senior-review findings (Codex fixes)."""
+
 import asyncio
 import os
 import tempfile
@@ -22,21 +23,31 @@ def _engine(**overrides):
     defaults = dict(max_attempts=2, concurrency=2, max_repair_cycles=1)
     defaults.update(overrides)
     config = AppConfig(
-        {"fallback": AgentConfig("fallback", "fake", ("{prompt}",),
-                                 ("architecture", "implementation", "review", "debugging"))},
+        {
+            "fallback": AgentConfig(
+                "fallback",
+                "fake",
+                ("{prompt}",),
+                ("architecture", "implementation", "review", "debugging"),
+            )
+        },
         {role: ("fallback",) for role in ("architecture", "implementation", "review", "debugging")},
         (("test",),),
-        max_attempts=defaults["max_attempts"], concurrency=defaults["concurrency"],
+        max_attempts=defaults["max_attempts"],
+        concurrency=defaults["concurrency"],
         max_repair_cycles=defaults["max_repair_cycles"],
     )
     state = StateStore(":memory:")
     registry = MagicMock()
     from agentops.registry import DetectedAgent
+
     registry.select.return_value = DetectedAgent(config.agents["fallback"], True, "fake")
     runner = MagicMock()
 
     async def _run_agent(agent, prompt, directory, task_id, cancel_event=None):
-        return RunResult(agent.config.name, ("fake",), 0, "done", "", 0.01, False, Path(f"{task_id}.log"))
+        return RunResult(
+            agent.config.name, ("fake",), 0, "done", "", 0.01, False, Path(f"{task_id}.log")
+        )
 
     runner.run_agent = _run_agent
     verifier = MagicMock()
@@ -49,20 +60,28 @@ class VerificationRegressions(unittest.TestCase):
         an empty legacy command suite is vacuous success and must NOT verify.
         `Verifier(())` still returns [] (no crash); the workflow layer must
         mark the task FAILED instead of PASSED+verified."""
+
         async def go():
             return await Verifier((), 5).run(".")
+
         self.assertEqual(asyncio.run(go()), [])
 
         async def _run_agent(agent, prompt, directory, task_id, cancel_event=None):
-            return RunResult(agent.config.name, ("fake",), 0, "done", "", 0.01, False, Path(f"{task_id}.log"))
+            return RunResult(
+                agent.config.name, ("fake",), 0, "done", "", 0.01, False, Path(f"{task_id}.log")
+            )
 
         config = AppConfig(
             {"a": AgentConfig("a", "fake", ("{prompt}",), ("implementation",))},
-            {"implementation": ("a",)}, (), max_attempts=1, concurrency=1,
+            {"implementation": ("a",)},
+            (),
+            max_attempts=1,
+            concurrency=1,
         )
         state = StateStore(":memory:")
         try:
             from agentops.registry import DetectedAgent
+
             registry = MagicMock()
             registry.select.return_value = DetectedAgent(config.agents["a"], True, "fake")
             runner = MagicMock()
@@ -72,6 +91,7 @@ class VerificationRegressions(unittest.TestCase):
             task = state.add_task(Task("check", "verification", wid, max_attempts=1))
             asyncio.run(engine.execute(wid, Path.cwd()))
             from agentops.tasks import TaskStatus
+
             final = state.get_task(task.id)
             self.assertEqual(final.status, TaskStatus.FAILED)
             self.assertFalse(final.verified)
@@ -84,14 +104,21 @@ class ReviewVerdictWorkflowRegressions(unittest.TestCase):
 
     def _run_review(self, stdout):
         config, state, registry, runner, verifier = _engine(
-            max_attempts=1, max_repair_cycles=0,
+            max_attempts=1,
+            max_repair_cycles=0,
         )
         prompts = []
 
         async def _review(agent, prompt, directory, task_id, cancel_event=None):
             prompts.append(prompt)
             return RunResult(
-                agent.config.name, ("fake",), 0, stdout, "", 0.01, False,
+                agent.config.name,
+                ("fake",),
+                0,
+                stdout,
+                "",
+                0.01,
+                False,
                 Path(f"{task_id}.log"),
             )
 
@@ -138,12 +165,19 @@ class DependencyRegressions(unittest.TestCase):
         try:
             engine = WorkflowEngine(config, state, registry, runner, verifier)
             with self.assertRaisesRegex(ValueError, "string description and role"):
-                engine.create_workflow("w", [
-                    {"id": "valid", "description": "first", "role": "implementation"},
-                    {"id": "invalid", "description": "second", "role": 5},
-                ])
-            self.assertEqual(state.connection.execute("SELECT COUNT(*) FROM workflows").fetchone()[0], 0)
-            self.assertEqual(state.connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0], 0)
+                engine.create_workflow(
+                    "w",
+                    [
+                        {"id": "valid", "description": "first", "role": "implementation"},
+                        {"id": "invalid", "description": "second", "role": 5},
+                    ],
+                )
+            self.assertEqual(
+                state.connection.execute("SELECT COUNT(*) FROM workflows").fetchone()[0], 0
+            )
+            self.assertEqual(
+                state.connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0], 0
+            )
         finally:
             state.close()
 
@@ -160,12 +194,19 @@ class DependencyRegressions(unittest.TestCase):
 
             state.add_task = fail_second_task
             with self.assertRaisesRegex(RuntimeError, "simulated task insert failure"):
-                engine.create_workflow("w", [
-                    {"id": "first", "description": "first", "role": "implementation"},
-                    {"id": "second", "description": "second", "role": "review"},
-                ])
-            self.assertEqual(state.connection.execute("SELECT COUNT(*) FROM workflows").fetchone()[0], 0)
-            self.assertEqual(state.connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0], 0)
+                engine.create_workflow(
+                    "w",
+                    [
+                        {"id": "first", "description": "first", "role": "implementation"},
+                        {"id": "second", "description": "second", "role": "review"},
+                    ],
+                )
+            self.assertEqual(
+                state.connection.execute("SELECT COUNT(*) FROM workflows").fetchone()[0], 0
+            )
+            self.assertEqual(
+                state.connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0], 0
+            )
         finally:
             state.close()
 
@@ -174,9 +215,17 @@ class DependencyRegressions(unittest.TestCase):
         try:
             engine = WorkflowEngine(config, state, registry, runner, verifier)
             with self.assertRaises(ValueError):
-                engine.create_workflow("w", [
-                    {"id": "a", "description": "x", "role": "implementation", "dependencies": ["a"]},
-                ])
+                engine.create_workflow(
+                    "w",
+                    [
+                        {
+                            "id": "a",
+                            "description": "x",
+                            "role": "implementation",
+                            "dependencies": ["a"],
+                        },
+                    ],
+                )
         finally:
             state.close()
 
@@ -185,10 +234,23 @@ class DependencyRegressions(unittest.TestCase):
         try:
             engine = WorkflowEngine(config, state, registry, runner, verifier)
             with self.assertRaises(ValueError):
-                engine.create_workflow("w", [
-                    {"id": "a", "description": "x", "role": "implementation", "dependencies": ["b"]},
-                    {"id": "b", "description": "y", "role": "implementation", "dependencies": ["a"]},
-                ])
+                engine.create_workflow(
+                    "w",
+                    [
+                        {
+                            "id": "a",
+                            "description": "x",
+                            "role": "implementation",
+                            "dependencies": ["b"],
+                        },
+                        {
+                            "id": "b",
+                            "description": "y",
+                            "role": "implementation",
+                            "dependencies": ["a"],
+                        },
+                    ],
+                )
         finally:
             state.close()
 
@@ -197,9 +259,17 @@ class DependencyRegressions(unittest.TestCase):
         try:
             engine = WorkflowEngine(config, state, registry, runner, verifier)
             with self.assertRaises(ValueError):
-                engine.create_workflow("w", [
-                    {"id": "a", "description": "x", "role": "implementation", "dependencies": ["nope"]},
-                ])
+                engine.create_workflow(
+                    "w",
+                    [
+                        {
+                            "id": "a",
+                            "description": "x",
+                            "role": "implementation",
+                            "dependencies": ["nope"],
+                        },
+                    ],
+                )
         finally:
             state.close()
 
@@ -224,8 +294,14 @@ class RepairCycleRegressions(unittest.TestCase):
         try:
             failed = MagicMock(succeeded=False, output="boom")
             verifier.run = MagicMock(return_value=asyncio.sleep(0, result=[failed]))
-            engine = WorkflowEngine(config, state, registry, runner, verifier,
-                                    metadata_collector=self._declared_evidence())
+            engine = WorkflowEngine(
+                config,
+                state,
+                registry,
+                runner,
+                verifier,
+                metadata_collector=self._declared_evidence(),
+            )
             result = asyncio.run(engine.run_high_level("Fix", Path.cwd()))
             self.assertFalse(result.ready)
             self.assertEqual(len(state.list_tasks(result.workflow_id)), 4)
@@ -236,13 +312,21 @@ class RepairCycleRegressions(unittest.TestCase):
         config, state, registry, runner, verifier = _engine(max_repair_cycles=2)
         try:
             failed = MagicMock(succeeded=False, output="boom")
-            verifier.run = MagicMock(side_effect=[
-                asyncio.sleep(0, result=[failed]),
-                asyncio.sleep(0, result=[failed]),
-                asyncio.sleep(0, result=[failed]),
-            ])
-            engine = WorkflowEngine(config, state, registry, runner, verifier,
-                                    metadata_collector=self._declared_evidence())
+            verifier.run = MagicMock(
+                side_effect=[
+                    asyncio.sleep(0, result=[failed]),
+                    asyncio.sleep(0, result=[failed]),
+                    asyncio.sleep(0, result=[failed]),
+                ]
+            )
+            engine = WorkflowEngine(
+                config,
+                state,
+                registry,
+                runner,
+                verifier,
+                metadata_collector=self._declared_evidence(),
+            )
             result = asyncio.run(engine.run_high_level("Fix", Path.cwd()))
             self.assertFalse(result.ready)
             self.assertEqual(len(state.list_tasks(result.workflow_id)), 4 + 2 * 3)
@@ -254,8 +338,14 @@ class ConfigRegressions(unittest.TestCase):
     def test_unknown_role_preference_rejected(self):
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
             import json
-            json.dump({"agents": {"a": {"command": "x", "args": ["{prompt}"]}},
-                       "role_preferences": {"implementation": ["ghost"]}}, handle)
+
+            json.dump(
+                {
+                    "agents": {"a": {"command": "x", "args": ["{prompt}"]}},
+                    "role_preferences": {"implementation": ["ghost"]},
+                },
+                handle,
+            )
             path = handle.name
         try:
             with self.assertRaises(ValueError):
@@ -266,6 +356,7 @@ class ConfigRegressions(unittest.TestCase):
     def test_empty_args_rejected(self):
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
             import json
+
             json.dump({"agents": {"a": {"command": "x", "args": []}}}, handle)
             path = handle.name
         try:
@@ -277,6 +368,7 @@ class ConfigRegressions(unittest.TestCase):
     def test_missing_prompt_warns(self):
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
             import json
+
             json.dump({"agents": {"a": {"command": "x", "args": ["--fixed"]}}}, handle)
             path = handle.name
         try:
@@ -290,6 +382,7 @@ class ConfigRegressions(unittest.TestCase):
     def test_non_dict_verification_rejected(self):
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
             import json
+
             json.dump({"agents": {}, "verification": ["nope"]}, handle)
             path = handle.name
         try:
@@ -300,9 +393,13 @@ class ConfigRegressions(unittest.TestCase):
 
     def test_registry_select_skips_unknown_preferred(self):
         from agentops.registry import DetectedAgent
+
         config = AppConfig(
             {"a": AgentConfig("a", "fake", ("{prompt}",), ("implementation",))},
-            {"implementation": ("ghost", "a")}, (), max_attempts=1, concurrency=1,
+            {"implementation": ("ghost", "a")},
+            (),
+            max_attempts=1,
+            concurrency=1,
         )
         registry = AgentRegistry(config)
         registry._detected = {"a": DetectedAgent(config.agents["a"], True, "/bin/fake")}
@@ -321,7 +418,9 @@ class StateRegressions(unittest.TestCase):
             store.close()
             reopened = StateStore(db)
             try:
-                rows = reopened.connection.execute("SELECT * FROM events WHERE detail='hello'").fetchall()
+                rows = reopened.connection.execute(
+                    "SELECT * FROM events WHERE detail='hello'"
+                ).fetchall()
                 self.assertEqual(len(rows), 1)
             finally:
                 reopened.close()
@@ -345,6 +444,7 @@ class CliRegressions(unittest.TestCase):
         import io
         from contextlib import redirect_stdout
         from agentops.cli import main
+
         output = io.StringIO()
         with redirect_stdout(output):
             code = main(["workflow", "does-not-exist-12345.yaml"])
@@ -376,6 +476,7 @@ class SecurityRegressions(unittest.TestCase):
 
     def test_redact_text_covers_common_token_shapes(self):
         from agentops.logging import redact_text
+
         self.assertIn("[REDACTED]", redact_text("aws AKIAIOSFODNN7EXAMPLE"))
         self.assertIn("[REDACTED]", redact_text("Authorization: Bearer eyJhbGciOiJIUzI1NiJ9"))
         self.assertIn("[REDACTED]", redact_text("token gho_12345678901234567890"))
@@ -384,6 +485,7 @@ class SecurityRegressions(unittest.TestCase):
     @unittest.skipIf(os.name == "nt", "POSIX permission bits are not enforced on Windows")
     def test_log_files_restricted(self):
         import stat
+
         with tempfile.TemporaryDirectory() as directory:
             manager = LogManager(Path(directory) / "logs")
             path = manager.write_run("t1", "agent", "out", "err", "meta")
@@ -403,6 +505,7 @@ class ClaimRegressions(unittest.TestCase):
             self.assertIsNotNone(claimed)
             assert claimed is not None
             from agentops.tasks import TaskStatus
+
             self.assertEqual(claimed.status, TaskStatus.RUNNING)
             self.assertEqual(claimed.attempts, 1)
             self.assertIsNotNone(claimed.started_at)
@@ -411,6 +514,7 @@ class ClaimRegressions(unittest.TestCase):
 
     def test_second_claim_returns_none(self):
         from agentops.tasks import TaskStatus
+
         _, state, _, _, _ = _engine()
         try:
             wid = state.create_workflow("w")
@@ -427,12 +531,15 @@ class ClaimRegressions(unittest.TestCase):
     def test_execute_skips_already_claimed_task(self):
         """A task claimed by another worker must not run twice."""
         from agentops.tasks import TaskStatus
+
         config, state, registry, runner, verifier = _engine()
         calls: list[str] = []
 
         async def _run_agent(agent, prompt, directory, task_id, cancel_event=None):
             calls.append(task_id)
-            return RunResult(agent.config.name, ("fake",), 0, "done", "", 0.01, False, Path(f"{task_id}.log"))
+            return RunResult(
+                agent.config.name, ("fake",), 0, "done", "", 0.01, False, Path(f"{task_id}.log")
+            )
 
         runner.run_agent = _run_agent
         try:
@@ -448,13 +555,16 @@ class ClaimRegressions(unittest.TestCase):
 
     def test_concurrent_claims_single_winner(self):
         import threading
+
         _, state, _, _, _ = _engine()
         try:
             wid = state.create_workflow("w")
             task = state.add_task(Task("work", "implementation", wid))
             results: list = []
-            threads = [threading.Thread(target=lambda: results.append(state.claim_task(task.id)))
-                       for _ in range(8)]
+            threads = [
+                threading.Thread(target=lambda: results.append(state.claim_task(task.id)))
+                for _ in range(8)
+            ]
             for thread in threads:
                 thread.start()
             for thread in threads:
@@ -484,6 +594,7 @@ class ExecutableRegressions(unittest.TestCase):
 
     def test_build_command_prefers_resolved_executable(self):
         from agentops.registry import DetectedAgent
+
         config = AgentConfig("codex", "codex", ("exec", "{prompt}"), ("implementation",))
         agent = DetectedAgent(config, True, "/resolved/path/codex")
         command = AgentRunner.build_command(agent, "do it")
@@ -492,8 +603,11 @@ class ExecutableRegressions(unittest.TestCase):
 
     def test_build_command_falls_back_to_command(self):
         from agentops.registry import DetectedAgent
+
         config = AgentConfig("codex", "codex", ("exec", "{prompt}"), ("implementation",))
-        self.assertEqual(AgentRunner.build_command(DetectedAgent(config, True, None), "do it")[0], "codex")
+        self.assertEqual(
+            AgentRunner.build_command(DetectedAgent(config, True, None), "do it")[0], "codex"
+        )
         self.assertEqual(AgentRunner.build_command(config, "do it")[0], "codex")
 
 
@@ -504,21 +618,23 @@ class StateLocationRegressions(unittest.TestCase):
     def test_nested_directory_resolves_repository_root(self):
         import subprocess
         from agentops.cli import _resolve_state_base
+
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            subprocess.run(["git", "init"], cwd=root, check=True,
-                           capture_output=True)
+            subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
             nested = root / "a" / "b"
             nested.mkdir(parents=True)
             self.assertEqual(_resolve_state_base(nested), root.resolve())
 
     def test_non_git_directory_falls_back(self):
         from agentops.cli import _resolve_state_base
+
         with tempfile.TemporaryDirectory() as directory:
             self.assertEqual(_resolve_state_base(Path(directory)), Path(directory))
 
     def test_workflow_parser_accepts_cwd(self):
         from agentops.cli import build_parser
+
         args = build_parser().parse_args(["workflow", "flow.yaml"])
         self.assertEqual(args.cwd, Path.cwd())
         args = build_parser().parse_args(["workflow", "flow.yaml", "--cwd", "somewhere"])
@@ -559,6 +675,7 @@ class NoAgentFallbackRegressions(unittest.TestCase):
 
     def test_retry_without_alternative_names_tried_agent(self):
         from agentops.registry import DetectedAgent
+
         config, state, _, _, verifier = _engine()
         registry = MagicMock()
         registry.select.side_effect = [
@@ -567,7 +684,9 @@ class NoAgentFallbackRegressions(unittest.TestCase):
         ]
 
         async def _fail(agent, prompt, directory, task_id):
-            return RunResult(agent.config.name, ("fake",), 1, "", "boom", 0.01, False, Path(f"{task_id}.log"))
+            return RunResult(
+                agent.config.name, ("fake",), 1, "", "boom", 0.01, False, Path(f"{task_id}.log")
+            )
 
         runner = MagicMock()
         runner.run_agent = _fail
@@ -578,6 +697,7 @@ class NoAgentFallbackRegressions(unittest.TestCase):
             asyncio.run(engine.execute(wid, Path.cwd()))
             final = state.get_task(task.id)
             from agentops.tasks import TaskStatus
+
             self.assertEqual(final.status, TaskStatus.FAILED)
             self.assertIn("fallback", final.result or "")
             self.assertIn("already tried", final.result or "")

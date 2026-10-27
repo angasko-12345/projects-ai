@@ -25,14 +25,22 @@ class CheckResult:
 
 
 class Verifier:
-    def __init__(self, commands: tuple[tuple[str, ...], ...], timeout_seconds: int = 300,
-                 pass_env_names: tuple[str, ...] = (), pass_env_prefixes: tuple[str, ...] = (),
-                 runtime: ProcessRuntime | None = None, systemd_run_enabled: bool = False):
+    def __init__(
+        self,
+        commands: tuple[tuple[str, ...], ...],
+        timeout_seconds: int = 300,
+        pass_env_names: tuple[str, ...] = (),
+        pass_env_prefixes: tuple[str, ...] = (),
+        runtime: ProcessRuntime | None = None,
+        systemd_run_enabled: bool = False,
+    ):
         self.commands = commands
         self.timeout_seconds = timeout_seconds
         self.pass_env_names = pass_env_names
         self.pass_env_prefixes = pass_env_prefixes
-        self._runtime = runtime or ProcessRuntime(pass_env_names, pass_env_prefixes, systemd_run_enabled=systemd_run_enabled)
+        self._runtime = runtime or ProcessRuntime(
+            pass_env_names, pass_env_prefixes, systemd_run_enabled=systemd_run_enabled
+        )
 
     async def run(
         self,
@@ -43,7 +51,8 @@ class Verifier:
         for command in self.commands:
             started = monotonic()
             completed = await self._runtime.run_process(
-                command, cwd=working_directory,
+                command,
+                cwd=working_directory,
                 env=self._runtime.environment(),
                 timeout=self.timeout_seconds,
                 cancel_event=cancel_event,
@@ -53,8 +62,13 @@ class Verifier:
                 raise OperationCancelled
             output = completed.stdout
             timed_out = completed.timed_out
-            result = CheckResult(command, completed.exit_code,
-                                 output.decode("utf-8", errors="replace"), timed_out, monotonic() - started)
+            result = CheckResult(
+                command,
+                completed.exit_code,
+                output.decode("utf-8", errors="replace"),
+                timed_out,
+                monotonic() - started,
+            )
             results.append(result)
             if not result.succeeded:
                 break

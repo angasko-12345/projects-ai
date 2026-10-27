@@ -172,7 +172,9 @@ def event_from_dict(data: dict[str, Any]) -> tuple[Event, tuple[str, ...]]:
         warnings.append(f"invalid schema_version {_safe_repr(version)}; defaulting")
         version_int = EVENT_SCHEMA_VERSION
     if version_int not in SUPPORTED_EVENT_VERSIONS:
-        warnings.append(f"unsupported schema_version {version_int}; coerced as v{EVENT_SCHEMA_VERSION}")
+        warnings.append(
+            f"unsupported schema_version {version_int}; coerced as v{EVENT_SCHEMA_VERSION}"
+        )
 
     try:
         event_type, type_warnings = _coerce_type(get("type"))
@@ -208,7 +210,9 @@ def event_from_dict(data: dict[str, Any]) -> tuple[Event, tuple[str, ...]]:
             schema_version=EVENT_SCHEMA_VERSION,
         )
     except Exception:
-        return Event(message="event coercion fallback"), tuple(warnings + ["event coercion fallback"])
+        return Event(message="event coercion fallback"), tuple(
+            warnings + ["event coercion fallback"]
+        )
     return event, tuple(warnings)
 
 
@@ -262,14 +266,18 @@ class EventBus:
         self._subscribers: dict[str, SubscriberFn] = {}
         self._type_subscribers: dict[str, dict[str, SubscriberFn]] = defaultdict(dict)
 
-    def subscribe(self, subscriber: SubscriberFn, event_types: Iterable[EventType | str] | None = None) -> str:
+    def subscribe(
+        self, subscriber: SubscriberFn, event_types: Iterable[EventType | str] | None = None
+    ) -> str:
         key = str(uuid4())
         with self._lock:
             if event_types is None:
                 self._subscribers[key] = subscriber
             else:
                 for event_type in event_types:
-                    name = event_type.value if isinstance(event_type, EventType) else str(event_type)
+                    name = (
+                        event_type.value if isinstance(event_type, EventType) else str(event_type)
+                    )
                     self._type_subscribers[name][key] = subscriber
         return key
 
@@ -300,7 +308,9 @@ class EventBus:
         try:
             with self._lock:
                 targets = list(self._subscribers.values())
-                type_name = event.type.value if isinstance(event.type, EventType) else str(event.type)
+                type_name = (
+                    event.type.value if isinstance(event.type, EventType) else str(event.type)
+                )
                 targets.extend(self._type_subscribers.get(type_name, {}).values())
         except Exception:
             return 0

@@ -161,15 +161,18 @@ def _run_wrapped(raw: bytes, command: str | None, argv: list[str]) -> tuple[byte
     return completed.stdout, completed.returncode
 
 
-def main(argv: list[str] | None = None, *, stdin=None, stdout=None, now_iso: str | None = None) -> int:
+def main(
+    argv: list[str] | None = None, *, stdin=None, stdout=None, now_iso: str | None = None
+) -> int:
     parser = argparse.ArgumentParser(
         prog="statusline_tee",
         description="Record Claude Code status line rate_limits locally, then run the wrapped status line.",
     )
     parser.add_argument("--out", help=f"ledger file (default: {claude_ledger_path()})")
     parser.add_argument("--command", help="wrapped status line command, run through the shell")
-    parser.add_argument("wrapped", nargs=argparse.REMAINDER,
-                        help="wrapped command as argv, after `--` (no shell)")
+    parser.add_argument(
+        "wrapped", nargs=argparse.REMAINDER, help="wrapped command as argv, after `--` (no shell)"
+    )
     args = parser.parse_args(argv)
     wrapped = list(args.wrapped)
     if wrapped and wrapped[0] == "--":

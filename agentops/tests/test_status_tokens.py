@@ -36,8 +36,7 @@ class StatusColorsTest(unittest.TestCase):
 
     def test_case_and_whitespace_are_normalized(self):
         self.assertEqual(status_colors("CRITICAL", DARK), (DARK.danger, DARK.danger))
-        self.assertEqual(status_colors("  Medium  ", DARK),
-                         (DARK.warning, DARK.warning))
+        self.assertEqual(status_colors("  Medium  ", DARK), (DARK.warning, DARK.warning))
 
     def test_enums_resolve_through_value(self):
         # failure.py uses enum.StrEnum (3.11+); on older interpreters the

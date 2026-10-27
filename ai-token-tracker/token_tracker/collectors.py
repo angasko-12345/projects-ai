@@ -139,6 +139,8 @@ def collect_kilo(path: Path) -> list[UsageEvent]:
         except EventValidationError:
             continue
     return events
+
+
 # --------------------------------------------------------------- claude code
 
 
@@ -209,9 +211,9 @@ def collect_claude(path: Path) -> list[UsageEvent]:
             # glue), not an API call: real stores attach zero-usage blocks to
             # these rows and counting them would inflate request counts.
             message = obj.get("message")
-            model_value = (
-                message.get("model") if isinstance(message, dict) else None
-            ) or obj.get("model")
+            model_value = (message.get("model") if isinstance(message, dict) else None) or obj.get(
+                "model"
+            )
             if model_value == SYNTHETIC_MODEL:
                 continue
             rid = obj.get("requestId")
@@ -226,9 +228,9 @@ def collect_claude(path: Path) -> list[UsageEvent]:
         # actually carries usage; a rid whose copies are all usage-less is
         # skipped rather than guessed at.
         usage_bearing = [
-            r for r in records
-            if isinstance(r.get("message"), dict)
-            and isinstance(r["message"].get("usage"), dict)
+            r
+            for r in records
+            if isinstance(r.get("message"), dict) and isinstance(r["message"].get("usage"), dict)
         ]
         if not usage_bearing:
             continue
@@ -388,13 +390,17 @@ def _decompress_zstd(data: bytes) -> str:
     """Decompress zstd using stdlib (3.14+) or backport."""
     try:
         import compression.zstd as zstd
+
         return zstd.decompress(data).decode("utf-8")
     except ImportError:
         try:
             import zstandard as zstd
+
             return zstd.decompress(data).decode("utf-8")
         except ImportError:
-            raise CollectorError("no zstd decoder available (need Python 3.14+ or zstandard package)") from None
+            raise CollectorError(
+                "no zstd decoder available (need Python 3.14+ or zstandard package)"
+            ) from None
 
 
 def collect_dsh(path: Path) -> list[UsageEvent]:
@@ -483,7 +489,9 @@ def collect_dsh(path: Path) -> list[UsageEvent]:
 # --------------------------------------------------------------- unavailable markers
 
 
-def _unavailable_collector(source: str, tool: str, reason: str, kind: str = "provider") -> Collector:
+def _unavailable_collector(
+    source: str, tool: str, reason: str, kind: str = "provider"
+) -> Collector:
     return Collector(
         source=source,
         tool=tool,
@@ -738,11 +746,7 @@ def collect_codex(path: Path) -> list[UsageEvent]:
                     "turn_id": payload.get("turn_id"),
                     "reported_total": usage.get("total_tokens"),
                 }
-            elif (
-                kind == "event_msg"
-                and not use_records
-                and payload.get("type") == "token_count"
-            ):
+            elif kind == "event_msg" and not use_records and payload.get("type") == "token_count":
                 info = payload.get("info")
                 if not isinstance(info, dict):
                     continue  # rate-limit-only snapshot, no usage
@@ -828,10 +832,24 @@ def collect_hermes(path: Path) -> list[UsageEvent]:
     events: list[UsageEvent] = []
     for row in rows:
         (
-            session_id, model, billing_provider, billing_base_url, task, api_calls,
-            input_tokens, output_tokens, cache_read, cache_write, reasoning,
-            estimated_cost, actual_cost, cost_status, cost_source,
-            first_seen, last_seen, cwd,
+            session_id,
+            model,
+            billing_provider,
+            billing_base_url,
+            task,
+            api_calls,
+            input_tokens,
+            output_tokens,
+            cache_read,
+            cache_write,
+            reasoning,
+            estimated_cost,
+            actual_cost,
+            cost_status,
+            cost_source,
+            first_seen,
+            last_seen,
+            cwd,
         ) = row
         actual = float(actual_cost or 0.0)
         estimated = float(estimated_cost or 0.0)
@@ -883,7 +901,12 @@ def find_copilot() -> Path | None:
         base = Path(appdata)
         candidates += [
             base / "Code" / "User" / "globalStorage" / "github.copilot-chat" / "session-state",
-            base / "Code - Insiders" / "User" / "globalStorage" / "github.copilot-chat" / "session-state",
+            base
+            / "Code - Insiders"
+            / "User"
+            / "globalStorage"
+            / "github.copilot-chat"
+            / "session-state",
         ]
     candidates.append(_data_dir_candidate("copilot", "home", "session-state"))
     found = _first_existing(candidates)
@@ -932,7 +955,11 @@ def collect_copilot(path: Path) -> list[UsageEvent]:
                 usage = model_metrics.get("usage") or {}
                 details = model_metrics.get("tokenDetails") or {}
                 input_details = details.get("input") if isinstance(details, dict) else None
-                token_count = (input_details or {}).get("tokenCount") if isinstance(input_details, dict) else None
+                token_count = (
+                    (input_details or {}).get("tokenCount")
+                    if isinstance(input_details, dict)
+                    else None
+                )
                 input_total = int(usage.get("inputTokens") or 0)
                 cache_read = int(usage.get("cacheReadTokens") or 0)
                 cache_write = int(usage.get("cacheWriteTokens") or 0)
@@ -1001,21 +1028,30 @@ REGISTRY: list[Collector] = [
     Collector("dsh", "DeepSeek Harness", "exact", "agent", find_dsh, collect_dsh),
     # Provider-side dashboards: recorded as unavailable so coverage is honest.
     Collector(
-        "openrouter", "OpenRouter", "unavailable", "provider",
+        "openrouter",
+        "OpenRouter",
+        "unavailable",
+        "provider",
         unavailable_reason=(
             "activity API returned HTTP 403 for the configured OPENROUTER_API_KEY; "
             "provider-side import disabled to avoid double counting (agent rows already attribute OpenRouter)"
         ),
     ),
     Collector(
-        "gemini", "Google Gemini", "unavailable", "provider",
+        "gemini",
+        "Google Gemini",
+        "unavailable",
+        "provider",
         unavailable_reason=(
             "usage API exposes aggregate-only totals that would double count agent-side Google rows; "
             "excluded by design"
         ),
     ),
     Collector(
-        "openai", "OpenAI", "unavailable", "provider",
+        "openai",
+        "OpenAI",
+        "unavailable",
+        "provider",
         unavailable_reason="no OPENAI_API_KEY configured; usage API not queried",
     ),
     # Installed agents with no usable local token data:
@@ -1046,9 +1082,7 @@ REGISTRY: list[Collector] = [
 ]
 
 
-def sync_all(
-    conn: sqlite3.Connection, cancel: threading.Event | None = None
-) -> dict[str, dict]:
+def sync_all(conn: sqlite3.Connection, cancel: threading.Event | None = None) -> dict[str, dict]:
     """Run every collector; one source's failure never stops the others.
 
     Returns {source: {"status": "ok"|"error"|"unavailable", ...}} with counts

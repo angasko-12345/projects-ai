@@ -55,6 +55,7 @@ QWIDGETSIZE_MAX = 0xFFFFFF
 # labels and helpers
 # ---------------------------------------------------------------------------
 
+
 def label(text: str = "", role: str = "", parent: QWidget | None = None) -> QLabel:
     widget = QLabel(text, parent)
     if role:
@@ -115,6 +116,7 @@ def _done_at(value: object) -> str:
 # containers
 # ---------------------------------------------------------------------------
 
+
 class Card(QFrame):
     """Bordered surface grouping one dashboard/detail block."""
 
@@ -122,8 +124,7 @@ class Card(QFrame):
         super().__init__(parent)
         self.setProperty("card", True)
         self.setLayout(QVBoxLayout())
-        self.layout().setContentsMargins(DARK.space_lg, DARK.space_md,
-                                         DARK.space_lg, DARK.space_md)
+        self.layout().setContentsMargins(DARK.space_lg, DARK.space_md, DARK.space_lg, DARK.space_md)
         self.layout().setSpacing(DARK.space_md)
         self._title = QLabel(title) if title else None
         if self._title is not None:
@@ -135,6 +136,7 @@ class Card(QFrame):
 
     def add(self, widget: QWidget) -> None:
         self.layout().addWidget(widget)
+
 
 class StatCard(Card):
     """Clickable dashboard statistic: keyboard-focusable, emits ``clicked``.
@@ -319,8 +321,7 @@ class LiveCard(QFrame):
         self._theme = theme
         self.setProperty("card", True)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(theme.space_lg, theme.space_md,
-                                  theme.space_lg, theme.space_md)
+        layout.setContentsMargins(theme.space_lg, theme.space_md, theme.space_lg, theme.space_md)
         layout.setSpacing(theme.space_sm)
 
         self._stage_label = QLabel("")
@@ -383,8 +384,7 @@ class CollapsibleSection(QFrame):
 
         self._container = QWidget()
         self._container_layout = QVBoxLayout(self._container)
-        self._container_layout.setContentsMargins(DARK.space_xs, 0,
-                                                   DARK.space_xs, 0)
+        self._container_layout.setContentsMargins(DARK.space_xs, 0, DARK.space_xs, 0)
         self._container_layout.setSpacing(DARK.space_md)
         outer.addWidget(self._container)
 
@@ -429,8 +429,7 @@ class CollapsibleSection(QFrame):
 class PulsingDot(QWidget):
     """Small status circle; pulses while a stage/operation is active."""
 
-    def __init__(self, color: str = DARK.accent, size: int = 10,
-                 parent: QWidget | None = None):
+    def __init__(self, color: str = DARK.accent, size: int = 10, parent: QWidget | None = None):
         super().__init__(parent)
         self._color = color
         self._size = size
@@ -478,11 +477,17 @@ class PulsingDot(QWidget):
 # status badge
 # ---------------------------------------------------------------------------
 
+
 class Badge(QLabel):
     """Colored status pill driven by ``tokens.status_colors``."""
 
-    def __init__(self, text: str = "", status: object | None = None,
-                 parent: QWidget | None = None, theme: Theme = DARK):
+    def __init__(
+        self,
+        text: str = "",
+        status: object | None = None,
+        parent: QWidget | None = None,
+        theme: Theme = DARK,
+    ):
         super().__init__(parent)
         self._theme = theme
         self.setWordWrap(False)
@@ -548,6 +553,7 @@ def agent_icon(identifier: str, display_name: str = "", size: int = 16) -> QIcon
 # search
 # ---------------------------------------------------------------------------
 
+
 class SearchBox(QLineEdit):
     """Filter input with a clear button; views connect ``textChanged``."""
 
@@ -563,13 +569,14 @@ class SearchBox(QLineEdit):
 # table
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class TableColumn:
     key: str
     title: str
     width: int = 120
     stretch: bool = False
-    format: Callable[[object], str] | None = None   # raw -> display text
+    format: Callable[[object], str] | None = None  # raw -> display text
     sort: Callable[[object], object] | None = None  # raw -> sort key
 
 
@@ -623,7 +630,8 @@ class StatusPillDelegate(QStyledItemDelegate):
         metrics = QFontMetrics(font)
         available = option.rect.adjusted(6, 5, -6, -5)
         label = metrics.elidedText(
-            text.upper(), Qt.TextElideMode.ElideRight, max(0, available.width()))
+            text.upper(), Qt.TextElideMode.ElideRight, max(0, available.width())
+        )
         if not label:
             super().paint(painter, option, index)
             return
@@ -652,8 +660,12 @@ class StatusPillDelegate(QStyledItemDelegate):
 class TableModel(QAbstractTableModel):
     """Dict-row table model; rows are plain controller payloads."""
 
-    def __init__(self, columns: Sequence[TableColumn], rows: Sequence[dict] = (),
-                 parent: QObject | None = None):  # type: ignore[valid-type]
+    def __init__(
+        self,
+        columns: Sequence[TableColumn],
+        rows: Sequence[dict] = (),
+        parent: QObject | None = None,
+    ):  # type: ignore[valid-type]
         super().__init__(parent)
         self.columns = list(columns)
         self.rows = list(rows)
@@ -691,8 +703,12 @@ class TableModel(QAbstractTableModel):
             return _sort_value(raw, column)
         return None
 
-    def headerData(self, section: int, orientation: Qt.Orientation,  # noqa: N802
-                   role: int = Qt.ItemDataRole.DisplayRole) -> object:
+    def headerData(
+        self,
+        section: int,
+        orientation: Qt.Orientation,  # noqa: N802
+        role: int = Qt.ItemDataRole.DisplayRole,
+    ) -> object:
         if role != Qt.ItemDataRole.DisplayRole:
             return None
         if orientation == Qt.Orientation.Horizontal and 0 <= section < len(self.columns):
@@ -752,8 +768,12 @@ class TableFilterProxy(QSortFilterProxyModel):
     def lessThan(self, left: QModelIndex, right: QModelIndex) -> bool:  # noqa: N802
         left_value = left.data(Qt.ItemDataRole.UserRole)
         right_value = right.data(Qt.ItemDataRole.UserRole)
-        if (isinstance(left_value, (int, float)) and not isinstance(left_value, bool)
-                and isinstance(right_value, (int, float)) and not isinstance(right_value, bool)):
+        if (
+            isinstance(left_value, (int, float))
+            and not isinstance(left_value, bool)
+            and isinstance(right_value, (int, float))
+            and not isinstance(right_value, bool)
+        ):
             return left_value < right_value
         return str(left_value).lower() < str(right_value).lower()
 
@@ -761,12 +781,16 @@ class TableFilterProxy(QSortFilterProxyModel):
 class TablePanel(QWidget):
     """Searchable, sortable, selectable table bound to dict rows."""
 
-    activated = Signal(object)          # row dict (double-click / Enter)
+    activated = Signal(object)  # row dict (double-click / Enter)
     selection_changed = Signal(object)  # row dict or None
 
-    def __init__(self, columns: Sequence[TableColumn],
-                 empty_message: str = "Nothing to show",
-                 empty_detail: str = "", parent: QWidget | None = None):
+    def __init__(
+        self,
+        columns: Sequence[TableColumn],
+        empty_message: str = "Nothing to show",
+        empty_detail: str = "",
+        parent: QWidget | None = None,
+    ):
         super().__init__(parent)
         self._model = TableModel(columns, (), self)
         self._proxy = TableFilterProxy(columns, self)
@@ -796,8 +820,7 @@ class TablePanel(QWidget):
             if column.stretch:
                 header.setSectionResizeMode(index, QHeaderView.ResizeMode.Stretch)
             if column.key in PILL_COLUMNS:
-                self._view.setItemDelegateForColumn(
-                    index, StatusPillDelegate(parent=self._view))
+                self._view.setItemDelegateForColumn(index, StatusPillDelegate(parent=self._view))
         self._view.setWordWrap(False)
         self._view.setMinimumHeight(140)
 
@@ -883,6 +906,7 @@ class TablePanel(QWidget):
 # ---------------------------------------------------------------------------
 # detail helpers
 # ---------------------------------------------------------------------------
+
 
 class KeyValueGrid(QWidget):
     """Two-column label/value grid for detail panels."""
@@ -972,6 +996,7 @@ class LogText(QPlainTextEdit):
 # pipeline
 # ---------------------------------------------------------------------------
 
+
 class _PipelineStage(QWidget):
     def __init__(self, stage: dict, theme: Theme, parent: QWidget | None = None):
         super().__init__(parent)
@@ -1050,6 +1075,7 @@ class PipelineBar(QWidget):
 # vertical stage flow (control center)
 # ---------------------------------------------------------------------------
 
+
 def _stage_state(stage: dict) -> object:
     """A stage's lifecycle value.
 
@@ -1075,8 +1101,7 @@ class StageNode(QFrame):
         self._key = str(stage.get("key", ""))
         self.setProperty("card", True)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(theme.space_md, theme.space_sm,
-                                  theme.space_md, theme.space_sm)
+        layout.setContentsMargins(theme.space_md, theme.space_sm, theme.space_md, theme.space_sm)
         layout.setSpacing(theme.space_xs)
 
         head = QHBoxLayout()
@@ -1136,9 +1161,9 @@ class StageNode(QFrame):
         self.fact_labels["model"].setText(_fact("Model", stage.get("model")))
         recorded = stage.get("duration_seconds")
         self.fact_labels["duration"].setText(
-            format_duration(recorded) if isinstance(recorded, (int, float)) else "")
-        self.fact_labels["verification"].setText(
-            _fact("Verification", stage.get("verification")))
+            format_duration(recorded) if isinstance(recorded, (int, float)) else ""
+        )
+        self.fact_labels["verification"].setText(_fact("Verification", stage.get("verification")))
         self.fact_labels["completed"].setText(_fact("", _done_at(stage.get("completed_at"))))
         failure = str(stage.get("failure") or "")
         self.failure.setText(failure)
@@ -1233,6 +1258,7 @@ class StageFlow(QWidget):
 # ---------------------------------------------------------------------------
 # command list (used by the command palette)
 # ---------------------------------------------------------------------------
+
 
 class CommandList(QListWidget):
     """Filtered list of commands with keyboard navigation."""

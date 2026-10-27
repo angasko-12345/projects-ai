@@ -1,7 +1,7 @@
 """Headless command line entry points. No PySide6 import on this path.
 
-    python -m token_tracker headroom            # short table
-    python -m token_tracker headroom --json     # schema documented in README
+python -m token_tracker headroom            # short table
+python -m token_tracker headroom --json     # schema documented in README
 """
 
 from __future__ import annotations
@@ -35,18 +35,29 @@ def build_parser() -> argparse.ArgumentParser:
         "headroom",
         help="remaining usage-limit headroom per provider, from local credential-free sources",
         description="Remaining usage-limit headroom per provider. Reads Codex rollout rate_limits, "
-                    "the opt-in Claude status line ledger, and OpenRouter /api/v1/key only when "
-                    "OPENROUTER_API_KEY is already set. Missing or old data is marked, never filled in.",
+        "the opt-in Claude status line ledger, and OpenRouter /api/v1/key only when "
+        "OPENROUTER_API_KEY is already set. Missing or old data is marked, never filled in.",
     )
     h.add_argument("--json", action="store_true", help="print the versioned JSON document")
     h.add_argument("--out", type=Path, help="also write the JSON document to this file (atomic)")
     h.add_argument("--offline", action="store_true", help="skip network sources (OpenRouter)")
     h.add_argument("--codex-dir", type=Path, help="Codex sessions dir (default: auto-detect)")
-    h.add_argument("--claude-file", type=Path, help="Claude status line ledger (default: see README)")
-    h.add_argument("--stale-after", type=_positive_float, metavar="SECONDS",
-                   help="mark readings older than this stale (default: a quarter of the window, max 6h)")
-    h.add_argument("--max-codex-files", type=_positive_int, default=None, metavar="N",
-                   help="newest rollout files to scan (default: 40)")
+    h.add_argument(
+        "--claude-file", type=Path, help="Claude status line ledger (default: see README)"
+    )
+    h.add_argument(
+        "--stale-after",
+        type=_positive_float,
+        metavar="SECONDS",
+        help="mark readings older than this stale (default: a quarter of the window, max 6h)",
+    )
+    h.add_argument(
+        "--max-codex-files",
+        type=_positive_int,
+        default=None,
+        metavar="N",
+        help="newest rollout files to scan (default: 40)",
+    )
     return parser
 
 

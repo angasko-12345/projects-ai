@@ -133,9 +133,7 @@ class SyncSourcesTest(unittest.TestCase):
         self.assertIsNone(QApplication.overrideCursor())
         self.assertEqual(self.window.sync_label.text(), "Sync failed: database is locked")
         self.assertIn(PALETTE["amber"], self.window.sync_label.styleSheet())
-        self.assertEqual(
-            self.window.status.currentMessage(), "Sync failed: database is locked"
-        )
+        self.assertEqual(self.window.status.currentMessage(), "Sync failed: database is locked")
 
     def test_reentrant_click_does_not_start_a_second_worker(self):
         calls = []
@@ -250,9 +248,12 @@ class ImportGuardTest(unittest.TestCase):
         result = subprocess.run(
             [sys.executable, "-c", script],
             cwd=tests_dir,
-            env={**os.environ, "PYTHONPATH": os.pathsep.join(
-                [str(tests_dir.parent), os.environ.get("PYTHONPATH", "")]
-            )},
+            env={
+                **os.environ,
+                "PYTHONPATH": os.pathsep.join(
+                    [str(tests_dir.parent), os.environ.get("PYTHONPATH", "")]
+                ),
+            },
             capture_output=True,
             text=True,
             timeout=60,

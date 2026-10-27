@@ -121,7 +121,9 @@ def show_error_box(title: str, message: str) -> None:
     print(f"{title}: {message}", file=sys.stderr)
 
 
-def report_fatal(error: BaseException, detail: str = "", box: Callable[[str, str], None] | None = None) -> None:
+def report_fatal(
+    error: BaseException, detail: str = "", box: Callable[[str, str], None] | None = None
+) -> None:
     """Log a fatal startup error and tell the user where the details went."""
     write_log(f"fatal: {type(error).__name__}: {error}")
     text = f"{type(error).__name__}: {error}"

@@ -41,13 +41,15 @@ async def _default_spawn(*args: object, **kwargs: object) -> asyncio.subprocess.
     """Compatibility default factory backed by the shared runtime policy."""
     return await ProcessRuntime().spawn_process(*args, **kwargs)  # type: ignore[arg-type]
 
+
 _MAX_TRANSCRIPT_OUTPUT = 8000
 
 
 def _summarize_counts(checks: list[VerificationCheck]) -> dict[str, int]:
     passed = sum(1 for check in checks if check.status is VerificationCheckStatus.PASSED)
     failed = sum(
-        1 for check in checks
+        1
+        for check in checks
         if check.status in {VerificationCheckStatus.FAILED, VerificationCheckStatus.TIMED_OUT}
     )
     skipped = sum(1 for check in checks if check.status is VerificationCheckStatus.SKIPPED)
@@ -60,8 +62,11 @@ def _summarize_counts(checks: list[VerificationCheck]) -> dict[str, int]:
     # a verification report cannot be PASSED while any required check is
     # unresolved.
     required_failures = sum(
-        1 for check in checks
-        if check.required and check.status in {
+        1
+        for check in checks
+        if check.required
+        and check.status
+        in {
             VerificationCheckStatus.FAILED,
             VerificationCheckStatus.TIMED_OUT,
             VerificationCheckStatus.CANCELLED,
@@ -115,9 +120,7 @@ def _inapplicable_reason(command: tuple[str, ...], working_directory: Path) -> s
             if not target.is_absolute():
                 target = working_directory / target
             if not target.is_dir():
-                return (
-                    f"start directory {argv[index + 1]!r} does not exist in {working_directory}"
-                )
+                return f"start directory {argv[index + 1]!r} does not exist in {working_directory}"
             break
     return None
 
@@ -149,12 +152,15 @@ class VerificationKernel:
         # The recorder is shared across runs; per-run state is threaded
         # explicitly so concurrent runs cannot contaminate each other.
         if degradation is None and getattr(state, "record_typed_event", None) is not None:
-            degradation = DegradationRecorder(
-                emit=event_emitter(state.record_typed_event))
+            degradation = DegradationRecorder(emit=event_emitter(state.record_typed_event))
         self._degradation = degradation if degradation is not None else DegradationRecorder()
-        self._runtime = ProcessRuntime(pass_env_names, pass_env_prefixes, spawn=process_factory, systemd_run_enabled=systemd_run_enabled)
+        self._runtime = ProcessRuntime(
+            pass_env_names,
+            pass_env_prefixes,
+            spawn=process_factory,
+            systemd_run_enabled=systemd_run_enabled,
+        )
         if default_profile is not None and default_profile not in self._profiles:
-
             raise ValueError(f"Unknown verification profile: {default_profile}.")
 
     def resolve_profile(self, name: str | None = None) -> VerificationProfile:
@@ -168,7 +174,9 @@ class VerificationKernel:
         if len(self._profiles) == 1:
             return next(iter(self._profiles.values()))
         if self._profiles:
-            raise ValueError("A verification profile name is required when multiple profiles are configured.")
+            raise ValueError(
+                "A verification profile name is required when multiple profiles are configured."
+            )
         return VerificationProfile(
             name="legacy",
             mode=VerificationProfileMode.FAIL_FAST,
@@ -191,8 +199,10 @@ class VerificationKernel:
     def _execution_groups(profile: VerificationProfile) -> list[list[VerificationCheckSpec]]:
         groups: list[list[VerificationCheckSpec]] = []
         for spec in profile.checks:
-            if spec.policy is VerificationExecutionPolicy.PARALLEL and groups and all(
-                item.policy is VerificationExecutionPolicy.PARALLEL for item in groups[-1]
+            if (
+                spec.policy is VerificationExecutionPolicy.PARALLEL
+                and groups
+                and all(item.policy is VerificationExecutionPolicy.PARALLEL for item in groups[-1])
             ):
                 groups[-1].append(spec)
             elif spec.policy is VerificationExecutionPolicy.PARALLEL:
@@ -238,7 +248,9 @@ class VerificationKernel:
             raise ValueError("Verification profile checks need unique names.")
         run_id = str(uuid4())
         if self._state is not None:
-            record = self._state.create_verification_run(workflow_id, task_id, profile, source_agent_run_id)
+            record = self._state.create_verification_run(
+                workflow_id, task_id, profile, source_agent_run_id
+            )
             run_id = record.id
             self._state.start_verification_run(run_id)
         checks: dict[str, VerificationCheck] = {}
@@ -251,9 +263,17 @@ class VerificationKernel:
                     # execution time so the stored value never masks a rejection.
                     check_dir = spec.working_directory or str(base)
                     created = self._state.create_verification_check(
-                        run_id, workflow_id, task_id, profile.name, spec.name,
-                        spec.check_class.value, spec.command, check_dir, timeout,
-                        spec.required, spec.policy.value,
+                        run_id,
+                        workflow_id,
+                        task_id,
+                        profile.name,
+                        spec.name,
+                        spec.check_class.value,
+                        spec.command,
+                        check_dir,
+                        timeout,
+                        spec.required,
+                        spec.policy.value,
                     )
                     checks[spec.name] = created
             except Exception as error:
@@ -266,12 +286,21 @@ class VerificationKernel:
             now = utc_now()
             for spec in specs:
                 checks[spec.name] = VerificationCheck(
-                    id=str(uuid4()), run_id=run_id, workflow_id=workflow_id, task_id=task_id,
-                    profile_name=profile.name, name=spec.name, check_class=spec.check_class,
-                    command=spec.command, working_directory=spec.working_directory,
+                    id=str(uuid4()),
+                    run_id=run_id,
+                    workflow_id=workflow_id,
+                    task_id=task_id,
+                    profile_name=profile.name,
+                    name=spec.name,
+                    check_class=spec.check_class,
+                    command=spec.command,
+                    working_directory=spec.working_directory,
                     timeout_seconds=spec.timeout_seconds or profile.default_timeout_seconds,
-                    required=spec.required, policy=spec.policy,
-                    status=VerificationCheckStatus.PENDING, created_at=now, updated_at=now,
+                    required=spec.required,
+                    policy=spec.policy,
+                    status=VerificationCheckStatus.PENDING,
+                    created_at=now,
+                    updated_at=now,
                 )
 
         stop = False
@@ -294,22 +323,28 @@ class VerificationKernel:
                 # existing vacuous-success rule and FAILS, so this can never manufacture
                 # a pass out of no evidence.
                 applicable = [
-                    spec for spec in group
+                    spec
+                    for spec in group
                     if not _inapplicable_reason(
                         spec.command,
                         (base / spec.working_directory).resolve()
-                        if spec.working_directory else base,
+                        if spec.working_directory
+                        else base,
                     )
                 ]
                 if len(applicable) != len(group):
                     self._skip_specs(
                         [spec for spec in group if spec not in applicable],
-                        checks, texts, "inapplicable", degraded,
+                        checks,
+                        texts,
+                        "inapplicable",
+                        degraded,
                     )
                 if not applicable:
                     continue
-                await self._run_group(profile, base, applicable, checks, texts, cancel_event,
-                                      degraded)
+                await self._run_group(
+                    profile, base, applicable, checks, texts, cancel_event, degraded
+                )
                 group_checks = [checks[spec.name] for spec in group]
                 if profile.mode is VerificationProfileMode.FAIL_FAST and any(
                     check.status is VerificationCheckStatus.FAILED for check in group_checks
@@ -321,27 +356,55 @@ class VerificationKernel:
             # re-raise so callers observe the cancellation.
             for spec in specs:
                 check = checks[spec.name]
-                if check.status in {VerificationCheckStatus.PENDING, VerificationCheckStatus.RUNNING}:
-                    self._finish(checks, texts, spec, VerificationCheckStatus.CANCELLED,
-                                 check.exit_code, None, b"", b"", "cancelled", degraded)
+                if check.status in {
+                    VerificationCheckStatus.PENDING,
+                    VerificationCheckStatus.RUNNING,
+                }:
+                    self._finish(
+                        checks,
+                        texts,
+                        spec,
+                        VerificationCheckStatus.CANCELLED,
+                        check.exit_code,
+                        None,
+                        b"",
+                        b"",
+                        "cancelled",
+                        degraded,
+                    )
             ordered = [checks[spec.name] for spec in specs]
             counts = _summarize_counts(ordered)
             duration = monotonic() - started
             report = VerificationReport(
-                id=str(uuid4()), run_id=run_id, workflow_id=workflow_id, task_id=task_id,
-                profile_name=profile.name, total_checks=counts["total"],
-                passed_checks=counts["passed"], failed_checks=counts["failed"],
-                skipped_checks=counts["skipped"], required_failures=counts["required_failures"],
-                duration_seconds=duration, overall_status=VerificationReportStatus.CANCELLED,
-                transcript=self._transcript(profile, VerificationReportStatus.CANCELLED,
-                                            counts, duration, ordered, texts),
+                id=str(uuid4()),
+                run_id=run_id,
+                workflow_id=workflow_id,
+                task_id=task_id,
+                profile_name=profile.name,
+                total_checks=counts["total"],
+                passed_checks=counts["passed"],
+                failed_checks=counts["failed"],
+                skipped_checks=counts["skipped"],
+                required_failures=counts["required_failures"],
+                duration_seconds=duration,
+                overall_status=VerificationReportStatus.CANCELLED,
+                transcript=self._transcript(
+                    profile, VerificationReportStatus.CANCELLED, counts, duration, ordered, texts
+                ),
                 checks=tuple(ordered),
             )
             if self._state is not None:
                 self._state.finish_verification_run(
-                    run_id, VerificationRunStatus.CANCELLED, VerificationReportStatus.CANCELLED,
-                    counts["total"], counts["passed"], counts["failed"], counts["skipped"],
-                    counts["required_failures"], duration)
+                    run_id,
+                    VerificationRunStatus.CANCELLED,
+                    VerificationReportStatus.CANCELLED,
+                    counts["total"],
+                    counts["passed"],
+                    counts["failed"],
+                    counts["skipped"],
+                    counts["required_failures"],
+                    duration,
+                )
                 self._state.create_verification_report(report)
             raise
 
@@ -359,7 +422,8 @@ class VerificationKernel:
             check.required and check.status is VerificationCheckStatus.FAILED for check in ordered
         )
         required_timed_out = any(
-            check.required and check.status is VerificationCheckStatus.TIMED_OUT for check in ordered
+            check.required and check.status is VerificationCheckStatus.TIMED_OUT
+            for check in ordered
         )
         if required_failed:
             overall = VerificationReportStatus.FAILED
@@ -410,8 +474,7 @@ class VerificationKernel:
             if overall is VerificationReportStatus.PASSED:
                 overall = VerificationReportStatus.FAILED
                 run_status = VerificationRunStatus.FAILED
-                transcript = self._transcript(
-                    profile, overall, counts, duration, ordered, texts)
+                transcript = self._transcript(profile, overall, counts, duration, ordered, texts)
             transcript += (
                 "\n- persistence degraded: "
                 + "; ".join(sorted({item.summary() for item in degraded}))
@@ -435,8 +498,15 @@ class VerificationKernel:
         )
         if self._state is not None:
             self._state.finish_verification_run(
-                run_id, run_status, overall, counts["total"], counts["passed"],
-                counts["failed"], counts["skipped"], counts["required_failures"], duration,
+                run_id,
+                run_status,
+                overall,
+                counts["total"],
+                counts["passed"],
+                counts["failed"],
+                counts["skipped"],
+                counts["required_failures"],
+                duration,
             )
             self._state.create_verification_report(report)
         return report
@@ -458,15 +528,29 @@ class VerificationKernel:
             return
         try:
             for check in checks.values():
-                if check.status in {VerificationCheckStatus.PENDING, VerificationCheckStatus.RUNNING}:
+                if check.status in {
+                    VerificationCheckStatus.PENDING,
+                    VerificationCheckStatus.RUNNING,
+                }:
                     self._state.finish_verification_check(
-                        check.id, VerificationCheckStatus.FAILED,
-                        check.exit_code, None, None, None,
+                        check.id,
+                        VerificationCheckStatus.FAILED,
+                        check.exit_code,
+                        None,
+                        None,
+                        None,
                         f"verification setup failed: {error}",
                     )
             self._state.finish_verification_run(
-                run_id, VerificationRunStatus.FAILED, VerificationReportStatus.FAILED,
-                len(checks), 0, len(checks), 0, len(checks), 0.0,
+                run_id,
+                VerificationRunStatus.FAILED,
+                VerificationReportStatus.FAILED,
+                len(checks),
+                0,
+                len(checks),
+                0,
+                len(checks),
+                0.0,
             )
         except Exception:
             # The original error is the one worth reporting; a failed
@@ -488,13 +572,19 @@ class VerificationKernel:
             texts[spec.name] = {"stdout": "", "stderr": ""}
             if self._state is not None:
                 checks[spec.name] = self._finish_check_persisted(
-                    check, VerificationCheckStatus.SKIPPED, failure_reason=reason,
+                    check,
+                    VerificationCheckStatus.SKIPPED,
+                    failure_reason=reason,
                     degraded=degraded,
                 )
             else:
                 checks[spec.name] = VerificationCheck(
-                    **{**check.__dict__, "status": VerificationCheckStatus.SKIPPED,
-                       "failure_reason": reason})
+                    **{
+                        **check.__dict__,
+                        "status": VerificationCheckStatus.SKIPPED,
+                        "failure_reason": reason,
+                    }
+                )
 
     async def _run_group(
         self,
@@ -508,14 +598,16 @@ class VerificationKernel:
     ) -> None:
         if len(group) == 1:
             await self._execute_check(
-                profile, base, group[0], checks, texts, cancel_event, degraded)
+                profile, base, group[0], checks, texts, cancel_event, degraded
+            )
             return
         semaphore = asyncio.Semaphore(max(1, min(profile.concurrency, len(group))))
 
         async def limited(spec: VerificationCheckSpec) -> None:
             async with semaphore:
                 await self._execute_check(
-                    profile, base, spec, checks, texts, cancel_event, degraded)
+                    profile, base, spec, checks, texts, cancel_event, degraded
+                )
 
         pending = {asyncio.create_task(limited(spec)) for spec in group}
         try:
@@ -530,11 +622,13 @@ class VerificationKernel:
                 # siblings never started end SKIPPED.  Both mean "not run
                 # because an earlier check failed the profile".
                 if profile.mode is VerificationProfileMode.FAIL_FAST and any(
-                    checks[spec.name].status in {
+                    checks[spec.name].status
+                    in {
                         VerificationCheckStatus.FAILED,
                         VerificationCheckStatus.TIMED_OUT,
                         VerificationCheckStatus.CANCELLED,
-                    } for spec in group
+                    }
+                    for spec in group
                 ):
                     for remaining in pending:
                         remaining.cancel()
@@ -568,22 +662,48 @@ class VerificationKernel:
                 # terminal state.  Returning here would leave it PENDING and
                 # still let the profile report PASSED.
                 self._note_degraded(
-                    "verification_check.start", error, run_id=check.run_id,
-                    task_id=check.task_id, workflow_id=check.workflow_id, degraded=degraded,
+                    "verification_check.start",
+                    error,
+                    run_id=check.run_id,
+                    task_id=check.task_id,
+                    workflow_id=check.workflow_id,
+                    degraded=degraded,
                 )
                 return
         else:
-            check = VerificationCheck(**{**check.__dict__, "status": VerificationCheckStatus.RUNNING})
+            check = VerificationCheck(
+                **{**check.__dict__, "status": VerificationCheckStatus.RUNNING}
+            )
             checks[spec.name] = check
         if cancel_event is not None and cancel_event.is_set():
-            self._finish(checks, texts, spec, VerificationCheckStatus.SKIPPED, None, None,
-                         b"", b"", "cancelled", degraded)
+            self._finish(
+                checks,
+                texts,
+                spec,
+                VerificationCheckStatus.SKIPPED,
+                None,
+                None,
+                b"",
+                b"",
+                "cancelled",
+                degraded,
+            )
             return
         try:
             check_dir = self._resolve_check_dir(base, spec.working_directory)
         except ValueError as error:
-            self._finish(checks, texts, spec, VerificationCheckStatus.FAILED, None, None,
-                         b"", b"", f"invalid_working_directory: {error}", degraded)
+            self._finish(
+                checks,
+                texts,
+                spec,
+                VerificationCheckStatus.FAILED,
+                None,
+                None,
+                b"",
+                b"",
+                f"invalid_working_directory: {error}",
+                degraded,
+            )
             return
         timeout = spec.timeout_seconds or profile.default_timeout_seconds
         started = monotonic()
@@ -613,17 +733,49 @@ class VerificationKernel:
             # cancellation; preserve the kernel's cancelled-check contract.
             cancelled = True
             exit_code = None
-            self._finish(checks, texts, spec, VerificationCheckStatus.CANCELLED, None,
-                         monotonic() - started, raw_stdout, raw_stderr, "cancelled", degraded)
+            self._finish(
+                checks,
+                texts,
+                spec,
+                VerificationCheckStatus.CANCELLED,
+                None,
+                monotonic() - started,
+                raw_stdout,
+                raw_stderr,
+                "cancelled",
+                degraded,
+            )
             raise
         except (OSError, asyncio.TimeoutError) as error:
-            self._finish(checks, texts, spec, VerificationCheckStatus.FAILED, None,
-                         monotonic() - started, b"", b"", f"process_error: {error}", degraded)
+            self._finish(
+                checks,
+                texts,
+                spec,
+                VerificationCheckStatus.FAILED,
+                None,
+                monotonic() - started,
+                b"",
+                b"",
+                f"process_error: {error}",
+                degraded,
+            )
             return
         duration = monotonic() - started
-        status, reason = parse_check_outcome(exit_code, timed_out, cancelled, raw_stdout, raw_stderr)
-        self._finish(checks, texts, spec, status, exit_code, duration, raw_stdout, raw_stderr,
-                     reason, degraded)
+        status, reason = parse_check_outcome(
+            exit_code, timed_out, cancelled, raw_stdout, raw_stderr
+        )
+        self._finish(
+            checks,
+            texts,
+            spec,
+            status,
+            exit_code,
+            duration,
+            raw_stdout,
+            raw_stderr,
+            reason,
+            degraded,
+        )
 
     def _note_degraded(
         self,
@@ -641,7 +793,8 @@ class VerificationKernel:
         per-run list (for the fail-closed decision in ``run_verification``).
         """
         entry = self._degradation.record(
-            operation, error, workflow_id=workflow_id, task_id=task_id, run_id=run_id)
+            operation, error, workflow_id=workflow_id, task_id=task_id, run_id=run_id
+        )
         if degraded is not None:
             degraded.append(entry)
         return entry
@@ -666,22 +819,28 @@ class VerificationKernel:
         """
         try:
             return self._state.finish_verification_check(
-                check.id, status, exit_code, duration, stdout_path, stderr_path,
-                failure_reason)
+                check.id, status, exit_code, duration, stdout_path, stderr_path, failure_reason
+            )
         except (KeyError, ValueError) as error:
             self._note_degraded(
-                "verification_check.finish", error, run_id=check.run_id,
-                task_id=check.task_id, workflow_id=check.workflow_id, degraded=degraded,
+                "verification_check.finish",
+                error,
+                run_id=check.run_id,
+                task_id=check.task_id,
+                workflow_id=check.workflow_id,
+                degraded=degraded,
             )
-            return VerificationCheck(**{
-                **check.__dict__,
-                "status": VerificationCheckStatus.FAILED,
-                "ended_at": utc_now(),
-                "duration_seconds": duration,
-                "stdout_path": stdout_path,
-                "stderr_path": stderr_path,
-                "failure_reason": f"persistence_degraded: {type(error).__name__}",
-            })
+            return VerificationCheck(
+                **{
+                    **check.__dict__,
+                    "status": VerificationCheckStatus.FAILED,
+                    "ended_at": utc_now(),
+                    "duration_seconds": duration,
+                    "stdout_path": stdout_path,
+                    "stderr_path": stderr_path,
+                    "failure_reason": f"persistence_degraded: {type(error).__name__}",
+                }
+            )
 
     def _finish(
         self,
@@ -726,20 +885,36 @@ class VerificationKernel:
                 # check terminal state and transcript still carry the run.
                 # Not appended to the run-level fail-closed list on purpose.
                 self._note_degraded(
-                    "verification_check.artifacts", error,
-                    run_id=check.run_id, task_id=check.task_id,
+                    "verification_check.artifacts",
+                    error,
+                    run_id=check.run_id,
+                    task_id=check.task_id,
                     workflow_id=check.workflow_id,
                 )
         if self._state is not None:
             checks[spec.name] = self._finish_check_persisted(
-                check, status, exit_code, duration, stdout_path, stderr_path,
-                failure_reason=reason, degraded=degraded)
+                check,
+                status,
+                exit_code,
+                duration,
+                stdout_path,
+                stderr_path,
+                failure_reason=reason,
+                degraded=degraded,
+            )
         else:
             checks[spec.name] = VerificationCheck(
-                **{**check.__dict__, "status": status, "exit_code": exit_code,
-                   "ended_at": utc_now(), "duration_seconds": duration,
-                   "stdout_path": stdout_path, "stderr_path": stderr_path,
-                   "failure_reason": reason})
+                **{
+                    **check.__dict__,
+                    "status": status,
+                    "exit_code": exit_code,
+                    "ended_at": utc_now(),
+                    "duration_seconds": duration,
+                    "stdout_path": stdout_path,
+                    "stderr_path": stderr_path,
+                    "failure_reason": reason,
+                }
+            )
 
     @staticmethod
     def _transcript(

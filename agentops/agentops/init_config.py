@@ -33,7 +33,14 @@ PLACEHOLDER_CHECK_PREFIX = "TODO-configure-verification"
 #: npm's own placeholder for a missing test script.
 _NPM_DEFAULT_TEST = "no test specified"
 
-_PYTHON_MARKERS = ("pyproject.toml", "setup.py", "setup.cfg", "requirements.txt", "tox.ini", "Pipfile")
+_PYTHON_MARKERS = (
+    "pyproject.toml",
+    "setup.py",
+    "setup.cfg",
+    "requirements.txt",
+    "tox.ini",
+    "Pipfile",
+)
 _PYTEST_FILES = ("pytest.ini", "conftest.py", "tests/conftest.py", "test/conftest.py")
 _TEST_DIRS = ("tests", "test")
 
@@ -127,20 +134,27 @@ def _detect_python(root: Path, detection: Detection) -> None:
     detection.stacks.append("python")
     pytest_evidence = _python_uses_pytest(root)
     if pytest_evidence:
-        detection.checks.append(DetectedCheck(
-            "pytest", ("python", "-m", "pytest", "-q"),
-            evidence=f"pytest configured ({pytest_evidence})",
-        ))
+        detection.checks.append(
+            DetectedCheck(
+                "pytest",
+                ("python", "-m", "pytest", "-q"),
+                evidence=f"pytest configured ({pytest_evidence})",
+            )
+        )
         return
     if test_dir is not None:
-        detection.checks.append(DetectedCheck(
-            "unittest", ("python", "-m", "unittest", "discover", "-s", test_dir),
-            evidence=f"unittest-style tests under {test_dir}/",
-        ))
+        detection.checks.append(
+            DetectedCheck(
+                "unittest",
+                ("python", "-m", "unittest", "discover", "-s", test_dir),
+                evidence=f"unittest-style tests under {test_dir}/",
+            )
+        )
         return
     detection.notes.append(
         "Python project found but no tests directory or pytest configuration; "
-        "add a verification check by hand.")
+        "add a verification check by hand."
+    )
 
 
 def _node_runner(root: Path) -> tuple[str, str]:
@@ -153,8 +167,9 @@ def _node_runner(root: Path) -> tuple[str, str]:
     return "npm", "package.json"
 
 
-def _detect_node(root: Path, detection: Detection, platform: str,
-                 which: Callable[[str], str | None]) -> None:
+def _detect_node(
+    root: Path, detection: Detection, platform: str, which: Callable[[str], str | None]
+) -> None:
     package = root / "package.json"
     if not package.is_file():
         return
@@ -169,33 +184,54 @@ def _detect_node(root: Path, detection: Detection, platform: str,
     runner, why = _node_runner(root)
     tool = _tool(runner, platform, which)
     test_script = scripts.get("test")
-    if isinstance(test_script, str) and test_script.strip() and _NPM_DEFAULT_TEST not in test_script:
+    if (
+        isinstance(test_script, str)
+        and test_script.strip()
+        and _NPM_DEFAULT_TEST not in test_script
+    ):
         command = (tool, "run", "test") if runner == "bun" else (tool, "test")
-        detection.checks.append(DetectedCheck(
-            "node-test", command, evidence=f"package.json scripts.test via {runner} ({why})"))
+        detection.checks.append(
+            DetectedCheck(
+                "node-test", command, evidence=f"package.json scripts.test via {runner} ({why})"
+            )
+        )
     else:
-        detection.notes.append("package.json has no real \"test\" script; no Node test check written.")
+        detection.notes.append(
+            'package.json has no real "test" script; no Node test check written.'
+        )
     for script, check_class in (("lint", "lint"), ("typecheck", "type_checking")):
         if isinstance(scripts.get(script), str) and scripts[script].strip():
-            detection.checks.append(DetectedCheck(
-                f"node-{script}", (tool, "run", script), check_class=check_class, required=False,
-                timeout_seconds=600, evidence=f"package.json scripts.{script}"))
+            detection.checks.append(
+                DetectedCheck(
+                    f"node-{script}",
+                    (tool, "run", script),
+                    check_class=check_class,
+                    required=False,
+                    timeout_seconds=600,
+                    evidence=f"package.json scripts.{script}",
+                )
+            )
     if not (root / "node_modules").is_dir():
         detection.notes.append(
             "node_modules is missing here; install dependencies before running "
-            "AgentOps (fresh worktrees are created from HEAD).")
+            "AgentOps (fresh worktrees are created from HEAD)."
+        )
 
 
 def _detect_go(root: Path, detection: Detection) -> None:
     if (root / "go.mod").is_file():
         detection.stacks.append("go")
-        detection.checks.append(DetectedCheck("go-test", ("go", "test", "./..."), evidence="go.mod"))
+        detection.checks.append(
+            DetectedCheck("go-test", ("go", "test", "./..."), evidence="go.mod")
+        )
 
 
 def _detect_rust(root: Path, detection: Detection) -> None:
     if (root / "Cargo.toml").is_file():
         detection.stacks.append("rust")
-        detection.checks.append(DetectedCheck("cargo-test", ("cargo", "test"), evidence="Cargo.toml"))
+        detection.checks.append(
+            DetectedCheck("cargo-test", ("cargo", "test"), evidence="Cargo.toml")
+        )
 
 
 def detect_stack(
@@ -223,7 +259,8 @@ def _placeholder_check() -> dict[str, Any]:
         "name": f"{PLACEHOLDER_CHECK_PREFIX}",
         "class": "custom",
         "command": [
-            "python", "-c",
+            "python",
+            "-c",
             "import sys; sys.exit('AgentOps: no verification configured. "
             "Edit .agentops/config.yaml and replace the TODO check.')",
         ],
@@ -241,8 +278,11 @@ def choose_agents(
     """Reorder role preferences so installed CLIs come first and, when at least
     two are installed, review prefers a *different* CLI than implementation."""
     installed = [
-        name for name, agent in agents.items()
-        if agent.get("enabled", True) and isinstance(agent.get("command"), str) and which(agent["command"])
+        name
+        for name, agent in agents.items()
+        if agent.get("enabled", True)
+        and isinstance(agent.get("command"), str)
+        and which(agent["command"])
     ]
     ordered: dict[str, list[str]] = {}
     for role, names in preferences.items():
@@ -251,7 +291,12 @@ def choose_agents(
         ordered[role] = present + missing
     implementation = ordered.get("implementation", [])
     review = ordered.get("review", [])
-    if implementation and len([n for n in review if n in installed]) >= 2 and review and review[0] == implementation[0]:
+    if (
+        implementation
+        and len([n for n in review if n in installed]) >= 2
+        and review
+        and review[0] == implementation[0]
+    ):
         first = review.pop(0)
         # Keep the implementer as the reviewer's fallback, right after the
         # first different installed CLI.
@@ -289,7 +334,8 @@ def build_config(
     if not legacy:
         data["verification"].pop("commands")
     preferences, installed = choose_agents(
-        data.get("agents", {}), data.get("role_preferences", {}), which)
+        data.get("agents", {}), data.get("role_preferences", {}), which
+    )
     data["role_preferences"] = preferences
     runtime = data.setdefault("runtime", {})
     runtime["systemd_run_enabled"] = False
@@ -320,11 +366,18 @@ def run_init(
     data, detection, installed = build_config(root, platform=platform, which=which)
     text = json.dumps(data, indent=4) + "\n"
     if dry_run:
-        return InitResult(target, False, text, detection, tuple(installed), "dry run: nothing written")
+        return InitResult(
+            target, False, text, detection, tuple(installed), "dry run: nothing written"
+        )
     if target.exists() and not force:
         return InitResult(
-            target, False, text, detection, tuple(installed),
-            f"{target} already exists; re-run with --force to overwrite it.")
+            target,
+            False,
+            text,
+            detection,
+            tuple(installed),
+            f"{target} already exists; re-run with --force to overwrite it.",
+        )
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(text, encoding="utf-8")
     return InitResult(target, True, text, detection, tuple(installed), f"wrote {target}")

@@ -15,6 +15,7 @@ from unittest import mock
 
 import numpy as np
 import torch
+
 # `unittest discover -s tests` adds this directory to `sys.path`, but pytest's
 # import mode does not. Add the test directory explicitly before importing the
 # shared corpus builder so both supported runners can collect this module.
@@ -28,8 +29,13 @@ if ROOT not in sys.path:
 from test_pipeline import build_data  # noqa: E402  (shared corpus builder)
 from src.config import Config, load_data_meta  # noqa: E402
 from src.dataset import TokenDataset, build_dataloader, collate_windows  # noqa: E402
-from src.train import (configure_torch_threads, make_parser, maybe_compile_model,  # noqa: E402
-                       read_checkpoint, train)
+from src.train import (  # noqa: E402
+    configure_torch_threads,
+    make_parser,
+    maybe_compile_model,
+    read_checkpoint,
+    train,
+)
 
 
 def legacy_batches(ds: TokenDataset, batch_size: int):
@@ -37,8 +43,7 @@ def legacy_batches(ds: TokenDataset, batch_size: int):
     out = []
     for s in range(0, len(ds), batch_size):
         idxs = list(range(s, min(s + batch_size, len(ds))))
-        out.append((torch.stack([ds[i][0] for i in idxs]),
-                    torch.stack([ds[i][1] for i in idxs])))
+        out.append((torch.stack([ds[i][0] for i in idxs]), torch.stack([ds[i][1] for i in idxs])))
     return out
 
 
@@ -54,6 +59,7 @@ class TestBatchEquivalence(unittest.TestCase):
         ey = torch.stack([ds[i][1] for i in idxs])
         self.assertTrue(torch.equal(x, ex))
         self.assertTrue(torch.equal(y, ey))
+
     def test_loader_batches_match_legacy_path(self):
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp, True)
@@ -62,8 +68,9 @@ class TestBatchEquivalence(unittest.TestCase):
         toks.tofile(path)
         for stride, batch_size in ((1, 8), (3, 8), (16, 4)):
             ds = TokenDataset(toks, context_length=32, stride=stride)
-            loader = build_dataloader(path, 32, batch_size, shuffle=False,
-                                      drop_last=False, stride=stride)
+            loader = build_dataloader(
+                path, 32, batch_size, shuffle=False, drop_last=False, stride=stride
+            )
             for (x, y), (ex, ey) in zip(loader, legacy_batches(ds, batch_size), strict=False):
                 self.assertTrue(torch.equal(x, ex), f"stride={stride}")
                 self.assertTrue(torch.equal(y, ey), f"stride={stride}")
@@ -72,21 +79,18 @@ class TestBatchEquivalence(unittest.TestCase):
     def test_shuffled_loader_is_a_permutation_with_same_values(self):
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp, True)
-        toks = (np.arange(300, dtype=np.uint16) * 7 % 251)
+        toks = np.arange(300, dtype=np.uint16) * 7 % 251
         path = os.path.join(tmp, "t.bin")
         toks.tofile(path)
         torch.manual_seed(0)
-        got = [(x, y) for x, y in build_dataloader(
-            path, 16, 4, shuffle=True, drop_last=True)]
+        got = [(x, y) for x, y in build_dataloader(path, 16, 4, shuffle=True, drop_last=True)]
         ds = TokenDataset(toks, context_length=16)
         expected = []
         for a, b in legacy_batches(ds, 4):
-            expected.extend((tuple(a[r].tolist()), tuple(b[r].tolist()))
-                            for r in range(a.shape[0]))
+            expected.extend((tuple(a[r].tolist()), tuple(b[r].tolist())) for r in range(a.shape[0]))
         got_rows = []
         for x, y in got:
-            got_rows.extend((tuple(x[r].tolist()), tuple(y[r].tolist()))
-                            for r in range(x.shape[0]))
+            got_rows.extend((tuple(x[r].tolist()), tuple(y[r].tolist())) for r in range(x.shape[0]))
         self.assertCountEqual(got_rows, expected)
 
     def test_ragged_tail_counts_actual_tokens(self):
@@ -129,7 +133,8 @@ class TestThreadOptions(unittest.TestCase):
 
     def test_flags_are_parsed(self):
         args = make_parser().parse_args(
-            ["--torch-threads", "4", "--torch-interop-threads", "2", "--compile"])
+            ["--torch-threads", "4", "--torch-interop-threads", "2", "--compile"]
+        )
         self.assertEqual(args.torch_threads, 4)
         self.assertEqual(args.torch_interop_threads, 2)
         self.assertTrue(args.compile)
@@ -141,16 +146,17 @@ class TestThreadOptions(unittest.TestCase):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             with mock.patch("src.train.torch.set_num_interop_threads") as inter:
-                configure_torch_threads(Config(torch_threads=None,
-                                               torch_interop_threads=3))
+                configure_torch_threads(Config(torch_threads=None, torch_interop_threads=3))
                 inter.assert_called_once_with(3)
             configure_torch_threads(cfg)
         self.assertEqual(torch.get_num_threads(), 2)
         self.assertIn("torch threads: intraop=", buf.getvalue())
 
     def test_configure_is_noop_when_unset(self):
-        with mock.patch("src.train.torch.set_num_threads") as intra, \
-             mock.patch("src.train.torch.set_num_interop_threads") as inter:
+        with (
+            mock.patch("src.train.torch.set_num_threads") as intra,
+            mock.patch("src.train.torch.set_num_interop_threads") as inter,
+        ):
             configure_torch_threads(Config())
         intra.assert_not_called()
         inter.assert_not_called()
@@ -158,8 +164,9 @@ class TestThreadOptions(unittest.TestCase):
     def test_late_interop_call_warns_instead_of_crashing(self):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            with mock.patch("src.train.torch.set_num_interop_threads",
-                             side_effect=RuntimeError("too late")):
+            with mock.patch(
+                "src.train.torch.set_num_interop_threads", side_effect=RuntimeError("too late")
+            ):
                 configure_torch_threads(Config(torch_interop_threads=2))
         self.assertIn("warning", buf.getvalue())
 
@@ -170,8 +177,12 @@ class TestThreadOptions(unittest.TestCase):
             Config(torch_interop_threads=-1)
 
     def test_rejects_non_positive_vocab_and_context(self):
-        for kw in ({"vocab_size": 0}, {"vocab_size": -5},
-                   {"context_length": 0}, {"context_length": -1}):
+        for kw in (
+            {"vocab_size": 0},
+            {"vocab_size": -5},
+            {"context_length": 0},
+            {"context_length": -1},
+        ):
             with self.assertRaises(AssertionError, msg=kw):
                 Config(**kw)
 
@@ -181,8 +192,7 @@ class TestDeviceFlag(unittest.TestCase):
         self.assertEqual(make_parser().parse_args([]).device, "auto")
 
     def test_device_values_are_enforced(self):
-        self.assertEqual(
-            make_parser().parse_args(["--device", "cuda"]).device, "cuda")
+        self.assertEqual(make_parser().parse_args(["--device", "cuda"]).device, "cuda")
         with self.assertRaises(SystemExit):
             make_parser().parse_args(["--device", "tpu"])
 
@@ -200,17 +210,19 @@ class TestCompileFlag(unittest.TestCase):
         self.assertIn("--compile", str(ctx.exception))
 
     def test_broken_compile_fails_cleanly(self):
-        with mock.patch.object(torch, "compile",
-                               side_effect=RuntimeError("no backend"),
-                               create=True):
+        with mock.patch.object(
+            torch, "compile", side_effect=RuntimeError("no backend"), create=True
+        ):
             with self.assertRaises(SystemExit) as ctx:
                 maybe_compile_model(torch.nn.Linear(4, 4), True)
         self.assertIn("--compile", str(ctx.exception))
 
     def test_backend_failure_at_first_forward_fails_cleanly(self):
         from src.model import from_config
-        model = from_config(Config(vocab_size=32, context_length=8, n_layers=1,
-                                   n_heads=2, d_model=16, d_ff=32))
+
+        model = from_config(
+            Config(vocab_size=32, context_length=8, n_layers=1, n_heads=2, d_model=16, d_ff=32)
+        )
 
         def explode(*a, **k):
             raise RuntimeError("no C++ compiler")
@@ -220,6 +232,7 @@ class TestCompileFlag(unittest.TestCase):
                 with self.assertRaises(SystemExit) as ctx:
                     maybe_compile_model(model, True)
         self.assertIn("--compile", str(ctx.exception))
+
 
 class TestTrainThroughput(unittest.TestCase):
     def setUp(self):
@@ -231,13 +244,24 @@ class TestTrainThroughput(unittest.TestCase):
         self.addCleanup(torch.set_num_threads, orig)
 
     def tiny(self, **over) -> Config:
-        kw = dict(vocab_size=load_data_meta(self.train_bin)["vocab_size"],
-                  context_length=16, n_layers=2, n_heads=2, d_model=32, d_ff=64,
-                  batch_size=2, max_steps=6, warmup_steps=2, eval_interval=3,
-                  eval_batches=2, train_bin=self.train_bin,
-                  val_bin=os.path.join(self.tmp.name, "val.bin"),
-                  tokenizer_path=os.path.join(self.tmp.name, "tokenizer.json"),
-                  checkpoint_dir=self.ckpt_dir, seed=0)
+        kw = dict(
+            vocab_size=load_data_meta(self.train_bin)["vocab_size"],
+            context_length=16,
+            n_layers=2,
+            n_heads=2,
+            d_model=32,
+            d_ff=64,
+            batch_size=2,
+            max_steps=6,
+            warmup_steps=2,
+            eval_interval=3,
+            eval_batches=2,
+            train_bin=self.train_bin,
+            val_bin=os.path.join(self.tmp.name, "val.bin"),
+            tokenizer_path=os.path.join(self.tmp.name, "tokenizer.json"),
+            checkpoint_dir=self.ckpt_dir,
+            seed=0,
+        )
         kw.update(over)
         return Config(**kw)
 
@@ -267,10 +291,12 @@ class TestTrainThroughput(unittest.TestCase):
 
     def test_resume_with_thread_settings(self):
         train(self.tiny(max_steps=3))
-        train(self.tiny(torch_threads=2, max_steps=9), resume_from=os.path.join(
-            self.ckpt_dir, "step_3.pt"), start_step=4)
-        self.assertEqual(read_checkpoint(
-            os.path.join(self.ckpt_dir, "final.pt"))["step"], 9)
+        train(
+            self.tiny(torch_threads=2, max_steps=9),
+            resume_from=os.path.join(self.ckpt_dir, "step_3.pt"),
+            start_step=4,
+        )
+        self.assertEqual(read_checkpoint(os.path.join(self.ckpt_dir, "final.pt"))["step"], 9)
 
 
 if __name__ == "__main__":

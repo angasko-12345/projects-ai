@@ -77,8 +77,10 @@ class TestTokenizer(unittest.TestCase):
         # TINY_CORPUS is ASCII-only, so none of these bytes were seen in training.
         # Without the full byte alphabet they encoded to <unk> and were lost.
         unk = self.tok.token_to_id("<unk>")
-        for text in ("caf\u00e9 \u00fcn\u00efcode \U0001F680\ttab\n\nx",
-                     "\u65e5\u672c\u8a9e \u00a9 \x00\x7f"):
+        for text in (
+            "caf\u00e9 \u00fcn\u00efcode \U0001f680\ttab\n\nx",
+            "\u65e5\u672c\u8a9e \u00a9 \x00\x7f",
+        ):
             ids = encode(self.tok, text)
             self.assertNotIn(unk, ids, text)
             self.assertEqual(decode(self.tok, ids), text)
@@ -89,9 +91,12 @@ class TestTokenizer(unittest.TestCase):
 
     def test_vocab_below_byte_alphabet_is_rejected(self):
         with self.assertRaises(ValueError) as ctx:
-            train_bpe_tokenizer([self.corpus_path],
-                                os.path.join(self.tmp.name, "small.json"),
-                                vocab_size=MIN_VOCAB_SIZE - 1, min_frequency=1)
+            train_bpe_tokenizer(
+                [self.corpus_path],
+                os.path.join(self.tmp.name, "small.json"),
+                vocab_size=MIN_VOCAB_SIZE - 1,
+                min_frequency=1,
+            )
         self.assertIn(str(MIN_VOCAB_SIZE), str(ctx.exception))
         self.assertFalse(os.path.exists(os.path.join(self.tmp.name, "small.json")))
 
