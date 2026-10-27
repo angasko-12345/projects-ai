@@ -77,7 +77,7 @@ smoke test.
 
 - `agentops/cli.py` and `agentops/gui.py` are entry points. The CLI invokes
   services directly; the Tkinter desktop client uses
-  `gui_controller.py` as its threaded facade and keeps long-running work off
+  the `gui_controller` package as its threaded facade and keeps long-running work off
   the Tk event loop.
 - `workflow.py` is the orchestration layer. The standard workflow is
   plan → implementation → verification → review, while custom workflows are
@@ -128,7 +128,7 @@ smoke test.
   dataclasses.
 - Keep presentation boundaries explicit. `StateStore` returns DTOs/plain data
   to the controller and CLI; GUI-facing serialization belongs in
-  `gui_controller.py`, not in Tk widgets or raw SQLite row handling.
+  `gui_controller/serializers.py`, not in Tk widgets or raw SQLite row handling.
 - On Windows, subprocesses launched by the GUI or frozen executable must use
   the existing no-console-window behavior. Follow the shared spawn helper in
   `runtime.py:102-112` (`spawn_options()`, `CREATE_NO_WINDOW` at `:106-110`),
