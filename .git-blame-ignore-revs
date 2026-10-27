@@ -1,0 +1,6 @@
+# Bulk formatting commits to skip in `git blame`. GitHub's blame view reads
+# this file automatically; locally run once:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# style: ruff format agentops, ai-token-tracker, mini-llm, tools and root scripts
+3d1b79cdde43379ea320bf0e92b4c5212721f218
