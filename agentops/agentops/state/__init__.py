@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
-from .agent_run import (
+from ..agent_run import (
     AgentRun,
     AgentRunContext,
     AgentRunOutcome,
@@ -19,9 +19,9 @@ from .agent_run import (
     AgentRunStatus,
     TERMINAL_STATUSES,
 )
-from .artifacts import Artifact, ArtifactKind, ArtifactMetadata
-from .events import Event, EventBus, EventSeverity, EventType, coerce_event
-from .failure import (
+from ..artifacts import Artifact, ArtifactKind, ArtifactMetadata
+from ..events import Event, EventBus, EventSeverity, EventType, coerce_event
+from ..failure import (
     Failure,
     FailureCategory,
     FailureSeverity,
@@ -29,14 +29,14 @@ from .failure import (
     RecoveryState,
     RepairAction,
 )
-from .execution_model import (
+from ..execution_model import (
     StateTransitionError,
     assert_agent_run_transition,
     assert_no_fabricated_success,
 )
-from .git import WorktreeRef
-from .tasks import Task, TaskStatus, Workflow, utc_now
-from .verification_model import (
+from ..git import WorktreeRef
+from ..tasks import Task, TaskStatus, Workflow, utc_now
+from ..verification_model import (
     VerificationCheck,
     VerificationCheckClass,
     VerificationCheckStatus,
