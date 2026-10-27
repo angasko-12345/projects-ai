@@ -91,6 +91,21 @@ class PaletteTest(unittest.TestCase):
         self.assertEqual(calls["setPalette"].window().color().name(), DARK.bg)
         self.assertEqual(calls["setStyleSheet"], build_stylesheet(DARK))
         self.assertIn(DARK.font_family, calls["setFont"].family())
+        self.assertEqual(calls["setFont"].pixelSize(), DARK.size_base)
+
+    def test_qcolor_keeps_the_alpha_that_css_rgba_strings_lost(self):
+        from PySide6.QtGui import QColor
+
+        from agentops.gui.tokens import qcolor, with_alpha
+
+        # The bug: QColor cannot parse the CSS rgba() form and paints black.
+        self.assertFalse(QColor(with_alpha(DARK.success, 0.16)).isValid())
+        tint = qcolor(DARK.success, 0.16)
+        self.assertTrue(tint.isValid())
+        self.assertEqual(tint.name(), DARK.success)
+        self.assertAlmostEqual(tint.alphaF(), 0.16, places=2)
+        self.assertEqual(qcolor(DARK.danger).alpha(), 255)
+        self.assertEqual(qcolor(DARK.danger, 1.7).alpha(), 255)
 
 
 if __name__ == "__main__":

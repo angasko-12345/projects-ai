@@ -41,6 +41,8 @@ class Theme:
     # Accents and status
     accent: str
     accent_hover: str
+    accent_strong: str  # primary-button fill; on_accent text on it is >= 4.5:1
+    on_accent: str  # text and marks drawn on accent_strong
     success: str
     warning: str
     danger: str
@@ -75,9 +77,11 @@ DARK = Theme(
     border_strong="#36404f",
     text="#e6eaf0",
     text_muted="#9aa5b4",
-    text_faint="#6b7686",
+    text_faint="#858893",
     accent="#4c8dff",
     accent_hover="#6ba2ff",
+    accent_strong="#2f62dd",
+    on_accent="#ffffff",
     success="#3fb950",
     warning="#d29922",
     danger="#f0554e",
@@ -100,12 +104,25 @@ DARK = Theme(
 
 
 def with_alpha(hex_color: str, alpha: float) -> str:
-    """``#rrggbb`` + alpha in 0..1 -> ``rgba(r, g, b, a)`` for QSS."""
+    """``#rrggbb`` + alpha in 0..1 -> ``rgba(r, g, b, a)`` for QSS only.
+
+    QColor cannot parse this CSS form (it yields an invalid, opaque-black
+    colour); painters use :func:`qcolor` instead.
+    """
     value = hex_color.lstrip("#")
     red = int(value[0:2], 16)
     green = int(value[2:4], 16)
     blue = int(value[4:6], 16)
     return f"rgba({red}, {green}, {blue}, {max(0.0, min(1.0, alpha))})"
+
+
+def qcolor(hex_color: str, alpha: float = 1.0):  # -> QColor (lazy Qt import)
+    """``#rrggbb`` + alpha in 0..1 -> a valid translucent ``QColor``."""
+    from PySide6.QtGui import QColor
+
+    color = QColor(hex_color)
+    color.setAlphaF(max(0.0, min(1.0, alpha)))
+    return color
 
 
 # Lifecycle status -> (foreground, background) badge colors. Unknown statuses
@@ -198,8 +215,8 @@ def build_palette(theme: Theme = DARK):  # -> QPalette (lazy Qt import)
         role.Button: t.surface_alt,
         role.ButtonText: t.text,
         role.BrightText: t.danger,
-        role.Highlight: t.accent,
-        role.HighlightedText: t.text,
+        role.Highlight: t.accent_strong,
+        role.HighlightedText: t.on_accent,
         role.ToolTipBase: t.surface_alt,
         role.ToolTipText: t.text,
         role.Link: t.accent,
@@ -235,9 +252,11 @@ def apply_theme(app, theme: Theme = DARK) -> None:
     """
     from PySide6.QtGui import QFont
 
+    font = QFont(theme.font_family)
+    font.setPixelSize(theme.size_base)
     app.setStyle("Fusion")
     app.setPalette(build_palette(theme))
-    app.setFont(QFont(theme.font_family))
+    app.setFont(font)
     app.setStyleSheet(build_stylesheet(theme))
 
 
@@ -376,19 +395,18 @@ QPushButton:disabled {{
     border-color: {t.border};
 }}
 QPushButton[variant="primary"] {{
-    background: {t.accent};
-    border: 1px solid {t.accent};
-    color: #ffffff;
+    background: {t.accent_strong};
+    border: 1px solid {t.accent_strong};
+    color: {t.on_accent};
     font-weight: 600;
 }}
 QPushButton[variant="primary"]:hover {{
-    background: {t.accent_hover};
     border-color: {t.accent_hover};
 }}
 QPushButton[variant="primary"]:disabled {{
-    background: {with_alpha(t.accent, 0.35)};
+    background: {with_alpha(t.accent_strong, 0.35)};
     border-color: transparent;
-    color: {with_alpha("#ffffff", 0.7)};
+    color: {with_alpha(t.on_accent, 0.7)};
 }}
 QPushButton[variant="ghost"] {{
     background: transparent;

@@ -68,7 +68,7 @@ def _app_icon() -> QIcon:
     painter.setPen(Qt.PenStyle.NoPen)
     painter.setBrush(QColor(DARK.accent))
     painter.drawRoundedRect(6, 6, 52, 52, 14, 14)
-    painter.setPen(QColor("#ffffff"))
+    painter.setPen(QColor(DARK.on_accent))
     font = painter.font()
     font.setPixelSize(34)
     font.setBold(True)
