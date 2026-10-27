@@ -108,10 +108,22 @@ def _diag(window, view_id, t0):  # TEMP-DIAG: remove before merge
         f"threads={busy} toasts={toasts}",
         file=sys.stderr,
     )
+    if view_id in ("dashboard", "tasks", "runs"):
+        import traceback as _tb
+
+        frames = sys._current_frames()
+        for thread in _th.enumerate():
+            if thread.name.startswith("agentops-gui") and thread.ident in frames:
+                stack = _tb.extract_stack(frames[thread.ident])
+                where = " <- ".join(
+                    f"{Path(f.filename).name}:{f.lineno}:{f.name}" for f in reversed(stack[-9:])
+                )
+                print(f"DIAG stack {thread.name}: {where}", file=sys.stderr)
     if view_id == "dashboard":
         labels = [lb.text() for lb in view.findChildren(QLabel) if lb.isVisible() and lb.text()]
         print(f"DIAG dashboard labels: {labels[:40]}", file=sys.stderr)
-        names = ["codex", "claude", "opencode", "kilo", "copilot", "omp", "gemini", "aider"]
+        names = ["opencode", "codex", "pi", "omp", "claude", "fcc-claude", "copilot",
+                 "antigravity", "kilo", "hermes-agent", "git"]
         print(f"DIAG which: { {n: _sh.which(n) for n in names} }", file=sys.stderr)
         print(f"DIAG repo={window._settings.repositories if hasattr(window._settings, 'repositories') else '?'} "
               f"cur={view.repository()!r} cwd={os.getcwd()} HOME={os.environ.get('HOME')}", file=sys.stderr)
