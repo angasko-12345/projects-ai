@@ -438,6 +438,35 @@ class EngineSingleTaskGateTests(unittest.TestCase):
         task = self._run_task("review", [(REJECT, {"schema_version": 1, "status": "success"})])
         self.assertEqual(task.status, TaskStatus.FAILED)
 
+    def test_review_missing_verdict_with_exit_zero_fails(self):
+        task = self._run_task("review", ["Looks fine to me, no structured verdict."])
+        self.assertEqual(task.status, TaskStatus.FAILED)
+        self.assertIn("review verdict missing or malformed", task.result or "")
+
+    def test_review_bare_reject_with_exit_zero_fails(self):
+        task = self._run_task("review", [REJECT])
+        self.assertEqual(task.status, TaskStatus.FAILED)
+        self.assertIn("unsafe input", task.result or "")
+
+    def test_security_malformed_and_missing_verdicts_fail(self):
+        for output in ('{"verdict": "approve"', "No issues found."):
+            with self.subTest(output=output):
+                task = self._run_task("security", [output])
+                self.assertEqual(task.status, TaskStatus.FAILED)
+
+    def test_review_single_approve_passes(self):
+        task = self._run_task("review", [APPROVE])
+        self.assertEqual(task.status, TaskStatus.PASSED)
+
+    def test_review_approve_after_plain_log_lines_passes(self):
+        output = "Ran the suite: 12 passed.\nNo blocking findings.\n" + APPROVE
+        task = self._run_task("review", [output])
+        self.assertEqual(task.status, TaskStatus.PASSED)
+
+    def test_review_success_status_payload_with_approve_passes(self):
+        task = self._run_task("review", [STATUS_SUCCESS + "\n" + APPROVE])
+        self.assertEqual(task.status, TaskStatus.PASSED)
+
     def test_review_success_false_line_before_a_final_approve_is_not_seen(self):
         # Pinned as-is, not endorsed: the line scan keeps only the LAST JSON
         # line, so an earlier {"success": false} line is invisible once a
