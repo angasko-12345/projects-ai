@@ -88,12 +88,6 @@ class SchemaMixin:
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
-            CREATE INDEX IF NOT EXISTS idx_agent_runs_workflow
-                ON agent_runs(workflow_id, created_at);
-            CREATE INDEX IF NOT EXISTS idx_agent_runs_task
-                ON agent_runs(task_id, created_at);
-            CREATE INDEX IF NOT EXISTS idx_agent_runs_status
-                ON agent_runs(status);
             """
         )
 
@@ -143,6 +137,20 @@ class SchemaMixin:
         for name, definition in columns.items():
             if name not in existing:
                 self.connection.execute(f"ALTER TABLE agent_runs ADD COLUMN {name} {definition}")
+
+        # Indexes come after the column repair: a partial table missing an
+        # indexed column (workflow_id, task_id, status, created_at) would
+        # otherwise fail to open with "no such column".
+        self.connection.executescript(
+            """
+            CREATE INDEX IF NOT EXISTS idx_agent_runs_workflow
+                ON agent_runs(workflow_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_agent_runs_task
+                ON agent_runs(task_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_agent_runs_status
+                ON agent_runs(status);
+            """
+        )
 
         migrated = self.connection.execute(
             "SELECT 1 FROM schema_migrations WHERE version = 1"
