@@ -55,7 +55,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # The checker resolves the recorded commit and diffs it against HEAD to
           # decide staleness, so it needs history rather than a shallow clone.
