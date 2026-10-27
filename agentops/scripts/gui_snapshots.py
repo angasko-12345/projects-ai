@@ -36,6 +36,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -44,6 +45,8 @@ from pathlib import Path
 from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parent.parent
+# Upper bound for the GUI worker pool to drain; slow CI runners need ~30 s at startup.
+IDLE_TIMEOUT_MS = 120_000
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -1043,10 +1046,69 @@ def open_window(repos: list[Path], settings_file: Path, width: int, height: int)
     for repo in reversed(repos):
         settings.touch_repository(str(repo))
     window = MainWindow(AgentOpsController(), settings=settings, settings_file=settings_file)
+    track_bridge(window)
     window.resize(width, height)
     window.show()
     pump(1200)
     return window
+
+
+def track_bridge(window) -> None:
+    """Count the window's in-flight ``ControllerBridge`` jobs (snapshot-side only).
+
+    Every view load goes through one shared 4-worker pool, and only the newest
+    request per view key may deliver. On a slow runner the pool backs up (each
+    controller read opens a ``StateStore``; the dashboard summary alone runs
+    several), so a fixed per-view wait captures "Loading..." tables. Waiting
+    for this counter to reach zero waits for the real work instead.
+    """
+    bridge = window._bridge
+    original = bridge.submit
+    bridge.snapshot_in_flight = 0
+    lock = threading.Lock()
+
+    def submit(token, work):
+        def tracked():
+            try:
+                return work()
+            finally:
+                with lock:
+                    bridge.snapshot_in_flight -= 1
+
+        with lock:
+            bridge.snapshot_in_flight += 1
+        try:
+            original(token, tracked)
+        except BaseException:
+            with lock:
+                bridge.snapshot_in_flight -= 1
+            raise
+
+    bridge.submit = submit
+
+
+def in_flight(window) -> int:
+    """Bridge jobs still running or queued (0 once ``wait_until_idle`` returned)."""
+    return int(getattr(window._bridge, "snapshot_in_flight", 0))
+
+
+def wait_until_idle(window, timeout_ms: int = IDLE_TIMEOUT_MS) -> None:
+    """Pump until no bridge job is in flight, then deliver the queued signals.
+
+    Raises instead of returning early: a capture taken while loads are still
+    queued shows empty tables and silently passes the label/pixel checks.
+    """
+    bridge = window._bridge
+    waited = 0
+    while getattr(bridge, "snapshot_in_flight", 0) > 0:
+        if waited >= timeout_ms:
+            raise TimeoutError(
+                f"{bridge.snapshot_in_flight} GUI worker job(s) still running after "
+                f"{timeout_ms / 1000:.0f} s; the views would be captured half-loaded"
+            )
+        pump(50)
+        waited += 50
+    pump(50)  # result signals are queued to the GUI thread; let them land
 
 
 def close_window(window) -> None:
@@ -1056,34 +1118,65 @@ def close_window(window) -> None:
         pump(100)
 
 
-def select_first_row(window, view_id: str, timeout_ms: int = 4000) -> None:
-    """Select row 0 in the view's table once its rows have loaded (loads are async)."""
-    table = getattr(window._views[view_id], "_table", None)
-    proxy = getattr(table, "proxy", None)
-    if proxy is None or not hasattr(table, "select_row_index"):
-        return
-    waited = 0
-    while not proxy.rowCount() and waited < timeout_ms:
-        pump(100)
-        waited += 100
-    if proxy.rowCount():
+def view_table(window, view_id: str):
+    """The view's main ``TablePanel`` (``_table`` on list views, ``_list`` on
+    Workflows), or None for views without one (dashboard, settings)."""
+    view = window._views[view_id]
+    for name in ("_table", "_list"):
+        table = getattr(view, name, None)
+        if hasattr(table, "proxy") and hasattr(table, "select_row_index"):
+            return table
+    return None
+
+
+def table_state(window, view_id: str) -> tuple[int, str]:
+    """(row count, empty-state text) of the view's table; (-1, "") without one."""
+    table = view_table(window, view_id)
+    if table is None:
+        return -1, ""
+    empty = getattr(table, "_empty", None)
+    text = ""
+    if empty is not None:
+        heading = getattr(empty, "_heading", None)
+        message = getattr(empty, "_message", None)
+        text = " / ".join(w.text() for w in (heading, message) if w is not None and w.text())
+    return table.proxy.rowCount(), text
+
+
+def selected_row(window, view_id: str) -> dict | None:
+    """The row selected in the view's table, or None."""
+    table = view_table(window, view_id)
+    return table.selected_row() if table is not None else None
+
+
+def select_first_row(window, view_id: str) -> None:
+    """Select row 0 in the view's table (rows are loaded: call after wait_until_idle)."""
+    table = view_table(window, view_id)
+    if table is not None and table.proxy.rowCount():
         table.select_row_index(0)
-        pump(300)
+        pump(100)
 
 
 def iter_views(window, *, settle_ms: int = 900) -> Iterator[str]:
-    """Visit every VIEW_SPECS view (row 0 selected) and yield its id while shown."""
+    """Visit every VIEW_SPECS view (row 0 selected) and yield its id while shown.
+
+    Each step waits for the bridge to go idle rather than for a fixed time, so
+    the view is captured with its rows and detail pane loaded however slow the
+    machine is (see ``track_bridge``).
+    """
     from agentops.gui.views import VIEW_SPECS
 
     for view_id, _title, _factory in VIEW_SPECS:  # prime async loads (git, artifacts)
         window.navigate(view_id)
         pump(300)
-    pump(1000)
+    wait_until_idle(window)
     for view_id, _title, _factory in VIEW_SPECS:
-        window.navigate(view_id)
+        window.navigate(view_id)  # re-navigating refreshes: the newest load must land
         pump(settle_ms)
+        wait_until_idle(window)
         if view_id != "dashboard":
             select_first_row(window, view_id)
+            wait_until_idle(window)  # detail-pane loads for the selected row
         wait_until_settled(window)
         yield view_id
 
@@ -1168,9 +1261,11 @@ def capture(seeded: Seeded, out: Path, width: int, height: int) -> list[Path]:
 
             window.open_task(seeded.running_workflow)
             pump(1200)
+            wait_until_idle(window)
             shot(window, "workflow-running")
             window.open_task(seeded.failed_workflow)
             pump(1200)
+            wait_until_idle(window)
             shot(window, "workflow-failed")
 
             window.navigate("dashboard")
@@ -1192,6 +1287,7 @@ def capture(seeded: Seeded, out: Path, width: int, height: int) -> list[Path]:
             dialog = NewTaskDialog(window._views_ctx, window)
             dialog.show()
             pump(900)
+            wait_until_idle(window)
             shot(dialog, "dialog-new-task")
             dialog.close()
             dialog.deleteLater()
@@ -1209,6 +1305,7 @@ def capture(seeded: Seeded, out: Path, width: int, height: int) -> list[Path]:
             for view_id in ("dashboard", "tasks", "failures"):
                 empty.navigate(view_id)
                 pump(900)
+                wait_until_idle(empty)
                 shot(empty, f"empty-{view_id}")
         finally:
             close_window(empty)

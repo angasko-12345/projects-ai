@@ -82,57 +82,11 @@ def clipped_labels(root) -> list[str]:
     return offenders
 
 
-def _diag(window, view_id, t0):  # TEMP-DIAG: remove before merge
-    import shutil as _sh
-    import threading as _th
-    import time as _t
-
-    from PySide6.QtWidgets import QLabel
-
-    view = window._views[view_id]
-    table = getattr(view, "_table", None)
-    rows = table.proxy.rowCount() if table is not None and hasattr(table, "proxy") else "-"
-    empty = ""
-    if table is not None and hasattr(table, "_empty"):
-        empty = f"{table._empty._heading.text()!r}/{table._empty._message.text()!r}"
-    ex = window._bridge._executor if hasattr(window, "_bridge") else None
-    if ex is None:
-        ex = getattr(getattr(view, "_bridge", None), "_executor", None)
-    pool = f"q={ex._work_queue.qsize()} thr={len(ex._threads)}" if ex is not None else "?"
-    toasts = []
-    for card in getattr(window._toasts, "_toasts", []):
-        toasts.append(" | ".join(lb.text() for lb in card.findChildren(QLabel))[:300])
-    busy = [t.name for t in _th.enumerate() if t.name.startswith("agentops")]
-    print(
-        f"DIAG {_t.monotonic() - t0:6.1f}s {view_id}: rows={rows} empty={empty} {pool} "
-        f"threads={busy} toasts={toasts}",
-        file=sys.stderr,
-    )
-    if view_id in ("dashboard", "tasks", "runs"):
-        import traceback as _tb
-
-        frames = sys._current_frames()
-        for thread in _th.enumerate():
-            if thread.name.startswith("agentops-gui") and thread.ident in frames:
-                stack = _tb.extract_stack(frames[thread.ident])
-                where = " <- ".join(
-                    f"{Path(f.filename).name}:{f.lineno}:{f.name}" for f in reversed(stack[-9:])
-                )
-                print(f"DIAG stack {thread.name}: {where}", file=sys.stderr)
-    if view_id == "dashboard":
-        labels = [lb.text() for lb in view.findChildren(QLabel) if lb.isVisible() and lb.text()]
-        print(f"DIAG dashboard labels: {labels[:40]}", file=sys.stderr)
-        names = ["opencode", "codex", "pi", "omp", "claude", "fcc-claude", "copilot",
-                 "antigravity", "kilo", "hermes-agent", "git"]
-        print(f"DIAG which: { {n: _sh.which(n) for n in names} }", file=sys.stderr)
-        print(f"DIAG repo={window._settings.repositories if hasattr(window._settings, 'repositories') else '?'} "
-              f"cur={view.repository()!r} cwd={os.getcwd()} HOME={os.environ.get('HOME')}", file=sys.stderr)
-
-
 @requires_qt
 class GuiSnapshotTest(unittest.TestCase):
     shares: dict[str, float] = {}
     clipped: dict[str, list[str]] = {}
+    rows: dict[str, int] = {}
 
     @classmethod
     def setUpClass(cls):
@@ -154,17 +108,25 @@ class GuiSnapshotTest(unittest.TestCase):
                 window = snap.open_window(
                     [seeded.repo, seeded.second_repo], cls._base / "settings.json", WIDTH, HEIGHT
                 )
+                unloaded: dict[str, str] = {}
                 try:
-                    import time as _t0m  # TEMP-DIAG
-
-                    _t0 = _t0m.monotonic()
                     for view_id in snap.iter_views(window, settle_ms=500):
-                        _diag(window, view_id, _t0)  # TEMP-DIAG
                         image = window.grab().toImage()
                         if out_dir:
                             image.save(str(out_dir / f"{view_id}-{WIDTH}x{HEIGHT}.png"))
                         cls.shares[view_id] = bright_share(image)
                         cls.clipped[view_id] = clipped_labels(window)
+                        cls.rows[view_id], empty_text = snap.table_state(window, view_id)
+                        if cls.rows[view_id] == 0:
+                            unloaded[view_id] = f"0 rows, empty state {empty_text!r}"
+                        elif cls.rows[view_id] > 0 and snap.selected_row(window, view_id) is None:
+                            unloaded[view_id] = "no row selected, detail pane empty"
+                        if snap.in_flight(window):
+                            unloaded[view_id] = f"{snap.in_flight(window)} loads still in flight"
+                        if view_id == "dashboard" and not getattr(
+                            window._views[view_id], "_summary_loaded", True
+                        ):
+                            unloaded[view_id] = "summary never loaded"
                 finally:
                     snap.close_window(window)
         except BaseException:
@@ -173,9 +135,21 @@ class GuiSnapshotTest(unittest.TestCase):
         # One line of measurements, so a CI log shows why (a)/(b) passed or failed.
         summary = ", ".join(
             f"{view_id} {cls.shares[view_id]:.1%}/{len(cls.clipped[view_id])}"
+            f"/{'-' if cls.rows[view_id] < 0 else cls.rows[view_id]}"
             for view_id in cls.shares
         )
-        print(f"\ngui_snapshots bright-share/clipped-labels: {summary}", file=sys.stderr)
+        print(f"\ngui_snapshots bright-share/clipped-labels/rows: {summary}", file=sys.stderr)
+        if unloaded:
+            # Every seeded table has rows and row 0 selected. Anything else means
+            # the capture ran before the loads landed, and (a)/(b) would measure
+            # empty views (an empty Workflows view has no pipeline to clip, so (b)
+            # unexpectedly "passes", as it did on slow CI runners).
+            shutil.rmtree(cls._base, ignore_errors=True)
+            detail = "; ".join(f"{view_id}: {text}" for view_id, text in unloaded.items())
+            raise AssertionError(
+                f"seeded views captured before their data loaded, so (a)/(b) would "
+                f"measure empty views: {detail}"
+            )
 
     @classmethod
     def _restore_app(cls, app):
