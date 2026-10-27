@@ -1,0 +1,9 @@
+{
+ "mode": "apply_theme",
+ "dashboard": 0.0028,
+ "tasks": 0.0052,
+ "workflows": 0.0023,
+ "runs": 0.0034,
+ "failures": 0.0021,
+ "settings": 0.0021
+}
