@@ -1,0 +1,45 @@
+# Weekly dependency updates. Minor and patch bumps arrive as one grouped PR per
+# ecosystem and directory; major bumps stay separate so each gets its own review.
+# universal-game-agent and tiktok-slop-factory are deliberately not listed yet:
+# UGA has a draft PR stack in flight, and slop-factory's home is undecided.
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/agentops"
+    schedule:
+      interval: "weekly"
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "pip"
+    directory: "/ai-token-tracker"
+    schedule:
+      interval: "weekly"
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "pip"
+    directory: "/small-projects/mini-llm"
+    schedule:
+      interval: "weekly"
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "npm"
+    directory: "/qr-generator"
+    schedule:
+      interval: "weekly"
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
