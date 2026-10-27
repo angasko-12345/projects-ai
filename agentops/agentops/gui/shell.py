@@ -11,7 +11,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QByteArray, QEasingCurve, QPropertyAnimation, Qt, QTimer
+from PySide6.QtCore import QByteArray, QEasingCurve, QPropertyAnimation, QSize, Qt, QTimer
 from PySide6.QtGui import QAction, QColor, QIcon, QKeySequence, QPainter, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QComboBox,
@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 )
 
 from .bridge import ControllerBridge
+from .components import IconButton
 from .format import elide, format_duration
 from .new_task import NewTaskDialog
 from .palette import Command, CommandPalette
@@ -39,7 +40,7 @@ from .toast import ToastHost
 from .tokens import DARK, status_colors
 from .views import VIEW_SPECS, create_views
 from .views.base import AsyncMixin, ViewContext
-from .widgets import PulsingDot, faint, ghost_button, label
+from .widgets import PulsingDot, faint, ghost_button
 
 _SHORTCUTS: tuple[tuple[str, str], ...] = (
     ("Ctrl+K", "open_palette"),
@@ -57,6 +58,23 @@ _NAV_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Inspect", ("runs", "verification", "failures", "worktrees", "artifacts")),
     ("Configure", ("settings",)),
 )
+
+# Rail icon per view (Lucide names). The last _NAV_GROUPS group (Configure)
+# is pinned to the bottom of the rail; every other group follows VIEW_SPECS
+# order with a hairline separator between groups.
+_RAIL_ICONS: dict[str, str] = {
+    "dashboard": "layout-dashboard",
+    "tasks": "list-checks",
+    "workflows": "workflow",
+    "agents": "bot",
+    "runs": "play",
+    "verification": "shield-check",
+    "failures": "triangle-alert",
+    "worktrees": "git-fork",
+    "artifacts": "package",
+    "settings": "settings",
+}
+RAIL_WIDTH = 52
 
 
 def _app_icon() -> QIcon:
@@ -111,7 +129,7 @@ class MainWindow(QMainWindow, AsyncMixin):
         self._recovery_dismissed_detail = ""
 
         self._views: dict[str, QWidget] = {}
-        self._nav_buttons: dict[str, QPushButton] = {}
+        self._nav_buttons: dict[str, IconButton] = {}
         self._palette = CommandPalette(self)
 
         self._build_chrome()
@@ -168,8 +186,6 @@ class MainWindow(QMainWindow, AsyncMixin):
 
         status_row = QHBoxLayout()
         status_row.setSpacing(DARK.space_sm)
-        self._status_dot = PulsingDot(size=9)
-        status_row.addWidget(self._status_dot)
         self._status_label = QLabel("Idle")
         self._status_label.setProperty("role", "muted")
         status_row.addWidget(self._status_label)
@@ -221,6 +237,7 @@ class MainWindow(QMainWindow, AsyncMixin):
         body = QHBoxLayout()
         body.setContentsMargins(0, 0, 0, 0)
         body.setSpacing(0)
+        body.addWidget(self._build_rail())
 
         self._sidebar = QWidget()
         self._sidebar.setObjectName("Sidebar")
@@ -241,9 +258,6 @@ class MainWindow(QMainWindow, AsyncMixin):
         brand_row.addStretch(1)
         side.addLayout(brand_row)
 
-        self._nav_layout = QVBoxLayout()
-        self._nav_layout.setSpacing(DARK.space_xs)
-        side.addLayout(self._nav_layout)
         side.addStretch(1)
         side.addWidget(faint("Ctrl+K  command palette"))
         body.addWidget(self._sidebar)
@@ -252,6 +266,43 @@ class MainWindow(QMainWindow, AsyncMixin):
         body.addWidget(self._stack, stretch=1)
         root.addLayout(body, stretch=1)
         self.setCentralWidget(central)
+
+    def _build_rail(self) -> QWidget:
+        """52px icon rail: brand, one button per view, status, palette, settings."""
+        rail = QWidget()
+        rail.setObjectName("Rail")
+        rail.setFixedWidth(RAIL_WIDTH)
+        column = QVBoxLayout(rail)
+        column.setContentsMargins(0, DARK.space_md, 0, DARK.space_md)
+        column.setSpacing(DARK.space_xs)
+        mark = QLabel()
+        mark.setPixmap(_app_icon().pixmap(QSize(34, 34), self.devicePixelRatioF()))
+        mark.setToolTip("AgentOps")
+        column.addWidget(mark, alignment=Qt.AlignmentFlag.AlignHCenter)
+        column.addSpacing(DARK.space_sm)
+        self._rail_nav = QVBoxLayout()
+        self._rail_nav.setSpacing(DARK.space_xs)
+        column.addLayout(self._rail_nav)
+        column.addStretch(1)
+        # Status dot (operation state; tooltip mirrors the status text), then
+        # the palette button; pinned views (Settings) land below them.
+        self._status_dot = PulsingDot(size=9)
+        self._status_dot.setToolTip("Idle")
+        column.addWidget(self._status_dot, alignment=Qt.AlignmentFlag.AlignHCenter)
+        column.addSpacing(DARK.space_xs)
+        self._palette_btn = IconButton("command", "Command palette  Ctrl+K")
+        self._palette_btn.clicked.connect(lambda _checked=False: self.open_palette())
+        column.addWidget(self._palette_btn, alignment=Qt.AlignmentFlag.AlignHCenter)
+        self._rail_bottom = QVBoxLayout()
+        self._rail_bottom.setSpacing(DARK.space_xs)
+        column.addLayout(self._rail_bottom)
+        return rail
+
+    def _rail_separator(self) -> QFrame:
+        line = QFrame()
+        line.setObjectName("RailSeparator")
+        line.setFixedSize(20, 1)
+        return line
 
     def _build_views(self) -> None:
         context = ViewContext(
@@ -268,26 +319,31 @@ class MainWindow(QMainWindow, AsyncMixin):
         )
         self._views_ctx = context
         self._views = create_views(context)
-        group_starters = {ids[0]: name for name, ids in _NAV_GROUPS}
+        group_starters = {ids[0] for _name, ids in _NAV_GROUPS[1:-1]}
+        pinned = set(_NAV_GROUPS[-1][1])
         for index, (view_id, title, _factory) in enumerate(VIEW_SPECS):
             view = self._views.get(view_id)
             if view is None:
                 continue
-            group_name = group_starters.get(view_id)
-            if group_name is not None:
-                group_label = label(group_name.upper(), "group")
-                group_label.setContentsMargins(0, DARK.space_md, 0, 0)
-                self._nav_layout.addWidget(group_label)
-            button = QPushButton(title)
-            button.setProperty("nav", True)
+            tooltip = f"{title}  Ctrl+{(index + 1) % 10}" if index < 10 else title
+            button = IconButton(_RAIL_ICONS.get(view_id, "circle-dashed"), tooltip, title)
             button.setCheckable(True)
             button.clicked.connect(lambda _checked=False, vid=view_id: self.navigate(vid))
-            self._nav_layout.addWidget(button)
+            target = self._rail_bottom if view_id in pinned else self._rail_nav
+            if view_id in group_starters:
+                target.addWidget(self._rail_separator(), alignment=Qt.AlignmentFlag.AlignHCenter)
+            target.addWidget(button, alignment=Qt.AlignmentFlag.AlignHCenter)
             self._nav_buttons[view_id] = button
             self._stack.addWidget(view)
             if index == 0:
                 self._stack.setCurrentWidget(view)
                 button.setChecked(True)
+        # Failures badge: the dashboard's own dashboard_summary poll reports
+        # the needs-attention count; no extra state read.
+        attention = getattr(self._views.get("dashboard"), "attention_changed", None)
+        failures_button = self._nav_buttons.get("failures")
+        if attention is not None and failures_button is not None:
+            attention.connect(failures_button.set_badge)
 
     def _build_shortcuts(self) -> None:
         # Registry kept for discovery/tests: sequence -> shortcut.
@@ -941,6 +997,7 @@ class MainWindow(QMainWindow, AsyncMixin):
             self._status_dot.set_pulsing(True)
             if status:
                 self._status_label.setText(status)
+                self._status_dot.setToolTip(status)
                 self._set_tray_status(status)
         else:
             self._set_status_idle()
@@ -951,6 +1008,7 @@ class MainWindow(QMainWindow, AsyncMixin):
         foreground, _background = status_colors("passed")
         self._status_dot.set_color(foreground)
         self._status_label.setText("Idle")
+        self._status_dot.setToolTip("Idle")
         self._cancel_btn.hide()
         self._cancel_btn.setEnabled(True)
         self._new_task_btn.setEnabled(True)
@@ -960,6 +1018,7 @@ class MainWindow(QMainWindow, AsyncMixin):
     def _on_poll(self) -> None:
         elapsed = time.monotonic() - self._operation_started
         self._status_label.setText(f"Running {format_duration(elapsed)}")
+        self._status_dot.setToolTip(self._status_label.text())
         self._set_tray_status(self._status_label.text())
         self.refresh_active()
         if self._follow_enabled:
