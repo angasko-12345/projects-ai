@@ -119,6 +119,12 @@ class GuiSnapshotTest(unittest.TestCase):
         except BaseException:
             shutil.rmtree(cls._base, ignore_errors=True)
             raise
+        # One line of measurements, so a CI log shows why (a)/(b) passed or failed.
+        summary = ", ".join(
+            f"{view_id} {cls.shares[view_id]:.1%}/{len(cls.clipped[view_id])}"
+            for view_id in cls.shares
+        )
+        print(f"\ngui_snapshots bright-share/clipped-labels: {summary}", file=sys.stderr)
 
     @classmethod
     def _restore_app(cls, app):

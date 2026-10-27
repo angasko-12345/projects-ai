@@ -1056,13 +1056,19 @@ def close_window(window) -> None:
         pump(100)
 
 
-def select_first_row(window, view_id: str) -> None:
-    """Select row 0 in the view's table, when it has one with rows."""
+def select_first_row(window, view_id: str, timeout_ms: int = 4000) -> None:
+    """Select row 0 in the view's table once its rows have loaded (loads are async)."""
     table = getattr(window._views[view_id], "_table", None)
     proxy = getattr(table, "proxy", None)
-    if proxy is not None and proxy.rowCount() and hasattr(table, "select_row_index"):
+    if proxy is None or not hasattr(table, "select_row_index"):
+        return
+    waited = 0
+    while not proxy.rowCount() and waited < timeout_ms:
+        pump(100)
+        waited += 100
+    if proxy.rowCount():
         table.select_row_index(0)
-        pump(500)
+        pump(300)
 
 
 def iter_views(window, *, settle_ms: int = 900) -> Iterator[str]:
@@ -1078,7 +1084,33 @@ def iter_views(window, *, settle_ms: int = 900) -> Iterator[str]:
         pump(settle_ms)
         if view_id != "dashboard":
             select_first_row(window, view_id)
+        wait_until_settled(window)
         yield view_id
+
+
+def _layout_signature(window) -> tuple:
+    """Visible labels with their text and geometry: changes while async loads land."""
+    from PySide6.QtWidgets import QLabel
+
+    return tuple(
+        (label.text(), label.width(), label.height())
+        for label in window.findChildren(QLabel)
+        if label.isVisible()
+    )
+
+
+def wait_until_settled(
+    window, *, step_ms: int = 150, stable_polls: int = 3, timeout_ms: int = 5000
+):
+    """Pump until the visible labels stop changing for ``stable_polls`` polls in a
+    row, so slow machines capture the loaded view rather than a half-loaded one."""
+    previous, stable, waited = _layout_signature(window), 0, 0
+    while stable < stable_polls and waited < timeout_ms:
+        pump(step_ms)
+        waited += step_ms
+        current = _layout_signature(window)
+        stable = stable + 1 if current == previous else 0
+        previous = current
 
 
 def dismiss_toasts(window) -> None:
