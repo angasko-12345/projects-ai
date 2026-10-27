@@ -82,6 +82,41 @@ def clipped_labels(root) -> list[str]:
     return offenders
 
 
+def _diag(window, view_id, t0):  # TEMP-DIAG: remove before merge
+    import shutil as _sh
+    import threading as _th
+    import time as _t
+
+    from PySide6.QtWidgets import QLabel
+
+    view = window._views[view_id]
+    table = getattr(view, "_table", None)
+    rows = table.proxy.rowCount() if table is not None and hasattr(table, "proxy") else "-"
+    empty = ""
+    if table is not None and hasattr(table, "_empty"):
+        empty = f"{table._empty._heading.text()!r}/{table._empty._message.text()!r}"
+    ex = window._bridge._executor if hasattr(window, "_bridge") else None
+    if ex is None:
+        ex = getattr(getattr(view, "_bridge", None), "_executor", None)
+    pool = f"q={ex._work_queue.qsize()} thr={len(ex._threads)}" if ex is not None else "?"
+    toasts = []
+    for card in getattr(window._toasts, "_toasts", []):
+        toasts.append(" | ".join(lb.text() for lb in card.findChildren(QLabel))[:300])
+    busy = [t.name for t in _th.enumerate() if t.name.startswith("agentops")]
+    print(
+        f"DIAG {_t.monotonic() - t0:6.1f}s {view_id}: rows={rows} empty={empty} {pool} "
+        f"threads={busy} toasts={toasts}",
+        file=sys.stderr,
+    )
+    if view_id == "dashboard":
+        labels = [lb.text() for lb in view.findChildren(QLabel) if lb.isVisible() and lb.text()]
+        print(f"DIAG dashboard labels: {labels[:40]}", file=sys.stderr)
+        names = ["codex", "claude", "opencode", "kilo", "copilot", "omp", "gemini", "aider"]
+        print(f"DIAG which: { {n: _sh.which(n) for n in names} }", file=sys.stderr)
+        print(f"DIAG repo={window._settings.repositories if hasattr(window._settings, 'repositories') else '?'} "
+              f"cur={view.repository()!r} cwd={os.getcwd()} HOME={os.environ.get('HOME')}", file=sys.stderr)
+
+
 @requires_qt
 class GuiSnapshotTest(unittest.TestCase):
     shares: dict[str, float] = {}
@@ -108,7 +143,11 @@ class GuiSnapshotTest(unittest.TestCase):
                     [seeded.repo, seeded.second_repo], cls._base / "settings.json", WIDTH, HEIGHT
                 )
                 try:
+                    import time as _t0m  # TEMP-DIAG
+
+                    _t0 = _t0m.monotonic()
                     for view_id in snap.iter_views(window, settle_ms=500):
+                        _diag(window, view_id, _t0)  # TEMP-DIAG
                         image = window.grab().toImage()
                         if out_dir:
                             image.save(str(out_dir / f"{view_id}-{WIDTH}x{HEIGHT}.png"))
