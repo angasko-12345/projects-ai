@@ -6,6 +6,11 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
+try:
+    from PySide6.QtCore import Qt
+except ImportError:  # optional desktop dependency; the class below skips
+    Qt = None  # type: ignore[assignment]
+
 try:  # `discover -s tests` puts tests/ on sys.path; direct runs do not.
     from tests.qt_display import destroy, qt_app, requires_qt, wait, wait_until
     from tests.test_gui_qt import REPOSITORY, FakeController
@@ -71,6 +76,8 @@ class DashboardTest(unittest.TestCase):
         self.assertFalse(self.view._donut.isVisible())
         self.assertFalse(self.view._donut_legend.isVisible())
         self.assertTrue(self.view._donut_empty.isVisible())
+        self.assertFalse(self.view._attention_header.isVisible())
+        self.assertTrue(self.view._attention_empty.isVisible())
         self.assertEqual(self.view._page_header._subtitle.text(), "0 workflows")
 
     def test_runs_chart_highlights_the_latest_peak(self):
@@ -132,6 +139,58 @@ class DashboardTest(unittest.TestCase):
         self.window.resize(960, 700)
         wait(50)
         self.assertEqual(self.view._week_columns, 2)
+
+    def test_attention_table_renders_joined_rows(self):
+        view = self.view
+        view._on_read("workflows", {"workflows": [{"id": "wf-1", "description": "Cache it"}]})
+        view._on_read("runs", [{"id": "r-1", "agent": "codex", "started_at": hours_ago(1)}])
+        view._on_summary(
+            dict(
+                EMPTY_SUMMARY,
+                needs_attention=[
+                    {
+                        "workflow_id": "wf-1",
+                        "agent_run_id": "r-1",
+                        "category": "GIT_CONFLICT",
+                        "severity": "CRITICAL",
+                        "recommended_action": "stop",
+                        "primary_error": "conflict in base.py",
+                    },
+                    {"workflow_id": "wf-1", "category": "TIMEOUT", "severity": "MEDIUM"},
+                ],
+                recent_events=[
+                    {
+                        "type": "agent.finished",
+                        "severity": "error",
+                        "workflow_id": "wf-1",
+                        "timestamp": hours_ago(2),
+                        "message": "codex failed implementation: pytest exited 1",
+                    },
+                    {"type": "workflow.created", "workflow_id": "wf-1", "message": "Created"},
+                ],
+            )
+        )
+        table = view._attention_list
+        self.assertEqual(table.count(), 2)
+        self.assertTrue(view._attention_header.isVisible())
+        self.assertEqual(table.pill_role(table.item(0)), "danger")
+        self.assertEqual(table.pill_role(table.item(1)), "warning")
+        row = table.item(0).data(Qt.ItemDataRole.UserRole)
+        self.assertEqual(
+            (row["workflow"], row["problem"], row["agent"]), ("Cache it", "Merge conflict", "codex")
+        )
+        self.assertIn("conflict in base.py", table.item(0).toolTip())
+
+    def test_attention_columns_drop_before_the_table_scrolls(self):
+        from agentops.gui.views.dashboard_parts import columns
+
+        wide = [key for key, *_ in columns(1000)]
+        self.assertEqual(wide, ["workflow", "problem", "severity", "agent", "next_step", "age"])
+        narrow = [key for key, *_ in columns(600)]
+        self.assertNotIn("next_step", narrow)
+        for width in (520, 600, 760, 1000):
+            last = columns(width)[-1]
+            self.assertLessEqual(last[2] + last[3], width)
 
     def test_new_task_button_opens_the_task_dialog(self):
         from dataclasses import replace

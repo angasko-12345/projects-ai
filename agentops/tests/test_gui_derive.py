@@ -219,5 +219,45 @@ class WeekStatsTest(unittest.TestCase):
         self.assertEqual(stats["agent_time"], {"value": 0, "delta": None})
 
 
+class DashboardRowsTest(unittest.TestCase):
+    def test_attention_rows_join_workflow_and_agent_in_words(self):
+        failures = [
+            {
+                "workflow_id": "wf-1",
+                "task_id": "t-1",
+                "agent_run_id": "r-2",
+                "category": "TEST_FAILURE",
+                "severity": "HIGH",
+                "recommended_action": "repair_implementation",
+                "primary_error": "3 failed",
+                "created_at": ago(hours=6),
+            },
+            {"workflow_id": "wf-9", "task_id": "t-1", "category": "TIMEOUT", "severity": "MEDIUM"},
+            {"workflow_id": "", "category": "GIT_CONFLICT", "recommended_action": "stop"},
+            {"category": "USAGE_LIMIT", "recommended_action": "wait_a_bit"},
+        ]
+        workflows = [{"id": "wf-1", "description": "Cache responses"}]
+        runs = [
+            {"id": "r-3", "task_id": "t-1", "agent": "codex"},  # newest of t-1
+            {"id": "r-2", "task_id": "t-1", "agent": "claude"},
+        ]
+        rows = derive.attention_rows(failures, workflows, runs, NOW)
+        first = rows[0]
+        self.assertEqual(first["workflow"], "Cache responses")
+        self.assertEqual(first["problem"], "Tests failed")
+        self.assertEqual(first["severity"], "high")
+        self.assertEqual(first["agent"], "claude")  # the run that failed
+        self.assertEqual(first["next_step"], "Repair implementation")
+        self.assertEqual(first["age"], "6h")
+        self.assertEqual((rows[1]["workflow"], rows[1]["problem"]), ("wf-9", "Agent timed out"))
+        self.assertEqual(rows[1]["agent"], "codex")  # newest run of the same task
+        self.assertEqual(rows[2]["problem"], "Merge conflict")
+        self.assertEqual(rows[2]["next_step"], "Resolve manually")
+        self.assertEqual(rows[2]["workflow"], "Unknown workflow")
+        self.assertEqual(
+            (rows[3]["problem"], rows[3]["next_step"]), ("Usage limit hit", "Wait a bit")
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

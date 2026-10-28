@@ -694,6 +694,11 @@ QListWidget, QListView {{
     outline: none;
     padding: {t.space_xs}px;
 }}
+QListWidget[plain="true"] {{
+    background: transparent;
+    border: none;
+    padding: 0;
+}}
 QListWidget::item {{
     padding: {t.space_sm}px;
     border-radius: {t.radius_sm}px;

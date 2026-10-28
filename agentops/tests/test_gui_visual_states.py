@@ -136,7 +136,7 @@ class VisualStateTest(unittest.TestCase):
         self.assertFalse(view._attention_empty.isVisible())
         self.assertEqual(view._attention_list.count(), 1)
         first = view._attention_list.item(0)
-        self.assertEqual(first.foreground().color().name(), DARK.danger)
+        self.assertEqual(view._attention_list.pill_role(first), "danger")
         self.assertIn("assertion failed", first.toolTip())
         self.assertTrue(view._activity_list.isVisible())
         self.assertFalse(view._activity_empty.isVisible())
