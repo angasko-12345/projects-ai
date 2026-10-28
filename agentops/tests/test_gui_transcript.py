@@ -134,6 +134,26 @@ class WorkspaceHeaderTest(unittest.TestCase):
         self.assertFalse(view._records.isVisible())
         self.assertEqual(view._pane_toggle.toolTip(), "Show records")
 
+    def test_status_pill_shows_the_workflow_status_not_the_idle_state(self):
+        from agentops.gui.control_center import cancellation_state
+
+        view = self.window._views["workflows"]
+        self.window.navigate("workflows")
+        self.assertTrue(wait_until(lambda: bool(view._transcript.model().get("blocks"))))
+        idle = cancellation_state({"running": False, "status": "failed"})
+        view._apply_state(idle, {"status": "failed"})
+        self.assertEqual(view._status_badge.text(), "FAILED")
+        view._apply_state(idle, {"status": "passed"})
+        self.assertEqual(view._status_badge.text(), "PASSED")
+        live = cancellation_state({"running": True, "status": "running"})
+        view._apply_state(live, {"status": "pending"})
+        self.assertEqual(view._status_badge.text(), "RUNNING")
+        view._apply_state(cancellation_state(live, cancel_requested=True), {"status": "running"})
+        self.assertEqual(view._status_badge.text(), "CANCELLING")
+        gone = cancellation_state({"running": False, "status": "cancelled"})
+        view._apply_state(gone, {"status": "cancelled"})
+        self.assertEqual(view._status_badge.text(), "CANCELLED")
+
 
 if __name__ == "__main__":
     unittest.main()
