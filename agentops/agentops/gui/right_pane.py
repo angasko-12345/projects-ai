@@ -1,9 +1,10 @@
-"""Workspace right pane: Diff / Records (Phase C3).
+"""Workspace right pane: Diff / Logs / Records (Phase C3).
 
 480px wide, 420 below a 1280px window. Diff shows ``workflow_diff`` for the
-open workflow with an attempt picker; Records hosts the control center's
-record tabs unchanged. Reads go through the view context's bridge and run
-only while their tab is on screen.
+open workflow with an attempt picker; Logs lists the picked attempt's task
+logs (``list_logs``) and tails one (``read_log``); Records hosts the control
+center's record tabs unchanged. Reads go through the view context's bridge
+and run only while their tab is on screen.
 """
 
 from __future__ import annotations
@@ -27,10 +28,12 @@ from .diffview import DiffView
 from .icons import qicon
 from .tokens import DARK as _T
 from .transcript import TextLabel
+from .widgets import LogText
 
 PANE_WIDE, PANE_NARROW, NARROW_BELOW = 480, 420, 1280
 TABS = (
     ("diff", "Diff", "file-diff"),
+    ("logs", "Logs", "terminal"),
     ("records", "Records", "list-checks"),
 )
 _SOURCE = {"worktree": "live worktree", "branch": "branch", "stat": "recorded stat"}
@@ -40,6 +43,7 @@ QToolButton[paneTab=true] {{ color: {t.text_muted}; border: 1px solid transparen
     border-radius: 6px; padding: 3px 8px; }}
 QToolButton[paneTab=true]:checked {{ color: {t.text}; background: {t.surface};
     border-color: {t.border_strong}; }}
+QPlainTextEdit {{ border: none; }}
 """
 
 
@@ -105,7 +109,10 @@ class RightPane(QFrame, AsyncMixin):
         for label in (self._added, self._removed):
             label.setWordWrap(False)
             row.addWidget(label)
+        self._log = LogText()
+        self._log_pick, _row = self._page("Log file", self._log)
         self._attempt.activated.connect(lambda _i: self._load())
+        self._log_pick.activated.connect(lambda _i: self._read_log())
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -185,7 +192,9 @@ class RightPane(QFrame, AsyncMixin):
         if not workflow_id or not self.isVisible() or self.tab() == "records":
             return
         picked = self._picked()
-        if picked and picked is not self._choices[-1]:  # history: its recorded stat
+        if self.tab() == "logs":
+            self._load_logs(repository, picked.get("run") or {})
+        elif picked and picked is not self._choices[-1]:  # history: its recorded stat
             self._show_diff({"source": "", "text": _recorded(picked.get("run") or {})})
         else:
             self.submit(
@@ -209,3 +218,43 @@ class RightPane(QFrame, AsyncMixin):
         files = self._diff.files()
         self._added.setText(f"+{sum(f.added for f in files)}" if files else "")
         self._removed.setText(f"\u2212{sum(f.removed for f in files)}" if files else "")
+
+    def _load_logs(self, repository: str, run: dict) -> None:
+        def listed(entries: object) -> None:
+            self._log_pick.clear()
+            for entry in entries if isinstance(entries, list) else ():
+                if isinstance(entry, dict) and entry.get("name"):
+                    self._log_pick.addItem(str(entry["name"]).rsplit("/", 1)[-1], entry["name"])
+                    if entry.get("path") and entry.get("path") == run.get("stdout_path"):
+                        self._log_pick.setCurrentIndex(self._log_pick.count() - 1)
+            self._log_pick.setVisible(self._log_pick.count() > 0)
+            self._log.set_log("")
+            self._log.setPlaceholderText("No logs recorded for this attempt yet.")
+            self._read_log()
+
+        task_id = str(run.get("task_id") or "")
+        if not task_id:
+            return listed([])
+        self.submit(
+            "pane-logs",
+            lambda: self.ctx.controller.list_logs(repository, task_id),
+            listed,
+            lambda message: self._log.set_log(f"Logs unavailable: {message}"),
+        )
+
+    def _read_log(self) -> None:
+        name, repository = self._log_pick.currentData(), self._target[0]
+
+        def shown(result: object) -> None:
+            data = result if isinstance(result, dict) else {}
+            older = "[older output not shown]\n" if data.get("truncated") else ""
+            self._log.set_log(older + str(data.get("text") or ""))
+            self._log.verticalScrollBar().setValue(self._log.verticalScrollBar().maximum())
+
+        if name:
+            self.submit(
+                "pane-log",
+                lambda: self.ctx.controller.read_log(repository, name),
+                shown,
+                lambda message: self._log.set_log(f"Log unavailable: {message}"),
+            )
