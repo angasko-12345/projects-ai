@@ -28,6 +28,7 @@ from ..components import IconButton
 from ..detail import _confirm
 from ..format import elide, format_duration, format_size, format_timestamp, short_id
 from ..platform import open_path_external
+from ..threads import ThreadList, load_threads
 from ..tokens import DARK
 from ..transcript import ReadinessChip, TextLabel, Transcript, TranscriptScroll
 from ..widgets import (
@@ -139,13 +140,26 @@ class WorkflowsView(BaseView):
 
         self._build_header()
         root.addWidget(self._page_header)
-        list_toolbar = QHBoxLayout()
+        # The search, status filter and thread list live in the shell's
+        # contextual sidebar (sidebar_parts); _list stays as the hidden
+        # table behind the filters, selection and rename/delete.
+        self._sidebar_filters = QWidget()
+        list_toolbar = QHBoxLayout(self._sidebar_filters)
+        list_toolbar.setContentsMargins(0, 0, 0, 0)
         list_toolbar.setSpacing(DARK.space_sm)
-        self._wf_search = SearchBox("Search workflows...")
+        self._wf_search = SearchBox("Search")
+        self._wf_search.setMinimumWidth(0)
         self._wf_search.textChanged.connect(self._apply_list_filters)
         list_toolbar.addWidget(self._wf_search, stretch=1)
         self._wf_status = QComboBox()
-        self._wf_status.addItem("All statuses", None)
+        self._wf_status.setProperty("scope", True)  # flat, like the repo scope
+        self._wf_status.setToolTip("Filter by status")
+        self._wf_status.setAccessibleName("Status filter")
+        # Compact: "Running" fits; longer statuses elide (the popup shows all).
+        self._wf_status.setFixedWidth(
+            self._wf_status.fontMetrics().horizontalAdvance("Running") + DARK.space_xxl + 8
+        )
+        self._wf_status.addItem("All", None)
         for status in (
             "pending",
             "running",
@@ -159,7 +173,8 @@ class WorkflowsView(BaseView):
             self._wf_status.addItem(status.title(), status)
         list_toolbar.addWidget(self._wf_status)
         self._wf_status.currentIndexChanged.connect(self._apply_list_filters)
-        root.addLayout(list_toolbar)
+        self._threads = ThreadList(self.ctx)
+        self._threads.workflow_selected.connect(self._on_thread_selected)
 
         splitter = QSplitter()
         self._list = TablePanel(
@@ -167,6 +182,7 @@ class WorkflowsView(BaseView):
         )
         self._list.selection_changed.connect(self._pick_workflow)
         self._list.activated.connect(self._pick_workflow)
+        self._list.hide()
         splitter.addWidget(self._list)
 
         # The middle pane: the run transcript scrolls under a fade, with the
@@ -395,9 +411,19 @@ class WorkflowsView(BaseView):
     # data
     # ------------------------------------------------------------------
     # -- list filter and record management -------------------------------
+    def sidebar_parts(self) -> tuple[QWidget, ThreadList]:
+        """(search + status row, thread list) for the shell's sidebar."""
+        return self._sidebar_filters, self._threads
+
+    def _on_thread_selected(self, repository: str, workflow_id: str) -> None:
+        if repository != self.repository():
+            self.ctx.update_settings({"repository": repository})
+        self.show_workflow(workflow_id)
+
     def _apply_list_filters(self, *_args: object) -> None:
         self._list.set_filter(self._wf_search.text())
         self._list.set_column_filter("status", self._wf_status.currentData() or "")
+        self._threads.set_filter(self._wf_search.text(), self._wf_status.currentData() or "")
 
     def _current_row(self) -> dict | None:
         """Selected list row, falling back to the open workflow."""
@@ -484,13 +510,12 @@ class WorkflowsView(BaseView):
             return
 
         def load() -> object:
-            page = self.ctx.controller.list_workflows(repository, limit=50)
-            rows = list(page.get("workflows") or []) if isinstance(page, dict) else []
-            return [row for row in rows if isinstance(row, dict)]
+            return load_threads(self.ctx.controller, repository)
 
-        def done(rows: object) -> None:
-            listed = list(rows or [])
+        def done(data: object) -> None:
+            listed = list(data.get("workflows") or []) if isinstance(data, dict) else []
             self._list.set_rows(listed)
+            self._threads.set_repository_data(repository, data)
             if self._current_id is None and listed:
                 self.show_workflow(str(listed[0].get("id") or ""))
             elif self._current_id:
@@ -511,6 +536,7 @@ class WorkflowsView(BaseView):
             return
         self._current_id = workflow_id
         self._cancel_requested = False
+        self._threads.set_current(self.repository(), workflow_id)
         self._select_by_id(self._list, workflow_id)
         self._load_current(task_id)
 
