@@ -44,7 +44,7 @@ class _Toast(QFrame):
         layout.setSpacing(DARK.space_sm)
 
         column = QVBoxLayout()
-        column.setSpacing(2)
+        column.setSpacing(DARK.space_xs)
         heading = QLabel(title)
         heading.setProperty("role", "title")
         column.addWidget(heading)

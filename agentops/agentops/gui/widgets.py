@@ -1001,7 +1001,7 @@ class _PipelineStage(QWidget):
         self._key = str(stage.get("key", ""))
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(2)
+        layout.setSpacing(theme.space_xs)
         top = QHBoxLayout()
         top.setSpacing(theme.space_sm)
         self.dot = PulsingDot(size=10, parent=self)

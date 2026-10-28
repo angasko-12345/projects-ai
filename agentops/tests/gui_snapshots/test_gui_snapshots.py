@@ -7,8 +7,9 @@ The window comes from ``scripts/gui_snapshots.py`` (same seed, same real
     Passes since the app installs a dark QPalette via ``tokens.apply_theme``
     (v2 plan, phase A); before that, unstyled Qt surfaces rendered light-grey.
 (b) clipped labels: no visible, non-word-wrapped QLabel with text is shorter
-    than its font's line height. Expected to fail until the Workflows pipeline
-    cards stop collapsing.
+    than its font's line height. Passes since the Workflows pipeline pane
+    scrolls instead of squeezing its step cards; before that, the cards
+    collapsed to 0-12 px and their labels were clipped.
 
 Set ``AGENTOPS_SNAPSHOT_OUT`` to also save the PNGs this test grabs
 (``tests/gui_snapshots/out/`` is git-ignored for that purpose).
@@ -174,11 +175,6 @@ class GuiSnapshotTest(unittest.TestCase):
         }
         self.assertEqual({}, offenders, f"bright-pixel share > {MAX_BRIGHT_SHARE:.0%}")
 
-    # Fails on main: in the Workflows view the pipeline step cards of the selected
-    # workflow are squeezed to 0-12 px, so their title, badge, agent, model,
-    # duration and "after <step>" labels are clipped (v1 rendering bug; the v2
-    # plan's workspace phase replaces that pane). Remove the marker once fixed.
-    @unittest.expectedFailure
     def test_no_label_is_shorter_than_its_text_line(self):
         offenders = {view_id: found for view_id, found in self.clipped.items() if found}
         self.assertEqual({}, offenders)
