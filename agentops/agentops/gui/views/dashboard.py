@@ -1,8 +1,9 @@
 """Dashboard: the current repository at a glance.
 
-Every number derives from existing reads: ``dashboard_summary``,
-``list_agent_profiles`` for the agents card, and ``list_recent_agent_runs``
-(the newest 500) for the runs chart, shaped by the Qt-free ``gui/derive.py``.
+Every number derives from existing reads: ``dashboard_summary`` plus
+``list_workflows``, ``list_recent_agent_runs`` and
+``list_recent_verification_runs`` (each capped at the newest 500), shaped by
+the Qt-free ``gui/derive.py``.
 Values keep their last good state across refreshes; an empty repository
 shows empty states, never zero-filled charts.
 """
@@ -31,7 +32,8 @@ from .. import derive
 from ..charts import AreaChart, Donut
 from ..components import Chip, SectionLabel
 from ..format import elide, format_timestamp, short_id
-from ..tokens import DARK
+from ..icons import icon
+from ..tokens import DARK, with_alpha
 from ..widgets import (
     Card,
     PageHeader,
@@ -65,27 +67,85 @@ _SEVERITY_COLORS = {
 
 _NO_REPOSITORY = "Pick a repository in Workflows, or with Ctrl+K, to begin."
 _NO_WORKFLOWS = "Start a task to see workflows here."
-_READ_LIMIT = 500  # newest agent runs read for the runs chart
+_READ_LIMIT = 500  # newest agent / verification runs read for charts and stats
 _DAYS = 14
 _REPO_TITLE_PX = 30
 _DECIDED = ("passed", "failed", "timed_out", "unverified")
-
-
-def _counts_line(counts: dict, exclude: str | None = None) -> str:
-    parts = [
-        f"{value} {key.replace('_', ' ')}"
-        for key, value in sorted(counts.items())
-        if value and key != exclude
-    ]
-    return "  ·  ".join(parts) if parts else "none yet"
 
 
 def _pretty(text: object) -> str:
     return str(text or "unknown").replace("_", " ")
 
 
+def _duration(seconds: int) -> str:
+    minutes = round(seconds / 60)
+    if minutes < 60:
+        return f"{minutes}m"
+    return f"{minutes // 60}h {minutes % 60:02d}m"
+
+
 def _day_label(day) -> str:  # type: ignore[no-untyped-def]
     return f"{day:%b} {day.day}"
+
+
+class _WeekCard(StatCard):
+    """Navy stat card: coloured round icon, title, 28px value, delta row."""
+
+    def __init__(self, title: str, icon_name: str, color: str, tooltip: str):
+        super().__init__("")
+        self.setProperty("navy", True)
+        self.setToolTip(tooltip)
+        row = QHBoxLayout()
+        row.setSpacing(DARK.space_md)
+        badge = QLabel()
+        badge.setFixedSize(40, 40)
+        badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        badge.setPixmap(icon(icon_name, color, 20))
+        badge.setStyleSheet(f"background: {with_alpha(color, 0.16)}; border-radius: 20px;")
+        row.addWidget(badge, alignment=Qt.AlignmentFlag.AlignVCenter)
+        column = QVBoxLayout()
+        column.setSpacing(2)
+        self.title = QLabel(title)
+        self.title.setProperty("role", "subtitle")
+        self.title.setWordWrap(True)
+        column.addWidget(self.title)
+        self.value = QLabel("-")
+        self.value.setProperty("role", "stat")
+        column.addWidget(self.value)
+        delta = QHBoxLayout()
+        delta.setSpacing(DARK.space_xs)
+        self.trend = QLabel()
+        self.trend.setFixedSize(14, 14)
+        delta.addWidget(self.trend)
+        self.delta = QLabel("")
+        delta.addWidget(self.delta)
+        self.note = QLabel("")
+        self.note.setProperty("role", "faint")
+        delta.addWidget(self.note)
+        delta.addStretch(1)
+        column.addLayout(delta)
+        row.addLayout(column, stretch=1)
+        self.body().addLayout(row)
+
+    def set_delta(self, delta: int | None, unit: str, up_is_good: bool = True) -> None:
+        """``+12%`` / ``-29 pts`` with a trending icon; None -> "no prior week"."""
+        if delta is None:
+            self.set_note("no prior week")
+            return
+        good = (delta >= 0) == up_is_good
+        color = DARK.success if good else DARK.danger
+        sign = "+" if delta > 0 else "\u2212" if delta < 0 else "\u00b1"
+        self.trend.setPixmap(icon("trending-up" if delta >= 0 else "trending-down", color, 14))
+        self.trend.show()
+        self.delta.setText(f"{sign}{abs(delta)}{unit}")
+        self.delta.show()
+        self.delta.setStyleSheet(f"color: {color};")
+        self.note.setText("vs last week")
+
+    def set_note(self, text: str) -> None:
+        self.trend.hide()
+        self.delta.hide()
+        self.note.setText(text)
 
 
 def _legend(text: str, color: str) -> QWidget:
@@ -138,34 +198,15 @@ class DashboardView(BaseView):
 
         root.addWidget(self._build_header())
 
-        stats = QHBoxLayout()
-        stats.setSpacing(DARK.space_md)
-        (self._workflows_card, self._workflows_stat, self._workflows_detail) = self._stat_card(
-            "Active workflows", "workflows", "Open the workflow control center"
-        )
-        (self._tasks_card, self._tasks_stat, self._tasks_detail) = self._stat_card(
-            "Current tasks", "tasks", "Open the task list"
-        )
-        (self._verification_card, self._verification_stat, self._verification_detail) = (
-            self._stat_card("Verification health", "verification", "Open verification runs")
-        )
-        (self._agents_card, self._agents_stat, self._agents_detail) = self._stat_card(
-            "Detected agents", "agents", "Open the agent roster"
-        )
-        for card in (
-            self._workflows_card,
-            self._tasks_card,
-            self._verification_card,
-            self._agents_card,
-        ):
-            stats.addWidget(card, stretch=1)
-        root.addLayout(stats)
+        root.addWidget(SectionLabel("This week"))
+        root.addLayout(self._build_week())
         root.addLayout(self._build_charts())
         self._window_note = QLabel("")
         self._window_note.setProperty("role", "faint")
+        self._verification_stat.setText("-")
+        self._verification_stat.setStyleSheet("font-size: 20px; font-weight: 600;")
         self._window_note.hide()
         root.addWidget(self._window_note)
-        self._runs: list[dict] = []
 
         main = QHBoxLayout()
         main.setSpacing(DARK.space_md)
@@ -223,8 +264,9 @@ class DashboardView(BaseView):
 
         root.addLayout(main, stretch=1)
 
+        self._summary: dict = {}
+        self._reads: dict[str, list] = {}
         self._summary_loaded = False
-        self._agents_loaded = False
         self._show_no_repo()
 
     def _build_header(self) -> PageHeader:
@@ -247,6 +289,46 @@ class DashboardView(BaseView):
         new_task.clicked.connect(self._open_new_task)
         self._page_header.add_action(new_task)
         return self._page_header
+
+    def _build_week(self) -> QGridLayout:
+        grid = QGridLayout()
+        grid.setSpacing(14)
+        self._workflows_card = _WeekCard(
+            "Workflows run", "workflow", DARK.info, "Open the workflow control center"
+        )
+        self._verification_card = _WeekCard(
+            "Verification pass rate", "shield-check", DARK.success, "Open verification runs"
+        )
+        self._agents_card = _WeekCard("Agent time", "timer", DARK.warning, "Open the agent roster")
+        self._tasks_card = _WeekCard(
+            "Needs attention", "triangle-alert", DARK.danger, "Open the task list"
+        )
+        self._week_grid = grid
+        self._week_columns = 0
+        for card, target in (
+            (self._workflows_card, "workflows"),
+            (self._verification_card, "verification"),
+            (self._agents_card, "agents"),
+            (self._tasks_card, "tasks"),
+        ):
+            card.clicked.connect(lambda target=target: self.ctx.navigate(target))
+        self._place_week(4)
+        return grid
+
+    def _place_week(self, columns: int) -> None:
+        """Four stat cards in a row, or 2x2 when the page is narrow."""
+        if columns == self._week_columns:
+            return
+        self._week_columns = columns
+        cards = (self._workflows_card, self._verification_card, self._agents_card, self._tasks_card)
+        for index, card in enumerate(cards):
+            self._week_grid.addWidget(card, index // columns, index % columns)
+        for column in range(4):
+            self._week_grid.setColumnStretch(column, 1 if column < columns else 0)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt API
+        super().resizeEvent(event)
+        self._place_week(4 if self.width() >= 1040 else 2)
 
     def _build_charts(self) -> QHBoxLayout:
         row = QHBoxLayout()
@@ -280,11 +362,11 @@ class DashboardView(BaseView):
         card.body().addWidget(self._donut, alignment=Qt.AlignmentFlag.AlignHCenter)
         legend = QGridLayout()
         legend.setVerticalSpacing(2)
-        self._donut_passed = QLabel("-")
-        self._donut_passed.setStyleSheet("font-size: 20px; font-weight: 600;")
+        self._verification_stat = QLabel("-")
+        self._verification_stat.setStyleSheet("font-size: 20px; font-weight: 600;")
         self._verification_failed = QLabel("-")
         self._verification_failed.setStyleSheet("font-size: 20px; font-weight: 600;")
-        legend.addWidget(self._donut_passed, 0, 0)
+        legend.addWidget(self._verification_stat, 0, 0)
         legend.addWidget(self._verification_failed, 0, 1, Qt.AlignmentFlag.AlignRight)
         legend.addWidget(_legend("Passed", DARK.success), 1, 0)
         legend.addWidget(_legend("Failed", DARK.danger), 1, 1, Qt.AlignmentFlag.AlignRight)
@@ -300,44 +382,24 @@ class DashboardView(BaseView):
         row.addLayout(verification, stretch=1)
         return row
 
-    # ------------------------------------------------------------------
-    def _stat_card(self, title: str, target: str, tooltip: str) -> tuple[StatCard, QLabel, QLabel]:
-        """One clickable headline number navigating to its full view."""
-        card = StatCard(title)
-        card.setToolTip(tooltip)
-        card.clicked.connect(lambda: self.ctx.navigate(target))
-        stat = QLabel("-")
-        stat.setProperty("role", "stat")
-        card.body().addWidget(stat)
-        detail = QLabel("")
-        detail.setProperty("role", "muted")
-        detail.setWordWrap(True)
-        card.body().addWidget(detail)
-        return card, stat, detail
-
     def _show_no_repo(self) -> None:
         """Empty state: no repository chosen, nothing loaded yet."""
         self.attention_changed.emit(0)
         self._summary_loaded = False
-        self._agents_loaded = False
+        self._summary = {}
+        self._reads = {}
         self._repo_title.setText(self.title)
         self._page_header.set_subtitle("No repository chosen")
         self._show_charts_empty(_NO_REPOSITORY)
-        for stat in (
-            self._workflows_stat,
-            self._tasks_stat,
-            self._verification_stat,
-            self._agents_stat,
+        for card in (
+            self._workflows_card,
+            self._verification_card,
+            self._agents_card,
+            self._tasks_card,
         ):
-            stat.setText("-")
-            stat.setStyleSheet("")
-        for detail in (
-            self._workflows_detail,
-            self._tasks_detail,
-            self._verification_detail,
-            self._agents_detail,
-        ):
-            detail.setText("")
+            card.value.setText("-")
+            card.value.setStyleSheet("")
+            card.set_note("")
         self._attention_count.setText("")
         self._attention_empty.setText(_NO_REPOSITORY)
         self._attention_empty.show()
@@ -364,11 +426,6 @@ class DashboardView(BaseView):
         if not repository:
             self._show_no_repo()
             return
-        if not self._summary_loaded:
-            for detail in (self._workflows_detail, self._tasks_detail, self._verification_detail):
-                detail.setText("loading...")
-        if not self._agents_loaded:
-            self._agents_detail.setText("detecting...")
         controller = self.ctx.controller
         self.submit(
             "summary",
@@ -382,16 +439,15 @@ class DashboardView(BaseView):
             self._on_summary,
             self._on_summary_error,
         )
-        self.submit(
-            "agents",
-            lambda: controller.list_agent_profiles(),
-            self._on_agents,
-        )
-        self.submit(
-            "runs",
-            lambda: controller.list_recent_agent_runs(repository, limit=_READ_LIMIT),
-            self._on_runs,
-        )
+        for key, read in (
+            ("workflows", lambda: controller.list_workflows(repository, limit=100)),
+            ("runs", lambda: controller.list_recent_agent_runs(repository, limit=_READ_LIMIT)),
+            (
+                "verifications",
+                lambda: controller.list_recent_verification_runs(repository, limit=_READ_LIMIT),
+            ),
+        ):
+            self.submit(key, read, lambda result, key=key: self._on_read(key, result))
 
     def _open_new_task(self) -> None:
         start = self.ctx.new_task
@@ -413,9 +469,16 @@ class DashboardView(BaseView):
     def _on_summary_error(self, message: str) -> None:
         """Error state: say what failed while keeping any loaded numbers."""
         self._page_header.set_subtitle(f"State unavailable - {message}")
-        if not self._summary_loaded:
-            for detail in (self._workflows_detail, self._tasks_detail, self._verification_detail):
-                detail.setText("unavailable")
+
+    def _on_read(self, key: str, result: object) -> None:
+        if key == "workflows":
+            result = result.get("workflows") if isinstance(result, dict) else None
+        if not isinstance(result, list):
+            return
+        self._reads[key] = [row for row in result if isinstance(row, dict)]
+        self._render_week()
+        if key == "runs":
+            self._render_runs()
 
     def _on_summary(self, summary: object) -> None:
         if not isinstance(summary, dict):
@@ -429,22 +492,9 @@ class DashboardView(BaseView):
         parts += [f"{len(needs)} need attention"] if needs else []
         parts.append(f"{summary.get('total_workflows', 0)} workflows")
         self._page_header.set_subtitle(" \u00b7 ".join(parts))
+        self._summary = summary
         self._render_verification(dict(summary.get("verification_status") or {}))
-
-        active = summary.get("active_workflows") or {}
-        pending = int(active.get("pending") or 0)
-        self._workflows_stat.setText(str(running))
-        self._workflows_detail.setText(f"{pending} pending")
-
-        task_counts = dict(summary.get("task_counts") or {})
-        self._tasks_stat.setText(str(int(task_counts.get("running") or 0)))
-        self._tasks_detail.setText(_counts_line(task_counts, exclude="running"))
-
-        verification = dict(summary.get("verification_status") or {})
-        failed = int(verification.get("failed") or 0)
-        self._verification_stat.setText(str(int(verification.get("passed") or 0)))
-        self._verification_stat.setStyleSheet(f"color: {DARK.danger if failed else DARK.success};")
-        self._verification_detail.setText(_counts_line(verification, exclude="passed"))
+        self._render_week()
 
         self.attention_changed.emit(len(needs))
         self._attention_count.setText(f"{len(needs)} need attention" if needs else "")
@@ -486,28 +536,14 @@ class DashboardView(BaseView):
 
         self._summary_loaded = True
 
-    def _on_agents(self, profiles: object) -> None:
-        if not isinstance(profiles, list):
-            return
-        available = sum(1 for profile in profiles if profile.get("availability"))
-        self._agents_stat.setText(f"{available} / {len(profiles)}")
-        self._agents_detail.setText("available now" if profiles else "none detected")
-        self._agents_loaded = True
-
-    # ------------------------------------------------------------------
-    def _on_runs(self, runs: object) -> None:
-        if isinstance(runs, list):
-            self._runs = [run for run in runs if isinstance(run, dict)]
-            self._render_runs()
-            self._window_note.setText(f"Based on the newest {_READ_LIMIT} runs.")
-            self._window_note.setVisible(len(runs) >= _READ_LIMIT)
-
     def _render_verification(self, counts: dict) -> None:
         """Donut + legend from the summary's verification outcomes."""
         counts = {str(key).lower(): int(value or 0) for key, value in counts.items()}
         passed = counts.get("passed", 0)
         failed = sum(counts.get(key, 0) for key in _DECIDED[1:])
-        self._donut_passed.setText(str(passed))
+        self._verification_stat.setText(str(passed))
+        color = DARK.danger if failed else DARK.success
+        self._verification_stat.setStyleSheet(f"font-size: 20px; font-weight: 600; color: {color};")
         self._verification_failed.setText(str(failed))
         decided = passed + failed
         self._donut.setVisible(bool(decided))
@@ -521,7 +557,7 @@ class DashboardView(BaseView):
             )
 
     def _render_runs(self) -> None:
-        runs = self._runs
+        runs = self._reads.get("runs", [])
         series = derive.daily_series(runs, _DAYS, datetime.now().astimezone())
         totals = [total for _day, total, _failed in series]
         if not any(totals):
@@ -543,3 +579,37 @@ class DashboardView(BaseView):
         )
         self._runs_empty.hide()
         self._runs_chart.show()
+
+    def _render_week(self) -> None:
+        reads = self._reads
+        if not self._summary or not all(k in reads for k in ("workflows", "runs", "verifications")):
+            return
+        needs = len(self._summary.get("needs_attention") or [])
+        stats = derive.week_stats(
+            reads["workflows"],
+            reads["runs"],
+            reads["verifications"],
+            needs,
+            datetime.now().astimezone(),
+        )
+        workflows, rate = stats["workflows"], stats["pass_rate"]
+        self._workflows_card.value.setText(str(workflows["value"]))
+        self._workflows_card.set_delta(workflows["delta"], "%")
+        if rate["value"] is None:
+            self._verification_card.value.setText("-")
+            self._verification_card.value.setStyleSheet("")
+            self._verification_card.set_note("no results this week")
+        else:
+            self._verification_card.value.setText(f"{rate['value']}%")
+            color = DARK.success if rate["value"] == 100 else DARK.danger
+            self._verification_card.value.setStyleSheet(f"color: {color};")
+            self._verification_card.set_delta(rate["delta"], " pts")
+        seconds = stats["agent_time"]
+        has_runs = any(derive.parse_ts(r.get("started_at")) for r in reads["runs"])
+        self._agents_card.value.setText(_duration(seconds["value"]) if has_runs else "-")
+        self._agents_card.set_delta(seconds["delta"], "%", up_is_good=False)
+        self._tasks_card.value.setText(str(needs))
+        self._tasks_card.set_note("retryable or repairable")
+        capped = len(reads["runs"]) >= _READ_LIMIT or len(reads["verifications"]) >= _READ_LIMIT
+        self._window_note.setText(f"Based on the newest {_READ_LIMIT} runs.")
+        self._window_note.setVisible(capped)
