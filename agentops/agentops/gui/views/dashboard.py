@@ -1,22 +1,25 @@
-"""Dashboard: current repository, live counts, health, and activity.
+"""Dashboard: the current repository at a glance.
 
-Every number comes from ``dashboard_summary`` (persisted state) plus one
-``list_agent_profiles`` read for the agents card - no invented metrics.
-Cards keep their last good values across refreshes; loading and error text
-only shows when nothing has loaded yet.
+Every number derives from existing reads: ``dashboard_summary``,
+``list_agent_profiles`` for the agents card, and ``list_recent_agent_runs``
+(the newest 500) for the runs chart, shaped by the Qt-free ``gui/derive.py``.
+Values keep their last good state across refreshes; an empty repository
+shows empty states, never zero-filled charts.
 """
 
 from __future__ import annotations
 
+from datetime import datetime
+from pathlib import PurePath
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QComboBox,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
-    QPlainTextEdit,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -24,10 +27,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .. import derive
+from ..charts import AreaChart, Donut
+from ..components import Chip, SectionLabel
 from ..format import elide, format_timestamp, short_id
 from ..tokens import DARK
 from ..widgets import (
-    agent_icon,
     Card,
     PageHeader,
     StatCard,
@@ -60,6 +65,10 @@ _SEVERITY_COLORS = {
 
 _NO_REPOSITORY = "Pick a repository in Workflows, or with Ctrl+K, to begin."
 _NO_WORKFLOWS = "Start a task to see workflows here."
+_READ_LIMIT = 500  # newest agent runs read for the runs chart
+_DAYS = 14
+_REPO_TITLE_PX = 30
+_DECIDED = ("passed", "failed", "timed_out", "unverified")
 
 
 def _counts_line(counts: dict, exclude: str | None = None) -> str:
@@ -73,6 +82,31 @@ def _counts_line(counts: dict, exclude: str | None = None) -> str:
 
 def _pretty(text: object) -> str:
     return str(text or "unknown").replace("_", " ")
+
+
+def _day_label(day) -> str:  # type: ignore[no-untyped-def]
+    return f"{day:%b} {day.day}"
+
+
+def _legend(text: str, color: str) -> QWidget:
+    holder = QWidget()
+    row = QHBoxLayout(holder)
+    row.setContentsMargins(0, 0, 0, 0)
+    row.setSpacing(6)
+    dot = QLabel()
+    dot.setFixedSize(8, 8)
+    dot.setStyleSheet(f"background: {color}; border-radius: 4px;")
+    row.addWidget(dot)
+    label = QLabel(text)
+    label.setProperty("role", "subtitle")
+    row.addWidget(label)
+    return holder
+
+
+def _navy_card() -> Card:
+    card = Card()
+    card.setProperty("navy", True)
+    return card
 
 
 class DashboardView(BaseView):
@@ -94,55 +128,15 @@ class DashboardView(BaseView):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         outer.addWidget(scroll)
         inner = QWidget()
         scroll.setWidget(inner)
         root = QVBoxLayout(inner)
-        page = DARK.space_page
-        root.setContentsMargins(page, page, page, page)
+        root.setContentsMargins(36, 28, 36, 28)
         root.setSpacing(DARK.space_md)
 
-        self._page_header = PageHeader(self.title)
-        refresh = ghost_button("Refresh")
-        refresh.clicked.connect(self.refresh)
-        self._page_header.add_action(refresh)
-        root.addWidget(self._page_header)
-        hero = Card()
-        hero_body = hero.body()
-        hero_title = QLabel("What should the agents work on today?")
-        hero_title.setProperty("role", "title")
-        hero_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        hero_body.addWidget(hero_title)
-        self._hero_agents = QLabel("")
-        self._hero_agents.setProperty("role", "faint")
-        self._hero_agents.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        hero_body.addWidget(self._hero_agents)
-        self._hero_input = QPlainTextEdit()
-        self._hero_input.setPlaceholderText(
-            'Describe the outcome, e.g. "Fix the failing widget tests and update '
-            'the README to match."'
-        )
-        self._hero_input.setTabChangesFocus(True)
-        self._hero_input.setMinimumHeight(64)
-        self._hero_input.setMaximumHeight(110)
-        hero_body.addWidget(self._hero_input)
-        hero_row = QHBoxLayout()
-        self._hero_agent = QComboBox()
-        self._hero_agent.setMinimumWidth(200)
-        self._hero_agent.setToolTip("Which agent should do this task")
-        self._hero_agent.addItem("Automatic routing", None)
-        hero_row.addWidget(self._hero_agent)
-        hero_row.addStretch(1)
-        self._hero_hint = QLabel("Opens task setup with this description")
-        self._hero_hint.setProperty("role", "faint")
-        hero_row.addWidget(self._hero_hint)
-        self._hero_start = QPushButton("Start Task")
-        self._hero_start.setProperty("variant", "primary")
-        self._hero_start.setToolTip("Open the New Task dialog with this description")
-        self._hero_start.clicked.connect(self._start_hero_task)
-        hero_row.addWidget(self._hero_start)
-        hero_body.addLayout(hero_row)
-        root.addWidget(hero)
+        root.addWidget(self._build_header())
 
         stats = QHBoxLayout()
         stats.setSpacing(DARK.space_md)
@@ -166,6 +160,12 @@ class DashboardView(BaseView):
         ):
             stats.addWidget(card, stretch=1)
         root.addLayout(stats)
+        root.addLayout(self._build_charts())
+        self._window_note = QLabel("")
+        self._window_note.setProperty("role", "faint")
+        self._window_note.hide()
+        root.addWidget(self._window_note)
+        self._runs: list[dict] = []
 
         main = QHBoxLayout()
         main.setSpacing(DARK.space_md)
@@ -227,6 +227,79 @@ class DashboardView(BaseView):
         self._agents_loaded = False
         self._show_no_repo()
 
+    def _build_header(self) -> PageHeader:
+        self._page_header = PageHeader(self.title)
+        # The heading keeps the view title (shell-wide header contract); the
+        # Dashboard shows the repository name at 30px in its place.
+        self._page_header._heading.hide()
+        self._repo_title = QLabel(self.title)
+        self._repo_title.setStyleSheet(f"font-size: {_REPO_TITLE_PX}px; font-weight: 600;")
+        column = self._page_header.layout().itemAt(0).layout()
+        column.insertWidget(0, self._repo_title)
+        column.setSpacing(DARK.space_xs)
+        window = Chip(f"Last {_DAYS} days", "clock")
+        window.setToolTip(f"The runs chart covers the last {_DAYS} days")
+        window.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+        self._page_header.add_action(window)
+        new_task = QPushButton("New task")
+        new_task.setProperty("variant", "primary")
+        new_task.setToolTip("Open the New Task dialog  (Ctrl+N)")
+        new_task.clicked.connect(self._open_new_task)
+        self._page_header.add_action(new_task)
+        return self._page_header
+
+    def _build_charts(self) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.setSpacing(18)
+        runs = QVBoxLayout()
+        runs.setSpacing(DARK.space_sm)
+        head = QHBoxLayout()
+        head.addWidget(SectionLabel("Runs over time"))
+        head.addStretch(1)
+        head.addWidget(_legend("Agent runs", DARK.series_1))
+        head.addSpacing(DARK.space_md)
+        head.addWidget(_legend("Failed or timed out", DARK.danger))
+        runs.addLayout(head)
+        card = _navy_card()
+        self._runs_chart = AreaChart()
+        self._runs_chart.setMinimumHeight(200)
+        card.add(self._runs_chart)
+        self._runs_empty = muted("")
+        self._runs_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._runs_empty.setMinimumHeight(200)
+        card.add(self._runs_empty)
+        runs.addWidget(card)
+        row.addLayout(runs, stretch=3)
+
+        verification = QVBoxLayout()
+        verification.setSpacing(DARK.space_sm)
+        verification.addWidget(SectionLabel("Verification"))
+        card = _navy_card()
+        self._donut = Donut()
+        self._donut.setFixedSize(150, 150)
+        card.body().addWidget(self._donut, alignment=Qt.AlignmentFlag.AlignHCenter)
+        legend = QGridLayout()
+        legend.setVerticalSpacing(2)
+        self._donut_passed = QLabel("-")
+        self._donut_passed.setStyleSheet("font-size: 20px; font-weight: 600;")
+        self._verification_failed = QLabel("-")
+        self._verification_failed.setStyleSheet("font-size: 20px; font-weight: 600;")
+        legend.addWidget(self._donut_passed, 0, 0)
+        legend.addWidget(self._verification_failed, 0, 1, Qt.AlignmentFlag.AlignRight)
+        legend.addWidget(_legend("Passed", DARK.success), 1, 0)
+        legend.addWidget(_legend("Failed", DARK.danger), 1, 1, Qt.AlignmentFlag.AlignRight)
+        self._donut_legend = QWidget()
+        self._donut_legend.setLayout(legend)
+        card.add(self._donut_legend)
+        self._donut_empty = muted("")
+        self._donut_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._donut_empty.setWordWrap(True)
+        self._donut_empty.setMinimumHeight(200)
+        card.add(self._donut_empty)
+        verification.addWidget(card)
+        row.addLayout(verification, stretch=1)
+        return row
+
     # ------------------------------------------------------------------
     def _stat_card(self, title: str, target: str, tooltip: str) -> tuple[StatCard, QLabel, QLabel]:
         """One clickable headline number navigating to its full view."""
@@ -247,7 +320,9 @@ class DashboardView(BaseView):
         self.attention_changed.emit(0)
         self._summary_loaded = False
         self._agents_loaded = False
+        self._repo_title.setText(self.title)
         self._page_header.set_subtitle("No repository chosen")
+        self._show_charts_empty(_NO_REPOSITORY)
         for stat in (
             self._workflows_stat,
             self._tasks_stat,
@@ -263,7 +338,6 @@ class DashboardView(BaseView):
             self._agents_detail,
         ):
             detail.setText("")
-        self._hero_agents.setText("")
         self._attention_count.setText("")
         self._attention_empty.setText(_NO_REPOSITORY)
         self._attention_empty.show()
@@ -273,6 +347,16 @@ class DashboardView(BaseView):
         self._activity_empty.setText(_NO_REPOSITORY)
         self._activity_empty.show()
         self._activity_list.hide()
+
+    def _show_charts_empty(self, text: str) -> None:
+        self._runs_chart.hide()
+        self._runs_empty.setText(text)
+        self._runs_empty.show()
+        self._donut.hide()
+        self._donut_legend.hide()
+        self._donut_empty.setText(text)
+        self._donut_empty.show()
+        self._window_note.hide()
 
     # ------------------------------------------------------------------
     def refresh(self) -> None:
@@ -293,7 +377,7 @@ class DashboardView(BaseView):
                 workflow_limit=8,
                 event_limit=12,
                 failure_limit=10,
-                verification_limit=10,
+                verification_limit=_READ_LIMIT,
             ),
             self._on_summary,
             self._on_summary_error,
@@ -303,20 +387,18 @@ class DashboardView(BaseView):
             lambda: controller.list_agent_profiles(),
             self._on_agents,
         )
+        self.submit(
+            "runs",
+            lambda: controller.list_recent_agent_runs(repository, limit=_READ_LIMIT),
+            self._on_runs,
+        )
 
-    def _start_hero_task(self) -> None:
-        """Start from the hero prompt: hand the text to the task dialog."""
-        text = self._hero_input.toPlainText().strip()
-        if not text:
-            self.ctx.toast("Nothing to do", "Describe the task first.", "error")
-            self._hero_input.setFocus()
-            return
+    def _open_new_task(self) -> None:
         start = self.ctx.new_task
         if start is None:
             self.ctx.toast("Unavailable", "Task creation is not wired in this context.", "error")
             return
-        agent = self._hero_agent.currentData()
-        start(text, str(agent) if agent else None)
+        start()
 
     def on_operation_event(self, event: dict) -> None:
         if str(event.get("kind") or "") in (
@@ -339,12 +421,17 @@ class DashboardView(BaseView):
         if not isinstance(summary, dict):
             return
         repository = str(summary.get("repository") or self.repository())
-        self._page_header.set_subtitle(
-            f"{elide(repository, 48)}  ·  {summary.get('total_workflows', 0)} workflows"
-        )
+        self._repo_title.setText(PurePath(repository).name or repository)
+        self._repo_title.setToolTip(repository)
+        running = int((summary.get("active_workflows") or {}).get("running") or 0)
+        needs = list(summary.get("needs_attention") or [])
+        parts = [f"{running} running"] if running else []
+        parts += [f"{len(needs)} need attention"] if needs else []
+        parts.append(f"{summary.get('total_workflows', 0)} workflows")
+        self._page_header.set_subtitle(" \u00b7 ".join(parts))
+        self._render_verification(dict(summary.get("verification_status") or {}))
 
         active = summary.get("active_workflows") or {}
-        running = int(active.get("running") or 0)
         pending = int(active.get("pending") or 0)
         self._workflows_stat.setText(str(running))
         self._workflows_detail.setText(f"{pending} pending")
@@ -359,7 +446,6 @@ class DashboardView(BaseView):
         self._verification_stat.setStyleSheet(f"color: {DARK.danger if failed else DARK.success};")
         self._verification_detail.setText(_counts_line(verification, exclude="passed"))
 
-        needs = list(summary.get("needs_attention") or [])
         self.attention_changed.emit(len(needs))
         self._attention_count.setText(f"{len(needs)} need attention" if needs else "")
         self._attention_empty.setVisible(not needs)
@@ -406,20 +492,54 @@ class DashboardView(BaseView):
         available = sum(1 for profile in profiles if profile.get("availability"))
         self._agents_stat.setText(f"{available} / {len(profiles)}")
         self._agents_detail.setText("available now" if profiles else "none detected")
-        self._hero_agents.setText(f"{available} of {len(profiles)} agents available")
-        current = self._hero_agent.currentData()
-        self._hero_agent.blockSignals(True)
-        try:
-            self._hero_agent.clear()
-            self._hero_agent.addItem("Automatic routing", None)
-            for profile in profiles:
-                if not profile.get("availability"):
-                    continue
-                identifier = str(profile.get("identifier") or "")
-                display = str(profile.get("display_name") or identifier)
-                self._hero_agent.addItem(agent_icon(identifier, display), display, identifier)
-            index = self._hero_agent.findData(current)
-            self._hero_agent.setCurrentIndex(index if index >= 0 else 0)
-        finally:
-            self._hero_agent.blockSignals(False)
         self._agents_loaded = True
+
+    # ------------------------------------------------------------------
+    def _on_runs(self, runs: object) -> None:
+        if isinstance(runs, list):
+            self._runs = [run for run in runs if isinstance(run, dict)]
+            self._render_runs()
+            self._window_note.setText(f"Based on the newest {_READ_LIMIT} runs.")
+            self._window_note.setVisible(len(runs) >= _READ_LIMIT)
+
+    def _render_verification(self, counts: dict) -> None:
+        """Donut + legend from the summary's verification outcomes."""
+        counts = {str(key).lower(): int(value or 0) for key, value in counts.items()}
+        passed = counts.get("passed", 0)
+        failed = sum(counts.get(key, 0) for key in _DECIDED[1:])
+        self._donut_passed.setText(str(passed))
+        self._verification_failed.setText(str(failed))
+        decided = passed + failed
+        self._donut.setVisible(bool(decided))
+        self._donut_legend.setVisible(bool(decided))
+        self._donut_empty.setVisible(not decided)
+        self._donut_empty.setText("No verification results yet.")
+        if decided:
+            rate = round(passed / decided * 100)
+            self._donut.set_data(
+                [(passed, DARK.success), (failed, DARK.danger)], f"{rate}%", "pass rate"
+            )
+
+    def _render_runs(self) -> None:
+        runs = self._runs
+        series = derive.daily_series(runs, _DAYS, datetime.now().astimezone())
+        totals = [total for _day, total, _failed in series]
+        if not any(totals):
+            self._runs_chart.hide()
+            self._runs_empty.setText(f"No agent runs in the last {_DAYS} days.")
+            self._runs_empty.show()
+            return
+        labels = [_day_label(day) for day, _total, _failed in series]
+        peak = max(range(len(totals)), key=lambda index: (totals[index], index))
+        noun = "run" if totals[peak] == 1 else "runs"
+        self._runs_chart.set_data(
+            labels,
+            [
+                ("Agent runs", DARK.series_1, totals),
+                ("Failed or timed out", DARK.danger, [f for _d, _t, f in series]),
+            ],
+            peak,
+            f"{labels[peak]} \u00b7 {totals[peak]} {noun}",
+        )
+        self._runs_empty.hide()
+        self._runs_chart.show()
