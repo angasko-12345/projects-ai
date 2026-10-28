@@ -76,6 +76,7 @@ class _Toast(QFrame):
         self.setGraphicsEffect(self._effect)
         self._fade = QPropertyAnimation(self._effect, b"opacity", self)
         self._fade.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._slide: QPropertyAnimation | None = None
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.timeout.connect(self.dismiss)
@@ -95,7 +96,17 @@ class _Toast(QFrame):
         slide.setStartValue(self.pos())
         slide.setEndValue(self.pos().__class__(position.x(), position.y()))
         slide.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
+        self._slide = slide
         self._timer.start(TOAST_TIMEOUT_MS.get(self._kind, 5000))
+
+    def settle(self) -> None:
+        """Stop an in-flight slide so the layout's position wins."""
+        if self._slide is not None:
+            try:
+                self._slide.stop()  # DeleteWhenStopped
+            except RuntimeError:  # already finished and deleted
+                pass
+            self._slide = None
 
     def dismiss(self) -> None:
         if self._closing:
@@ -172,6 +183,12 @@ class ToastHost(QWidget):
         if not self._toasts:
             self.setGeometry(parent.width(), parent.height(), 0, 0)
             return
+        # A slide-in still running targets the slot its card had before the
+        # stack changed; stop it and re-run the layout so cards never overlap.
+        for toast in self._toasts:
+            toast.settle()
+        self._layout.invalidate()
+        self._layout.activate()
         self.adjustSize()
         width = self.sizeHint().width()
         height = self.sizeHint().height()
