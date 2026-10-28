@@ -18,6 +18,7 @@ Two rules shape these projections:
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 
 from .format import elide, format_duration, short_id
@@ -707,6 +708,243 @@ def run_detail(run: object) -> dict[str, object]:
         "relationship": _text(record.get("relationship")),
         "structured_result": record.get("structured_result"),
     }
+
+
+# ---------------------------------------------------------------------------
+# run transcript
+# ---------------------------------------------------------------------------
+
+_LIVE_RUN_STATUSES = ("pending", "starting", "running")
+_DIFF_SUMMARY = re.compile(
+    r"(\d+) files? changed(?:, (\d+) insertions?\(\+\))?(?:, (\d+) deletions?\(-\))?"
+)
+
+
+def _plural(count: int, word: str, plural: str = "") -> str:
+    return f"{count} {word if count == 1 else (plural or word + 's')}"
+
+
+def _words(value: object) -> str:
+    """``"TEST_FAILURE"`` -> ``"Test failure"``: an enum value read as words."""
+    text = _text(value).replace("_", " ").lower()
+    return text[:1].upper() + text[1:]
+
+
+def _seconds(value: object) -> str:
+    return format_duration(value) if _number(value) is not None else ""
+
+
+def _diff_summary(text: object) -> dict[str, int] | None:
+    """Totals from git's summary line only; its per-file lines are width-truncated."""
+    match = _DIFF_SUMMARY.search(_text(text))
+    if not match:
+        return None
+    return dict(
+        zip(
+            ("files", "insertions", "deletions"), (int(g or 0) for g in match.groups()), strict=True
+        )
+    )
+
+
+def _run_elapsed(run: dict, now: datetime | None) -> tuple[float | None, bool]:
+    """Recorded duration, else live time since ``started_at`` for an in-flight run."""
+    live = _text(run.get("status")) in _LIVE_RUN_STATUSES and bool(_text(run.get("started_at")))
+    recorded = _number(run.get("duration_seconds"))
+    if recorded is not None or not live:
+        return recorded, live
+    return elapsed_since(run.get("started_at"), now), live
+
+
+def build_attempts(
+    stage_tasks: object,
+    runs: object = (),
+    verifications: object = (),
+    checks_by_verification: object = None,
+    failures: object = (),
+    now: datetime | None = None,
+) -> list[dict[str, object]]:
+    """One entry per agent run of a stage's tasks, oldest attempt first.
+
+    A verification belongs to the run it verified (``source_agent_run_id``);
+    one without that link falls back to the newest run of its own task.
+    Failures attach by ``agent_run_id``. ``text`` holds the row's strings.
+    """
+    task_ids = {_text(task.get("id")) for task in _rows(stage_tasks)}
+    ordered = sorted(
+        _runs_for(_rows(runs), task_ids),
+        key=lambda r: (
+            _number(r.get("attempt")) or 0,
+            _text(r.get("started_at")),
+            _text(r.get("id")),
+        ),
+    )
+    newest = {_text(run.get("task_id")): _text(run.get("id")) for run in ordered}
+    checks = checks_by_verification if isinstance(checks_by_verification, dict) else {}
+    linked: dict[str, list[dict]] = {}
+    for row in _ordered(_rows(verifications), "started_at", "created_at", "id"):
+        owner = _text(row.get("source_agent_run_id")) or newest.get(_text(row.get("task_id")), "")
+        linked.setdefault(owner, []).append(
+            {"run": row, "checks": _rows(checks.get(row.get("id")))}
+        )
+    attempts = []
+    for index, run in enumerate(ordered):
+        run_id = _text(run.get("id"))
+        elapsed, live = _run_elapsed(run, now)
+        diff = _diff_summary(run.get("diff_stat"))
+        files = [_text(name) for name in run.get("files_changed") or () if _text(name)]
+        meta = [part for part in (_text(run.get("agent")), _text(run.get("model"))) if part]
+        if run.get("exit_code") is not None and not live:
+            meta.append(f"exit {run.get('exit_code')}")
+        duration = _seconds(elapsed)
+        if live:
+            duration = " · ".join(part for part in (_words(run.get("status")), duration) if part)
+        count = diff["files"] if diff else len(files)
+        attempts.append(
+            {
+                "id": run_id,
+                "run": run,
+                "status": _text(run.get("status")) or "pending",
+                "live": live,
+                "elapsed": elapsed,
+                "error": _text(run.get("error")),
+                "diff": diff,
+                "verifications": linked.get(run_id, []),
+                "failures": [f for f in _rows(failures) if _text(f.get("agent_run_id")) == run_id],
+                "text": {
+                    "title": f"Attempt {int(_number(run.get('attempt')) or index + 1)}",
+                    "meta": " · ".join(meta),
+                    "duration": duration,
+                    "files": _plural(count, "changed file") if count else "",
+                    "insertions": f"+{diff['insertions']}" if diff else "",
+                    "deletions": f"\u2212{diff['deletions']}" if diff else "",
+                },
+            }
+        )
+    return attempts
+
+
+def check_text(verification: dict) -> dict[str, object]:
+    """Checklist-card strings for one verification run and its checks."""
+    run = verification.get("run") if isinstance(verification.get("run"), dict) else {}
+    status = _text(run.get("overall_status") or run.get("status")) or "pending"
+    meta = [
+        f"{run.get('passed_checks') or 0}/{run.get('total_checks')} checks"
+        if run.get("total_checks") is not None
+        else "",
+        f"profile {_text(run.get('profile_name'))}" if _text(run.get("profile_name")) else "",
+        _seconds(run.get("duration_seconds")),
+    ]
+    checks = [
+        {
+            "status": _text(check.get("status")) or "pending",
+            "name": _text(check.get("name")),
+            "class": _words(check.get("check_class")).lower(),
+            "reason": _text(check.get("failure_reason")),
+            "duration": _seconds(check.get("duration_seconds")),
+        }
+        for check in _rows(verification.get("checks"))
+    ]
+    return {
+        "status": status,
+        "title": f"Verification {status.replace('_', ' ')}",
+        "meta": " · ".join(part for part in meta if part),
+        "checks": checks,
+    }
+
+
+def failure_text(failure: dict) -> dict[str, str]:
+    """Callout strings for one classified failure."""
+    return {
+        "title": _words(failure.get("category")) or "Failure",
+        "severity": _text(failure.get("severity")).lower(),
+        "action": _words(failure.get("recommended_action")),
+        "error": _text(failure.get("primary_error")),
+    }
+
+
+def build_transcript(
+    workflow: object,
+    tasks: object = (),
+    runs: object = (),
+    verifications: object = (),
+    checks_by_verification: object = None,
+    failures: object = (),
+    readiness: object = None,
+    worktree_ref: object = None,
+    now: datetime | None = None,
+) -> dict[str, object]:
+    """The run transcript of one workflow, every string from a payload field."""
+    header = workflow if isinstance(workflow, dict) else {}
+    task_rows, run_rows = _rows(tasks), _rows(runs)
+    by_id = {_text(task.get("id")): task for task in task_rows}
+    flow = build_stage_flow(header, task_rows, run_rows, verifications, failures)
+    blocks = []
+    for stage in flow[:-1]:  # the last stage is always FINALIZE
+        group = [by_id[task_id] for task_id in stage["task_ids"] if task_id in by_id]
+        results = [_text(task.get("result")) for task in _ordered(group, "finished_at", "id")]
+        label = _text(stage["label"])
+        blocks.append(
+            {
+                "key": stage["key"],
+                "state": stage["state"],
+                "label": label[:1].upper() + label[1:].lower(),
+                "description": _text(
+                    (_ordered(group, "created_at", "id") or [{}])[0].get("description")
+                ),
+                "agent": _text(stage["agent"]),
+                "result": next((text for text in reversed(results) if text), ""),
+                "attempts": build_attempts(
+                    group, run_rows, verifications, checks_by_verification, failures, now
+                ),
+            }
+        )
+    ref = worktree_ref if isinstance(worktree_ref, dict) else {}
+    merge = merge_readiness(readiness, has_worktree=bool(_text(ref.get("path"))))
+    worked = sum(_run_elapsed(run, now)[0] or 0.0 for run in run_rows)
+    retries = sum(
+        1 for r in run_rows if _text(r.get("relationship")) == "retry" or r.get("retry_of")
+    )
+    agents = ", ".join(
+        dict.fromkeys(a for a in (_text(t.get("assigned_agent")) for t in task_rows) if a)
+    )
+    profiles = [
+        _text(row.get("profile_name"))
+        for row in _ordered(_rows(verifications), "started_at", "created_at", "id")
+    ]
+    started = elapsed_since(header.get("created_at"), now)
+    age = next(
+        (
+            f"{int(started // size)}{unit}"
+            for size, unit in _AGE
+            if started is not None and started >= size
+        ),
+        "",
+    )
+    meta = (
+        f"Started {age} ago" if age else "",
+        f"agent: {agents}" if agents else "",
+        f"verify: {profiles[-1]}" if profiles and profiles[-1] else "",
+    )
+    gates = _plural(len(merge["reasons"]), "gate")
+    return {
+        "status": _text(header.get("status")) or "pending",
+        "prompt": _text(header.get("description")),
+        "prompt_meta": " · ".join(part for part in meta if part),
+        "worked": f"Worked for {format_duration(worked)}",
+        "worked_meta": f"{_plural(len(run_rows), 'agent run')} · {_plural(retries, 'retry', 'retries')}",
+        "blocks": blocks,
+        "finalize": {
+            "state": flow[-1]["state"],
+            "text": merge["label"],
+            "reasons": merge["reasons"],
+        },
+        "readiness": dict(
+            merge, chip="Ready to merge" if merge["ready"] else f"Not ready · {gates} open"
+        ),
+    }
+
+
+_AGE = ((86400, "d"), (3600, "h"), (60, "m"), (0, "s"))
 
 
 # ---------------------------------------------------------------------------

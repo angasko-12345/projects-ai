@@ -367,6 +367,22 @@ class MainWindow(QMainWindow, AsyncMixin):
         failures_button = self._nav_buttons.get("failures")
         if attention is not None and failures_button is not None:
             attention.connect(failures_button.set_badge)
+        self._mount_thread_list()
+
+    def _mount_thread_list(self) -> None:
+        """Fill the contextual sidebar with the Workflows search row (under the
+        header) and thread list (in place of the spacer above the hint)."""
+        parts = getattr(self._views.get("workflows"), "sidebar_parts", None)
+        if not callable(parts):
+            return
+        filters, threads = parts()
+        side = self._sidebar.layout()
+        side.insertWidget(1, filters)
+        for index in range(side.count()):
+            if side.itemAt(index).spacerItem() is not None:
+                side.takeAt(index)
+                side.insertWidget(index, threads, stretch=1)
+                break
 
     def _build_shortcuts(self) -> None:
         # Registry kept for discovery/tests: sequence -> shortcut.
