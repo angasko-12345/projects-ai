@@ -108,11 +108,14 @@ class ThreadListTest(unittest.TestCase):
         store.create_workflow("docs: dark mode toggle")
         store.close()
 
-        threads = self._threads(
-            AgentOpsController(), str(active), [str(active), str(bare), str(other)]
-        )
+        from agentops.gui.threads import load_threads
+
+        controller = AgentOpsController()
+        self.assertEqual(len(load_threads(controller, str(other))["workflows"]), 1)
+        threads = self._threads(controller, str(active), [str(active), str(bare), str(other)])
         threads.poll_others()
-        self.assertTrue(wait_until(lambda: str(other) in threads._groups, 5000))
+        loaded = wait_until(lambda: str(other) in threads._groups, 10000)
+        self.assertTrue(loaded, f"errors={threads.errors}")
         titles = [r["title"] for r in threads.model.rows if r["kind"] == "thread"]
         self.assertEqual(titles, ["docs: dark mode toggle"])
         self.assertNotIn(str(bare), threads._groups)

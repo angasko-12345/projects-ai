@@ -186,6 +186,7 @@ class ThreadList(QWidget, AsyncMixin):
         self._expanded: set[str] = set()
         self._folded: set[str] = set()
         self._filter: tuple[str, str] = ("", "")
+        self.errors: dict[str, str] = {}  # repository -> last read error
         self.model = ThreadModel(self)
         self.view = QListView()
         self.view.setObjectName("ThreadList")
@@ -240,8 +241,13 @@ class ThreadList(QWidget, AsyncMixin):
                 f"threads:{repo}",
                 lambda repo=repo: load_threads(controller, repo),
                 lambda data, repo=repo: self.set_repository_data(repo, data),
-                lambda _message, repo=repo: self.set_repository_data(repo, None),
+                lambda message, repo=repo: self._on_repo_error(repo, message),
             )
+
+    def _on_repo_error(self, repository: str, message: str) -> None:
+        """An unreadable recent repo drops out of the list; the reason is kept."""
+        self.errors[repository] = message
+        self.set_repository_data(repository, None)
 
     # -- rows ------------------------------------------------------------
     def _matches(self, item: dict) -> bool:
