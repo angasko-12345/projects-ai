@@ -64,7 +64,7 @@ class DashboardTest(unittest.TestCase):
 
     def test_empty_repository_shows_empty_states_not_zero_charts(self):
         self.view._on_summary(EMPTY_SUMMARY)
-        self.view._on_runs([])
+        self.view._on_read("runs", [])
         self.assertFalse(self.view._runs_chart.isVisible())
         self.assertTrue(self.view._runs_empty.isVisible())
         self.assertIn("No agent runs", self.view._runs_empty.text())
@@ -78,7 +78,7 @@ class DashboardTest(unittest.TestCase):
             {"started_at": hours_ago(0.1), "status": "completed"},
             {"started_at": hours_ago(0.2), "status": "timed_out"},
         ]
-        self.view._on_runs(runs)
+        self.view._on_read("runs", runs)
         chart = self.view._runs_chart
         self.assertTrue(chart.isVisible())
         self.assertFalse(self.view._runs_empty.isVisible())
@@ -86,7 +86,7 @@ class DashboardTest(unittest.TestCase):
         self.assertTrue(chart._tooltip.endswith("2 runs"), chart._tooltip)
         self.assertEqual(chart._series[1][2][-1], 1.0)  # the timed-out run
         self.assertFalse(self.view._window_note.isVisible())
-        self.view._on_runs(runs * 250)
+        self.view._on_read("runs", runs * 250)
         self.assertTrue(self.view._window_note.isVisible())
         self.assertIn("newest 500 runs", self.view._window_note.text())
 
@@ -97,6 +97,41 @@ class DashboardTest(unittest.TestCase):
         self.assertTrue(self.view._donut.isVisible())
         self.assertEqual(self.view._donut._big, "75%")
         self.assertEqual(self.view._verification_failed.text(), "1")
+
+    def test_week_cards_compare_with_the_previous_week(self):
+        view = self.view
+        view._on_summary(dict(EMPTY_SUMMARY, needs_attention=[{"severity": "high"}]))
+        view._on_read("workflows", {"workflows": [{"created_at": hours_ago(2)}]})
+        view._on_read(
+            "runs",
+            [
+                {"started_at": hours_ago(2), "status": "completed", "duration_seconds": 4680},
+                {"started_at": hours_ago(200), "status": "failed", "duration_seconds": 3600},
+            ],
+        )
+        view._on_read(
+            "verifications",
+            [
+                {"started_at": hours_ago(1), "overall_status": "passed"},
+                {"started_at": hours_ago(1), "overall_status": "failed"},
+                {"started_at": hours_ago(190), "overall_status": "passed"},
+            ],
+        )
+        self.assertEqual(view._workflows_card.value.text(), "1")
+        self.assertEqual(view._workflows_card.note.text(), "no prior week")
+        self.assertEqual(view._verification_card.value.text(), "50%")
+        self.assertEqual(view._verification_card.delta.text(), "\u221250 pts")
+        self.assertEqual(view._agents_card.value.text(), "1h 18m")
+        self.assertEqual(view._agents_card.delta.text(), "+30%")
+        self.assertEqual(view._tasks_card.value.text(), "1")
+
+    def test_stat_cards_wrap_two_by_two_on_a_narrow_page(self):
+        self.window.resize(1440, 900)
+        wait(50)
+        self.assertEqual(self.view._week_columns, 4)
+        self.window.resize(960, 700)
+        wait(50)
+        self.assertEqual(self.view._week_columns, 2)
 
     def test_new_task_button_opens_the_task_dialog(self):
         from dataclasses import replace
