@@ -59,7 +59,8 @@ def smooth_path(points: Sequence[QPointF]) -> QPainterPath:
 class AreaChart(QWidget):
     """Smooth area chart: gradient under series 0, dashed series 1, tooltip."""
 
-    _PAD = (30, 12, 12, 22)  # left (y labels), top, right, bottom (x labels)
+    _PAD = (30, 12, 12, 26)  # left (y labels), top, right, bottom (x labels)
+    _X_LABEL_GAP = 8  # baseline to x-label top: clears the "0" y label
 
     def __init__(
         self,
@@ -174,7 +175,12 @@ class AreaChart(QWidget):
         self._paint_highlight(painter, plot, point)
 
     def _paint_x_labels(self, painter, metrics, plot, x_at, count) -> None:  # type: ignore[no-untyped-def]
-        """Every other label, never colliding with the forced last one."""
+        """Every other label, never colliding with the forced last one.
+
+        Labels stay inside the plot's width, so the first one starts at the
+        y axis instead of running under the "0" label (as in the mockup).
+        """
+        self.x_label_boxes: list[QRectF] = []  # what the last paint drew (tests)
         if not self._labels:
             return
         painter.setPen(QColor(self._theme.text_faint))
@@ -182,8 +188,8 @@ class AreaChart(QWidget):
         def box(index: int) -> QRectF:
             text = self._labels[index]
             width = metrics.horizontalAdvance(text) + 4
-            x = min(max(x_at(index) - width / 2, 0.0), self.width() - width)
-            return QRectF(x, plot.bottom() + 4, width, metrics.height())
+            x = min(max(x_at(index) - width / 2, plot.left()), plot.right() - width)
+            return QRectF(x, plot.bottom() + self._X_LABEL_GAP, width, metrics.height())
 
         last = min(count, len(self._labels)) - 1
         last_box = box(last)
@@ -195,8 +201,10 @@ class AreaChart(QWidget):
             if drawn is not None and candidate.adjusted(-6, 0, 6, 0).intersects(drawn):
                 continue
             painter.drawText(candidate, Qt.AlignmentFlag.AlignCenter, self._labels[index])
+            self.x_label_boxes.append(candidate)
             drawn = candidate
         painter.drawText(last_box, Qt.AlignmentFlag.AlignCenter, self._labels[last])
+        self.x_label_boxes.append(last_box)
 
     def _paint_highlight(self, painter, plot, point) -> None:  # type: ignore[no-untyped-def]
         t = self._theme
