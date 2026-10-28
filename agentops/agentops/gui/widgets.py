@@ -46,6 +46,7 @@ from PySide6.QtWidgets import (
 
 from .components import paint_pill, pill_text
 from .format import format_duration
+from .icons import icon as lucide_icon
 from .tokens import DARK, Theme, qcolor, qfont, status_color, status_colors, with_alpha
 
 # Qt's QWIDGETSIZE_MAX (largest permitted widget maximumHeight); PySide6 does
@@ -240,12 +241,21 @@ class PageHeader(QWidget):
 class EmptyState(QWidget):
     """Centered placeholder shown when a surface has nothing to display."""
 
-    def __init__(self, heading: str, message: str = "", parent: QWidget | None = None):
+    def __init__(
+        self, heading: str, message: str = "", parent: QWidget | None = None, *, icon: str = ""
+    ):
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(DARK.space_xl, DARK.space_xl, DARK.space_xl, DARK.space_xl)
         layout.setSpacing(DARK.space_sm)
         layout.addStretch(1)
+        if icon:  # optional Lucide mark above the heading
+            mark = QLabel()
+            mark.setObjectName("EmptyStateIcon")
+            mark.setPixmap(lucide_icon(icon, DARK.text_faint, 32))
+            mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(mark)
+            layout.addSpacing(DARK.space_xs)
         self._heading = QLabel(heading)
         self._heading.setProperty("role", "title")
         self._heading.setAlignment(Qt.AlignmentFlag.AlignCenter)

@@ -703,8 +703,20 @@ class WorkflowsView(BaseView):
         self._title_label.setToolTip(self._title_label.text())
         self._readiness_chip.set_readiness(dict(model.get("readiness") or {}))
         self._fit_header()
+        worktree = self._payload["worktree_ref"]
         self._records.set_workflow(
-            self.repository(), str(workflow.get("id") or ""), model.get("blocks")
+            self.repository(),
+            str(workflow.get("id") or ""),
+            model.get("blocks"),
+            tuple(
+                str(source.get(key) or "")
+                for source, key in (
+                    (workflow, "updated_at"),
+                    (workflow, "status"),
+                    (worktree, "branch"),
+                    (worktree, "base_commit"),
+                )
+            ),
         )
 
         self._tasks.set_rows(tasks)
