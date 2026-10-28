@@ -17,7 +17,10 @@ from agentops.state import StateStore
 def _git(cwd: Path, *args: str) -> str:
     return subprocess.run(
         ["git", "-c", "user.name=t", "-c", "user.email=t@example.com", *args],
-        cwd=cwd, check=True, capture_output=True, text=True,
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+        text=True,
     ).stdout
 
 
@@ -73,10 +76,13 @@ class WorkflowDiffTests(unittest.TestCase):
     def test_stat_fallback_uses_newest_run_with_changes(self):
         self._record(str(self.root / ".agentops" / "worktrees" / "gone"), "agentops/gone")
         for stat in ("1 file changed, 1 insertion(+)", None):
-            run = self.state.create_agent_run(AgentRunContext(agent="codex", workflow_id=self.workflow))
+            run = self.state.create_agent_run(
+                AgentRunContext(agent="codex", workflow_id=self.workflow)
+            )
             files = ("app.py",) if stat else ()
             self.state.finish_agent_run(
-                run.id, AgentRunOutcome(AgentRunStatus.COMPLETED, 0, files_changed=files, diff_stat=stat)
+                run.id,
+                AgentRunOutcome(AgentRunStatus.COMPLETED, 0, files_changed=files, diff_stat=stat),
             )
         diff = self._diff()
         self.assertEqual(diff["source"], "stat")

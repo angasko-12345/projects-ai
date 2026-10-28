@@ -742,7 +742,15 @@ class WorkflowsView(BaseView):
         """
         status = str(workflow.get("status") or "pending")
         self._cancellation = state
-        self._status_badge.set_status(state.get("state") or status)
+        # The pill is the workflow's own status; only an in-flight cancel (or a
+        # live run on a not-yet-started record) speaks over it. The idle state
+        # is not a status, so a failed workflow never reads "IDLE".
+        badge = status
+        if state.get("cancel_requested") or state.get("cancelled"):
+            badge = str(state.get("state") or status)
+        elif state.get("running") and status == "pending":
+            badge = "running"
+        self._status_badge.set_status(badge)
         self._cancel.setVisible(
             bool(state.get("cancellable")) or bool(state.get("cancel_requested"))
         )

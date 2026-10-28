@@ -90,6 +90,57 @@ class TranscriptTextTest(unittest.TestCase):
 
 
 @requires_qt
+class ReadinessChipTest(unittest.TestCase):
+    def test_compact_chip_stays_icon_sized_when_the_header_has_spare_width(self):
+        from PySide6.QtWidgets import QHBoxLayout, QPushButton, QWidget
+
+        from agentops.gui.transcript import ReadinessChip
+
+        qt_app()
+        host = QWidget()
+        self.addCleanup(host.deleteLater)
+        layout = QHBoxLayout(host)
+        chip = ReadinessChip()
+        layout.addWidget(chip)
+        layout.addWidget(QPushButton("..."))
+        host.resize(600, 40)
+        host.show()
+        chip.set_readiness({"ready": False, "chip": "Not ready · 3 gates open"})
+        wait(20)
+        full = chip.sizeHint().width()
+        self.assertEqual(chip.width(), full)
+        chip.set_compact(True)
+        wait(20)
+        self.assertLess(chip.sizeHint().width(), 40)
+        self.assertEqual(chip.width(), chip.sizeHint().width())
+        self.assertEqual(chip.accessibleName(), "Not ready · 3 gates open")
+
+    def test_compact_width_applies_on_the_very_next_layout_pass(self):
+        from PySide6.QtWidgets import QHBoxLayout, QWidget
+
+        from agentops.gui.transcript import ReadinessChip, TextLabel
+
+        qt_app()
+        host = QWidget()
+        self.addCleanup(host.deleteLater)
+        layout = QHBoxLayout(host)
+        title = TextLabel("Upgrade Django 4.2 to 5.1 and fix deprecations", 14, "#fff", elide=True)
+        layout.addWidget(title, 1)
+        chip = ReadinessChip()
+        layout.addWidget(chip)
+        host.resize(520, 40)
+        host.show()
+        chip.set_readiness({"ready": False, "chip": "Not ready · 3 gates open"})
+        wait(20)
+        wide_title = title.width()
+        chip.set_compact(True)
+        layout.activate()  # no event loop turn: a stale cached hint would win here
+        self.assertEqual(chip.width(), chip.sizeHint().width())
+        self.assertLess(chip.width(), 40)
+        self.assertGreater(title.width(), wide_title)
+
+
+@requires_qt
 class WorkspaceHeaderTest(unittest.TestCase):
     def setUp(self):
         from agentops.gui.settings import AppSettings
@@ -133,6 +184,26 @@ class WorkspaceHeaderTest(unittest.TestCase):
         view._pane_toggle.click()
         self.assertFalse(view._records.isVisible())
         self.assertEqual(view._pane_toggle.toolTip(), "Show records")
+
+    def test_status_pill_shows_the_workflow_status_not_the_idle_state(self):
+        from agentops.gui.control_center import cancellation_state
+
+        view = self.window._views["workflows"]
+        self.window.navigate("workflows")
+        self.assertTrue(wait_until(lambda: bool(view._transcript.model().get("blocks"))))
+        idle = cancellation_state({"running": False, "status": "failed"})
+        view._apply_state(idle, {"status": "failed"})
+        self.assertEqual(view._status_badge.text(), "FAILED")
+        view._apply_state(idle, {"status": "passed"})
+        self.assertEqual(view._status_badge.text(), "PASSED")
+        live = cancellation_state({"running": True, "status": "running"})
+        view._apply_state(live, {"status": "pending"})
+        self.assertEqual(view._status_badge.text(), "RUNNING")
+        view._apply_state(cancellation_state(live, cancel_requested=True), {"status": "running"})
+        self.assertEqual(view._status_badge.text(), "CANCELLING")
+        gone = cancellation_state({"running": False, "status": "cancelled"})
+        view._apply_state(gone, {"status": "cancelled"})
+        self.assertEqual(view._status_badge.text(), "CANCELLED")
 
 
 if __name__ == "__main__":
