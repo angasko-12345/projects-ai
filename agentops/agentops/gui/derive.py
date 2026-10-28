@@ -313,6 +313,41 @@ def attention_rows(
     return rows
 
 
+def agent_bars(runs: Iterable[dict], now: datetime, days: int = 14) -> list[tuple[str, int, int]]:
+    """``[(agent, runs, ok %)]`` over the last ``days``, busiest first.
+
+    A run counts as ok when it completed; failed, timed-out, terminated and
+    cancelled runs do not. Runs still going count toward the total only.
+    """
+    totals: dict[str, list[int]] = {}
+    for run in runs:
+        stamp = _stamp(run, "started_at", "created_at")
+        agent = str(run.get("agent") or "")
+        if stamp is None or not agent or now - stamp > timedelta(days=days):
+            continue
+        bucket = totals.setdefault(agent, [0, 0])
+        bucket[0] += 1
+        bucket[1] += int(str(run.get("status") or "").lower() == "completed")
+    ranked = sorted(totals.items(), key=lambda item: (-item[1][0], item[0]))
+    return [(agent, total, round(ok / total * 100)) for agent, (total, ok) in ranked]
+
+
+def event_icon(event_type: object, severity: object = "") -> tuple[str, str]:
+    """(Lucide icon, theme colour token) for an activity-feed event."""
+    kind = str(event_type or "").lower()
+    if kind.startswith("verification."):
+        return "shield-check", "danger" if kind.endswith("failed") else "success"
+    if kind.endswith((".failed", ".conflict")) or str(severity or "").lower() == "error":
+        return "circle-x", "danger"
+    if kind.endswith(".started"):
+        return "play", "info"
+    if kind.endswith((".finished", ".completed")):
+        return "circle-check", "success"
+    if kind.endswith(".created"):
+        return "plus", "text_muted"
+    return "activity", "text_muted"
+
+
 def state_db_exists(repository: str) -> bool:
     return (Path(repository) / ".agentops" / "state.sqlite").is_file()
 

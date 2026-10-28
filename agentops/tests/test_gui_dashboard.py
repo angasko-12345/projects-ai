@@ -78,6 +78,7 @@ class DashboardTest(unittest.TestCase):
         self.assertTrue(self.view._donut_empty.isVisible())
         self.assertFalse(self.view._attention_header.isVisible())
         self.assertTrue(self.view._attention_empty.isVisible())
+        self.assertTrue(self.view._agents_empty.isVisible())
         self.assertEqual(self.view._page_header._subtitle.text(), "0 workflows")
 
     def test_runs_chart_highlights_the_latest_peak(self):
@@ -140,7 +141,7 @@ class DashboardTest(unittest.TestCase):
         wait(50)
         self.assertEqual(self.view._week_columns, 2)
 
-    def test_attention_table_renders_joined_rows(self):
+    def test_attention_table_and_feed_render_joined_rows(self):
         view = self.view
         view._on_read("workflows", {"workflows": [{"id": "wf-1", "description": "Cache it"}]})
         view._on_read("runs", [{"id": "r-1", "agent": "codex", "started_at": hours_ago(1)}])
@@ -180,6 +181,17 @@ class DashboardTest(unittest.TestCase):
             (row["workflow"], row["problem"], row["agent"]), ("Cache it", "Merge conflict", "codex")
         )
         self.assertIn("conflict in base.py", table.item(0).toolTip())
+        feed = view._activity_list
+        self.assertEqual(feed.count(), 2)
+        first = feed.item(0).data(Qt.ItemDataRole.UserRole)
+        self.assertEqual(
+            (first["title"], first["detail"], first["age"]),
+            ("codex failed implementation", "pytest exited 1", "2h"),
+        )
+        self.assertEqual((first["icon"], first["color"]), ("circle-x", "danger"))
+        self.assertEqual(feed.item(1).data(Qt.ItemDataRole.UserRole)["detail"], "Cache it")
+        self.assertFalse(view._agents_empty.isVisible())
+        self.assertEqual(view._agent_bars._grid.rowCount() >= 1, True)
 
     def test_attention_columns_drop_before_the_table_scrolls(self):
         from agentops.gui.views.dashboard_parts import columns
@@ -191,6 +203,21 @@ class DashboardTest(unittest.TestCase):
         for width in (520, 600, 760, 1000):
             last = columns(width)[-1]
             self.assertLessEqual(last[2] + last[3], width)
+
+    def test_feed_is_a_right_panel_when_wide_and_a_card_when_narrow(self):
+        self.window.resize(1440, 900)
+        wait(50)
+        self.assertTrue(self.view._feed.isVisible())
+        self.assertFalse(self.view._feed_card.isVisible())
+        self.assertEqual(self.view._feed.width(), 330)
+        self.window.resize(1100, 700)
+        wait(50)
+        self.assertFalse(self.view._feed.isVisible())
+        self.assertTrue(self.view._feed_card.isAncestorOf(self.view._activity_list))
+        # The moved body must not paint over the card's fill and corners.
+        self.assertFalse(self.view._feed_body.autoFillBackground())
+        self.assertTrue(self.view._feed_card.property("navy"))
+        self.assertLessEqual(self.view._agent_bars.maximumWidth(), 560)
 
     def test_new_task_button_opens_the_task_dialog(self):
         from dataclasses import replace
