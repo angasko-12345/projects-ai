@@ -1,0 +1,145 @@
+"""Qt-free derivations behind the workspace thread list (gui/derive.py)."""
+
+from __future__ import annotations
+
+import unittest
+from datetime import datetime, timedelta, timezone
+
+from agentops.gui import derive
+
+NOW = datetime(2026, 10, 28, 12, 0, tzinfo=timezone.utc)
+
+
+def ago(**delta: float) -> str:
+    return (NOW - timedelta(**delta)).isoformat()
+
+
+def workflow(wf_id: str, status: str, updated: str, **extra: object) -> dict:
+    return {
+        "id": wf_id,
+        "description": f"work {wf_id}",
+        "status": status,
+        "created_at": updated,
+        "updated_at": updated,
+        **extra,
+    }
+
+
+class RelAgeTest(unittest.TestCase):
+    def test_buckets(self):
+        self.assertEqual(derive.rel_age(ago(seconds=20), NOW), "now")
+        self.assertEqual(derive.rel_age(ago(minutes=17), NOW), "17m")
+        self.assertEqual(derive.rel_age(ago(hours=7, minutes=59), NOW), "7h")
+        self.assertEqual(derive.rel_age(ago(days=3, hours=2), NOW), "3d")
+
+    def test_naive_z_future_and_bad_values(self):
+        self.assertEqual(derive.rel_age("2026-10-28T11:00:00", NOW), "1h")  # naive = UTC
+        self.assertEqual(derive.rel_age("2026-10-28T11:58:00Z", NOW), "2m")
+        self.assertEqual(derive.rel_age(ago(minutes=-5), NOW), "now")  # clock skew
+        for bad in (None, "", "yesterday", 42):
+            self.assertEqual(derive.rel_age(bad, NOW), "")
+
+
+class ParseDiffStatTest(unittest.TestCase):
+    def test_summary_line_only(self):
+        text = (
+            " auth/routes.py | 13 +++++++++++--\n auth/tokens.py | 27 ++++++++++++++++++++-------\n"
+            " 2 files changed, 33 insertions(+), 7 deletions(-)\n"
+        )
+        self.assertEqual(derive.parse_diff_stat(text), (2, 33, 7))
+
+    def test_singular_and_missing_halves(self):
+        self.assertEqual(derive.parse_diff_stat("1 file changed, 1 insertion(+)"), (1, 1, 0))
+        self.assertEqual(derive.parse_diff_stat("3 files changed, 9 deletions(-)"), (3, 0, 9))
+
+    def test_no_summary_line(self):
+        for text in (None, "", " auth/routes.py | 13 ++++--", 7):
+            self.assertIsNone(derive.parse_diff_stat(text))
+
+
+class SettleRuleTest(unittest.TestCase):
+    def test_terminal_and_older_than_24h(self):
+        for status in ("passed", "failed", "cancelled"):
+            self.assertTrue(derive.is_settled(workflow("a", status, ago(hours=25)), NOW))
+            self.assertFalse(derive.is_settled(workflow("a", status, ago(hours=23)), NOW))
+
+    def test_non_terminal_never_settles(self):
+        for status in ("running", "pending", "blocked"):
+            self.assertFalse(derive.is_settled(workflow("a", status, ago(days=30)), NOW))
+
+    def test_unknown_timestamp_stays_active(self):
+        self.assertFalse(derive.is_settled(workflow("a", "passed", ""), NOW))
+
+
+class ThreadItemsTest(unittest.TestCase):
+    def test_joins_branch_and_newest_run_and_progress(self):
+        workflows = [
+            workflow(
+                "wf-1",
+                "running",
+                ago(minutes=17),
+                task_count=4,
+                task_counts={"passed": 1, "running": 1},
+            ),
+            workflow("wf-2", "pending", ago(hours=1), task_count=1, task_counts={}),
+        ]
+        refs = [{"workflow_id": "wf-1", "branch": "agentops/jwt-refresh-e0af"}]
+        runs = [  # newest first, as list_recent_agent_runs returns them
+            {"workflow_id": "wf-1", "agent": "codex", "role": "implementation"},
+            {"workflow_id": "wf-1", "agent": "claude", "role": "architecture"},
+        ]
+        active, settled = derive.thread_items(workflows, refs, runs, NOW)
+        self.assertEqual(settled, [])
+        first, second = active
+        self.assertEqual(
+            first,
+            {
+                "id": "wf-1",
+                "title": "work wf-1",
+                "status": "running",
+                "branch": "agentops/jwt-refresh-e0af",
+                "agent": "codex",
+                "role": "Implement",
+                "age": "17m",
+                "progress": "1/4",
+            },
+        )
+        self.assertEqual((second["branch"], second["agent"], second["role"]), ("", "", ""))
+        self.assertEqual(second["progress"], "0/1")
+
+    def test_splits_settled_and_orders_active_by_attention(self):
+        workflows = [
+            workflow("passed-new", "passed", ago(hours=2)),
+            workflow("pending", "pending", ago(hours=3)),
+            workflow("failed-old", "failed", ago(days=2)),
+            workflow("running", "running", ago(minutes=1)),
+            workflow("failed-new", "failed", ago(hours=5)),
+        ]
+        active, settled = derive.thread_items(workflows, [], [], NOW)
+        self.assertEqual(
+            [i["id"] for i in active], ["running", "failed-new", "pending", "passed-new"]
+        )
+        self.assertEqual([i["id"] for i in settled], ["failed-old"])
+
+    def test_unknown_role_is_worded_not_dropped(self):
+        runs = [{"workflow_id": "a", "agent": "kilo", "role": "security_review"}]
+        (item,), _ = derive.thread_items([workflow("a", "running", ago(minutes=1))], [], runs, NOW)
+        self.assertEqual(item["role"], "Security review")
+
+
+class PollableRepositoriesTest(unittest.TestCase):
+    def test_only_other_repos_with_a_state_db(self):
+        have_db = {"/r/b", "/r/c"}
+        got = derive.pollable_repositories(
+            ["/r/a", "/r/b", "", "/r/b", "/r/d", "/r/c"], "/r/a", False, have_db.__contains__
+        )
+        self.assertEqual(got, ["/r/b", "/r/c"])
+
+    def test_pinned_state_path_reads_no_other_repo(self):
+        self.assertEqual(
+            derive.pollable_repositories(["/r/a", "/r/b"], "/r/a", True, lambda _p: True), []
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()
