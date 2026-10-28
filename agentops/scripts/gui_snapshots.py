@@ -1020,9 +1020,23 @@ def configure_app():
 
 
 def pump(milliseconds: int = 300) -> None:
-    from PySide6.QtTest import QTest
+    """Run the event loop for ``milliseconds`` with the GIL released.
 
-    QTest.qWait(milliseconds)
+    ``QTest.qWait`` keeps the GIL while it spins (PySide6 6.12), so the
+    ``ControllerBridge`` workers only ran between pump steps and every SQLite
+    call they made paid up to one step to get the GIL back. The dashboard's
+    reads (agent and verification runs, newest 500 each) then took seconds
+    each, and on CI runners a single load could outlast ``wait_until_idle``'s
+    guard. ``QEventLoop.exec`` releases the GIL like ``app.exec()`` does in
+    the real GUI (same fix as ``tests/qt_display.py``); the DeferredDelete
+    flush keeps qWait's ``deleteLater`` behaviour.
+    """
+    from PySide6.QtCore import QCoreApplication, QEvent, QEventLoop, QTimer
+
+    loop = QEventLoop()
+    QTimer.singleShot(max(0, int(milliseconds)), loop.quit)
+    loop.exec()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
 @contextmanager
@@ -1177,8 +1191,22 @@ def iter_views(window, *, settle_ms: int = 900) -> Iterator[str]:
         if view_id != "dashboard":
             select_first_row(window, view_id)
             wait_until_idle(window)  # detail-pane loads for the selected row
-        wait_until_settled(window)
+        wait_until_quiet(window)
         yield view_id
+
+
+def wait_until_quiet(window, *, rounds: int = 5) -> None:
+    """Settle the layout, then make sure nothing was submitted meanwhile.
+
+    A load that lands while the layout settles can submit a follow-up (the
+    selected row's detail pane), which is still in flight once the labels stop
+    changing. Repeat idle + settle until both hold at once.
+    """
+    for _ in range(rounds):
+        wait_until_settled(window)
+        if not in_flight(window):
+            return
+        wait_until_idle(window)
 
 
 def _layout_signature(window) -> tuple:

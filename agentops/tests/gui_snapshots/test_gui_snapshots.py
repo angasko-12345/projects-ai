@@ -180,5 +180,32 @@ class GuiSnapshotTest(unittest.TestCase):
         self.assertEqual({}, offenders)
 
 
+@requires_qt
+class PumpReleasesGilTest(unittest.TestCase):
+    def test_worker_threads_progress_while_pump_waits(self):
+        # GUI workers run controller reads that release and retake the GIL on
+        # every SQLite call. A pump that held the GIL (QTest.qWait) let them
+        # advance only between pump steps, so a dashboard load could outlast
+        # wait_until_idle on CI. 300 GIL hand-offs take ~0.4 s when pump
+        # releases it; under qWait the thread barely starts in 1.5 s.
+        import threading
+        import time
+
+        qt_app()
+        snap = _load_script()
+        done = threading.Event()
+
+        def worker():
+            for _ in range(300):
+                time.sleep(0.001)
+            done.set()
+
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+        snap.pump(1500)
+        self.assertTrue(done.is_set(), "a worker thread starved while pump() waited")
+        thread.join(5)
+
+
 if __name__ == "__main__":
     unittest.main()
