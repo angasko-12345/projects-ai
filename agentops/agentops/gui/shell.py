@@ -32,7 +32,8 @@ from PySide6.QtWidgets import (
 
 from .bridge import ControllerBridge
 from .components import IconButton
-from .format import elide, format_duration
+from .icons import icon
+from .format import format_duration
 from .new_task import NewTaskDialog
 from .palette import Command, CommandPalette
 from .settings import AppSettings, RECENT_REPOSITORY_LIMIT, load_settings, save_settings
@@ -40,7 +41,7 @@ from .toast import ToastHost
 from .tokens import DARK, status_colors
 from .views import VIEW_SPECS, create_views
 from .views.base import AsyncMixin, ViewContext
-from .widgets import PulsingDot, faint, ghost_button
+from .widgets import PulsingDot, faint
 
 _SHORTCUTS: tuple[tuple[str, str], ...] = (
     ("Ctrl+K", "open_palette"),
@@ -76,6 +77,19 @@ _RAIL_ICONS: dict[str, str] = {
 }
 RAIL_WIDTH = 52
 
+# The contextual sidebar (thread list from Phase C) belongs to these views;
+# elsewhere the content uses the full width. 296px from 1280px wide, else 248.
+_SIDEBAR_VIEWS: tuple[str, ...] = ("workflows",)
+SIDEBAR_WIDTH_WIDE = 296
+SIDEBAR_WIDTH_NARROW = 248
+SIDEBAR_WIDE_FROM = 1280
+
+
+def _repository_label(path: str) -> str:
+    """Scope-combo text: the repository folder name (full path in the tooltip)."""
+    name = Path(path.replace("\\", "/").rstrip("/")).name
+    return name or path
+
 
 def _app_icon() -> QIcon:
     """Programmatic app icon: rounded accent tile with an 'A' mark."""
@@ -97,7 +111,7 @@ def _app_icon() -> QIcon:
 
 
 class MainWindow(QMainWindow, AsyncMixin):
-    """Persistent shell hosting the sidebar, top bar, and stacked views."""
+    """Persistent shell: icon rail, contextual sidebar, and stacked views."""
 
     def __init__(
         self,
@@ -137,7 +151,8 @@ class MainWindow(QMainWindow, AsyncMixin):
         self._build_shortcuts()
         self._build_tray()
 
-        self._toasts = ToastHost(self)
+        # Bottom-right of the content area (right of the rail and sidebar).
+        self._toasts = ToastHost(self, anchor=self._content)
         self._poll = QTimer(self)
         self._poll.setInterval(1000)
         self._poll.timeout.connect(self._on_poll)
@@ -151,66 +166,75 @@ class MainWindow(QMainWindow, AsyncMixin):
     # ------------------------------------------------------------------
     def _build_chrome(self) -> None:
         central = QWidget()
-        root = QVBoxLayout(central)
+        root = QHBoxLayout(central)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
+        root.addWidget(self._build_rail())
 
-        # -- top bar ---------------------------------------------------
-        topbar = QWidget()
-        topbar.setObjectName("TopBar")
-        bar = QHBoxLayout(topbar)
-        bar.setContentsMargins(DARK.space_page, DARK.space_sm, DARK.space_page, DARK.space_sm)
-        bar.setSpacing(DARK.space_sm)
+        # -- contextual sidebar ----------------------------------------
+        # The Workspace (Workflows) sidebar: header, repository scope, and
+        # the thread-list slot Phase C fills. Shown only on views listed in
+        # _SIDEBAR_VIEWS; Ctrl+B / the panel-left toggle hide it there.
+        self._sidebar = QWidget()
+        self._sidebar.setObjectName("Sidebar")
+        self._sidebar.setFixedWidth(SIDEBAR_WIDTH_NARROW)
+        side = QVBoxLayout(self._sidebar)
+        side.setContentsMargins(DARK.space_md, DARK.space_md, DARK.space_sm, DARK.space_md)
+        side.setSpacing(DARK.space_sm)
 
-        # Lives in the top bar, not the sidebar, so collapsing the sidebar
-        # never traps the navigation (Ctrl+B toggles the same state).
-        self._sidebar_toggle = ghost_button("Hide sidebar")
-        self._sidebar_toggle.clicked.connect(self.toggle_sidebar)
-        bar.addWidget(self._sidebar_toggle)
+        self._sidebar_header = QHBoxLayout()
+        self._sidebar_header.setSpacing(DARK.space_xs)
+        brand = QLabel("AgentOps")
+        brand.setProperty("role", "title")
+        self._sidebar_header.addWidget(brand)
+        self._sidebar_header.addStretch(1)
+        self._sidebar_toggle = IconButton("panel-left", "Hide sidebar  Ctrl+B", "Hide sidebar")
+        self._sidebar_toggle.clicked.connect(lambda _checked=False: self.toggle_sidebar())
+        self._sidebar_header.addWidget(self._sidebar_toggle)
+        self._toggle_in_rail = False
+        side.addLayout(self._sidebar_header)
 
-        repo_column = QVBoxLayout()
-        repo_column.setSpacing(0)
-        repo_column.addWidget(faint("Current repository"))
+        scope = QHBoxLayout()
+        scope.setSpacing(DARK.space_xs)
+        change = IconButton(
+            "folder", "Choose repository...", size=28, icon_size=15, color=DARK.text_muted
+        )
+        change.clicked.connect(lambda _checked=False: self.choose_repository())
+        scope.addWidget(change)
         self._repo_combo = QComboBox()
+        self._repo_combo.setProperty("scope", True)
         self._repo_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-        self._repo_combo.setMinimumWidth(240)
+        self._repo_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        self._repo_combo.setMinimumContentsLength(8)
         self._repo_combo.setToolTip("Switch repository")
+        self._repo_combo.setAccessibleName("Repository")
         self._repo_combo.activated.connect(self._on_repo_combo)
-        repo_column.addWidget(self._repo_combo)
-        bar.addLayout(repo_column)
-        change = ghost_button("Change...")
-        change.clicked.connect(self.choose_repository)
-        bar.addWidget(change)
+        scope.addWidget(self._repo_combo, stretch=1)
+        side.addLayout(scope)
+        side.addStretch(1)
+        side.addWidget(faint("Ctrl+K  command palette"))
+        root.addWidget(self._sidebar)
 
-        bar.addStretch(1)
+        # -- content column: inline recovery bar above the views --------
+        self._content = QWidget()
+        self._content.setObjectName("Content")
+        column = QVBoxLayout(self._content)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(0)
 
-        status_row = QHBoxLayout()
-        status_row.setSpacing(DARK.space_sm)
-        self._status_label = QLabel("Idle")
-        self._status_label.setProperty("role", "muted")
-        status_row.addWidget(self._status_label)
-        self._cancel_btn = QPushButton("Cancel")
-        self._cancel_btn.setProperty("variant", "danger")
-        self._cancel_btn.hide()
-        self._cancel_btn.clicked.connect(self.cancel_operation)
-        status_row.addWidget(self._cancel_btn)
-        bar.addLayout(status_row)
-
-        self._new_task_btn = QPushButton("New Task")
-        self._new_task_btn.setProperty("variant", "primary")
-        self._new_task_btn.clicked.connect(lambda _checked=False: self.open_new_task())
-        bar.addWidget(self._new_task_btn)
-        root.addWidget(topbar)
-
-        # -- recovery banner ------------------------------------------
         # App-shell visibility for interrupted work: shows only when the
         # read-only controller probe finds rows the recovery passes would
         # reap, and hides again once recovered, dismissed, or superseded.
         self._recovery_banner = QFrame()
         self._recovery_banner.setObjectName("RecoveryBanner")
         banner = QHBoxLayout(self._recovery_banner)
-        banner.setContentsMargins(DARK.space_page, DARK.space_sm, DARK.space_page, DARK.space_sm)
+        banner.setContentsMargins(DARK.space_page, DARK.space_xs, DARK.space_md, DARK.space_xs)
         banner.setSpacing(DARK.space_sm)
+        mark = QLabel()
+        mark.setPixmap(icon("triangle-alert", DARK.warning, 14))
+        banner.addWidget(mark)
         heading = QLabel("Interrupted work detected")
         heading.setProperty("role", "title")
         banner.addWidget(heading)
@@ -222,8 +246,8 @@ class MainWindow(QMainWindow, AsyncMixin):
         review.setProperty("variant", "primary")
         review.clicked.connect(self.recover_interrupted_work)
         banner.addWidget(review)
-        dismiss = ghost_button("Dismiss")
-        dismiss.clicked.connect(self._dismiss_recovery_banner)
+        dismiss = IconButton("x", "Dismiss  Esc", "Dismiss", size=28, icon_size=14)
+        dismiss.clicked.connect(lambda _checked=False: self._dismiss_recovery_banner())
         banner.addWidget(dismiss)
         self._recovery_banner.hide()
         # Esc closes the contextual banner; disabled while it is hidden so
@@ -231,40 +255,28 @@ class MainWindow(QMainWindow, AsyncMixin):
         self._banner_escape = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
         self._banner_escape.setEnabled(False)
         self._banner_escape.activated.connect(self._dismiss_recovery_banner)
-        root.addWidget(self._recovery_banner)
-
-        # -- body ------------------------------------------------------
-        body = QHBoxLayout()
-        body.setContentsMargins(0, 0, 0, 0)
-        body.setSpacing(0)
-        body.addWidget(self._build_rail())
-
-        self._sidebar = QWidget()
-        self._sidebar.setObjectName("Sidebar")
-        self._sidebar.setFixedWidth(216)
-        side = QVBoxLayout(self._sidebar)
-        side.setContentsMargins(DARK.space_sm, DARK.space_md, DARK.space_sm, DARK.space_sm)
-        side.setSpacing(DARK.space_xs)
-
-        brand_row = QHBoxLayout()
-        brand_row.setSpacing(DARK.space_sm)
-        brand_row.setContentsMargins(DARK.space_xs, 0, 0, 0)
-        mark = QLabel()
-        mark.setPixmap(_app_icon().pixmap(16, 16))
-        brand_row.addWidget(mark)
-        brand = QLabel("AgentOps")
-        brand.setProperty("role", "title")
-        brand_row.addWidget(brand)
-        brand_row.addStretch(1)
-        side.addLayout(brand_row)
-
-        side.addStretch(1)
-        side.addWidget(faint("Ctrl+K  command palette"))
-        body.addWidget(self._sidebar)
+        column.addWidget(self._recovery_banner)
 
         self._stack = QStackedWidget()
-        body.addWidget(self._stack, stretch=1)
-        root.addLayout(body, stretch=1)
+        column.addWidget(self._stack, stretch=1)
+        root.addWidget(self._content, stretch=1)
+
+        # -- operation strip: status text + Cancel ---------------------
+        # Re-parented into the active view's page header while an operation
+        # runs (see _place_operation_bar); hidden while idle.
+        self._operation_bar = QWidget()
+        strip = QHBoxLayout(self._operation_bar)
+        strip.setContentsMargins(0, 0, 0, 0)
+        strip.setSpacing(DARK.space_sm)
+        self._status_label = QLabel("Idle")
+        self._status_label.setProperty("role", "muted")
+        strip.addWidget(self._status_label)
+        self._cancel_btn = QPushButton("Cancel")
+        self._cancel_btn.setProperty("variant", "danger")
+        self._cancel_btn.hide()
+        self._cancel_btn.clicked.connect(self.cancel_operation)
+        strip.addWidget(self._cancel_btn)
+        self._operation_bar.hide()
         self.setCentralWidget(central)
 
     def _build_rail(self) -> QWidget:
@@ -280,6 +292,17 @@ class MainWindow(QMainWindow, AsyncMixin):
         mark.setToolTip("AgentOps")
         column.addWidget(mark, alignment=Qt.AlignmentFlag.AlignHCenter)
         column.addSpacing(DARK.space_sm)
+        # New Task entry (Ctrl+N and the palette still open the same dialog).
+        self._new_task_btn = IconButton(
+            "square-pen", "New task  Ctrl+N", "New task", color=DARK.text_muted
+        )
+        self._new_task_btn.clicked.connect(lambda _checked=False: self.open_new_task())
+        column.addWidget(self._new_task_btn, alignment=Qt.AlignmentFlag.AlignHCenter)
+        # The sidebar toggle parks here while the sidebar is collapsed, so
+        # collapsing it never hides the way back (see _apply_sidebar).
+        self._rail_toggle_slot = QVBoxLayout()
+        column.addLayout(self._rail_toggle_slot)
+        column.addSpacing(DARK.space_xs)
         self._rail_nav = QVBoxLayout()
         self._rail_nav.setSpacing(DARK.space_xs)
         column.addLayout(self._rail_nav)
@@ -440,7 +463,7 @@ class MainWindow(QMainWindow, AsyncMixin):
             if not seen:
                 combo.addItem("No repository chosen", None)
             for path in seen:
-                combo.addItem(elide(path, 56), path)
+                combo.addItem(_repository_label(path), path)
                 combo.setItemData(combo.count() - 1, path, Qt.ItemDataRole.ToolTipRole)
             combo.setCurrentIndex(0)
         finally:
@@ -506,9 +529,32 @@ class MainWindow(QMainWindow, AsyncMixin):
             self._save_settings()
 
     def _apply_sidebar(self) -> None:
+        """Show the contextual sidebar on its views unless collapsed.
+
+        The toggle lives in the sidebar header; while collapsed it parks in
+        the rail so the sidebar can always be brought back.
+        """
         collapsed = bool(self._settings.sidebar_collapsed)
-        self._sidebar.setVisible(not collapsed)
-        self._sidebar_toggle.setText("Show sidebar" if collapsed else "Hide sidebar")
+        current = self._stack.currentWidget()
+        contextual = any(self._views.get(view_id) is current for view_id in _SIDEBAR_VIEWS)
+        self._sidebar.setVisible(contextual and not collapsed)
+        name = "Show sidebar" if collapsed else "Hide sidebar"
+        self._sidebar_toggle.setToolTip(f"{name}  Ctrl+B")
+        self._sidebar_toggle.setAccessibleName(name)
+        if collapsed != self._toggle_in_rail:
+            self._toggle_in_rail = collapsed
+            if collapsed:
+                self._rail_toggle_slot.addWidget(
+                    self._sidebar_toggle, alignment=Qt.AlignmentFlag.AlignHCenter
+                )
+            else:
+                self._sidebar_header.addWidget(self._sidebar_toggle)
+        self._sidebar_toggle.setVisible(contextual)
+        self._fit_sidebar_width()
+
+    def _fit_sidebar_width(self) -> None:
+        wide = self.width() >= SIDEBAR_WIDE_FROM
+        self._sidebar.setFixedWidth(SIDEBAR_WIDTH_WIDE if wide else SIDEBAR_WIDTH_NARROW)
 
     def toggle_sidebar(self) -> None:
         self._settings.sidebar_collapsed = not self._settings.sidebar_collapsed
@@ -531,12 +577,25 @@ class MainWindow(QMainWindow, AsyncMixin):
             return
         self._stack.setCurrentWidget(view)
         self._fade_stack()
+        self._apply_sidebar()
+        self._place_operation_bar()
         if self._settings.last_view != view_id:
             self._settings.last_view = view_id
             self._save_settings()
         refresh = getattr(view, "refresh", None)
         if callable(refresh):
             refresh()
+
+    def _place_operation_bar(self) -> None:
+        """Keep the status text + Cancel strip in the active view's header."""
+        header = getattr(self._stack.currentWidget(), "_page_header", None)
+        layout = header.layout() if header is not None else None
+        if layout is None:
+            return
+        if self._operation_bar.parentWidget() is not header:
+            # After the header's title column and stretch: first action.
+            layout.insertWidget(min(2, layout.count()), self._operation_bar)
+        self._operation_bar.setVisible(self._active)
 
     def _fade_stack(self) -> None:
         effect = QGraphicsOpacityEffect(self._stack)
@@ -994,6 +1053,7 @@ class MainWindow(QMainWindow, AsyncMixin):
                 self._cancel_btn.show()
                 self._new_task_btn.setEnabled(False)
                 self._poll.start()
+                self._place_operation_bar()
             self._status_dot.set_pulsing(True)
             if status:
                 self._status_label.setText(status)
@@ -1011,6 +1071,7 @@ class MainWindow(QMainWindow, AsyncMixin):
         self._status_dot.setToolTip("Idle")
         self._cancel_btn.hide()
         self._cancel_btn.setEnabled(True)
+        self._operation_bar.hide()
         self._new_task_btn.setEnabled(True)
         self._poll.stop()
         self._set_tray_status("Idle")
@@ -1058,8 +1119,18 @@ class MainWindow(QMainWindow, AsyncMixin):
                 initial = next(iter(self._views), "")
             if initial:
                 self.navigate(initial)
+            # Start with focus on the content, not the first rail button:
+            # an auto-focused icon button draws its focus ring and reads as
+            # "selected" next to the real selection.
+            central = self.centralWidget()
+            central.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+            central.setFocus(Qt.FocusReason.OtherFocusReason)
             self._check_interrupted_work()
         self._toasts.reposition()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt API
+        super().resizeEvent(event)
+        self._fit_sidebar_width()
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt API
         if self._active:

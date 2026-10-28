@@ -58,7 +58,7 @@ _SEVERITY_COLORS = {
     "low": DARK.text_muted,
 }
 
-_NO_REPOSITORY = "Pick a repository from the top bar to begin."
+_NO_REPOSITORY = "Pick a repository in Workflows, or with Ctrl+K, to begin."
 _NO_WORKFLOWS = "Start a task to see workflows here."
 
 
