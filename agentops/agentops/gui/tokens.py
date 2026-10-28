@@ -712,6 +712,11 @@ QFrame[card="true"] {{
     border: 1px solid {t.border};
     border-radius: {t.radius_md}px;
 }}
+/* Dashboard data cards (stat and chart cards) sit on the navy surface. */
+QFrame[card="true"][navy="true"] {{
+    background: {t.navy_surface};
+    border-color: {t.navy_border};
+}}
 QFrame[card="true"][active="true"] {{
     border-color: {t.accent};
 }}
