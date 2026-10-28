@@ -156,18 +156,22 @@ class VisualStateTest(unittest.TestCase):
         self.assertTrue(wait_until(lambda: view._table._empty._heading.text() == "No tasks yet"))
 
     def test_sidebar_toggle_is_always_visible_in_the_top_bar(self):
+        # Phase B3: the sidebar is the Workflows view's contextual sidebar and
+        # the toggle is a panel-left icon button, so navigate there first and
+        # read its accessible name (an icon button has no text).
+        self._activate("workflows")
         with tempfile.TemporaryDirectory() as directory:
             self.window._settings_file = Path(directory) / "settings.json"
             self.window.update_settings({"sidebar_collapsed": True})
             self.assertFalse(self.window._sidebar.isVisible())
-            self.assertEqual(self.window._sidebar_toggle.text(), "Show sidebar")
+            self.assertEqual(self.window._sidebar_toggle.accessibleName(), "Show sidebar")
             self.assertTrue(self.window._sidebar_toggle.isVisible())
 
-            # The top-bar toggle must restore the sidebar it hid.
+            # The toggle must restore the sidebar it hid.
             self.window._sidebar_toggle.click()
             wait(20)
             self.assertTrue(self.window._sidebar.isVisible())
-            self.assertEqual(self.window._sidebar_toggle.text(), "Hide sidebar")
+            self.assertEqual(self.window._sidebar_toggle.accessibleName(), "Hide sidebar")
 
     def test_navigation_fade_releases_its_graphics_effect(self):
         # The fade effect must not stay installed after the transition:

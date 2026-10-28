@@ -100,6 +100,15 @@ class WheelInstallTests(unittest.TestCase):
             self.assertTrue(asset_files, "chevron-down.svg not found in wheel")
             self.assertIn("agentops/gui/assets/chevron-down.svg", asset_files)
 
+    def test_wheel_contains_lucide_icon_and_licence(self):
+        """The Lucide icon set and its ISC licence ship in the wheel."""
+        import zipfile
+
+        with zipfile.ZipFile(self.wheel_path, "r") as zf:
+            names = set(zf.namelist())
+            self.assertIn("agentops/gui/assets/lucide-layout-dashboard.svg", names)
+            self.assertIn("agentops/gui/assets/LICENSE-lucide.txt", names)
+
     def test_wheel_contains_every_gui_controller_module(self):
         """gui_controller is a package: every module in it must ship."""
         import zipfile
