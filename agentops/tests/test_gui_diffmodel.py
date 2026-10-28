@@ -47,8 +47,18 @@ class ParseUnifiedDiffTests(unittest.TestCase):
         rows = [(r.kind, r.number) for r in self.files[0].rows]
         self.assertEqual(
             rows,
-            [("del", 1), ("add", 1), ("add", 2), ("ctx", 3), ("ctx", 4),
-             ("gap", 4), ("ctx", 9), ("del", 9), ("add", 10), ("add", 11)],
+            [
+                ("del", 1),
+                ("add", 1),
+                ("add", 2),
+                ("ctx", 3),
+                ("ctx", 4),
+                ("gap", 4),
+                ("ctx", 9),
+                ("del", 9),
+                ("add", 10),
+                ("add", 11),
+            ],
         )
 
     def test_body_text_tabs_and_lookalike_lines(self):
@@ -57,7 +67,9 @@ class ParseUnifiedDiffTests(unittest.TestCase):
 
     def test_deleted_and_binary_files(self):
         self.assertEqual([r.number for r in self.files[1].rows], [1, 2])
-        self.assertEqual([(r.kind, r.text) for r in self.files[2].rows], [("note", "Binary file changed")])
+        self.assertEqual(
+            [(r.kind, r.text) for r in self.files[2].rows], [("note", "Binary file changed")]
+        )
 
     def test_non_diff_text_has_no_files(self):
         self.assertEqual(parse_unified_diff("1 file changed, 2 insertions(+)\n"), [])
