@@ -4,8 +4,8 @@ The window comes from ``scripts/gui_snapshots.py`` (same seed, same real
 ``AgentOpsController``) at 1100x700 on the offscreen platform. Two checks:
 
 (a) brightness: per view, the share of pixels with luminance > 0.85 is <= 2%.
-    Expected to fail until the app installs a dark QPalette (v2 plan, phase A):
-    unstyled Qt surfaces still render light-grey/white on the dark theme.
+    Passes since the app installs a dark QPalette via ``tokens.apply_theme``
+    (v2 plan, phase A); before that, unstyled Qt surfaces rendered light-grey.
 (b) clipped labels: no visible, non-word-wrapped QLabel with text is shorter
     than its font's line height. Expected to fail until the Workflows pipeline
     cards stop collapsing.
@@ -166,7 +166,6 @@ class GuiSnapshotTest(unittest.TestCase):
 
         self.assertEqual(list(self.shares), [view_id for view_id, _t, _f in VIEW_SPECS])
 
-    @unittest.expectedFailure  # no QPalette yet: light Qt defaults leak into the dark theme
     def test_views_have_almost_no_bright_pixels(self):
         offenders = {
             view_id: round(share, 4)
