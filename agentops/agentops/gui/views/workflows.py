@@ -7,13 +7,16 @@ widgets here only lay out what the controller already reported.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QInputDialog,
+    QMenu,
     QMessageBox,
-    QScrollArea,
     QSplitter,
     QTabWidget,
     QVBoxLayout,
@@ -21,10 +24,12 @@ from PySide6.QtWidgets import (
 )
 
 from .. import control_center as projection
+from ..components import IconButton
 from ..detail import _confirm
 from ..format import elide, format_duration, format_size, format_timestamp, short_id
 from ..platform import open_path_external
 from ..tokens import DARK
+from ..transcript import ReadinessChip, TextLabel, Transcript, TranscriptScroll
 from ..widgets import (
     Badge,
     KeyValueGrid,
@@ -117,14 +122,6 @@ _ARTIFACT_COLUMNS = (
 )
 
 
-class _Pane(QWidget):
-    """Framed container so QSplitter children paint the card surface."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.setProperty("card", True)
-
-
 class WorkflowsView(BaseView):
     """The control center: one workflow, end to end, while it runs."""
 
@@ -140,23 +137,7 @@ class WorkflowsView(BaseView):
         root.setContentsMargins(page, page, page, page)
         root.setSpacing(DARK.space_md)
 
-        self._page_header = PageHeader(self.title, "Live stages, tasks, runs, and merge readiness")
-        self._status_badge = Badge()
-        self._page_header.add_action(self._status_badge)
-        self._cancel = danger_button("Cancel run")
-        self._cancel.clicked.connect(self._cancel_operation)
-        self._page_header.add_action(self._cancel)
-        self._recover = ghost_button("Recover interrupted")
-        self._recover.clicked.connect(self._recover_workflow)
-        self._page_header.add_action(self._recover)
-        self._rename_btn = ghost_button("Rename...")
-        self._rename_btn.setToolTip("Edit the selected workflow's description")
-        self._rename_btn.clicked.connect(self._rename_workflow)
-        self._page_header.add_action(self._rename_btn)
-        self._delete_btn = danger_button("Delete")
-        self._delete_btn.setToolTip("Remove the selected workflow and its records")
-        self._delete_btn.clicked.connect(self._delete_workflow)
-        self._page_header.add_action(self._delete_btn)
+        self._build_header()
         root.addWidget(self._page_header)
         list_toolbar = QHBoxLayout()
         list_toolbar.setSpacing(DARK.space_sm)
@@ -188,17 +169,14 @@ class WorkflowsView(BaseView):
         self._list.activated.connect(self._pick_workflow)
         splitter.addWidget(self._list)
 
-        # The body scrolls: without it a short pane squeezed the StageFlow
-        # cards to slivers and clipped their stage, agent and duration lines.
-        self._body = _Pane()
+        # The middle pane: the run transcript scrolls under a fade, with the
+        # record tabs below it until the right pane (C3) takes them over.
+        self._body = QWidget()
         pane = QVBoxLayout(self._body)
         pane.setContentsMargins(0, 0, 0, 0)
-        self._body_scroll = QScrollArea()
-        self._body_scroll.setWidgetResizable(True)
-        self._body_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        # As needed, not off: the rail takes 52px, and in narrow windows the
-        # stage cards' one-line facts are wider than the pane. Clipping them
-        # with no way to scroll hid the status pill and the duration.
+        self._body_scroll = TranscriptScroll()
+        # As needed, not off: in narrow windows the records' stage cards are
+        # wider than the pane, and clipping them hid the status and duration.
         self._body_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         content = QWidget()
         body = QVBoxLayout(content)
@@ -206,7 +184,7 @@ class WorkflowsView(BaseView):
         # itself when stage cards arrive. Relying on the scroll area's
         # LayoutRequest alone sometimes left it at its old height (cards crushed).
         body.setSizeConstraint(QVBoxLayout.SizeConstraint.SetMinimumSize)
-        body.setContentsMargins(DARK.space_md, DARK.space_md, DARK.space_md, DARK.space_md)
+        body.setContentsMargins(0, 0, 0, 0)
         body.setSpacing(DARK.space_md)
         self._build_body(body)
         self._body_scroll.setWidget(content)
@@ -223,25 +201,77 @@ class WorkflowsView(BaseView):
         self._cancellation: dict = {}
         self._cancel_requested = False
 
+    def _build_header(self) -> None:
+        """repo / title, status, readiness, the "..." menu and the pane toggle."""
+        self._page_header = PageHeader(self.title)
+        header = self._page_header.layout()
+        header.takeAt(1)  # the stretch: the elided title takes the free width
+        self._crumb = QWidget()
+        self._repo_label = TextLabel("", DARK.size_body, DARK.text_muted)
+        self._repo_label.setWordWrap(False)
+        slash = TextLabel("/", DARK.size_body, DARK.text_faint)
+        slash.setWordWrap(False)
+        self._title_label = TextLabel(
+            "", DARK.size_prose, DARK.text, weight=QFont.Weight.DemiBold, elide=True
+        )
+        crumb = QHBoxLayout(self._crumb)
+        crumb.setContentsMargins(0, 0, 0, 0)
+        crumb.setSpacing(DARK.space_sm)
+        for widget in (self._repo_label, slash, self._title_label):
+            crumb.addWidget(widget, 1 if widget is self._title_label else 0)
+        self._crumb.setVisible(False)
+        header.insertWidget(1, self._crumb, 1)
+        self._status_badge = Badge()
+        self._page_header.add_action(self._status_badge)
+        self._readiness_chip = ReadinessChip()
+        self._page_header.add_action(self._readiness_chip)
+        self._cancel = danger_button("Cancel run")
+        self._cancel.clicked.connect(self._cancel_operation)
+        self._page_header.add_action(self._cancel)
+        self._more_menu = QMenu(self)
+        self._rename_action = self._more_menu.addAction("Rename...", self._rename_workflow)
+        self._rename_action.setToolTip("Edit the selected workflow's description")
+        self._recover_action = self._more_menu.addAction(
+            "Recover interrupted", self._recover_workflow
+        )
+        self._more_menu.addSeparator()
+        self._delete_action = self._more_menu.addAction("Delete", self._delete_workflow)
+        self._delete_action.setToolTip("Remove the selected workflow and its records")
+        self._more_btn = IconButton("ellipsis", "Workflow actions", size=28, icon_size=16)
+        self._more_btn.setPopupMode(IconButton.ToolButtonPopupMode.InstantPopup)
+        self._more_btn.setMenu(self._more_menu)
+        self._more_btn.setStyleSheet("QToolButton::menu-indicator { image: none; width: 0px; }")
+        self._page_header.add_action(self._more_btn)
+        self._pane_toggle = IconButton("panel-right", "Hide records", size=28, icon_size=16)
+        self._pane_toggle.setCheckable(True)
+        self._pane_toggle.setChecked(True)
+        self._pane_toggle.toggled.connect(self._toggle_records)
+        self._page_header.add_action(self._pane_toggle)
+
     def _build_body(self, layout: QVBoxLayout) -> None:
-        # The live card comes first on purpose: while work runs, the question
-        # is "where is it", and that answer must not require scrolling.
+        self._transcript = Transcript()
+        self._transcript.open_diff_requested.connect(self._open_diff)
+        layout.addWidget(self._transcript)
+        # Task outcomes and check totals are separate rows: nine blocks in
+        # one row overflow the pane at the minimum window width and clip the
+        # check counts. They are the transcript's collapsible summary.
+        self._tally = Tally()
+        self._transcript.add_summary_widget(self._tally)
+        self._checks_tally = Tally()
+        self._transcript.add_summary_widget(self._checks_tally)
+
+        self._records = QWidget()
+        layout.addWidget(self._records)
+        layout = QVBoxLayout(self._records)
+        layout.setContentsMargins(DARK.space_md, 0, DARK.space_md, DARK.space_md)
+        layout.setSpacing(DARK.space_md)
         self._live = LiveCard()
         layout.addWidget(self._live)
-
         self._flow_header = SectionHeader("Pipeline")
         layout.addWidget(self._flow_header)
         self._flow = StageFlow()
         self._flow.stage_selected.connect(self._select_stage)
         layout.addWidget(self._flow)
-
-        # Task outcomes and check totals are separate rows: nine blocks in
-        # one row overflow the detail pane at the minimum window width and
-        # clip the check counts.
-        self._tally = Tally()
-        layout.addWidget(self._tally)
-        self._checks_tally = Tally()
-        layout.addWidget(self._checks_tally)
 
         self._tab_names = ("Tasks", "Runs", "Verification", "Failures")
         self._tabs = QTabWidget()
@@ -251,6 +281,17 @@ class WorkflowsView(BaseView):
         self._tabs.addTab(self._build_failures_tab(), "Failures")
         self._tabs.addTab(self._build_worktree_tab(), "Worktree")
         layout.addWidget(self._tabs)
+
+    def _toggle_records(self, shown: bool) -> None:
+        self._records.setVisible(shown)
+        self._pane_toggle.setToolTip("Hide records" if shown else "Show records")
+        self._pane_toggle.setAccessibleName(self._pane_toggle.toolTip())
+
+    def _open_diff(self, _run_id: str) -> None:
+        """Until the diff pane lands (C3), "Open diff" shows the Worktree record."""
+        self._pane_toggle.setChecked(True)
+        self._tabs.setCurrentIndex(self._tabs.count() - 1)
+        self._body_scroll.ensureWidgetVisible(self._tabs)
 
     def _retitle_tabs(self, tasks: list, runs: list, verifications: list, failures: list) -> None:
         """Show live record counts on the tab labels (e.g. ``Tasks (3)``)."""
@@ -492,7 +533,14 @@ class WorkflowsView(BaseView):
                 # Without the readiness read the merge state shows as blocked
                 # rather than being invented ready.
                 readiness = {"ready": False, "reasons": ["readiness unavailable"]}
+            checks: dict[str, list] = {}
+            for row in (payload or {}).get("verifications") or ():
+                run_id = str(row.get("id") or "") if isinstance(row, dict) else ""
+                detail = controller.get_verification_run(repository, run_id) if run_id else None
+                if isinstance(detail, dict):
+                    checks[run_id] = list(detail.get("checks") or [])
             return {
+                "checks": checks,
                 "payload": payload if isinstance(payload, dict) else {},
                 "artifacts": list(artifacts or []),
                 "events": list(events or []),
@@ -512,7 +560,13 @@ class WorkflowsView(BaseView):
                 [row for row in value if isinstance(row, dict)] if isinstance(value, list) else []
             )
 
-        workflow = records("workflow")[0] if records("workflow") else {}
+        # get_workflow returns the workflow's own fields at the top level;
+        # older callers nest them under "workflow" (a dict or a one-row list).
+        nested = payload.get("workflow")
+        if isinstance(nested, list):
+            nested = records("workflow")[0] if records("workflow") else {}
+        workflow = nested if isinstance(nested, dict) else payload
+        workflow = {key: value for key, value in workflow.items() if not isinstance(value, list)}
         tasks, runs = records("tasks"), records("runs")
         verifications, failures = records("verifications"), records("failures")
         artifacts = [row for row in (data.get("artifacts") or []) if isinstance(row, dict)]
@@ -543,6 +597,22 @@ class WorkflowsView(BaseView):
         self._flow.attach_clicks()
         self._flow.highlight(str(live.get("stage_key") or ""))
         self._apply_tally(tasks, runs, verifications, failures)
+        model = self._transcript.set_workflow(
+            workflow,
+            tasks,
+            runs,
+            verifications,
+            data.get("checks"),
+            failures,
+            data.get("readiness"),
+            self._payload["worktree_ref"],
+        )
+        self._page_header._heading.setVisible(False)
+        self._crumb.setVisible(True)
+        self._repo_label.setText(Path(self.repository() or "").name)
+        self._title_label.setText(str(model.get("prompt") or ""))
+        self._title_label.setToolTip(self._title_label.text())
+        self._readiness_chip.set_readiness(dict(model.get("readiness") or {}))
 
         self._tasks.set_rows(tasks)
         self._runs.set_rows(runs)
@@ -592,7 +662,7 @@ class WorkflowsView(BaseView):
         )
         self._cancel.setEnabled(bool(state.get("cancellable")))
         self._cancel.setText("Cancelling" if state.get("cancel_requested") else "Cancel run")
-        self._recover.setVisible(not state.get("running"))
+        self._recover_action.setVisible(not state.get("running"))
 
     def _apply_worktree(self, readiness: object) -> None:
         worktree = projection.worktree_summary(
