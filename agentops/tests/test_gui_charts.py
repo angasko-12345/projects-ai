@@ -70,6 +70,19 @@ class ChartPaintTest(unittest.TestCase):
             _image, painted = render(chart)
             self.assertGreater(painted, 0)
 
+    def test_x_labels_stay_inside_the_plot_and_clear_the_zero_label(self):
+        chart = self._area([3, 1, 2, 0, 4, 1, 2, 2, 3, 1, 0, 2, 5, 8], [0] * 14, 13)
+        render(chart, 720, 240)
+        left, top, right, bottom = chart._PAD
+        baseline = chart.height() - bottom
+        self.assertGreaterEqual(len(chart.x_label_boxes), 2)
+        for box in chart.x_label_boxes:
+            self.assertGreaterEqual(box.left(), left)  # not under the y labels
+            self.assertLessEqual(box.right(), chart.width() - right)
+            # The "0" y label is centred on the baseline, 8 px each way.
+            self.assertGreaterEqual(box.top(), baseline + 8)
+            self.assertLessEqual(box.bottom(), chart.height())
+
     def test_area_curve_never_dips_below_the_baseline(self):
         from PySide6.QtCore import QPointF
 
