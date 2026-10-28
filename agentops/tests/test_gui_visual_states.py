@@ -498,6 +498,8 @@ class VisualStateTest(unittest.TestCase):
         self.assertTrue(wait_until(lambda: view._list.proxy.rowCount() == 1))
         view._list.select_row_index(0)
         self.assertTrue(wait_until(lambda: view._tasks.proxy.rowCount() == 4))
+        # The actions live in the header's "..." menu.
+        menu = {action.text(): action for action in view._more_btn.menu().actions()}
         renamed: list[tuple] = []
         self.controller.rename_workflow = (  # type: ignore[attr-defined]
             lambda directory, workflow_id, description: (
@@ -507,7 +509,7 @@ class VisualStateTest(unittest.TestCase):
         with patch(
             "agentops.gui.views.workflows.QInputDialog.getText", return_value=("renamed flow", True)
         ):
-            view._rename_workflow()
+            menu["Rename..."].trigger()
         self.assertTrue(wait_until(lambda: len(renamed) == 1))
         self.assertEqual(renamed[0], ("wf-1", "renamed flow"))
         deleted: list[tuple] = []
@@ -518,7 +520,7 @@ class VisualStateTest(unittest.TestCase):
             "agentops.gui.views.workflows.QMessageBox.question",
             return_value=QMessageBox.StandardButton.Yes,
         ):
-            view._delete_workflow()
+            menu["Delete"].trigger()
         self.assertTrue(wait_until(lambda: len(deleted) == 1))
         self.assertEqual(deleted[0], "wf-1")
 

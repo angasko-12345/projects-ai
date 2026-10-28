@@ -114,6 +114,37 @@ class TranscriptScroll(QScrollArea):
         self._fade.raise_()
 
 
+class ReadinessChip(QFrame):
+    """Header chip: "Ready to merge" or "Not ready · n gates open" (+ reasons)."""
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setObjectName("readinessChip")
+        self._mark, self._label = QLabel(), QLabel()
+        self._label.setFont(qfont(_T, _T.size_caption))
+        layout = _row(self._mark, self._label, spacing=6)
+        layout.setContentsMargins(8, 2, 9, 2)
+        self.setLayout(layout)
+        self.setVisible(False)
+
+    def text(self) -> str:
+        return self._label.text()
+
+    def set_readiness(self, readiness: dict) -> None:
+        color = _T.success if readiness.get("ready") else _T.warning
+        self._mark.setPixmap(
+            icon("git-merge" if readiness.get("ready") else "circle-pause", color, 13)
+        )
+        self._label.setText(str(readiness.get("chip") or ""))
+        self._label.setStyleSheet(f"color: {color}; background: transparent;")
+        self.setStyleSheet(
+            f"QFrame#readinessChip {{ background: {with_alpha(color, 0.10)}; "
+            f"border: 1px solid {with_alpha(color, 0.25)}; border-radius: {_T.radius_sm}px; }}"
+        )
+        self.setToolTip("\n".join(str(reason) for reason in readiness.get("reasons") or ()))
+        self.setVisible(bool(self._label.text()))
+
+
 def _checklist(verification: dict) -> QFrame:
     card = projection.check_text(verification)
     passed = card["status"] == "passed"

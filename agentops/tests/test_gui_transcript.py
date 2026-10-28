@@ -8,13 +8,16 @@ a payload value (or its plain-words/duration rendering) or a fixed caption.
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 try:  # `discover -s tests` puts tests/ on sys.path; direct runs do not.
-    from tests.qt_display import qt_app, requires_qt, wait
+    from tests.qt_display import destroy, qt_app, requires_qt, wait, wait_until
     from tests.test_control_center import transcript_fixture
+    from tests.test_gui_qt import REPOSITORY, FakeController
 except ModuleNotFoundError:
-    from qt_display import qt_app, requires_qt, wait
+    from qt_display import destroy, qt_app, requires_qt, wait, wait_until
     from test_control_center import transcript_fixture
+    from test_gui_qt import REPOSITORY, FakeController
 
 EXPECTED = [
     "ship the control center",
@@ -84,6 +87,72 @@ class TranscriptTextTest(unittest.TestCase):
 
         widget.clear()
         self.assertEqual(visible_text(widget), [])
+
+
+@requires_qt
+class WorkspaceHeaderTest(unittest.TestCase):
+    def setUp(self):
+        from agentops.gui.settings import AppSettings
+        from agentops.gui.shell import MainWindow
+
+        qt_app()
+        settings = AppSettings()
+        settings.touch_repository(REPOSITORY)
+        self.window = MainWindow(FakeController(), settings=settings)
+        self.addCleanup(self._teardown)
+        self.window.resize(1440, 900)
+        self.window.show()
+        wait(50)
+
+    def _teardown(self):
+        from PySide6.QtWidgets import QMessageBox
+
+        with patch(
+            "agentops.gui.shell.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes
+        ):
+            destroy(self.window)
+
+    def test_header_and_transcript_follow_the_selected_workflow(self):
+        view = self.window._views["workflows"]
+        self.window.navigate("workflows")
+        self.assertTrue(wait_until(lambda: bool(view._transcript.model().get("blocks"))))
+        self.assertEqual(view._repo_label.text(), "repo")
+        self.assertEqual(view._title_label.text(), "workflow under test")
+        self.assertEqual(view._readiness_chip.text(), "Not ready · 1 gate open")
+        self.assertEqual(view._readiness_chip.toolTip(), "no passed review task")
+        texts = visible_text(view._transcript)
+        self.assertEqual(texts[0], "workflow under test")
+        self.assertIn("· 3 agent runs · 0 retries", texts)
+        self.assertEqual(
+            [b["label"] for b in view._transcript.model()["blocks"]],
+            ["Plan", "Implement", "Verify", "Review"],
+        )
+        actions = [a.text() for a in view._more_btn.menu().actions() if a.text()]
+        self.assertEqual(actions, ["Rename...", "Recover interrupted", "Delete"])
+        self.assertTrue(view._records.isVisible())
+        view._pane_toggle.click()
+        self.assertFalse(view._records.isVisible())
+        self.assertEqual(view._pane_toggle.toolTip(), "Show records")
+
+    def test_status_pill_shows_the_workflow_status_not_the_idle_state(self):
+        from agentops.gui.control_center import cancellation_state
+
+        view = self.window._views["workflows"]
+        self.window.navigate("workflows")
+        self.assertTrue(wait_until(lambda: bool(view._transcript.model().get("blocks"))))
+        idle = cancellation_state({"running": False, "status": "failed"})
+        view._apply_state(idle, {"status": "failed"})
+        self.assertEqual(view._status_badge.text(), "FAILED")
+        view._apply_state(idle, {"status": "passed"})
+        self.assertEqual(view._status_badge.text(), "PASSED")
+        live = cancellation_state({"running": True, "status": "running"})
+        view._apply_state(live, {"status": "pending"})
+        self.assertEqual(view._status_badge.text(), "RUNNING")
+        view._apply_state(cancellation_state(live, cancel_requested=True), {"status": "running"})
+        self.assertEqual(view._status_badge.text(), "CANCELLING")
+        gone = cancellation_state({"running": False, "status": "cancelled"})
+        view._apply_state(gone, {"status": "cancelled"})
+        self.assertEqual(view._status_badge.text(), "CANCELLED")
 
 
 if __name__ == "__main__":
