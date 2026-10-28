@@ -125,6 +125,10 @@ class ReadinessChip(QFrame):
         layout = _row(self._mark, self._label, spacing=6)
         layout.setContentsMargins(8, 2, 9, 2)
         self.setLayout(layout)
+        # Exactly its hint, never more: a growable chip soaks up the header's
+        # spare width whenever the title is mid-relayout, and the compact
+        # (mark-only) chip then renders as a wide empty box.
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
         self.setVisible(False)
 
     def text(self) -> str:
@@ -148,6 +152,11 @@ class ReadinessChip(QFrame):
     def set_compact(self, compact: bool) -> None:
         """Only the mark when the header is tight (text stays the accessible name)."""
         self._label.setVisible(not compact)
+        # Drop the header layout's cached hint now: hiding the label alone can
+        # leave the chip laid out at its full-text width until some unrelated
+        # relayout comes along.
+        self.layout().invalidate()
+        self.updateGeometry()
 
 
 def _checklist(verification: dict) -> QFrame:
