@@ -214,6 +214,10 @@ class DashboardTest(unittest.TestCase):
         wait(50)
         self.assertFalse(self.view._feed.isVisible())
         self.assertTrue(self.view._feed_card.isAncestorOf(self.view._activity_list))
+        # The moved body must not paint over the card's fill and corners.
+        self.assertFalse(self.view._feed_body.autoFillBackground())
+        self.assertTrue(self.view._feed_card.property("navy"))
+        self.assertLessEqual(self.view._agent_bars.maximumWidth(), 560)
 
     def test_new_task_button_opens_the_task_dialog(self):
         from dataclasses import replace

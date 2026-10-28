@@ -257,7 +257,12 @@ class DashboardView(BaseView):
         if wide:
             self._feed_scroll.setWidget(self._feed_body)
         else:
-            self._feed_card.layout().addWidget(self._feed_scroll.takeWidget())
+            body = self._feed_scroll.takeWidget()
+            # QScrollArea.setWidget turned autoFillBackground on; left on, the
+            # body paints the page colour over the card's navy fill and its
+            # rounded corners.
+            body.setAutoFillBackground(False)
+            self._feed_card.layout().addWidget(body)
         self._feed_body.show()
         self._feed.setVisible(wide)
         self._feed_card.setVisible(not wide)
@@ -307,7 +312,7 @@ class DashboardView(BaseView):
         self._feed_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         frame.addWidget(self._feed_scroll)
         self._outer.addWidget(self._feed)
-        self._feed_card = Card()
+        self._feed_card = _navy_card()
         self._feed_card.layout().setContentsMargins(0, 0, 0, 0)
         self._root.insertWidget(self._root.count() - 1, self._feed_card)
         self._feed_body = QWidget()
@@ -326,6 +331,7 @@ class DashboardView(BaseView):
         self._agents_empty.setWordWrap(True)
         column.addWidget(self._agents_empty)
         self._agent_bars = AgentBars()
+        self._agent_bars.setMaximumWidth(560)  # full-width bars in the card are hard to compare
         column.addWidget(self._agent_bars)
         column.addStretch(1)
 
