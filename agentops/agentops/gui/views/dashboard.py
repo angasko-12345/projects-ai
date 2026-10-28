@@ -17,9 +17,8 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
+    QFrame,
     QLabel,
-    QListWidget,
-    QListWidgetItem,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -30,12 +29,11 @@ from PySide6.QtWidgets import (
 from .. import derive
 from ..charts import AreaChart, Donut
 from ..components import Chip, SectionLabel
-from ..format import elide, format_timestamp
 from ..icons import icon
 from ..tokens import DARK, with_alpha
 from ..widgets import Card, PageHeader, StatCard, ghost_button, muted
 from .base import BaseView
-from .dashboard_parts import AttentionHeader, AttentionTable
+from .dashboard_parts import ActivityList, AgentBars, AttentionHeader, AttentionTable
 
 _NO_REPOSITORY = "Pick a repository in Workflows, or with Ctrl+K, to begin."
 _READ_LIMIT = 500  # newest agent / verification runs read for charts and stats
@@ -148,10 +146,12 @@ class DashboardView(BaseView):
 
     # ------------------------------------------------------------------
     def _build(self) -> None:
-        # Scrollable so short windows reach every card instead of clipping
-        # the activity feed; the inner layout keeps the usual margins.
-        outer = QVBoxLayout(self)
+        # The main column scrolls; the activity feed is a 330px right panel
+        # (below 1200px it moves to the end of the main column instead).
+        outer = QHBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        self._outer = outer
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.Shape.NoFrame)
@@ -160,6 +160,7 @@ class DashboardView(BaseView):
         inner = QWidget()
         scroll.setWidget(inner)
         root = QVBoxLayout(inner)
+        self._root = root
         root.setContentsMargins(36, 28, 36, 28)
         root.setSpacing(DARK.space_md)
 
@@ -174,24 +175,10 @@ class DashboardView(BaseView):
         root.addWidget(self._window_note)
 
         root.addWidget(self._build_attention())
-        activity_card = Card("Recent activity")
-        activity_body = activity_card.body()
-        # The activity card stretches to fill its column; without an
-        # Expanding occupant Qt splits the spare height between the card
-        # title and the empty label, inflating both. Expanding + centered
-        # keeps the title at one line and mirrors the workflows card.
-        self._activity_empty = muted(_NO_REPOSITORY)
-        self._activity_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._activity_empty.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
-        )
-        activity_body.addWidget(self._activity_empty)
-        self._activity_list = QListWidget()
-        # Timestamped entries outgrow the narrow column; wrapped rows keep
-        # the full message readable instead of a clipped horizontal scroll.
-        self._activity_list.setWordWrap(True)
-        activity_body.addWidget(self._activity_list)
-        root.addWidget(activity_card, stretch=1)
+        root.addStretch(1)
+        self._build_feed()
+        self._feed_wide: bool | None = None
+        self._place_feed(True)
 
         self._summary: dict = {}
         self._reads: dict[str, list] = {}
@@ -257,7 +244,23 @@ class DashboardView(BaseView):
 
     def resizeEvent(self, event) -> None:  # noqa: N802 - Qt API
         super().resizeEvent(event)
-        self._place_week(4 if self.width() >= 1040 else 2)
+        wide = self.width() >= 1200
+        self._place_feed(wide)
+        main = self.width() - (330 if wide else 0)
+        self._place_week(4 if main >= 1040 else 2)
+
+    def _place_feed(self, wide: bool) -> None:
+        """Feed as a scrolling right panel when wide, else a card at the end."""
+        if wide == self._feed_wide:
+            return
+        self._feed_wide = wide
+        if wide:
+            self._feed_scroll.setWidget(self._feed_body)
+        else:
+            self._feed_card.layout().addWidget(self._feed_scroll.takeWidget())
+        self._feed_body.show()
+        self._feed.setVisible(wide)
+        self._feed_card.setVisible(not wide)
 
     def _build_attention(self) -> QWidget:
         section = QWidget()
@@ -286,6 +289,45 @@ class DashboardView(BaseView):
         card.add(self._attention_empty)
         column.addWidget(card)
         return section
+
+    def _build_feed(self) -> None:
+        """Activity + agent bars; ``_place_feed`` decides where they sit."""
+        self._feed = QFrame()
+        self._feed.setObjectName("DashFeed")
+        self._feed.setFixedWidth(330)
+        self._feed.setStyleSheet(
+            f"QFrame#DashFeed {{ background: {DARK.sidebar}; border: none;"
+            f" border-left: 1px solid {DARK.border}; }}"
+        )
+        frame = QVBoxLayout(self._feed)
+        frame.setContentsMargins(0, 0, 0, 0)
+        self._feed_scroll = QScrollArea()
+        self._feed_scroll.setWidgetResizable(True)
+        self._feed_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        self._feed_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        frame.addWidget(self._feed_scroll)
+        self._outer.addWidget(self._feed)
+        self._feed_card = Card()
+        self._feed_card.layout().setContentsMargins(0, 0, 0, 0)
+        self._root.insertWidget(self._root.count() - 1, self._feed_card)
+        self._feed_body = QWidget()
+        column = QVBoxLayout(self._feed_body)
+        column.setContentsMargins(22, 28, 22, 22)
+        column.setSpacing(DARK.space_md)
+        column.addWidget(SectionLabel("Activity"))
+        self._activity_empty = muted(_NO_REPOSITORY)
+        self._activity_empty.setWordWrap(True)
+        column.addWidget(self._activity_empty)
+        self._activity_list = ActivityList()
+        column.addWidget(self._activity_list)
+        column.addSpacing(DARK.space_md)
+        column.addWidget(SectionLabel(f"Agents \u00b7 {_DAYS} days"))
+        self._agents_empty = muted("")
+        self._agents_empty.setWordWrap(True)
+        column.addWidget(self._agents_empty)
+        self._agent_bars = AgentBars()
+        column.addWidget(self._agent_bars)
+        column.addStretch(1)
 
     def _build_charts(self) -> QHBoxLayout:
         row = QHBoxLayout()
@@ -357,14 +399,21 @@ class DashboardView(BaseView):
             card.value.setText("-")
             card.value.setStyleSheet("")
             card.set_note("")
+        self._show_lists_empty(_NO_REPOSITORY)
+
+    def _show_lists_empty(self, text: str) -> None:
         self._attention_header.hide()
         self._attention_list.set_rows([])
         self._attention_list.hide()
-        self._attention_empty.setText(_NO_REPOSITORY)
+        self._attention_empty.setText(text)
         self._attention_empty.show()
-        self._activity_empty.setText(_NO_REPOSITORY)
-        self._activity_empty.show()
+        self._activity_list.set_rows([])
         self._activity_list.hide()
+        self._activity_empty.setText(text)
+        self._activity_empty.show()
+        self._agent_bars.set_bars([])
+        self._agents_empty.setText(text)
+        self._agents_empty.show()
 
     def _show_charts_empty(self, text: str) -> None:
         self._runs_chart.hide()
@@ -390,7 +439,7 @@ class DashboardView(BaseView):
             lambda: controller.dashboard_summary(
                 repository,
                 workflow_limit=8,
-                event_limit=12,
+                event_limit=8,
                 failure_limit=10,
                 verification_limit=_READ_LIMIT,
             ),
@@ -435,7 +484,7 @@ class DashboardView(BaseView):
             return
         self._reads[key] = [row for row in result if isinstance(row, dict)]
         self._render_week()
-        self._render_attention()
+        self._render_lists()
         if key == "runs":
             self._render_runs()
 
@@ -456,21 +505,7 @@ class DashboardView(BaseView):
         self._render_week()
 
         self.attention_changed.emit(len(needs))
-        self._render_attention()
-
-        events = list(summary.get("recent_events") or [])
-        self._activity_empty.setVisible(not events)
-        if not events:
-            self._activity_empty.setText("No activity recorded yet.")
-        self._activity_list.setVisible(bool(events))
-        self._activity_list.clear()
-        for event in events:
-            message = str(event.get("message") or event.get("type") or "")
-            timestamp = str(event.get("timestamp") or "")
-            item = QListWidgetItem(elide(f"{format_timestamp(timestamp)}  {message}", 110))
-            item.setToolTip(f"{timestamp}\n{message}")
-            self._activity_list.addItem(item)
-
+        self._render_lists()
         self._summary_loaded = True
 
     def _render_verification(self, counts: dict) -> None:
@@ -551,16 +586,42 @@ class DashboardView(BaseView):
         self._window_note.setText(f"Based on the newest {_READ_LIMIT} runs.")
         self._window_note.setVisible(capped)
 
-    def _render_attention(self) -> None:
-        """Needs-attention table, joined on the workflow and run reads."""
+    def _render_lists(self) -> None:
+        """Attention table, activity feed and agent bars (joins on the reads)."""
         if not self._summary:
             return
         now = datetime.now().astimezone()
         workflows = self._reads.get("workflows", [])
+        runs = self._reads.get("runs", [])
         needs = list(self._summary.get("needs_attention") or [])
-        rows = derive.attention_rows(needs, workflows, self._reads.get("runs", []), now)
+        rows = derive.attention_rows(needs, workflows, runs, now)
         self._attention_list.set_rows(rows)
         self._attention_header.setVisible(bool(rows))
         self._attention_list.setVisible(bool(rows))
         self._attention_empty.setVisible(not rows)
         self._attention_empty.setText("Nothing needs attention right now.")
+        titles = {str(w.get("id") or ""): str(w.get("description") or "") for w in workflows}
+        feed = []
+        for event in self._summary.get("recent_events") or []:
+            message = str(event.get("message") or event.get("type") or "")
+            title, _sep, rest = message.partition(": ")
+            name, color = derive.event_icon(event.get("type"), event.get("severity"))
+            stamp = str(event.get("timestamp") or "")
+            feed.append(
+                {
+                    "title": title,
+                    "detail": rest or titles.get(str(event.get("workflow_id") or ""), ""),
+                    "age": derive.rel_age(stamp, now),
+                    "icon": name,
+                    "color": color,
+                    "tooltip": f"{stamp}\n{message}" if stamp else message,
+                }
+            )
+        self._activity_list.set_rows(feed)
+        self._activity_list.setVisible(bool(feed))
+        self._activity_empty.setVisible(not feed)
+        self._activity_empty.setText("No activity recorded yet.")
+        bars = derive.agent_bars(runs, now, _DAYS)
+        self._agent_bars.set_bars(bars)
+        self._agents_empty.setVisible(not bars)
+        self._agents_empty.setText(f"No agent runs in the last {_DAYS} days.")

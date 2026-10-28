@@ -258,6 +258,28 @@ class DashboardRowsTest(unittest.TestCase):
             (rows[3]["problem"], rows[3]["next_step"]), ("Usage limit hit", "Wait a bit")
         )
 
+    def test_agent_bars_rank_and_share(self):
+        runs = [
+            run(ago(hours=1), agent="claude"),
+            run(ago(hours=2), "failed", agent="claude"),
+            run(ago(hours=3), agent="kilo"),
+            run(ago(hours=4), "running", agent="claude"),
+            run(ago(days=20), agent="kilo"),  # outside 14 days
+            run(ago(hours=5), agent=""),
+        ]
+        self.assertEqual(derive.agent_bars(runs, NOW), [("claude", 3, 33), ("kilo", 1, 100)])
+        self.assertEqual(derive.agent_bars([], NOW), [])
+
+    def test_event_icons(self):
+        self.assertEqual(derive.event_icon("agent.started"), ("play", "info"))
+        self.assertEqual(derive.event_icon("verification.failed"), ("shield-check", "danger"))
+        self.assertEqual(derive.event_icon("verification.completed"), ("shield-check", "success"))
+        self.assertEqual(derive.event_icon("task.failed"), ("circle-x", "danger"))
+        self.assertEqual(derive.event_icon("agent.finished", "error"), ("circle-x", "danger"))
+        self.assertEqual(derive.event_icon("agent.finished"), ("circle-check", "success"))
+        self.assertEqual(derive.event_icon("workflow.created"), ("plus", "text_muted"))
+        self.assertEqual(derive.event_icon("note"), ("activity", "text_muted"))
+
 
 if __name__ == "__main__":
     unittest.main()
