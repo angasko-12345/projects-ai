@@ -23,6 +23,11 @@ DEL_BG, DEL_BAR = "#2d1517", "#f85149"
 LINE_H, HEADER_H, FONT_PX, BAR_W, FILE_GAP = 20, 32, 12, 3, 12
 
 
+def gap_label(count: int) -> str:
+    """The separator text for ``count`` hidden context lines."""
+    return f"{count} unmodified line{'' if count == 1 else 's'}"
+
+
 def _mono_font(theme: tokens.Theme) -> QFont:
     font = QFont()
     families = getattr(theme, "mono_families", None) or theme.font_mono.split(",")
@@ -122,7 +127,7 @@ class _Canvas(QWidget):
         box = QRectF(0, top, 0, LINE_H)
         middle = Qt.AlignmentFlag.AlignVCenter
         if row.kind in ("gap", "note"):
-            label = f"{row.number} unmodified lines" if row.kind == "gap" else row.text
+            label = gap_label(row.number or 0) if row.kind == "gap" else row.text
             label_w = painter.fontMetrics().horizontalAdvance(label)
             if row.kind == "note":
                 label = painter.fontMetrics().elidedText(
