@@ -182,6 +182,15 @@ class CommandPalette(QDialog):
             return
         super().keyPressEvent(event)
 
+    def event(self, event: QEvent) -> bool:  # noqa: N802 - Qt API
+        # Qt matches a Tool window's key presses against its parent window's
+        # shortcuts, so the shell's Esc shortcut (recovery bar) would fire
+        # first. Claiming the override delivers Esc here as a key press.
+        if event.type() == QEvent.Type.ShortcutOverride and event.key() == Qt.Key.Key_Escape:
+            event.accept()
+            return True
+        return super().event(event)
+
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
         if watched is self.input and event.type() == QEvent.Type.KeyPress:
             key = event.key()

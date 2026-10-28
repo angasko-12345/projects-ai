@@ -116,3 +116,53 @@ class WorktreesMixin:
             ]
         finally:
             state.close()
+
+    def workflow_diff(
+        self, directory: str | Path, workflow_id: str, max_bytes: int = 262144
+    ) -> dict[str, object]:
+        """Read-only diff for the diff pane, from the best source still on disk.
+
+        1. ``worktree``: the managed worktree is still registered, so
+           ``git -C <path> diff <base_commit>`` (committed and uncommitted edits).
+        2. ``branch``: the ``agentops/*`` branch still exists, so
+           ``git diff <base_commit> <branch>`` at the repository root.
+        3. ``stat``: the newest run that recorded changes, as its ``diff_stat``
+           (or its ``files_changed`` list). Empty text when nothing was recorded.
+
+        A recorded path outside ``.agentops/worktrees`` is refused (GitError).
+        """
+        if not isinstance(max_bytes, int) or max_bytes < 1:
+            raise ValueError("Diff max_bytes must be a positive integer.")
+        root = self._operation_root(directory)
+        state = _ns.StateStore(self._state_path(root))
+        try:
+            ref = state.get_worktree_ref(workflow_id)
+            runs = state.list_agent_runs(workflow_id=workflow_id, limit=1000)
+        finally:
+            state.close()
+        payload: dict[str, object] = {
+            "source": "stat",
+            "text": "",
+            "truncated": False,
+            "base_commit": ref.base_commit if ref else None,
+            "branch": ref.branch if ref else None,
+            "path": ref.path if ref else None,
+        }
+        if ref is not None:
+            manager = _ns.GitWorktreeManager()
+            if manager.managed_worktree(root, ref.path) is not None:
+                text, truncated = manager.diff_against(ref.path, ref.base_commit, None, max_bytes)
+                return {**payload, "source": "worktree", "text": text, "truncated": truncated}
+            if ref.branch.startswith("agentops/"):
+                try:
+                    text, truncated = manager.diff_against(
+                        root, ref.base_commit, f"refs/heads/{ref.branch}", max_bytes
+                    )
+                except _ns.GitError:
+                    pass  # branch (or base) gone: fall back to the recorded stat
+                else:
+                    return {**payload, "source": "branch", "text": text, "truncated": truncated}
+        run = next((r for r in reversed(runs) if r.files_changed or r.diff_stat), None)
+        if run is not None:
+            payload["text"] = (run.diff_stat or "").strip() or "\n".join(run.files_changed)
+        return payload
