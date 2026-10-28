@@ -142,7 +142,12 @@ class ReadinessChip(QFrame):
             f"border: 1px solid {with_alpha(color, 0.25)}; border-radius: {_T.radius_sm}px; }}"
         )
         self.setToolTip("\n".join(str(reason) for reason in readiness.get("reasons") or ()))
+        self.setAccessibleName(self._label.text())
         self.setVisible(bool(self._label.text()))
+
+    def set_compact(self, compact: bool) -> None:
+        """Only the mark when the header is tight (text stays the accessible name)."""
+        self._label.setVisible(not compact)
 
 
 def _checklist(verification: dict) -> QFrame:

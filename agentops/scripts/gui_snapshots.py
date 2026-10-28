@@ -1267,6 +1267,14 @@ def capture(seeded: Seeded, out: Path, width: int, height: int) -> list[Path]:
             pump(1200)
             wait_until_idle(window)
             shot(window, "workflow-failed")
+            workspace = window._views["workflows"]
+            if not workspace.pane_open():  # below 1280px: the pane over the thread list
+                workspace._pane_toggle.click()
+                pump(900)
+                wait_until_idle(window)
+                shot(window, "workflow-diff")
+                workspace._pane_toggle.click()
+                pump(300)
 
             window.navigate("dashboard")
             pump(600)
