@@ -376,6 +376,7 @@ class MainWindow(QMainWindow, AsyncMixin):
         if not callable(parts):
             return
         filters, threads = parts()
+        self._views["workflows"].pane_changed.connect(lambda _open: self._apply_sidebar())
         side = self._sidebar.layout()
         side.insertWidget(1, filters)
         for index in range(side.count()):
@@ -550,9 +551,10 @@ class MainWindow(QMainWindow, AsyncMixin):
         The toggle lives in the sidebar header; while collapsed it parks in
         the rail so the sidebar can always be brought back.
         """
-        collapsed = bool(self._settings.sidebar_collapsed)
         current = self._stack.currentWidget()
         contextual = any(self._views.get(view_id) is current for view_id in _SIDEBAR_VIEWS)
+        # Below 1280px an open right pane takes the thread list's room.
+        collapsed = bool(self._settings.sidebar_collapsed) or self._sidebar_squeezed()
         self._sidebar.setVisible(contextual and not collapsed)
         name = "Show sidebar" if collapsed else "Hide sidebar"
         self._sidebar_toggle.setToolTip(f"{name}  Ctrl+B")
@@ -572,7 +574,15 @@ class MainWindow(QMainWindow, AsyncMixin):
         wide = self.width() >= SIDEBAR_WIDE_FROM
         self._sidebar.setFixedWidth(SIDEBAR_WIDTH_WIDE if wide else SIDEBAR_WIDTH_NARROW)
 
+    def _sidebar_squeezed(self) -> bool:
+        pane_open = getattr(self._views.get("workflows"), "pane_open", None)
+        return self.width() < SIDEBAR_WIDE_FROM and callable(pane_open) and pane_open()
+
     def toggle_sidebar(self) -> None:
+        if self._sidebar_squeezed():
+            self._views["workflows"].close_pane()  # bring the list back
+            if not self._settings.sidebar_collapsed:
+                return
         self._settings.sidebar_collapsed = not self._settings.sidebar_collapsed
         self._apply_sidebar()
         self._save_settings()
@@ -1146,7 +1156,7 @@ class MainWindow(QMainWindow, AsyncMixin):
 
     def resizeEvent(self, event) -> None:  # noqa: N802 - Qt API
         super().resizeEvent(event)
-        self._fit_sidebar_width()
+        self._apply_sidebar()
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt API
         if self._active:

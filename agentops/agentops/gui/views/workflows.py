@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QComboBox,
@@ -28,6 +28,7 @@ from ..components import IconButton
 from ..detail import _confirm
 from ..format import elide, format_duration, format_size, format_timestamp, short_id
 from ..platform import open_path_external
+from ..right_pane import NARROW_BELOW, RightPane
 from ..threads import ThreadList, load_threads
 from ..tokens import DARK
 from ..transcript import ReadinessChip, TextLabel, Transcript, TranscriptScroll
@@ -128,12 +129,18 @@ class WorkflowsView(BaseView):
 
     view_id = "workflows"
     title = "Workflows"
+    pane_changed = Signal(bool)  # the right pane opened (True) or closed
 
     # ------------------------------------------------------------------
     # construction
     # ------------------------------------------------------------------
     def _build(self) -> None:
-        root = QVBoxLayout(self)
+        outer = QHBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        center = QWidget()
+        outer.addWidget(center, 1)
+        root = QVBoxLayout(center)
         page = DARK.space_page
         root.setContentsMargins(page, page, page, page)
         root.setSpacing(DARK.space_md)
@@ -210,6 +217,14 @@ class WorkflowsView(BaseView):
         splitter.setStretchFactor(1, 5)
         root.addWidget(splitter, stretch=1)
 
+        # The right pane (Diff / Logs / Records). It keeps the C2 name
+        # _records: the header's pane toggle shows and hides it. Until the
+        # user toggles it, it follows the window: open from 1280px wide.
+        self._records = RightPane(self.ctx, self._records_page)
+        self._records.closed.connect(lambda: self._pane_toggle.setChecked(False))
+        outer.addWidget(self._records)
+        self._pane_auto = True
+
         self._current_id: str | None = None
         self._selected_task_id: str | None = None
         self._payload: dict = {}
@@ -276,10 +291,12 @@ class WorkflowsView(BaseView):
         self._checks_tally = Tally()
         self._transcript.add_summary_widget(self._checks_tally)
 
-        self._records = QWidget()
-        layout.addWidget(self._records)
-        layout = QVBoxLayout(self._records)
-        layout.setContentsMargins(DARK.space_md, 0, DARK.space_md, DARK.space_md)
+        # The live card and pipeline stay in the transcript's scroll, under
+        # the stage blocks; the record tabs move to the right pane.
+        overview = QWidget()
+        layout.addWidget(overview)
+        layout = QVBoxLayout(overview)
+        layout.setContentsMargins(0, 0, 0, DARK.space_md)  # the stage cards fit 1440x900
         layout.setSpacing(DARK.space_md)
         self._live = LiveCard()
         layout.addWidget(self._live)
@@ -288,6 +305,10 @@ class WorkflowsView(BaseView):
         self._flow = StageFlow()
         self._flow.stage_selected.connect(self._select_stage)
         layout.addWidget(self._flow)
+
+        self._records_page = QWidget()
+        layout = QVBoxLayout(self._records_page)
+        layout.setContentsMargins(DARK.space_md, 0, DARK.space_md, DARK.space_md)
 
         self._tab_names = ("Tasks", "Runs", "Verification", "Failures")
         self._tabs = QTabWidget()
@@ -299,15 +320,50 @@ class WorkflowsView(BaseView):
         layout.addWidget(self._tabs)
 
     def _toggle_records(self, shown: bool) -> None:
+        if not self._pane_toggle.signalsBlocked():
+            self._pane_auto = False  # the user chose; stop following the width
         self._records.setVisible(shown)
         self._pane_toggle.setToolTip("Hide records" if shown else "Show records")
         self._pane_toggle.setAccessibleName(self._pane_toggle.toolTip())
+        self.pane_changed.emit(shown)
 
-    def _open_diff(self, _run_id: str) -> None:
-        """Until the diff pane lands (C3), "Open diff" shows the Worktree record."""
+    def pane_open(self) -> bool:
+        return not self._records.isHidden()
+
+    def close_pane(self) -> None:
+        self._pane_toggle.setChecked(False)
+
+    def _sync_pane(self) -> None:
+        """Pane width follows the window; so does its default open state."""
+        width = self.window().width()
+        self._records.fit_width(width)
+        if self._pane_auto and self._pane_toggle.isChecked() != (width >= NARROW_BELOW):
+            self._pane_toggle.blockSignals(True)
+            self._pane_toggle.setChecked(width >= NARROW_BELOW)
+            self._pane_toggle.blockSignals(False)
+            self._toggle_records(width >= NARROW_BELOW)
+
+    def _fit_header(self) -> None:
+        """Keep ~140px for the title: a tight header shows the readiness mark only."""
+        self._readiness_chip.set_compact(False)
+        need = self._page_header.layout().minimumSize().width() + 140
+        self._readiness_chip.set_compact(need > self._page_header.width())
+
+    def showEvent(self, event) -> None:  # noqa: N802 - Qt API
+        super().showEvent(event)
+        self._sync_pane()
+        self._fit_header()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt API
+        super().resizeEvent(event)
+        self._sync_pane()
+        self._fit_header()
+
+    def _open_diff(self, run_id: str) -> None:
+        """ "Open diff" on an attempt: the right pane's Diff tab on that attempt."""
+        self._pane_auto = False
         self._pane_toggle.setChecked(True)
-        self._tabs.setCurrentIndex(self._tabs.count() - 1)
-        self._body_scroll.ensureWidgetVisible(self._tabs)
+        self._records.show_attempt(run_id)
 
     def _retitle_tabs(self, tasks: list, runs: list, verifications: list, failures: list) -> None:
         """Show live record counts on the tab labels (e.g. ``Tasks (3)``)."""
@@ -639,6 +695,10 @@ class WorkflowsView(BaseView):
         self._title_label.setText(str(model.get("prompt") or ""))
         self._title_label.setToolTip(self._title_label.text())
         self._readiness_chip.set_readiness(dict(model.get("readiness") or {}))
+        self._fit_header()
+        self._records.set_workflow(
+            self.repository(), str(workflow.get("id") or ""), model.get("blocks")
+        )
 
         self._tasks.set_rows(tasks)
         self._runs.set_rows(runs)
@@ -775,6 +835,9 @@ class WorkflowsView(BaseView):
         self._flow.highlight(str(stage.get("key") or ""))
         task_ids = [str(item) for item in stage.get("task_ids") or () if item]
         if task_ids:
+            self._pane_auto = False
+            self._pane_toggle.setChecked(True)
+            self._records.set_tab("records")
             self._tabs.setCurrentIndex(0)
             self._select_by_id(self._tasks, task_ids[0])
 
