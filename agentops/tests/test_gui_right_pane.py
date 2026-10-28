@@ -1,5 +1,5 @@
-"""Phase C3 right pane: Diff / Records, its toggle, and the narrow window
-rule (below 1280px an open pane collapses the thread list)."""
+"""Phase C3 right pane: Diff / Logs / Records, its toggle, and the narrow
+window rule (below 1280px an open pane collapses the thread list)."""
 
 from __future__ import annotations
 
@@ -30,6 +30,14 @@ class PaneController(FakeController):
     def workflow_diff(self, directory, workflow_id, max_bytes=262144):
         self._rec("workflow_diff", directory, workflow_id)
         return {"source": "worktree", "text": DIFF, "truncated": False}
+
+    def list_logs(self, directory, task_id=None, limit=200):
+        self._rec("list_logs", directory, task_id)
+        return [{"name": f"{task_id}/run.stdout.log", "path": "", "size": 5, "modified": 0}]
+
+    def read_log(self, directory, name, max_bytes=65536):
+        self._rec("read_log", directory, name)
+        return {"name": name, "text": "tail of the log", "truncated": False}
 
 
 @requires_qt
@@ -94,7 +102,7 @@ class RightPaneTest(unittest.TestCase):
         pane.closed.emit()  # the pane's X keeps the toggle in step
         self.assertFalse(view._pane_toggle.isChecked())
 
-    def test_open_diff_picks_the_attempt_and_records_hold_the_tabs(self):
+    def test_open_diff_and_logs_follow_the_picked_attempt_records_hold_the_tabs(self):
         window, view = self._window(1100, 700)
         pane = view._records
         view._transcript.open_diff_requested.emit("r-1")
@@ -103,6 +111,10 @@ class RightPaneTest(unittest.TestCase):
         self.assertTrue(wait_until(lambda: bool(self.called("workflow_diff"))))
         wait(100)
         self.assertEqual(pane._diff.files(), [])  # an older attempt: its recorded stat
+        pane.set_tab("logs")
+        self.assertTrue(wait_until(lambda: pane._log.toPlainText() == "tail of the log"))
+        self.assertEqual(self.called("list_logs"), [(REPOSITORY, "t-2")])
+        self.assertEqual(self.called("read_log"), [(REPOSITORY, "t-2/run.stdout.log")])
         pane.set_tab("records")
         self.assertTrue(pane.isAncestorOf(view._tabs))
         self.assertTrue(view._tabs.isVisible())
