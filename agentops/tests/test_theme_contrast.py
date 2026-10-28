@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import unittest
 
-from agentops.gui.tokens import DARK
+from agentops.gui.tokens import DARK, LIGHT
 
 AA = 4.5
 
@@ -64,6 +64,12 @@ class ThemeContrastTest(unittest.TestCase):
         for status in ("success", "warning", "danger", "orange", "info", "accent"):
             with self.subTest(status=status):
                 self.assert_aa(status, "surface")
+
+
+class LightThemeContrastTest(ThemeContrastTest):
+    """The same AA pairs for the opt-in light theme."""
+
+    theme = LIGHT
 
 
 if __name__ == "__main__":
