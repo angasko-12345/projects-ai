@@ -6,18 +6,22 @@ import unittest
 
 from tests.qt_display import qt_app, requires_qt
 
-SAMPLE = """\
+SAMPLE = (
+    """\
 diff --git a/app.py b/app.py
 --- a/app.py
 +++ b/app.py
 @@ -1,2 +1,2 @@
 -a = 1
-+a = 2 # """ + "x" * 400 + """
++a = 2 # """
+    + "x" * 400
+    + """
  b = 2
 @@ -9,1 +9,2 @@
  c = 3
 +d = 4
 """
+)
 
 
 @requires_qt
@@ -41,7 +45,9 @@ class DiffViewRenderTests(unittest.TestCase):
 
     def test_paints_tinted_rows_bars_and_no_horizontal_scroll(self):
         self.view.set_diff_text(SAMPLE, truncated=True)
-        self.assertEqual([(f.path, f.removed, f.added) for f in self.view.files()], [("app.py", 1, 2)])
+        self.assertEqual(
+            [(f.path, f.removed, f.added) for f in self.view.files()], [("app.py", 1, 2)]
+        )
         self.assertTrue(set(self.colors) <= self._pixels())
         self.assertFalse(self.view.horizontalScrollBar().isVisible())
         # header + 3 rows + gap + 2 rows + truncation note

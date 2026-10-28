@@ -109,7 +109,9 @@ class _Canvas(QWidget):
         painter.setPen(QColor(t.danger))
         painter.drawText(box.adjusted(minus_x, 0, plus_x, 0), Qt.AlignmentFlag.AlignVCenter, minus)
         painter.setFont(self._view._ui)
-        path = painter.fontMetrics().elidedText(diff.path, Qt.TextElideMode.ElideMiddle, minus_x - 60)
+        path = painter.fontMetrics().elidedText(
+            diff.path, Qt.TextElideMode.ElideMiddle, minus_x - 60
+        )
         painter.setPen(QColor(t.text))
         painter.drawText(box.adjusted(48, 0, minus_x - 8, 0), Qt.AlignmentFlag.AlignVCenter, path)
         painter.setFont(self._view._mono)
@@ -123,14 +125,20 @@ class _Canvas(QWidget):
             label = f"{row.number} unmodified lines" if row.kind == "gap" else row.text
             label_w = painter.fontMetrics().horizontalAdvance(label)
             if row.kind == "note":
-                label = painter.fontMetrics().elidedText(label, Qt.TextElideMode.ElideRight, width - text_x - 8)
+                label = painter.fontMetrics().elidedText(
+                    label, Qt.TextElideMode.ElideRight, width - text_x - 8
+                )
                 painter.setPen(QColor(t.text_muted))
                 painter.drawText(box.adjusted(text_x, 0, width - 8, 0), middle, label)
                 return
             left = max(text_x, (width - label_w) / 2)
-            painter.fillRect(QRectF(text_x, top + LINE_H / 2, left - text_x - 8, 1), QColor(t.border))
-            painter.fillRect(QRectF(left + label_w + 8, top + LINE_H / 2, width - left - label_w - 16, 1),
-                             QColor(t.border))
+            painter.fillRect(
+                QRectF(text_x, top + LINE_H / 2, left - text_x - 8, 1), QColor(t.border)
+            )
+            painter.fillRect(
+                QRectF(left + label_w + 8, top + LINE_H / 2, width - left - label_w - 16, 1),
+                QColor(t.border),
+            )
             painter.setPen(QColor(t.text_faint))
             painter.drawText(box.adjusted(left, 0, left + label_w + 1, 0), middle, label)
             return
@@ -142,9 +150,14 @@ class _Canvas(QWidget):
             number_color = bar
         if row.number is not None:
             painter.setPen(QColor(number_color))
-            painter.drawText(box.adjusted(BAR_W, 0, BAR_W + gutter - 8, 0),
-                             middle | Qt.AlignmentFlag.AlignRight, str(row.number))
-        text = painter.fontMetrics().elidedText(row.text, Qt.TextElideMode.ElideRight, width - text_x - 8)
+            painter.drawText(
+                box.adjusted(BAR_W, 0, BAR_W + gutter - 8, 0),
+                middle | Qt.AlignmentFlag.AlignRight,
+                str(row.number),
+            )
+        text = painter.fontMetrics().elidedText(
+            row.text, Qt.TextElideMode.ElideRight, width - text_x - 8
+        )
         painter.setPen(QColor(t.text))
         painter.drawText(box.adjusted(text_x, 0, width - 8, 0), middle, text)
 
@@ -192,7 +205,9 @@ class DiffView(QScrollArea):
         plain = [] if files else text.splitlines()
         notes = []
         if truncated:
-            notes.append(f"Diff truncated at {len(text.encode('utf-8')) // 1024} KB; the rest is not shown.")
+            notes.append(
+                f"Diff truncated at {len(text.encode('utf-8')) // 1024} KB; the rest is not shown."
+            )
         self._show(files, plain, notes)
 
     def set_collapsed(self, path: str, collapsed: bool) -> None:
