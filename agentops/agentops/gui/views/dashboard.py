@@ -8,7 +8,7 @@ only shows when nothing has loaded yet.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QComboBox,
@@ -80,6 +80,10 @@ class DashboardView(BaseView):
 
     view_id = "dashboard"
     title = "Dashboard"
+
+    # Needs-attention count from each dashboard_summary result, so the shell's
+    # rail badge reuses this poll instead of reading state again.
+    attention_changed = Signal(int)
 
     # ------------------------------------------------------------------
     def _build(self) -> None:
@@ -240,6 +244,7 @@ class DashboardView(BaseView):
 
     def _show_no_repo(self) -> None:
         """Empty state: no repository chosen, nothing loaded yet."""
+        self.attention_changed.emit(0)
         self._summary_loaded = False
         self._agents_loaded = False
         self._page_header.set_subtitle("No repository chosen")
@@ -355,6 +360,7 @@ class DashboardView(BaseView):
         self._verification_detail.setText(_counts_line(verification, exclude="passed"))
 
         needs = list(summary.get("needs_attention") or [])
+        self.attention_changed.emit(len(needs))
         self._attention_count.setText(f"{len(needs)} need attention" if needs else "")
         self._attention_empty.setVisible(not needs)
         if not needs:

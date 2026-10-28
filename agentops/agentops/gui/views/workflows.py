@@ -196,7 +196,10 @@ class WorkflowsView(BaseView):
         self._body_scroll = QScrollArea()
         self._body_scroll.setWidgetResizable(True)
         self._body_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        self._body_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        # As needed, not off: the rail takes 52px, and in narrow windows the
+        # stage cards' one-line facts are wider than the pane. Clipping them
+        # with no way to scroll hid the status pill and the duration.
+        self._body_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         content = QWidget()
         body = QVBoxLayout(content)
         # The layout pins the content's minimum size, so the content grows by

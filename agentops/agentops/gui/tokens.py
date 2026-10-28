@@ -40,6 +40,7 @@ class Theme:
     # Surfaces
     bg: str
     sidebar: str
+    rail: str  # the 52px icon rail, one step darker than bg
     surface: str
     surface_alt: str
     surface_hover: str
@@ -123,6 +124,7 @@ DARK = Theme(
     name="dark",
     bg="#0b0c0f",
     sidebar="#0f1014",
+    rail="#08090b",
     surface="#14161a",
     surface_alt="#1a1c21",
     surface_hover="#1e2026",
@@ -154,6 +156,7 @@ LIGHT = Theme(
     name="light",
     bg="#f6f7f9",
     sidebar="#eef0f4",
+    rail="#e9ebef",
     surface="#ffffff",
     surface_alt="#f1f3f6",
     surface_hover="#e9ecf1",
@@ -446,43 +449,21 @@ QLabel[role="section"] {{
     font-weight: 600;
     color: {t.text};
 }}
-QLabel[role="group"] {{
-    font-size: {t.size_micro}px;
-    font-weight: 600;
-    color: {t.text_faint};
-    padding-left: {t.space_sm + 3}px;
-}}
 
 /* ---- sidebar ---- */
 QWidget#Sidebar {{
     background: {t.sidebar};
     border-right: 1px solid {t.border};
 }}
-QPushButton[nav="true"] {{
-    background: transparent;
+
+/* ---- icon rail ---- */
+QWidget#Rail {{
+    background: {t.rail};
+    border-right: 1px solid {t.border};
+}}
+QFrame#RailSeparator {{
+    background: {t.border_strong};
     border: none;
-    border-left: 2px solid transparent;
-    border-radius: {t.radius_sm}px;
-    color: {t.text_muted};
-    text-align: left;
-    padding: {t.space_sm - 1}px {t.space_md}px;
-    font-size: {t.size_base}px;
-}}
-QPushButton[nav="true"]:hover {{
-    background: {t.surface_hover};
-    color: {t.text};
-}}
-QPushButton[nav="true"]:pressed {{
-    background: {t.surface_alt};
-}}
-QPushButton[nav="true"]:focus {{
-    background: {t.surface_hover};
-    color: {t.text};
-}}
-QPushButton[nav="true"]:checked {{
-    background: {with_alpha(t.accent, 0.13)};
-    border-left: 2px solid {t.accent};
-    color: {t.text};
 }}
 
 /* ---- icon buttons and chips (components.py) ---- */
