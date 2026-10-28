@@ -453,16 +453,19 @@ class VisualStateTest(unittest.TestCase):
         from dataclasses import replace
 
         received: list[tuple] = []
-        self._activate("dashboard")
-        view = self.window._views["dashboard"]
+        self._activate("workflows")
+        view = self.window._views["workflows"]._composer  # the hero moved to the composer
         view.ctx = replace(
-            view.ctx, new_task=lambda text, agent=None: received.append((text, agent))
+            view.ctx,
+            start_task=lambda text, repository=None, agent=None, profile=None: received.append(
+                (text, agent)
+            ),
         )
-        view._hero_input.setPlainText("  hero task  ")
-        view._start_hero_task()
+        view._input.setPlainText("  hero task  ")
+        view._submit()
         self.assertEqual(received, [("hero task", None)])
-        view._hero_input.setPlainText("   ")
-        view._start_hero_task()
+        view._input.setPlainText("   ")
+        view._submit()
         self.assertEqual(received, [("hero task", None)])
 
     def test_new_task_dialog_accepts_a_prefilled_description(self):
@@ -611,19 +614,22 @@ class VisualStateTest(unittest.TestCase):
     def test_hero_agent_picker_flows_into_task_creation(self):
         from dataclasses import replace
 
-        self._activate("dashboard")
-        view = self.window._views["dashboard"]
+        self._activate("workflows")
+        view = self.window._views["workflows"]._composer  # the hero moved to the composer
         self.assertTrue(wait_until(lambda: view._agents_loaded))
-        self.assertEqual(view._hero_agent.count(), 2)
-        self.assertFalse(view._hero_agent.itemIcon(1).isNull())
-        view._hero_agent.setCurrentIndex(1)
-        self.assertEqual(view._hero_agent.currentData(), "codex")
+        self.assertEqual(view._agent.count(), 2)
+        self.assertFalse(view._agent.itemIcon(1).isNull())
+        view._agent.setCurrentIndex(1)
+        self.assertEqual(view._agent.currentData(), "codex")
         received: list[tuple] = []
         view.ctx = replace(
-            view.ctx, new_task=lambda text, agent=None: received.append((text, agent))
+            view.ctx,
+            start_task=lambda text, repository=None, agent=None, profile=None: received.append(
+                (text, agent)
+            ),
         )
-        view._hero_input.setPlainText("hero work")
-        view._start_hero_task()
+        view._input.setPlainText("hero work")
+        view._submit()
         self.assertEqual(received, [("hero work", "codex")])
 
     def test_new_task_dialog_prefills_agent_choice(self):

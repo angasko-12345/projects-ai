@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 
 from .. import control_center as projection
 from ..components import IconButton
+from ..composer import Composer
 from ..detail import _confirm
 from ..format import elide, format_duration, format_size, format_timestamp, short_id
 from ..platform import open_path_external
@@ -211,7 +212,10 @@ class WorkflowsView(BaseView):
         body.setSpacing(DARK.space_md)
         self._build_body(body)
         self._body_scroll.setWidget(content)
-        pane.addWidget(self._body_scroll)
+        pane.addWidget(self._body_scroll, 1)
+        # The composer stays pinned under the transcript; it starts new tasks.
+        self._composer = Composer(self.ctx)
+        pane.addWidget(self._composer)
         splitter.addWidget(self._body)
         splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 5)
@@ -564,6 +568,7 @@ class WorkflowsView(BaseView):
                 "No repository selected", "Pick a repository in the sidebar."
             )
             return
+        self._composer.set_repository(repository)
 
         def load() -> object:
             return load_threads(self.ctx.controller, repository)
@@ -692,6 +697,8 @@ class WorkflowsView(BaseView):
         self._page_header._heading.setVisible(False)
         self._crumb.setVisible(True)
         self._repo_label.setText(Path(self.repository() or "").name)
+        self._composer.set_repository(self.repository())
+        self._composer.set_worktree(self._payload["worktree_ref"])
         self._title_label.setText(str(model.get("prompt") or ""))
         self._title_label.setToolTip(self._title_label.text())
         self._readiness_chip.set_readiness(dict(model.get("readiness") or {}))

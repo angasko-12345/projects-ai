@@ -339,6 +339,7 @@ class MainWindow(QMainWindow, AsyncMixin):
             operation_active=lambda: self._active,
             update_settings=self.update_settings,
             new_task=self.open_new_task,
+            start_task=self.start_task,
         )
         self._views_ctx = context
         self._views = create_views(context)
