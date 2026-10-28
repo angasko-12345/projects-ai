@@ -14,7 +14,6 @@ from datetime import datetime
 from pathlib import PurePath
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
@@ -31,50 +30,18 @@ from PySide6.QtWidgets import (
 from .. import derive
 from ..charts import AreaChart, Donut
 from ..components import Chip, SectionLabel
-from ..format import elide, format_timestamp, short_id
+from ..format import elide, format_timestamp
 from ..icons import icon
 from ..tokens import DARK, with_alpha
-from ..widgets import (
-    Card,
-    PageHeader,
-    StatCard,
-    TablePanel,
-    TableColumn,
-    ghost_button,
-    muted,
-)
+from ..widgets import Card, PageHeader, StatCard, ghost_button, muted
 from .base import BaseView
-
-_WORKFLOW_COLUMNS = (
-    TableColumn("status", "Status", 110),
-    TableColumn(
-        "description", "Description", 240, format=lambda value: elide(str(value or ""), 64)
-    ),
-    TableColumn("task_count", "Tasks", 80),
-    TableColumn("run_count", "Runs", 80),
-    TableColumn("created_at", "Created", 150, format=format_timestamp),
-    TableColumn("id", "Workflow", 100, format=lambda value: short_id(value, 8)),
-)
-
-# Failure severity drives the attention-row foreground; anything unknown
-# stays at the default text color so a new severity never renders invisible.
-_SEVERITY_COLORS = {
-    "critical": DARK.danger,
-    "high": DARK.danger,
-    "medium": DARK.warning,
-    "low": DARK.text_muted,
-}
+from .dashboard_parts import AttentionHeader, AttentionTable
 
 _NO_REPOSITORY = "Pick a repository in Workflows, or with Ctrl+K, to begin."
-_NO_WORKFLOWS = "Start a task to see workflows here."
 _READ_LIMIT = 500  # newest agent / verification runs read for charts and stats
 _DAYS = 14
 _REPO_TITLE_PX = 30
 _DECIDED = ("passed", "failed", "timed_out", "unverified")
-
-
-def _pretty(text: object) -> str:
-    return str(text or "unknown").replace("_", " ")
 
 
 def _duration(seconds: int) -> str:
@@ -203,45 +170,10 @@ class DashboardView(BaseView):
         root.addLayout(self._build_charts())
         self._window_note = QLabel("")
         self._window_note.setProperty("role", "faint")
-        self._verification_stat.setText("-")
-        self._verification_stat.setStyleSheet("font-size: 20px; font-weight: 600;")
         self._window_note.hide()
         root.addWidget(self._window_note)
 
-        main = QHBoxLayout()
-        main.setSpacing(DARK.space_md)
-
-        left = QVBoxLayout()
-        left.setSpacing(DARK.space_md)
-        attention_card = Card("Needs attention")
-        attention_body = attention_card.body()
-        self._attention_count = muted("")
-        attention_body.addWidget(self._attention_count)
-        self._attention_empty = muted(_NO_REPOSITORY)
-        attention_body.addWidget(self._attention_empty)
-        self._attention_list = QListWidget()
-        self._attention_list.setMaximumHeight(160)
-        self._attention_list.itemActivated.connect(lambda _item: self.ctx.navigate("failures"))
-        attention_body.addWidget(self._attention_list)
-        attention_actions = QHBoxLayout()
-        attention_actions.addStretch(1)
-        open_failures = ghost_button("Open failures")
-        open_failures.clicked.connect(lambda: self.ctx.navigate("failures"))
-        attention_actions.addWidget(open_failures)
-        attention_body.addLayout(attention_actions)
-        left.addWidget(attention_card)
-
-        workflows_card = Card("Recent workflows")
-        self._workflows_table = TablePanel(_WORKFLOW_COLUMNS, "No workflows yet", _NO_WORKFLOWS)
-        workflows_card.add(self._workflows_table)
-        self._workflows_table.activated.connect(
-            lambda row: self.ctx.open_task(str(row.get("id") or ""), "")
-        )
-        left.addWidget(workflows_card, stretch=1)
-        main.addLayout(left, stretch=3)
-
-        right = QVBoxLayout()
-        right.setSpacing(DARK.space_md)
+        root.addWidget(self._build_attention())
         activity_card = Card("Recent activity")
         activity_body = activity_card.body()
         # The activity card stretches to fill its column; without an
@@ -259,10 +191,7 @@ class DashboardView(BaseView):
         # the full message readable instead of a clipped horizontal scroll.
         self._activity_list.setWordWrap(True)
         activity_body.addWidget(self._activity_list)
-        right.addWidget(activity_card, stretch=1)
-        main.addLayout(right, stretch=2)
-
-        root.addLayout(main, stretch=1)
+        root.addWidget(activity_card, stretch=1)
 
         self._summary: dict = {}
         self._reads: dict[str, list] = {}
@@ -329,6 +258,34 @@ class DashboardView(BaseView):
     def resizeEvent(self, event) -> None:  # noqa: N802 - Qt API
         super().resizeEvent(event)
         self._place_week(4 if self.width() >= 1040 else 2)
+
+    def _build_attention(self) -> QWidget:
+        section = QWidget()
+        column = QVBoxLayout(section)
+        column.setContentsMargins(0, DARK.space_sm, 0, 0)
+        column.setSpacing(DARK.space_sm)
+        head = QHBoxLayout()
+        head.addWidget(SectionLabel("Needs attention"))
+        head.addStretch(1)
+        open_failures = ghost_button("Open Failures \u2192")
+        open_failures.setStyleSheet(f"color: {DARK.accent};")
+        open_failures.clicked.connect(lambda: self.ctx.navigate("failures"))
+        head.addWidget(open_failures)
+        column.addLayout(head)
+        card = _navy_card()
+        card.body().setContentsMargins(0, 0, 0, DARK.space_sm)
+        card.body().setSpacing(0)
+        self._attention_header = AttentionHeader()
+        card.add(self._attention_header)
+        self._attention_list = AttentionTable()
+        self._attention_list.itemActivated.connect(lambda _item: self.ctx.navigate("failures"))
+        card.add(self._attention_list)
+        self._attention_empty = muted(_NO_REPOSITORY)
+        self._attention_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._attention_empty.setMinimumHeight(72)
+        card.add(self._attention_empty)
+        column.addWidget(card)
+        return section
 
     def _build_charts(self) -> QHBoxLayout:
         row = QHBoxLayout()
@@ -400,12 +357,11 @@ class DashboardView(BaseView):
             card.value.setText("-")
             card.value.setStyleSheet("")
             card.set_note("")
-        self._attention_count.setText("")
+        self._attention_header.hide()
+        self._attention_list.set_rows([])
+        self._attention_list.hide()
         self._attention_empty.setText(_NO_REPOSITORY)
         self._attention_empty.show()
-        self._attention_list.hide()
-        self._workflows_table.set_empty_state("No repository chosen", _NO_REPOSITORY)
-        self._workflows_table.set_rows([])
         self._activity_empty.setText(_NO_REPOSITORY)
         self._activity_empty.show()
         self._activity_list.hide()
@@ -418,6 +374,8 @@ class DashboardView(BaseView):
         self._donut_legend.hide()
         self._donut_empty.setText(text)
         self._donut_empty.show()
+        self._verification_stat.setText("-")
+        self._verification_stat.setStyleSheet("font-size: 20px; font-weight: 600;")
         self._window_note.hide()
 
     # ------------------------------------------------------------------
@@ -477,6 +435,7 @@ class DashboardView(BaseView):
             return
         self._reads[key] = [row for row in result if isinstance(row, dict)]
         self._render_week()
+        self._render_attention()
         if key == "runs":
             self._render_runs()
 
@@ -497,29 +456,7 @@ class DashboardView(BaseView):
         self._render_week()
 
         self.attention_changed.emit(len(needs))
-        self._attention_count.setText(f"{len(needs)} need attention" if needs else "")
-        self._attention_empty.setVisible(not needs)
-        if not needs:
-            self._attention_empty.setText("Nothing needs attention right now.")
-        self._attention_list.setVisible(bool(needs))
-        self._attention_list.clear()
-        for failure in needs:
-            severity = str(failure.get("severity") or "").lower()
-            action = _pretty(failure.get("recommended_action"))
-            text = elide(
-                f"{_pretty(failure.get('category'))}  ·  {severity}  ·  {action}",
-                70,
-            )
-            item = QListWidgetItem(text)
-            item.setForeground(QColor(_SEVERITY_COLORS.get(severity, DARK.text)))
-            created = str(failure.get("created_at") or "")
-            error = str(failure.get("primary_error") or text)
-            item.setToolTip(f"{created}\n{error}" if created else error)
-            self._attention_list.addItem(item)
-
-        rows = list(summary.get("recent_workflows") or [])
-        self._workflows_table.set_empty_state("No workflows yet", _NO_WORKFLOWS)
-        self._workflows_table.set_rows(rows)
+        self._render_attention()
 
         events = list(summary.get("recent_events") or [])
         self._activity_empty.setVisible(not events)
@@ -613,3 +550,17 @@ class DashboardView(BaseView):
         capped = len(reads["runs"]) >= _READ_LIMIT or len(reads["verifications"]) >= _READ_LIMIT
         self._window_note.setText(f"Based on the newest {_READ_LIMIT} runs.")
         self._window_note.setVisible(capped)
+
+    def _render_attention(self) -> None:
+        """Needs-attention table, joined on the workflow and run reads."""
+        if not self._summary:
+            return
+        now = datetime.now().astimezone()
+        workflows = self._reads.get("workflows", [])
+        needs = list(self._summary.get("needs_attention") or [])
+        rows = derive.attention_rows(needs, workflows, self._reads.get("runs", []), now)
+        self._attention_list.set_rows(rows)
+        self._attention_header.setVisible(bool(rows))
+        self._attention_list.setVisible(bool(rows))
+        self._attention_empty.setVisible(not rows)
+        self._attention_empty.setText("Nothing needs attention right now.")

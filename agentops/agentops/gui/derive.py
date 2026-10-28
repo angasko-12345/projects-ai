@@ -246,6 +246,73 @@ def week_stats(
     }
 
 
+# Failure category and recommended action in words (FailureCategory and
+# RepairAction values); anything else falls back to sentence case.
+PROBLEM_WORDS = {
+    "test_failure": "Tests failed",
+    "timeout": "Agent timed out",
+    "git_conflict": "Merge conflict",
+    "lint_failure": "Lint failed",
+    "typecheck_failure": "Type check failed",
+    "build_failure": "Build failed",
+    "verification_failure": "Verification failed",
+    "review_rejection": "Review rejected",
+    "usage_limit": "Usage limit hit",
+    "dirty_worktree": "Worktree not clean",
+}
+NEXT_STEP_WORDS = {
+    "retry_same_agent": "Retry same agent",
+    "retry_different_agent": "Try another agent",
+    "repair_implementation": "Repair implementation",
+    "rerun_verification": "Rerun verification",
+    "request_approval": "Ask for approval",
+    "stop": "Resolve manually",
+}
+
+
+def _words(value: object, table: dict[str, str]) -> str:
+    key = str(value or "").strip().lower()
+    if key in table:
+        return table[key]
+    text = key.replace("_", " ")
+    return text[:1].upper() + text[1:]
+
+
+def attention_rows(
+    failures: Iterable[dict], workflows: Iterable[dict], runs: Iterable[dict], now: datetime
+) -> list[dict]:
+    """Needs-attention table rows, every value joined from existing reads.
+
+    The workflow comes from ``list_workflows`` by id, the agent from the run
+    that failed (``agent_run_id``) or else the newest run of the same task.
+    """
+    titles = {str(w.get("id") or ""): str(w.get("description") or "") for w in workflows}
+    by_id: dict[str, dict] = {}
+    by_task: dict[str, dict] = {}
+    for run in runs:  # newest first
+        by_id.setdefault(str(run.get("id") or ""), run)
+        by_task.setdefault(str(run.get("task_id") or ""), run)
+    rows = []
+    for failure in failures:
+        workflow_id = str(failure.get("workflow_id") or "")
+        run = by_id.get(str(failure.get("agent_run_id") or "")) or by_task.get(
+            str(failure.get("task_id") or ""), {}
+        )
+        rows.append(
+            {
+                "workflow": titles.get(workflow_id) or workflow_id[:8] or "Unknown workflow",
+                "problem": _words(failure.get("category"), PROBLEM_WORDS),
+                "severity": str(failure.get("severity") or "").lower(),
+                "agent": str(run.get("agent") or ""),
+                "next_step": _words(failure.get("recommended_action"), NEXT_STEP_WORDS),
+                "age": rel_age(failure.get("created_at"), now),
+                "error": str(failure.get("primary_error") or ""),
+                "created_at": str(failure.get("created_at") or ""),
+            }
+        )
+    return rows
+
+
 def state_db_exists(repository: str) -> bool:
     return (Path(repository) / ".agentops" / "state.sqlite").is_file()
 
