@@ -141,5 +141,83 @@ class PollableRepositoriesTest(unittest.TestCase):
         )
 
 
+def run(started: str, status: str = "completed", seconds: float = 60.0, **extra: object) -> dict:
+    return {"started_at": started, "status": status, "duration_seconds": seconds, **extra}
+
+
+class DailySeriesTest(unittest.TestCase):
+    def test_empty_is_fourteen_zero_days_ending_today(self):
+        series = derive.daily_series([], days=14, now=NOW)
+        self.assertEqual(len(series), 14)
+        self.assertEqual(series[-1][0], NOW.date())
+        self.assertEqual(series[0][0], (NOW - timedelta(days=13)).date())
+        self.assertTrue(all(total == 0 and failed == 0 for _day, total, failed in series))
+
+    def test_one_day_counts_failed_timed_out_and_terminated(self):
+        runs = [
+            run(ago(hours=1)),
+            run(ago(hours=2), "failed"),
+            run(ago(hours=3), "timed_out"),
+            run(ago(hours=4), "completed", terminated=True),
+            run(ago(hours=5), "cancelled"),
+            run(ago(days=20), "failed"),  # outside the window
+            {"status": "failed"},  # no timestamp
+        ]
+        series = derive.daily_series(runs, days=14, now=NOW)
+        self.assertEqual(series[-1], (NOW.date(), 5, 3))
+        self.assertEqual(sum(total for _d, total, _f in series), 5)
+
+    def test_all_zero_window_and_created_at_fallback(self):
+        series = derive.daily_series([{"created_at": ago(days=1), "status": "pending"}], 3, NOW)
+        self.assertEqual([total for _d, total, _f in series], [0, 1, 0])
+        outside = derive.daily_series([run(ago(days=5)), run(ago(days=-2))], 3, NOW)
+        self.assertEqual([(t, f) for _d, t, f in outside], [(0, 0)] * 3)
+
+
+class WeekStatsTest(unittest.TestCase):
+    def test_empty_everything_has_no_prior_week(self):
+        stats = derive.week_stats([], [], [], 0, NOW)
+        self.assertEqual(stats["workflows"], {"value": 0, "delta": None})
+        self.assertEqual(stats["pass_rate"], {"value": None, "delta": None})
+        self.assertEqual(stats["agent_time"], {"value": 0, "delta": None})
+        self.assertEqual(stats["attention"], {"value": 0, "delta": None})
+
+    def test_previous_week_empty_gives_none_deltas(self):
+        stats = derive.week_stats(
+            [workflow("a", "passed", ago(days=1))],
+            [run(ago(days=1), seconds=90)],
+            [{"started_at": ago(days=1), "overall_status": "passed"}],
+            2,
+            NOW,
+        )
+        self.assertEqual(stats["workflows"], {"value": 1, "delta": None})
+        self.assertEqual(stats["pass_rate"], {"value": 100, "delta": None})
+        self.assertEqual(stats["agent_time"], {"value": 90, "delta": None})
+        self.assertEqual(stats["attention"]["value"], 2)
+
+    def test_deltas_against_the_previous_week(self):
+        workflows = [workflow(str(i), "passed", ago(days=1)) for i in range(3)]
+        workflows += [workflow("p1", "passed", ago(days=9)), workflow("p2", "x", ago(days=10))]
+        workflows.append(workflow("old", "passed", ago(days=30)))
+        runs = [run(ago(days=2), seconds=150), run(ago(days=8), seconds=100)]
+        verifications = [
+            {"started_at": ago(days=1), "overall_status": "passed"},
+            {"started_at": ago(days=1), "overall_status": "FAILED"},
+            {"started_at": ago(days=1), "overall_status": "cancelled"},  # undecided
+            {"started_at": ago(days=1), "overall_status": None},  # still running
+            {"started_at": ago(days=8), "overall_status": "passed"},
+        ]
+        stats = derive.week_stats(workflows, runs, verifications, 5, NOW)
+        self.assertEqual(stats["workflows"], {"value": 3, "delta": 50})
+        self.assertEqual(stats["pass_rate"], {"value": 50, "delta": -50})
+        self.assertEqual(stats["agent_time"], {"value": 150, "delta": 50})
+
+    def test_all_zero_durations_have_no_time_delta(self):
+        stats = derive.week_stats(
+            [], [run(ago(days=1), seconds=0), run(ago(days=8), seconds=0)], [], 0, NOW
+        )
+        self.assertEqual(stats["agent_time"], {"value": 0, "delta": None})
+
+
 if __name__ == "__main__":
     unittest.main()

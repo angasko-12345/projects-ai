@@ -1,7 +1,8 @@
-"""Qt-free presentation derivations for the workspace (thread list).
+"""Qt-free presentation derivations for the workspace and the dashboard.
 
 Everything here works on the plain dicts the controller already returns
-(``list_workflows``, ``list_worktree_refs``, ``list_recent_agent_runs``).
+(``list_workflows``, ``list_worktree_refs``, ``list_recent_agent_runs``,
+``list_recent_verification_runs``).
 Nothing touches SQLite, git or Qt, so it is unit-testable anywhere.
 """
 
@@ -9,7 +10,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Iterable
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 # Settle rule (plan-v2 §3.8, presentation only): a workflow drops into the
@@ -127,6 +128,122 @@ def thread_items(
         (settled if is_settled(workflow, now, settle_after) else active).append(item)
     active.sort(key=lambda item: _ACTIVE_ORDER.get(item["status"], 9))  # stable: newest first
     return active, settled
+
+
+# Agent-run outcomes the dashboard counts as "failed or timed out".
+FAILED_RUN = frozenset({"failed", "timed_out", "terminated"})
+# Verification outcomes that decide a pass rate. Cancelled and still-running
+# runs (no overall_status yet) prove nothing either way, so they are left out;
+# "unverified" (every check skipped) is never success, so it counts against.
+_DECIDED_VERIFICATION = frozenset({"passed", "failed", "timed_out", "unverified"})
+
+
+def run_failed(run: dict) -> bool:
+    """An agent run that ended failed, timed out or terminated."""
+    status = str(run.get("status") or "").lower()
+    return status in FAILED_RUN or bool(run.get("timed_out")) or bool(run.get("terminated"))
+
+
+def _stamp(record: dict, *keys: str) -> datetime | None:
+    for key in keys:
+        stamp = parse_ts(record.get(key))
+        if stamp is not None:
+            return stamp
+    return None
+
+
+def daily_series(
+    runs: Iterable[dict], days: int = 14, now: datetime | None = None
+) -> list[tuple[date, int, int]]:
+    """Agent runs per calendar day: ``[(day, total, failed)]``, oldest first.
+
+    Always ``days`` entries ending at ``now``'s date (in ``now``'s timezone),
+    zeros included; a run is placed by ``started_at`` (``created_at`` when it
+    never started) and runs outside the window are ignored.
+    """
+    now = now or datetime.now(timezone.utc)
+    days = max(1, int(days))
+    zone = now.tzinfo or timezone.utc
+    last = now.astimezone(zone).date()
+    first = last - timedelta(days=days - 1)
+    totals: dict[date, list[int]] = {first + timedelta(days=i): [0, 0] for i in range(days)}
+    for run in runs:
+        stamp = _stamp(run, "started_at", "created_at")
+        if stamp is None:
+            continue
+        bucket = totals.get(stamp.astimezone(zone).date())
+        if bucket is not None:
+            bucket[0] += 1
+            bucket[1] += int(run_failed(run))
+    return [(day, total, failed) for day, (total, failed) in totals.items()]
+
+
+def _pct_delta(current: float, previous: float) -> int | None:
+    """Whole-percent change, or None when there is no prior week to compare."""
+    if not previous:
+        return None
+    return round((current - previous) / previous * 100)
+
+
+def _pass_rate(runs: list[dict]) -> int | None:
+    decided = [
+        r for r in runs if str(r.get("overall_status") or "").lower() in _DECIDED_VERIFICATION
+    ]
+    if not decided:
+        return None
+    passed = sum(1 for r in decided if str(r.get("overall_status")).lower() == "passed")
+    return round(passed / len(decided) * 100)
+
+
+def week_stats(
+    workflows: Iterable[dict],
+    runs: Iterable[dict],
+    verification_runs: Iterable[dict],
+    attention_count: int,
+    now: datetime | None = None,
+) -> dict[str, dict[str, int | None]]:
+    """This week (the last 7 days) against the 7 days before it.
+
+    ``{"workflows", "pass_rate", "agent_time", "attention"}`` each map to
+    ``{"value", "delta"}``: workflows created (delta in %), verification
+    pass rate in % (delta in points), agent seconds (delta in %), and the
+    attention count (no delta). A delta is None when the previous week has
+    nothing to compare, which the view words as "no prior week".
+    """
+    now = now or datetime.now(timezone.utc)
+    week = timedelta(days=7)
+
+    def split(records: Iterable[dict], *keys: str) -> tuple[list[dict], list[dict]]:
+        this: list[dict] = []
+        prior: list[dict] = []
+        for record in records:
+            stamp = _stamp(record, *keys)
+            if stamp is None or stamp > now:
+                continue
+            if now - stamp <= week:
+                this.append(record)
+            elif now - stamp <= 2 * week:
+                prior.append(record)
+        return this, prior
+
+    wf_now, wf_prev = split(workflows, "created_at")
+    run_now, run_prev = split(runs, "started_at", "created_at")
+    ver_now, ver_prev = split(verification_runs, "started_at", "created_at")
+
+    def seconds(records: list[dict]) -> int:
+        return round(sum(float(r.get("duration_seconds") or 0) for r in records))
+
+    rate_now, rate_prev = _pass_rate(ver_now), _pass_rate(ver_prev)
+    time_now, time_prev = seconds(run_now), seconds(run_prev)
+    return {
+        "workflows": {"value": len(wf_now), "delta": _pct_delta(len(wf_now), len(wf_prev))},
+        "pass_rate": {
+            "value": rate_now,
+            "delta": None if rate_now is None or rate_prev is None else rate_now - rate_prev,
+        },
+        "agent_time": {"value": time_now, "delta": _pct_delta(time_now, time_prev)},
+        "attention": {"value": int(attention_count or 0), "delta": None},
+    }
 
 
 def state_db_exists(repository: str) -> bool:
