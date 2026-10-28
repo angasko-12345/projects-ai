@@ -1008,14 +1008,14 @@ def configure_app():
     from PySide6.QtGui import QFont
     from PySide6.QtWidgets import QApplication
 
-    from agentops.gui.tokens import DARK, build_stylesheet
+    from agentops.gui.tokens import DARK, apply_theme
 
     app = QApplication.instance() or QApplication([])
     if sys.platform != "win32":
         # Linux/macOS have no Segoe UI; substitute so metrics stay close to Windows.
         QFont.insertSubstitution(DARK.font_family, os.environ.get("AO_FONT_SUB", "DejaVu Sans"))
-    app.setFont(QFont(DARK.font_family))
-    app.setStyleSheet(build_stylesheet())
+    # Same Fusion style, palette, font and stylesheet as agentops.gui.app.run.
+    apply_theme(app, DARK)
     return app
 
 
