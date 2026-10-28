@@ -485,6 +485,32 @@ QPushButton[nav="true"]:checked {{
     color: {t.text};
 }}
 
+/* ---- icon buttons and chips (components.py) ---- */
+QToolButton[iconButton="true"] {{
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    padding: 0px;
+}}
+QToolButton[iconButton="true"]:hover {{
+    background: {t.surface_hover};
+}}
+QToolButton[iconButton="true"]:checked {{
+    background: {t.selected};
+}}
+QToolButton[iconButton="true"]:focus {{
+    border: 1px solid {t.accent};
+}}
+QFrame[chip="true"] {{
+    background: {t.surface_alt};
+    border: 1px solid {t.border};
+    border-radius: {t.radius_sm}px;
+}}
+QLabel[role="chip"] {{
+    color: {t.text_muted};
+    font-size: {t.size_caption}px;
+}}
+
 /* ---- top bar ---- */
 QWidget#TopBar {{
     background: {t.sidebar};
