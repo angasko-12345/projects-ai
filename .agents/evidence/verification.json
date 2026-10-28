@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-10-28T11:11:59+00:00",
-  "commit": "1524ab1c4518553182144141200674bcb811d734",
+  "generated_at": "2026-10-28T12:43:34+00:00",
+  "commit": "fb10d4ca30928cd5a93304784b7c01ba5430aee2",
   "python": "3.12.15",
   "platform": "Linux 6.12.110+ (aarch64)",
-  "measured_in": "a clean clone of 1524ab1c4518",
+  "measured_in": "a clean clone of fb10d4ca3092",
   "clean_checkout": true,
   "command_note": "Every command runs from its own product directory with the interpreter that ran this script. There is no repository-wide test command and these products share no dependencies.",
   "excluded": {
@@ -14,7 +14,7 @@
     {
       "product": "agentops",
       "directory": "agentops",
-      "commit": "1524ab1c4518553182144141200674bcb811d734",
+      "commit": "fb10d4ca30928cd5a93304784b7c01ba5430aee2",
       "command": [
         "/usr/local/bin/python3",
         "-m",
@@ -24,14 +24,14 @@
         "tests"
       ],
       "dirty_paths": [],
-      "total": 1269,
-      "duration_seconds": 40.033,
-      "skipped": 126,
+      "total": 1273,
+      "duration_seconds": 42.427,
+      "skipped": 130,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 1269 tests in 40.033s",
-        "OK (skipped=126)"
+        "Ran 1273 tests in 42.427s",
+        "OK (skipped=130)"
       ],
       "result": "pass"
     },
