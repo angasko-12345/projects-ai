@@ -17,12 +17,13 @@ from PySide6.QtCore import (
     QModelIndex,
     QObject,
     QPropertyAnimation,
+    QRectF,
     QSortFilterProxyModel,
     Qt,
     QVariantAnimation,
     Signal,
 )
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QIcon, QPainter, QPixmap
+from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
@@ -43,8 +44,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .components import paint_pill, pill_text
 from .format import format_duration
-from .tokens import DARK, Theme, status_colors, with_alpha
+from .tokens import DARK, Theme, qcolor, qfont, status_color, status_colors, with_alpha
 
 # Qt's QWIDGETSIZE_MAX (largest permitted widget maximumHeight); PySide6 does
 # not re-export it from QtWidgets on all versions.
@@ -466,9 +468,9 @@ class PulsingDot(QWidget):
         center = self.rect().center()
         radius = min(self.width(), self.height()) / 2 - 1
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(with_alpha(self._color, 0.22)))
+        painter.setBrush(qcolor(self._color, 0.22))
         painter.drawEllipse(center, radius, radius)
-        painter.setBrush(QColor(with_alpha(self._color, 0.35 + 0.65 * self._phase)))
+        painter.setBrush(qcolor(self._color, 0.35 + 0.65 * self._phase))
         painter.drawEllipse(center, radius * 0.6, radius * 0.6)
         painter.end()
 
@@ -538,7 +540,7 @@ def agent_icon(identifier: str, display_name: str = "", size: int = 16) -> QIcon
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor.fromHsv(_agent_hue(identifier), 150, 110))
         painter.drawRoundedRect(0, 0, size, size, size // 4, size // 4)
-        painter.setPen(QColor("#ffffff"))
+        painter.setPen(QColor(DARK.on_accent))
         font = painter.font()
         font.setPixelSize(max(8, int(size * 0.6)))
         font.setBold(True)
@@ -624,37 +626,18 @@ class StatusPillDelegate(QStyledItemDelegate):
         if not text:
             super().paint(painter, option, index)
             return
-        font = QFont(option.font)
-        font.setPointSize(self._theme.size_small)
-        font.setWeight(QFont.Weight.DemiBold)
-        metrics = QFontMetrics(font)
-        available = option.rect.adjusted(6, 5, -6, -5)
-        label = metrics.elidedText(
-            text.upper(), Qt.TextElideMode.ElideRight, max(0, available.width())
+        available = QRectF(option.rect.adjusted(6, 2, -6, -2))
+        selected = None
+        if option.state & QStyle.StateFlag.State_Selected:
+            selected = QColor(option.palette.highlightedText().color())
+        paint_pill(
+            painter,
+            available,
+            pill_text(text),
+            status_color(text, self._theme),
+            self._theme,
+            selected_text=selected,
         )
-        if not label:
-            super().paint(painter, option, index)
-            return
-        pill = metrics.boundingRect(label).adjusted(-8, -3, 8, 3)
-        pill.moveCenter(available.center())
-        foreground, background = status_colors(text.lower(), self._theme)
-        painter.save()
-        try:
-            painter.setFont(font)
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            if option.state & QStyle.StateFlag.State_Selected:
-                painter.setPen(Qt.PenStyle.NoPen)
-                painter.setBrush(QColor(with_alpha(background, 0.30)))
-                painter.drawRoundedRect(pill, 9, 9)
-                painter.setPen(QColor(option.palette.highlightedText().color()))
-            else:
-                painter.setPen(QColor(with_alpha(foreground, 0.35)))
-                painter.setBrush(QColor(with_alpha(background, 0.16)))
-                painter.drawRoundedRect(pill, 9, 9)
-                painter.setPen(QColor(foreground))
-            painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, label)
-        finally:
-            painter.restore()
 
 
 class TableModel(QAbstractTableModel):
@@ -977,10 +960,7 @@ class LogText(QPlainTextEdit):
 
     def __init__(self, parent: QWidget | None = None, theme: Theme = DARK):
         super().__init__(parent)
-        font = QFont(theme.font_mono)
-        font.setStyleHint(QFont.StyleHint.Monospace)
-        font.setPointSize(10)
-        self.setFont(font)
+        self.setFont(qfont(theme, theme.size_base, mono=True))
         self.setReadOnly(True)
         self.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         self.setMinimumHeight(120)
@@ -1004,7 +984,7 @@ class _PipelineStage(QWidget):
         self._key = str(stage.get("key", ""))
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(2)
+        layout.setSpacing(theme.space_xs)
         top = QHBoxLayout()
         top.setSpacing(theme.space_sm)
         self.dot = PulsingDot(size=10, parent=self)

@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .tokens import DARK
 from .views.base import AsyncMixin, ViewContext
 from .widgets import agent_icon, divider, faint, ghost_button, label, muted
 
@@ -47,7 +48,7 @@ class NewTaskDialog(QDialog, AsyncMixin):
         self.setMinimumSize(580, 520)
 
         layout = QVBoxLayout(self)
-        layout.setSpacing(12)
+        layout.setSpacing(DARK.space_md)
 
         layout.addWidget(label("New Task", "title"))
         layout.addWidget(

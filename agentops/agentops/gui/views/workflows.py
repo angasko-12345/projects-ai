@@ -7,11 +7,13 @@ widgets here only lay out what the controller already reported.
 
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QInputDialog,
     QMessageBox,
+    QScrollArea,
     QSplitter,
     QTabWidget,
     QVBoxLayout,
@@ -134,8 +136,9 @@ class WorkflowsView(BaseView):
     # ------------------------------------------------------------------
     def _build(self) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(18, 18, 18, 18)
-        root.setSpacing(12)
+        page = DARK.space_page
+        root.setContentsMargins(page, page, page, page)
+        root.setSpacing(DARK.space_md)
 
         self._page_header = PageHeader(self.title, "Live stages, tasks, runs, and merge readiness")
         self._status_badge = Badge()
@@ -156,7 +159,7 @@ class WorkflowsView(BaseView):
         self._page_header.add_action(self._delete_btn)
         root.addWidget(self._page_header)
         list_toolbar = QHBoxLayout()
-        list_toolbar.setSpacing(8)
+        list_toolbar.setSpacing(DARK.space_sm)
         self._wf_search = SearchBox("Search workflows...")
         self._wf_search.textChanged.connect(self._apply_list_filters)
         list_toolbar.addWidget(self._wf_search, stretch=1)
@@ -185,11 +188,29 @@ class WorkflowsView(BaseView):
         self._list.activated.connect(self._pick_workflow)
         splitter.addWidget(self._list)
 
+        # The body scrolls: without it a short pane squeezed the StageFlow
+        # cards to slivers and clipped their stage, agent and duration lines.
         self._body = _Pane()
-        body = QVBoxLayout(self._body)
+        pane = QVBoxLayout(self._body)
+        pane.setContentsMargins(0, 0, 0, 0)
+        self._body_scroll = QScrollArea()
+        self._body_scroll.setWidgetResizable(True)
+        self._body_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        # As needed, not off: the rail takes 52px, and in narrow windows the
+        # stage cards' one-line facts are wider than the pane. Clipping them
+        # with no way to scroll hid the status pill and the duration.
+        self._body_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        content = QWidget()
+        body = QVBoxLayout(content)
+        # The layout pins the content's minimum size, so the content grows by
+        # itself when stage cards arrive. Relying on the scroll area's
+        # LayoutRequest alone sometimes left it at its old height (cards crushed).
+        body.setSizeConstraint(QVBoxLayout.SizeConstraint.SetMinimumSize)
         body.setContentsMargins(DARK.space_md, DARK.space_md, DARK.space_md, DARK.space_md)
         body.setSpacing(DARK.space_md)
         self._build_body(body)
+        self._body_scroll.setWidget(content)
+        pane.addWidget(self._body_scroll)
         splitter.addWidget(self._body)
         splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 5)
@@ -212,7 +233,7 @@ class WorkflowsView(BaseView):
         layout.addWidget(self._flow_header)
         self._flow = StageFlow()
         self._flow.stage_selected.connect(self._select_stage)
-        layout.addWidget(self._flow, stretch=1)
+        layout.addWidget(self._flow)
 
         # Task outcomes and check totals are separate rows: nine blocks in
         # one row overflow the detail pane at the minimum window width and
@@ -417,7 +438,7 @@ class WorkflowsView(BaseView):
         repository = self.repository()
         if not repository:
             self._list.set_empty_state(
-                "No repository selected", "Pick a repository from the top bar."
+                "No repository selected", "Pick a repository in the sidebar."
             )
             return
 

@@ -1,14 +1,14 @@
 """Toast notifications overlaid on the main window.
 
-The host is a small click-safe strip anchored bottom-right - sized to the
-visible toasts only, so clicks outside the strip still reach the views
-beneath. Cards fade+slide in and auto-dismiss; the shell owns the host and
+The host is a small click-safe strip anchored bottom-right of the content
+area (``anchor``, 16px inset) - sized to the visible toasts only, so clicks
+outside the strip still reach the views beneath. Cards fade+slide in and auto-dismiss; the shell owns the host and
 views only call ``ctx.toast(title, message, kind)``.
 """
 
 from __future__ import annotations
 
-from PySide6.QtCore import QEasingCurve, QEvent, QPropertyAnimation, Qt, QTimer
+from PySide6.QtCore import QEasingCurve, QEvent, QPoint, QPropertyAnimation, Qt, QTimer
 from PySide6.QtWidgets import (
     QFrame,
     QGraphicsOpacityEffect,
@@ -24,6 +24,7 @@ from .widgets import Badge
 
 TOAST_TIMEOUT_MS = {"info": 4000, "success": 5000, "warning": 7000, "error": 9000}
 MAX_VISIBLE_TOASTS = 3
+TOAST_INSET = 16  # px from the anchor's right and bottom edges
 TOAST_WIDTH = 400
 _ENTER_MS = 170
 _LEAVE_MS = 140
@@ -44,7 +45,7 @@ class _Toast(QFrame):
         layout.setSpacing(DARK.space_sm)
 
         column = QVBoxLayout()
-        column.setSpacing(2)
+        column.setSpacing(DARK.space_xs)
         heading = QLabel(title)
         heading.setProperty("role", "title")
         column.addWidget(heading)
@@ -115,19 +116,25 @@ class _Toast(QFrame):
 class ToastHost(QWidget):
     """Bottom-right toast stack; geometry hugs the visible cards only."""
 
-    def __init__(self, parent: QWidget):
+    def __init__(self, parent: QWidget, anchor: QWidget | None = None):
         super().__init__(parent)
         self.setObjectName("ToastHost")
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self._anchor = anchor if anchor is not None else parent
         self._layout = QVBoxLayout(self)
-        self._layout.setContentsMargins(DARK.space_md, DARK.space_md, DARK.space_md, DARK.space_md)
+        self._layout.setContentsMargins(0, 0, 0, 0)
         self._layout.setSpacing(DARK.space_sm)
         self._layout.addStretch(1)
         self._toasts: list[_Toast] = []
         parent.installEventFilter(self)
+        if self._anchor is not parent:
+            self._anchor.installEventFilter(self)
 
     def eventFilter(self, watched, event) -> bool:  # noqa: N802 - Qt API
-        if watched is self.parentWidget() and event.type() == QEvent.Type.Resize:
+        if watched in (self.parentWidget(), self._anchor) and event.type() in (
+            QEvent.Type.Resize,
+            QEvent.Type.Move,
+        ):
             self.reposition()
         return super().eventFilter(watched, event)
 
@@ -158,7 +165,7 @@ class ToastHost(QWidget):
         self.reposition()
 
     def reposition(self) -> None:
-        """Anchor the strip to the window's bottom-right (zero-size when empty)."""
+        """Anchor the strip to the content's bottom-right (zero-size when empty)."""
         parent = self.parentWidget()
         if parent is None:
             return
@@ -168,4 +175,9 @@ class ToastHost(QWidget):
         self.adjustSize()
         width = self.sizeHint().width()
         height = self.sizeHint().height()
-        self.setGeometry(parent.width() - width, parent.height() - height, width, height)
+        anchor = self._anchor
+        origin = anchor.mapTo(parent, QPoint(0, 0)) if anchor is not parent else QPoint(0, 0)
+        right = origin.x() + anchor.width() - TOAST_INSET
+        bottom = origin.y() + anchor.height() - TOAST_INSET
+        self.setGeometry(right - width, bottom - height, width, height)
+        self.raise_()

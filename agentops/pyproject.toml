@@ -22,4 +22,4 @@ agentops-gui = "agentops.gui:main"
 include = ["agentops*"]
 
 [tool.setuptools.package-data]
-agentops = ["agents/*.yaml", "gui/assets/*.svg"]
+agentops = ["agents/*.yaml", "gui/assets/*.svg", "gui/assets/*.txt"]
