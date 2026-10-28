@@ -326,6 +326,7 @@ CONTROLLER_PUBLIC_METHODS = [
     "run_task",
     "state_path",
     "task_options",
+    "workflow_diff",
     "workflow_readiness",
 ]
 
