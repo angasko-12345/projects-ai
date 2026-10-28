@@ -841,6 +841,134 @@ class ControlCenterViewTests(unittest.TestCase):
         self.assertIn("VERIFY", self.view._live._fact_labels["next"].text())
 
 
+def transcript_fixture() -> dict:
+    """``build_transcript`` arguments for a JWT workflow mid-retry (shared with
+    tests/test_gui_transcript.py, which asserts the rendered text)."""
+    return {
+        "workflow": dict(_workflow(), created_at="2026-10-03T12:13:00+00:00"),
+        "tasks": [
+            _task("t-1", "architecture", "passed", assigned_agent="codex", result="Use JWT."),
+            _task("t-2", "implementation", "running", assigned_agent="codex"),
+            _task("t-3", "verification", "pending", assigned_agent=None),
+        ],
+        "runs": [
+            _run("r-1", "t-1", "completed", agent="codex", exit_code=0, duration_seconds=66.0),
+            _run(
+                "r-2", "t-2", "failed", agent="codex", exit_code=1, duration_seconds=188.0,
+                diff_stat=" a.py | 9 +++--\n 3 files changed, 41 insertions(+), 9 deletions(-)",
+            ),
+            _run(
+                "r-3", "t-2", "running", agent="codex", attempt=2, relationship="retry",
+                retry_of="r-2", started_at="2026-10-03T12:27:24+00:00",
+            ),
+        ],
+        "verifications": [
+            _verification(
+                "v-1", "t-3", source_agent_run_id="r-2", overall_status="failed",
+                total_checks=2, passed_checks=1, duration_seconds=22.0,
+            ),
+            _verification("v-2", "t-2", source_agent_run_id="r-gone"),
+        ],
+        "checks_by_verification": {
+            "v-1": [
+                {"name": "pytest", "check_class": "TESTS", "status": "failed",
+                 "failure_reason": "3 failed, 41 passed", "duration_seconds": 4.0},
+                {"name": "ruff", "check_class": "LINT", "status": "passed"},
+            ]
+        },
+        "failures": [
+            _failure("f-1", "t-2", agent_run_id="r-2", category="TEST_FAILURE", severity="HIGH"),
+            _failure("f-2", "t-2"),
+        ],
+        "readiness": {"ready": False, "reasons": ["verification missing", "review missing"]},
+        "worktree_ref": {"path": "D:/repo/.agentops/worktrees/wf-1"},
+        "now": NOW,
+    }  # fmt: skip
+
+
+class TranscriptProjectionTests(unittest.TestCase):
+    """``build_attempts`` and ``build_transcript``: the run transcript, Qt-free."""
+
+    def test_attempts_join_runs_checks_and_failures(self):
+        data = transcript_fixture()
+        first, second = projection.build_attempts(
+            data["tasks"][1:2],
+            data["runs"],
+            data["verifications"],
+            data["checks_by_verification"],
+            data["failures"],
+            NOW,
+        )
+        self.assertEqual((first["id"], first["live"], first["elapsed"]), ("r-2", False, 188.0))
+        self.assertEqual(first["diff"], {"files": 3, "insertions": 41, "deletions": 9})
+        self.assertEqual([v["run"]["id"] for v in first["verifications"]], ["v-1"])
+        self.assertEqual(len(first["verifications"][0]["checks"]), 2)
+        self.assertEqual([f["id"] for f in first["failures"]], ["f-1"])
+        # Live: elapsed runs to ``now``; v-2 names a run the payload lacks, so no owner.
+        self.assertEqual((second["live"], second["elapsed"], second["diff"]), (True, 456.0, None))
+        self.assertEqual(second["verifications"], [])
+        self.assertEqual(second["text"]["duration"], "Running · 7m 36s")
+        pending = _run("r-4", "t-2", "pending", started_at="2026-10-03T12:34:00+00:00")
+        self.assertTrue(
+            projection.build_attempts(data["tasks"][1:2], [pending], now=NOW)[0]["live"]
+        )
+
+    def test_unlinked_verification_falls_back_and_bad_stat_is_not_guessed(self):
+        runs = [_run("r-9", "t-2", "completed", diff_stat="src/app.py | 12 +", files_changed=["x"])]
+        (attempt,) = projection.build_attempts(
+            [_task("t-2", "implementation", "passed")], runs, [_verification("v-x", "t-2")]
+        )
+        self.assertEqual([v["run"]["id"] for v in attempt["verifications"]], ["v-x"])
+        self.assertIsNone(attempt["diff"])
+        self.assertEqual(
+            (attempt["text"]["files"], attempt["text"]["insertions"]), ("1 changed file", "")
+        )
+
+    def test_transcript_strings_trace_to_payload_fields(self):
+        transcript = projection.build_transcript(**transcript_fixture())
+        self.assertEqual(transcript["prompt"], "ship the control center")
+        self.assertEqual(
+            transcript["prompt_meta"], "Started 22m ago · agent: codex · verify: default"
+        )
+        # 66 + 188 recorded, plus 456 live seconds of the running retry.
+        self.assertEqual(transcript["worked"], "Worked for 11m 50s")
+        self.assertEqual(transcript["worked_meta"], "3 agent runs · 1 retry")
+        blocks = transcript["blocks"]
+        self.assertEqual([b["label"] for b in blocks], ["Plan", "Implement", "Verify"])
+        self.assertEqual((blocks[0]["result"], blocks[1]["agent"]), ("Use JWT.", "codex"))
+        self.assertEqual(
+            blocks[1]["attempts"][0]["text"],
+            {"title": "Attempt 1", "meta": "codex · gpt-5-codex · exit 1", "duration": "3m 08s",
+             "files": "3 changed files", "insertions": "+41", "deletions": "\u22129"},
+        )  # fmt: skip
+        check = projection.check_text(blocks[1]["attempts"][0]["verifications"][0])
+        self.assertEqual(
+            (check["title"], check["meta"]),
+            ("Verification failed", "1/2 checks · profile default · 22.0s"),
+        )
+        self.assertEqual(
+            [tuple(c.values()) for c in check["checks"]],
+            [("failed", "pytest", "tests", "3 failed, 41 passed", "4.0s"),
+             ("passed", "ruff", "lint", "", "")],
+        )  # fmt: skip
+        self.assertEqual(
+            projection.failure_text(blocks[1]["attempts"][0]["failures"][0]),
+            {"title": "Test failure", "severity": "high", "action": "Retry same agent",
+             "error": "assert 1 == 2"},
+        )  # fmt: skip
+        self.assertEqual(transcript["finalize"]["text"], "Not ready to merge")
+        self.assertEqual(transcript["readiness"]["chip"], "Not ready · 2 gates open")
+
+    def test_ready_needs_a_worktree_and_empty_payloads_stay_blank(self):
+        tree = {"path": "D:/repo/.agentops/worktrees/wf-1"}
+        ready = projection.build_transcript({}, readiness={"ready": True}, worktree_ref=tree)
+        self.assertEqual(ready["readiness"]["chip"], "Ready to merge")
+        no_tree = projection.build_transcript({}, readiness={"ready": True})
+        self.assertEqual(no_tree["readiness"]["chip"], "Not ready · 1 gate open")
+        empty = projection.build_transcript(None)
+        self.assertEqual((empty["prompt"], empty["prompt_meta"], empty["blocks"]), ("", "", []))
+
+
 if __name__ == "__main__":
     unittest.main()
 
