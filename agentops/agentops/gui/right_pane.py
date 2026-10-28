@@ -27,6 +27,7 @@ from .context import AsyncMixin, ViewContext
 from .diffview import DiffView
 from .icons import qicon
 from .tokens import DARK as _T
+from .tokens import css_font_list
 from .transcript import TextLabel
 from .widgets import LogText
 
@@ -43,7 +44,7 @@ QToolButton[paneTab=true] {{ color: {t.text_muted}; border: 1px solid transparen
     border-radius: 6px; padding: 3px 8px; }}
 QToolButton[paneTab=true]:checked {{ color: {t.text}; background: {t.surface};
     border-color: {t.border_strong}; }}
-QPlainTextEdit {{ border: none; }}
+QPlainTextEdit {{ border: none; font-family: {mono}; font-size: {t.size_base}px; }}
 """
 
 
@@ -76,7 +77,7 @@ class RightPane(QFrame, AsyncMixin):
         self._choices: list[dict] = []
         self._source = "worktree"
         self.setObjectName("RightPane")
-        self.setStyleSheet(_STYLE.format(t=_T))
+        self.setStyleSheet(_STYLE.format(t=_T, mono=css_font_list(_T.mono_families, "monospace")))
         layout = QVBoxLayout(self)
         layout.setContentsMargins(1, 0, 0, 0)
         layout.setSpacing(0)
