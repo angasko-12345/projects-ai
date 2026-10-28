@@ -44,7 +44,7 @@ from PySide6.QtWidgets import (
 )
 
 from .format import format_duration
-from .tokens import DARK, Theme, status_colors, with_alpha
+from .tokens import DARK, Theme, qcolor, status_colors, with_alpha
 
 # Qt's QWIDGETSIZE_MAX (largest permitted widget maximumHeight); PySide6 does
 # not re-export it from QtWidgets on all versions.
@@ -466,9 +466,9 @@ class PulsingDot(QWidget):
         center = self.rect().center()
         radius = min(self.width(), self.height()) / 2 - 1
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(with_alpha(self._color, 0.22)))
+        painter.setBrush(qcolor(self._color, 0.22))
         painter.drawEllipse(center, radius, radius)
-        painter.setBrush(QColor(with_alpha(self._color, 0.35 + 0.65 * self._phase)))
+        painter.setBrush(qcolor(self._color, 0.35 + 0.65 * self._phase))
         painter.drawEllipse(center, radius * 0.6, radius * 0.6)
         painter.end()
 
@@ -538,7 +538,7 @@ def agent_icon(identifier: str, display_name: str = "", size: int = 16) -> QIcon
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor.fromHsv(_agent_hue(identifier), 150, 110))
         painter.drawRoundedRect(0, 0, size, size, size // 4, size // 4)
-        painter.setPen(QColor("#ffffff"))
+        painter.setPen(QColor(DARK.on_accent))
         font = painter.font()
         font.setPixelSize(max(8, int(size * 0.6)))
         font.setBold(True)
@@ -625,7 +625,7 @@ class StatusPillDelegate(QStyledItemDelegate):
             super().paint(painter, option, index)
             return
         font = QFont(option.font)
-        font.setPointSize(self._theme.size_small)
+        font.setPixelSize(self._theme.size_small)
         font.setWeight(QFont.Weight.DemiBold)
         metrics = QFontMetrics(font)
         available = option.rect.adjusted(6, 5, -6, -5)
@@ -644,12 +644,12 @@ class StatusPillDelegate(QStyledItemDelegate):
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             if option.state & QStyle.StateFlag.State_Selected:
                 painter.setPen(Qt.PenStyle.NoPen)
-                painter.setBrush(QColor(with_alpha(background, 0.30)))
+                painter.setBrush(qcolor(background, 0.30))
                 painter.drawRoundedRect(pill, 9, 9)
                 painter.setPen(QColor(option.palette.highlightedText().color()))
             else:
-                painter.setPen(QColor(with_alpha(foreground, 0.35)))
-                painter.setBrush(QColor(with_alpha(background, 0.16)))
+                painter.setPen(qcolor(foreground, 0.35))
+                painter.setBrush(qcolor(background, 0.16))
                 painter.drawRoundedRect(pill, 9, 9)
                 painter.setPen(QColor(foreground))
             painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, label)
@@ -979,7 +979,7 @@ class LogText(QPlainTextEdit):
         super().__init__(parent)
         font = QFont(theme.font_mono)
         font.setStyleHint(QFont.StyleHint.Monospace)
-        font.setPointSize(10)
+        font.setPixelSize(theme.size_base)
         self.setFont(font)
         self.setReadOnly(True)
         self.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
