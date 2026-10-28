@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-10-27T11:41:14+00:00",
-  "commit": "7e6e104bb9696aaf595c2349dece2b72b7ff8556",
+  "generated_at": "2026-10-28T01:30:20+00:00",
+  "commit": "5dc93112a6abc148a4934e6f0218e676b7b0a9de",
   "python": "3.12.15",
   "platform": "Linux 6.12.110+ (aarch64)",
-  "measured_in": "a clean clone of 7e6e104bb969",
+  "measured_in": "a clean clone of 5dc93112a6ab",
   "clean_checkout": true,
   "command_note": "Every command runs from its own product directory with the interpreter that ran this script. There is no repository-wide test command and these products share no dependencies.",
   "excluded": {
@@ -14,9 +14,9 @@
     {
       "product": "agentops",
       "directory": "agentops",
-      "commit": "7e6e104bb9696aaf595c2349dece2b72b7ff8556",
+      "commit": "5dc93112a6abc148a4934e6f0218e676b7b0a9de",
       "command": [
-        "/workspace/work/merge45/venv-nq/bin/python",
+        "/usr/local/bin/python3",
         "-m",
         "unittest",
         "discover",
@@ -24,13 +24,13 @@
         "tests"
       ],
       "dirty_paths": [],
-      "total": 1177,
-      "duration_seconds": 54.373,
+      "total": 1183,
+      "duration_seconds": 38.588,
       "skipped": 82,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 1177 tests in 54.373s",
+        "Ran 1183 tests in 38.588s",
         "OK (skipped=82)"
       ],
       "result": "pass"
