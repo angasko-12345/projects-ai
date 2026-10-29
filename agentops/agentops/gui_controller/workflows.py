@@ -31,7 +31,8 @@ class WorkflowsMixin:
         Everything comes from persisted state: aggregate task counts, active
         workflow counts, recent workflow rollups, verification health over the
         newest verification runs, actionable failures (retryable, repairable,
-        or carrying a recovery state), and the newest timeline events.
+        carrying a recovery state, or belonging to a failed workflow), and
+        the newest timeline events.
         """
         root = self._operation_root(directory)
         state = _ns.StateStore(self._state_path(root))
@@ -57,12 +58,24 @@ class WorkflowsMixin:
                 _ns.serialize_failure(failure)
                 for failure in state.list_failures(limit=failure_limit)
             ]
+            # The retry/repair/recovery flags describe what the system can
+            # still do on its own. A failure attached to a workflow that
+            # ended FAILED also needs attention, because only the user can
+            # resolve it (for example a HIGH-severity environment failure
+            # whose recommended action is request_approval). Without this,
+            # the dashboard claims "Nothing needs attention" next to a
+            # failed workflow. Failures from workflows that recovered or
+            # never failed stay out.
+            failed_workflow_ids = {
+                workflow.id for workflow in state.list_workflows(status="failed")
+            }
             needs_attention = [
                 failure
                 for failure in failures
                 if failure.get("retryable")
                 or failure.get("repairable")
                 or failure.get("recovery_state")
+                or failure.get("workflow_id") in failed_workflow_ids
             ]
             total_events = state.count_events()
             events = [

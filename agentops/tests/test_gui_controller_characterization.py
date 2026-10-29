@@ -588,6 +588,63 @@ class ControllerReadTests(unittest.TestCase):
         self.assertIsNone(summary["latest_workflow_id"])
         self.assertEqual(summary["recent_events"], [])
 
+    def _non_actionable_failure(self, failure_id, workflow_id, task_id):
+        """A HIGH-severity environment failure the system cannot self-repair."""
+        return Failure(
+            id=failure_id,
+            workflow_id=workflow_id,
+            task_id=task_id,
+            agent_run_id=None,
+            source=FailureSource.ENVIRONMENT,
+            category=FailureCategory.ENVIRONMENT_FAILURE,
+            severity=FailureSeverity.HIGH,
+            retryable=False,
+            repairable=False,
+            evidence="no installed agent supports the role",
+            recommended_action=RepairAction.REQUEST_APPROVAL,
+            recovery_state=None,
+        )
+
+    def test_dashboard_summary_attention_includes_failures_from_failed_workflows(self):
+        """A failed workflow's failures need attention even when not retryable."""
+        state = StateStore(self.controller._state_path(self.root))
+        try:
+            failed_workflow_id = state.create_workflow("add a hello function")
+            task = state.add_task(
+                Task("plan the change", "architecture", failed_workflow_id)
+            )
+            task.status = TaskStatus.FAILED
+            state.update_task(task)
+            state.refresh_workflow_status(failed_workflow_id)
+            state.create_failure(
+                self._non_actionable_failure(
+                    "failure-failed-workflow", failed_workflow_id, task.id
+                )
+            )
+        finally:
+            state.close()
+
+        summary = self.controller.dashboard_summary(self.root)
+        attention_ids = [f["id"] for f in summary["needs_attention"]]
+        self.assertIn("failure-failed-workflow", attention_ids)
+
+    def test_dashboard_summary_attention_excludes_non_actionable_failures(self):
+        """The same failure on a workflow that did not fail stays out."""
+        state = StateStore(self.controller._state_path(self.root))
+        try:
+            state.create_failure(
+                self._non_actionable_failure(
+                    "failure-transient", self.seed.workflow_id, self.seed.task_id
+                )
+            )
+        finally:
+            state.close()
+
+        summary = self.controller.dashboard_summary(self.root)
+        attention_ids = [f["id"] for f in summary["needs_attention"]]
+        self.assertNotIn("failure-transient", attention_ids)
+        self.assertEqual(attention_ids, ["failure-1"])
+
     def test_list_tasks_newest_first_with_filters_and_paging(self):
         tasks = self.controller.list_tasks(self.root)
         self.assertEqual([t["id"] for t in tasks], list(reversed(self.seed.task_ids)))
