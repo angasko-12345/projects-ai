@@ -35,6 +35,40 @@ updates:
     groups:
       minor-and-patch:
         update-types: ["minor", "patch"]
+    # qr-generator is an Expo SDK 57 app. Expo pins these packages to versions
+    # tested together for one SDK (expo's bundledNativeModules.json), so bumping
+    # one of them alone mixes SDKs: #57-#60 (expo-* 58 in an SDK 57 app) and
+    # #89 (react-native 0.86 -> 0.88, which broke `tsc`) were both that. These
+    # move only in a deliberate SDK upgrade PR (`npx expo install --fix`).
+    ignore:
+      # Pinned exactly by the SDK: no updates at all.
+      - dependency-name: "react"
+      - dependency-name: "react-dom"
+      - dependency-name: "react-native"
+      - dependency-name: "react-native-svg"
+      - dependency-name: "react-native-view-shot"
+      - dependency-name: "@react-native-async-storage/async-storage"
+      # Tilde-pinned by the SDK: patch updates are fine, minor and major are not.
+      - dependency-name: "expo"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "expo-*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "jest-expo"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "eslint-config-expo"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "react-native-safe-area-context"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "react-native-web"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      # Type packages follow the pinned react minor.
+      - dependency-name: "@types/react"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "@types/react-dom"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      # Caret-pinned by the SDK: only a major leaves it.
+      - dependency-name: "@expo/vector-icons"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
