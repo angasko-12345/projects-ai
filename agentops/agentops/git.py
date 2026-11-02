@@ -250,24 +250,52 @@ class GitWorktreeManager:
             raise GitError(result.stderr.strip() or "Could not inspect worktree diff.")
         return result.stdout
 
-    def inspect_worktree(self, repository: str | Path, path: str | Path) -> dict[str, object]:
+    def managed_worktree(self, repository: str | Path, path: str | Path) -> WorktreeInfo | None:
+        """The registered worktree at ``path``, or None when none is registered there.
+
+        Raises GitError for any path outside ``<repo>/.agentops/worktrees``.
+        """
         root = self.repository_root(repository)
         managed_root = self._managed_root(root)
         target = Path(path).resolve()
         if not target.is_relative_to(managed_root.resolve()):
             raise GitError(f"Refusing to manage a worktree outside {managed_root}: {path}")
-        for info in self.list_worktrees(root):
-            if info.path == target:
-                return {
-                    "repository": str(info.repository),
-                    "path": str(info.path),
-                    "branch": info.branch,
-                    "head": info.head,
-                    "managed": info.managed,
-                    "status": self.worktree_status(target),
-                    "diff_stat": self.worktree_diff_stat(target),
-                }
-        raise GitError(f"No registered Git worktree at: {path}")
+        return next((info for info in self.list_worktrees(root) if info.path == target), None)
+
+    def inspect_worktree(self, repository: str | Path, path: str | Path) -> dict[str, object]:
+        info = self.managed_worktree(repository, path)
+        if info is None:
+            raise GitError(f"No registered Git worktree at: {path}")
+        return {
+            "repository": str(info.repository),
+            "path": str(info.path),
+            "branch": info.branch,
+            "head": info.head,
+            "managed": info.managed,
+            "status": self.worktree_status(info.path),
+            "diff_stat": self.worktree_diff_stat(info.path),
+        }
+
+    def diff_against(
+        self, path_or_root: str | Path, base: str, ref: str | None = None, max_bytes: int = 262144
+    ) -> tuple[str, bool]:
+        """Read-only ``git diff <base> [<ref>]`` in ``path_or_root``, cut at a line
+        boundary to ``max_bytes`` of UTF-8. Returns ``(text, truncated)``."""
+        revisions = [base] + ([ref] if ref else [])
+        if any(not rev or rev.startswith("-") for rev in revisions):
+            raise GitError(f"Refusing to diff an invalid revision: {revisions}")
+        result = self._run(
+            Path(path_or_root), "diff", "--no-color", "--no-ext-diff", *revisions, "--"
+        )
+        if result.returncode:
+            raise GitError(result.stderr.strip() or "Could not read the diff.")
+        data = result.stdout.encode("utf-8")
+        if len(data) <= max_bytes:
+            return result.stdout, False
+        cut = data[:max_bytes]
+        if b"\n" in cut:
+            cut = cut[: cut.rindex(b"\n") + 1]
+        return cut.decode("utf-8", "ignore"), True
 
     def cleanup_worktree(
         self,

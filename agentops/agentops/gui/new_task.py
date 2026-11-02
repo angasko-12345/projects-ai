@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .tokens import DARK
 from .views.base import AsyncMixin, ViewContext
 from .widgets import agent_icon, divider, faint, ghost_button, label, muted
 
@@ -47,15 +48,14 @@ class NewTaskDialog(QDialog, AsyncMixin):
         self.setMinimumSize(580, 520)
 
         layout = QVBoxLayout(self)
-        layout.setSpacing(12)
+        layout.setSpacing(DARK.space_md)
 
         layout.addWidget(label("New Task", "title"))
-        layout.addWidget(
-            muted(
-                "AgentOps plans, implements, verifies, and reviews the change in an "
-                "isolated worktree."
-            )
+        intro = muted(
+            "AgentOps plans, implements, verifies, and reviews the change in an isolated worktree."
         )
+        intro.setWordWrap(True)  # wider than the dialog's 580px minimum on one line
+        layout.addWidget(intro)
 
         # -- repository ------------------------------------------------
         layout.addWidget(label("Repository", "subtitle"))
@@ -84,7 +84,7 @@ class NewTaskDialog(QDialog, AsyncMixin):
             'the README to match."'
         )
         self._description.setTabChangesFocus(True)
-        self._description.setMinimumHeight(140)
+        self._description.setMinimumHeight(100)  # keeps the content within 520px tall
         if str(initial_description or "").strip():
             self._description.setPlainText(str(initial_description).strip())
         layout.addWidget(self._description)
@@ -103,7 +103,7 @@ class NewTaskDialog(QDialog, AsyncMixin):
         strategy_row.addLayout(strategy_column)
         self._agent_combo = QComboBox()
         self._agent_combo.setEnabled(False)
-        self._agent_combo.setMinimumWidth(240)
+        self._agent_combo.setMinimumWidth(200)  # leaves the radio labels their full width
         strategy_row.addWidget(self._agent_combo, alignment=Qt.AlignmentFlag.AlignTop)
         strategy_row.addStretch(1)
         layout.addLayout(strategy_row)

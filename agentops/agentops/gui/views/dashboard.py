@@ -8,7 +8,7 @@ only shows when nothing has loaded yet.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QComboBox,
@@ -58,7 +58,7 @@ _SEVERITY_COLORS = {
     "low": DARK.text_muted,
 }
 
-_NO_REPOSITORY = "Pick a repository from the top bar to begin."
+_NO_REPOSITORY = "Pick a repository in Workflows, or with Ctrl+K, to begin."
 _NO_WORKFLOWS = "Start a task to see workflows here."
 
 
@@ -81,6 +81,10 @@ class DashboardView(BaseView):
     view_id = "dashboard"
     title = "Dashboard"
 
+    # Needs-attention count from each dashboard_summary result, so the shell's
+    # rail badge reuses this poll instead of reading state again.
+    attention_changed = Signal(int)
+
     # ------------------------------------------------------------------
     def _build(self) -> None:
         # Scrollable so short windows reach every card instead of clipping
@@ -94,8 +98,9 @@ class DashboardView(BaseView):
         inner = QWidget()
         scroll.setWidget(inner)
         root = QVBoxLayout(inner)
-        root.setContentsMargins(18, 18, 18, 18)
-        root.setSpacing(12)
+        page = DARK.space_page
+        root.setContentsMargins(page, page, page, page)
+        root.setSpacing(DARK.space_md)
 
         self._page_header = PageHeader(self.title)
         refresh = ghost_button("Refresh")
@@ -140,7 +145,7 @@ class DashboardView(BaseView):
         root.addWidget(hero)
 
         stats = QHBoxLayout()
-        stats.setSpacing(12)
+        stats.setSpacing(DARK.space_md)
         (self._workflows_card, self._workflows_stat, self._workflows_detail) = self._stat_card(
             "Active workflows", "workflows", "Open the workflow control center"
         )
@@ -163,10 +168,10 @@ class DashboardView(BaseView):
         root.addLayout(stats)
 
         main = QHBoxLayout()
-        main.setSpacing(12)
+        main.setSpacing(DARK.space_md)
 
         left = QVBoxLayout()
-        left.setSpacing(12)
+        left.setSpacing(DARK.space_md)
         attention_card = Card("Needs attention")
         attention_body = attention_card.body()
         self._attention_count = muted("")
@@ -195,7 +200,7 @@ class DashboardView(BaseView):
         main.addLayout(left, stretch=3)
 
         right = QVBoxLayout()
-        right.setSpacing(12)
+        right.setSpacing(DARK.space_md)
         activity_card = Card("Recent activity")
         activity_body = activity_card.body()
         # The activity card stretches to fill its column; without an
@@ -239,6 +244,7 @@ class DashboardView(BaseView):
 
     def _show_no_repo(self) -> None:
         """Empty state: no repository chosen, nothing loaded yet."""
+        self.attention_changed.emit(0)
         self._summary_loaded = False
         self._agents_loaded = False
         self._page_header.set_subtitle("No repository chosen")
@@ -354,6 +360,7 @@ class DashboardView(BaseView):
         self._verification_detail.setText(_counts_line(verification, exclude="passed"))
 
         needs = list(summary.get("needs_attention") or [])
+        self.attention_changed.emit(len(needs))
         self._attention_count.setText(f"{len(needs)} need attention" if needs else "")
         self._attention_empty.setVisible(not needs)
         if not needs:

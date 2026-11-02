@@ -18,6 +18,10 @@ from pathlib import Path
 
 SETTINGS_VERSION = 1
 RECENT_REPOSITORY_LIMIT = 8
+# Colour scheme names (gui/tokens.THEMES). There is no UI for this yet; light
+# stays opt-in through settings.json until the light theme is finished.
+THEME_NAMES = ("dark", "light")
+DEFAULT_THEME = "dark"
 
 
 @dataclass
@@ -30,6 +34,7 @@ class AppSettings:
     maximized: bool = False
     sidebar_collapsed: bool = False
     last_view: str = "dashboard"
+    theme: str = DEFAULT_THEME
 
     def touch_repository(self, path: str, limit: int = RECENT_REPOSITORY_LIMIT) -> None:
         """Move ``path`` to the front of the recent list, deduped and capped."""
@@ -54,6 +59,7 @@ class AppSettings:
             "maximized": self.maximized,
             "sidebar_collapsed": self.sidebar_collapsed,
             "last_view": self.last_view,
+            "theme": self.theme,
         }
 
     @classmethod
@@ -83,6 +89,9 @@ class AppSettings:
         last_view = data.get("last_view")
         if isinstance(last_view, str) and last_view:
             settings.last_view = last_view
+        theme = data.get("theme")
+        if isinstance(theme, str) and theme.strip().lower() in THEME_NAMES:
+            settings.theme = theme.strip().lower()
         return settings
 
 
