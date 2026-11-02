@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-10-28T12:48:27+00:00",
-  "commit": "d7d259279fafe3a04332999f9b2dfd559ef6656c",
+  "generated_at": "2026-11-02T07:08:22+00:00",
+  "commit": "e80755e295f10cb136a1fa61a1fc16f29bc3c04d",
   "python": "3.12.15",
   "platform": "Linux 6.12.110+ (aarch64)",
-  "measured_in": "a clean clone of d7d259279faf",
+  "measured_in": "a clean clone of e80755e295f1",
   "clean_checkout": true,
   "command_note": "Every command runs from its own product directory with the interpreter that ran this script. There is no repository-wide test command and these products share no dependencies.",
   "excluded": {
@@ -14,7 +14,7 @@
     {
       "product": "agentops",
       "directory": "agentops",
-      "commit": "d7d259279fafe3a04332999f9b2dfd559ef6656c",
+      "commit": "e80755e295f10cb136a1fa61a1fc16f29bc3c04d",
       "command": [
         "/usr/local/bin/python3",
         "-m",
@@ -25,12 +25,12 @@
       ],
       "dirty_paths": [],
       "total": 1276,
-      "duration_seconds": 44.379,
+      "duration_seconds": 37.144,
       "skipped": 133,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 1276 tests in 44.379s",
+        "Ran 1276 tests in 37.144s",
         "OK (skipped=133)"
       ],
       "result": "pass"
@@ -86,9 +86,9 @@
     {
       "product": "ai-token-tracker",
       "directory": "ai-token-tracker",
-      "commit": "6803e9b0837de01471cbbaf964fde5452394de79",
+      "commit": "e80755e295f10cb136a1fa61a1fc16f29bc3c04d",
       "command": [
-        "/usr/local/bin/python",
+        "/usr/local/bin/python3",
         "-m",
         "unittest",
         "discover",
@@ -97,12 +97,12 @@
       ],
       "dirty_paths": [],
       "total": 128,
-      "duration_seconds": 0.558,
+      "duration_seconds": 0.233,
       "skipped": 8,
       "failures": 0,
       "errors": 0,
       "summary": [
-        "Ran 128 tests in 0.558s",
+        "Ran 128 tests in 0.233s",
         "OK (skipped=8)"
       ],
       "result": "pass"
