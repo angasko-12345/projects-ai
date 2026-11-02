@@ -33,6 +33,7 @@ class ViewContext:
     operation_active: Callable[[], bool]  # shell-level background op state
     update_settings: Callable[[dict], None]  # partial settings update + persist
     new_task: Callable[..., None] | None = None  # (description, agent?) -> task dialog
+    start_task: Callable[..., bool] | None = None  # shell.start_task (the composer)
 
     @property
     def controller(self) -> object:

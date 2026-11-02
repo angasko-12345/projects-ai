@@ -156,18 +156,22 @@ class VisualStateTest(unittest.TestCase):
         self.assertTrue(wait_until(lambda: view._table._empty._heading.text() == "No tasks yet"))
 
     def test_sidebar_toggle_is_always_visible_in_the_top_bar(self):
+        # Phase B3: the sidebar is the Workflows view's contextual sidebar and
+        # the toggle is a panel-left icon button, so navigate there first and
+        # read its accessible name (an icon button has no text).
+        self._activate("workflows")
         with tempfile.TemporaryDirectory() as directory:
             self.window._settings_file = Path(directory) / "settings.json"
             self.window.update_settings({"sidebar_collapsed": True})
             self.assertFalse(self.window._sidebar.isVisible())
-            self.assertEqual(self.window._sidebar_toggle.text(), "Show sidebar")
+            self.assertEqual(self.window._sidebar_toggle.accessibleName(), "Show sidebar")
             self.assertTrue(self.window._sidebar_toggle.isVisible())
 
-            # The top-bar toggle must restore the sidebar it hid.
+            # The toggle must restore the sidebar it hid.
             self.window._sidebar_toggle.click()
             wait(20)
             self.assertTrue(self.window._sidebar.isVisible())
-            self.assertEqual(self.window._sidebar_toggle.text(), "Hide sidebar")
+            self.assertEqual(self.window._sidebar_toggle.accessibleName(), "Hide sidebar")
 
     def test_navigation_fade_releases_its_graphics_effect(self):
         # The fade effect must not stay installed after the transition:
@@ -449,16 +453,19 @@ class VisualStateTest(unittest.TestCase):
         from dataclasses import replace
 
         received: list[tuple] = []
-        self._activate("dashboard")
-        view = self.window._views["dashboard"]
+        self._activate("workflows")
+        view = self.window._views["workflows"]._composer  # the hero moved to the composer
         view.ctx = replace(
-            view.ctx, new_task=lambda text, agent=None: received.append((text, agent))
+            view.ctx,
+            start_task=lambda text, repository=None, agent=None, profile=None: received.append(
+                (text, agent)
+            ),
         )
-        view._hero_input.setPlainText("  hero task  ")
-        view._start_hero_task()
+        view._input.setPlainText("  hero task  ")
+        view._submit()
         self.assertEqual(received, [("hero task", None)])
-        view._hero_input.setPlainText("   ")
-        view._start_hero_task()
+        view._input.setPlainText("   ")
+        view._submit()
         self.assertEqual(received, [("hero task", None)])
 
     def test_new_task_dialog_accepts_a_prefilled_description(self):
@@ -494,6 +501,8 @@ class VisualStateTest(unittest.TestCase):
         self.assertTrue(wait_until(lambda: view._list.proxy.rowCount() == 1))
         view._list.select_row_index(0)
         self.assertTrue(wait_until(lambda: view._tasks.proxy.rowCount() == 4))
+        # The actions live in the header's "..." menu.
+        menu = {action.text(): action for action in view._more_btn.menu().actions()}
         renamed: list[tuple] = []
         self.controller.rename_workflow = (  # type: ignore[attr-defined]
             lambda directory, workflow_id, description: (
@@ -503,7 +512,7 @@ class VisualStateTest(unittest.TestCase):
         with patch(
             "agentops.gui.views.workflows.QInputDialog.getText", return_value=("renamed flow", True)
         ):
-            view._rename_workflow()
+            menu["Rename..."].trigger()
         self.assertTrue(wait_until(lambda: len(renamed) == 1))
         self.assertEqual(renamed[0], ("wf-1", "renamed flow"))
         deleted: list[tuple] = []
@@ -514,7 +523,7 @@ class VisualStateTest(unittest.TestCase):
             "agentops.gui.views.workflows.QMessageBox.question",
             return_value=QMessageBox.StandardButton.Yes,
         ):
-            view._delete_workflow()
+            menu["Delete"].trigger()
         self.assertTrue(wait_until(lambda: len(deleted) == 1))
         self.assertEqual(deleted[0], "wf-1")
 
@@ -605,19 +614,22 @@ class VisualStateTest(unittest.TestCase):
     def test_hero_agent_picker_flows_into_task_creation(self):
         from dataclasses import replace
 
-        self._activate("dashboard")
-        view = self.window._views["dashboard"]
+        self._activate("workflows")
+        view = self.window._views["workflows"]._composer  # the hero moved to the composer
         self.assertTrue(wait_until(lambda: view._agents_loaded))
-        self.assertEqual(view._hero_agent.count(), 2)
-        self.assertFalse(view._hero_agent.itemIcon(1).isNull())
-        view._hero_agent.setCurrentIndex(1)
-        self.assertEqual(view._hero_agent.currentData(), "codex")
+        self.assertEqual(view._agent.count(), 2)
+        self.assertFalse(view._agent.itemIcon(1).isNull())
+        view._agent.setCurrentIndex(1)
+        self.assertEqual(view._agent.currentData(), "codex")
         received: list[tuple] = []
         view.ctx = replace(
-            view.ctx, new_task=lambda text, agent=None: received.append((text, agent))
+            view.ctx,
+            start_task=lambda text, repository=None, agent=None, profile=None: received.append(
+                (text, agent)
+            ),
         )
-        view._hero_input.setPlainText("hero work")
-        view._start_hero_task()
+        view._input.setPlainText("hero work")
+        view._submit()
         self.assertEqual(received, [("hero work", "codex")])
 
     def test_new_task_dialog_prefills_agent_choice(self):
