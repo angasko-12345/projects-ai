@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..settings import AppSettings
+from ..tokens import DARK
 from ..widgets import Card, KeyValueGrid, PageHeader, ghost_button
 from .base import BaseView
 
@@ -38,8 +39,9 @@ class SettingsView(BaseView):
     # ------------------------------------------------------------------
     def _build(self) -> None:
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(18, 18, 18, 18)
-        outer.setSpacing(12)
+        page = DARK.space_page
+        outer.setContentsMargins(page, page, page, page)
+        outer.setSpacing(DARK.space_md)
         self._page_header = PageHeader(self.title, "Client-side preferences for this desktop app")
         outer.addWidget(self._page_header)
         area = QScrollArea()
@@ -48,13 +50,13 @@ class SettingsView(BaseView):
         host = QWidget()
         root = QVBoxLayout(host)
         root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(12)
+        root.setSpacing(DARK.space_md)
 
         # Repository -----------------------------------------------------
         repo_card = Card("Repository")
         body = repo_card.body()
         row = QHBoxLayout()
-        row.setSpacing(8)
+        row.setSpacing(DARK.space_sm)
         self._repo_edit = QLineEdit()
         self._repo_edit.setPlaceholderText("Path to the repository AgentOps drives")
         self._repo_edit.returnPressed.connect(self._apply_repository)

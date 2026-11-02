@@ -14,12 +14,10 @@ import unittest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 try:
-    from PySide6.QtCore import QCoreApplication
-    from PySide6.QtTest import QTest
+    from PySide6.QtCore import QCoreApplication, QEvent, QEventLoop, QTimer
     from PySide6.QtWidgets import QApplication
 except ImportError:  # optional desktop dependency not installed
     QCoreApplication = None  # type: ignore[assignment]
-    QTest = None  # type: ignore[assignment]
     QApplication = None  # type: ignore[assignment]
 
 requires_qt = unittest.skipIf(QApplication is None, "PySide6 desktop dependency not installed")
@@ -37,10 +35,26 @@ def qt_app():
     return _app
 
 
+def _spin(milliseconds: int) -> None:
+    """Run the event loop for ``milliseconds`` with the GIL released.
+
+    ``QTest.qWait`` keeps the GIL while it spins (PySide6 6.12), so a
+    ``ControllerBridge`` worker only runs between waits and every SQLite call
+    it makes costs up to one wait step: a controller read that opens a
+    StateStore could take seconds. ``QEventLoop.exec`` releases the GIL like
+    ``app.exec()`` does in the real GUI; the DeferredDelete flush keeps qWait's
+    ``deleteLater`` behaviour.
+    """
+    qt_app()
+    loop = QEventLoop()
+    QTimer.singleShot(max(0, int(milliseconds)), loop.quit)
+    loop.exec()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
 def wait(milliseconds: int = 30) -> None:
     """Spin the event loop so queued signal deliveries and timers run."""
-    qt_app()
-    QTest.qWait(milliseconds)
+    _spin(milliseconds)
 
 
 def wait_until(predicate, timeout_ms: int = 2000) -> bool:  # type: ignore[no-untyped-def]
@@ -55,7 +69,7 @@ def wait_until(predicate, timeout_ms: int = 2000) -> bool:  # type: ignore[no-un
     while not predicate():
         if elapsed >= timeout_ms:
             return bool(predicate())
-        QTest.qWait(step)
+        _spin(step)
         elapsed += step
     return True
 
