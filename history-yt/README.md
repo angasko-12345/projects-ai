@@ -8,19 +8,25 @@ Topic -> research -> script -> **script approval gate** -> voice -> visuals -> a
 Set-Location D:\admin\code\projects\history-yt
 py -3.14 -m venv .venv
 .\.venv\Scripts\Activate.ps1
-$env:PIP_CACHE_DIR="D:\tmp\pip-cache"; $env:TEMP="D:\tmp"; $env:TMP="D:\tmp"
+$env:PIP_CACHE_DIR="D:\tmp\pip-cache"; $env:TEMP="D:\tmp"; $env:TMP="D:\tmp"; $env:TMPDIR="D:\tmp"
 pip install -e .[test]
 python -m histyt doctor
 python -m histyt topic-add "The Fall of Rome" --angle rise_fall
 python -m histyt research <id> --url https://example.com/a --title "Source A"
 python -m histyt research <id> --url https://example.com/b --title "Source B"
 python -m histyt script <id>
-python -m histyt approve script <id>
-python -m histyt run <id>          # stops at render gate (exit 2)
-python -m histyt approve render <id>
-python -m histyt upload <id>       # private only
+python -m histyt approve script <id>   # GATE 1
+python -m histyt run <id>              # stops at render gate (exit 2)
+python -m histyt approve render <id>   # GATE 2
+python -m histyt upload <id>           # private only
+python -m histyt status
+python -m histyt topic-list
 python -m pytest tests -q
 ```
+
+Reproducible venv: since `.venv/` is git-ignored, recreate it as above
+after `git clone`. Keep `$env:TMPDIR="D:\tmp"` set so pytest's
+`pytest-of-*` dirs land on D: (never in the working tree).
 
 ## State layout
 
