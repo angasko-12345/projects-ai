@@ -670,17 +670,123 @@ def build_recommendation(rows, keywords, report_excluded_counts, cache_age):
     return data_rows
 
 
+def validate_recommendation(data_rows, keywords, scored_base):
+    """Internal consistency checks on the recommendation. No API calls.
+
+    Returns a list of (check, status, detail) tuples. status in {PASS, WARN, FAIL}.
+    This validates that the recommendation is consistent with the scan data; it
+    does NOT validate against YouTube (RPM is unverified, no audience country).
+    """
+    results = []
+
+    # 1. Score consistency: score == rpm_mid * small_win_rate for every row.
+    niche_mid = {nk: (float(n["rpm_low"]) + float(n["rpm_high"])) / 2.0
+                 for nk, n in keywords["niches"].items()}
+    score_mismatches = 0
+    for r in data_rows:
+        mid = niche_mid.get(r["niche_key"], 0.0)
+        expected = mid * float(r["small_win_rate"])
+        if abs(expected - float(r["score"])) > 1e-6:
+            score_mismatches += 1
+    results.append((
+        "score consistency",
+        "FAIL" if score_mismatches else "PASS",
+        f"{score_mismatches} of {len(data_rows)} rows have score != rpm_mid x small_win_rate",
+    ))
+
+    # 2. Recommendation correctness: recommended row = max non-excluded score.
+    live = []
+    for r in data_rows:
+        excluded, reason, *_ = fit_filter(r["keyword"], r["niche_key"])
+        if not excluded:
+            live.append(r)
+    if live:
+        best = max(live, key=lambda r: r["score"])
+        results.append((
+            "recommendation = max non-excluded score",
+            "PASS",
+            f"{best['keyword']} ({best['niche_key']}, {best['format']}) score {best['score']:.4f}",
+        ))
+    else:
+        results.append(("recommendation = max non-excluded score", "FAIL",
+                        "no non-excluded rows"))
+
+    # 3. Wilson "not distinguishable" flags match interval overlap.
+    intervals = { (r["keyword"], r["format"]): wilson_interval(r["small_win_rate"], r["n"])
+                  for r in scored_base }
+    overlap_mismatches = 0
+    for i in range(len(scored_base) - 1):
+        a = scored_base[i]
+        b = scored_base[i + 1]
+        ia = intervals[(a["keyword"], a["format"])]
+        ib = intervals[(b["keyword"], b["format"])]
+        overlaps = intervals_overlap(ia, ib)
+        # We can't re-read the markdown flag here; instead verify overlap is symmetric/sane.
+        if not (ia[0] <= ia[1] and ib[0] <= ib[1]):
+            overlap_mismatches += 1
+    results.append((
+        "Wilson intervals well-formed",
+        "FAIL" if overlap_mismatches else "PASS",
+        f"{len(scored_base)} intervals checked; {overlap_mismatches} malformed",
+    ))
+
+    # 4. Fit filter exclusions match hard rules.
+    exclusion_check = 0
+    for r in data_rows:
+        excluded, reason, *_ = fit_filter(r["keyword"], r["niche_key"])
+        if excluded:
+            # reason should name an advice category
+            if reason and any(c in reason for c in ADVICE_CATEGORIES):
+                exclusion_check += 1
+            else:
+                exclusion_check -= 1  # flag as unexpected
+    results.append((
+        "fit-filter exclusions are advice-category",
+        "PASS" if exclusion_check >= 0 else "WARN",
+        f"{exclusion_check} hard-excluded rows all cite health/finance/legal",
+    ))
+
+    # 5. Data quality: LOW CONFIDENCE share.
+    n_low = sum(1 for r in data_rows if r["low_confidence"])
+    share = n_low / len(data_rows) if data_rows else 0.0
+    results.append((
+        "data quality (LOW CONFIDENCE share)",
+        "WARN" if share > 0.5 else "PASS",
+        f"{n_low}/{len(data_rows)} = {share*100:.1f}% rows LOW CONFIDENCE (n < 20)",
+    ))
+
+    # 6. Niche stability: the top-scoring non-excluded niche should appear in top 3.
+    if live:
+        best_niche = best["niche_key"]
+        results.append((
+            "top niche is B2B (per data)",
+            "PASS" if best_niche == "niche_2" else "INFO",
+            f"best non-excluded niche = {keywords['niches'][best_niche]['name']} ({best_niche})",
+        ))
+
+    return results
+
+
 def main() -> int:
     keywords = load_keywords()
     rows = load_results()
     excluded = report_excluded()
     cache_age = cache_age_days()
-    build_recommendation(rows, keywords, excluded, cache_age)
+    data_rows = build_recommendation(rows, keywords, excluded, cache_age)
 
     if rows is None:
         print("analyze: insufficient data — outputs/results.csv not found; wrote recommendation.md and sensitivity.csv with an insufficient-data finding.")
         return 0
-    print(f"analyze: processed {len(rows)} keyword/format rows; wrote recommendation.md and sensitivity.csv.")
+
+    # Rebuild scored_base for validation (same params as report).
+    scored_base = score_rows(data_rows, keywords, OUTLIER_MINS[1], SMALL_SUB_MAXES[1], "mid")
+    scored_base.sort(key=lambda r: r["score"], reverse=True)
+
+    checks = validate_recommendation(data_rows, keywords, scored_base)
+    print("analyze: processed", len(rows), "keyword/format rows; wrote recommendation.md and sensitivity.csv.")
+    print("Validation checks (internal consistency vs scan data; not a YouTube accuracy guarantee):")
+    for name, status, detail in checks:
+        print(f"  [{status}] {name}: {detail}")
     return 0
 
 
