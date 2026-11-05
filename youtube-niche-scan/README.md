@@ -61,6 +61,31 @@ Outputs: `outputs/results.csv` (per keyword/format aggregates) and
 `outputs/report.md` (ranking by keyword, aggregate by niche, long-form vs
 short-form side by side, excluded counts, units used).
 
+## Analysis (`analyze.py`)
+
+Read-only analysis of `outputs/results.csv` (no API calls, standard library
+only). Writes `outputs/recommendation.md` (niche recommendation) and
+`outputs/sensitivity.csv` (rank-stability across the sensitivity grid).
+
+```powershell
+# Analyze the last scan output and write the recommendation
+python analyze.py
+
+# Re-run after a new scan produces outputs/results.csv
+python analyze.py
+```
+
+`analyze.py` recomputes Wilson 95% intervals for `small_win_rate`, flags
+keywords whose interval overlaps the one below as "not distinguishable",
+runs a sensitivity grid (`outlier_min` in {3, 5, 8} × `small_sub_max` in
+{5K, 10K, 25K} × RPM in {low, mid, high}), applies a hard-exclusion fit
+filter (camera / credentials / health-finance-legal / templated output),
+rates feasibility and differentiation separately (1-3 each, never blended),
+and computes YPP-threshold views and per-100K-view revenue arithmetic.
+
+If `outputs/results.csv` is missing or every row is LOW CONFIDENCE (n < 20),
+it writes an "insufficient data" finding instead of a recommendation.
+
 ## Tests
 
 ```powershell
