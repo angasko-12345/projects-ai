@@ -50,6 +50,7 @@ SHORT_MAX_SECONDS = 180
 LONG_MIN_SECONDS = 480
 LOW_CONFIDENCE_N = 20
 FORMATS = ("long-form", "short-form")
+SORT_OPTIONS = ("relevance", "viewCount", "rating")
 
 _DURATION_RE = re.compile(
     r"^P(?:(\d+)Y)?(?:(\d+)M)?(?:(\d+)W)?(?:(\d+)D)?"
@@ -242,8 +243,12 @@ def video_fields(item: dict) -> dict:
     }
 
 
-def scan_keyword(client: YouTubeClient, keyword: str, published_after: str, min_age_days: int, now=None):
+def scan_keyword(client: YouTubeClient, keyword: str, published_after: str, min_age_days: int, now=None, sorts=("relevance",), pages: int = 1, regions=("US",)):
     """Fetch one keyword's search results plus channel baselines.
+
+    Runs the search pipeline once per (sort, region, page) combination,
+    collecting all video IDs across combinations before downstream calls.
+    Defaults (sort=relevance, region=US, 1 page) preserve existing behavior.
 
     Returns (records, channels, baselines, stats) where stats holds
     exclusion counts. May raise QuotaExceeded mid-way.
@@ -251,25 +256,45 @@ def scan_keyword(client: YouTubeClient, keyword: str, published_after: str, min_
     now = now or datetime.now(timezone.utc)
     stats = {"excluded_young": 0, "excluded_hidden_channels": 0, "ignored_mid_length": 0}
 
-    search = client.fetch(
-        "search",
-        "/search",
-        {
-            "part": "snippet",
-            "type": "video",
-            "regionCode": "US",
-            "relevanceLanguage": "en",
-            "order": "relevance",
-            "publishedAfter": published_after,
-            "maxResults": MAX_RESULTS,
-            "q": keyword,
-        },
-    )
-    video_ids = [
-        item["id"]["videoId"]
-        for item in search.get("items", [])
-        if item.get("id", {}).get("videoId")
-    ]
+    all_video_ids = []
+    for sort in sorts:
+        for region in regions:
+            page_token = None
+            for _page in range(pages):
+                params = {
+                    "part": "snippet",
+                    "type": "video",
+                    "regionCode": region,
+                    "relevanceLanguage": "en",
+                    "order": sort,
+                    "publishedAfter": published_after,
+                    "maxResults": MAX_RESULTS,
+                    "q": keyword,
+                }
+                if page_token:
+                    params["pageToken"] = page_token
+                search = client.fetch(
+                    "search",
+                    "/search",
+                    params,
+                )
+                video_ids = [
+                    item["id"]["videoId"]
+                    for item in search.get("items", [])
+                    if item.get("id", {}).get("videoId")
+                ]
+                all_video_ids.extend(video_ids)
+                page_token = search.get("nextPageToken")
+                if not page_token:
+                    break
+
+    # Dedupe video IDs while preserving first-seen order.
+    seen = set()
+    video_ids = []
+    for vid in all_video_ids:
+        if vid not in seen:
+            seen.add(vid)
+            video_ids.append(vid)
 
     videos = {}
     for batch in chunks(video_ids, MAX_RESULTS):
@@ -394,18 +419,27 @@ def load_keywords(path: Path) -> dict:
         return json.load(fh)
 
 
-def estimate_units(n_keywords: int) -> dict:
+def estimate_units(n_keywords: int, sorts=("relevance",), pages: int = 1, regions=("US",)) -> dict:
     """Estimated units per stage for ``n_keywords`` (worst case: 50 unique
-    channels per keyword, each needing one playlistItems + one videos call)."""
+    channels per keyword, each needing one playlistItems + one videos call).
+
+    The search cost scales by len(sorts) * pages * len(regions); downstream
+    calls are deduplicated by ID so they stay roughly constant.
+    """
+    multiplier = len(sorts) * pages * len(regions)
     per_keyword = {
-        "search.list (1 call x 100 units)": 100,
-        "videos.list for 50 search results (1 call x 1 unit)": 1,
+        "search.list (N calls x 100 units)": 100 * multiplier,
+        "videos.list for up to 50 search results (1 call x 1 unit)": 1,
         "channels.list for up to 50 channels (1 call x 1 unit)": 1,
         "playlistItems.list + videos.list per channel (50 x 2 units)": 100,
     }
     per_keyword_total = sum(per_keyword.values())
     return {
         "n_keywords": n_keywords,
+        "sorts": sorts,
+        "pages": pages,
+        "regions": regions,
+        "combination_multiplier": multiplier,
         "per_keyword": per_keyword,
         "per_keyword_total": per_keyword_total,
         "estimated_total": n_keywords * per_keyword_total,
@@ -417,10 +451,17 @@ def dry_run(args) -> int:
     keywords = [kw for niche in data["niches"].values() for kw in niche["keywords"]]
     n = args.limit_keywords if args.limit_keywords else len(keywords)
     keywords = keywords[:n]
-    est = estimate_units(n)
+
+    sorts = tuple(args.sort) if args.sort else ("relevance",)
+    regions = tuple(args.region) if args.region else ("US",)
+    pages = args.pages if args.pages and args.pages > 0 else 1
+    multiplier = len(sorts) * pages * len(regions)
+
+    est = estimate_units(n, sorts=sorts, pages=pages, regions=regions)
 
     print("YouTube niche-scan --dry-run (no API calls made)")
     print(f"Keywords to scan: {n} (of {len(keywords)})")
+    print(f"Search combos: {len(sorts)} sort(s) x {pages} page(s) x {len(regions)} region(s) = {multiplier} combos/keyword")
     print(f"Unit cap: {args.unit_cap}")
     print()
     print("Estimated unit cost per stage (worst case per keyword):")
@@ -455,6 +496,10 @@ def run_scan(client: YouTubeClient, niches: dict, args) -> dict:
     scanned = 0
     stopped_early = False
 
+    sorts = tuple(args.sort) if args.sort else ("relevance",)
+    regions = tuple(args.region) if args.region else ("US",)
+    pages = args.pages if args.pages and args.pages > 0 else 1
+
     for niche_key, niche in niches.items():
         keywords = niche["keywords"]
         if args.limit_keywords:
@@ -465,7 +510,8 @@ def run_scan(client: YouTubeClient, niches: dict, args) -> dict:
         for keyword in keywords:
             try:
                 records, channels, baselines, stats = scan_keyword(
-                    client, keyword, published_after, args.min_age_days
+                    client, keyword, published_after, args.min_age_days,
+                    sorts=sorts, pages=pages, regions=regions
                 )
             except QuotaExceeded as exc:
                 stopped_early = True
@@ -540,6 +586,7 @@ def write_markdown(result: dict, niches: dict, args, path: Path) -> None:
     lines.append(f"- Keywords scanned: {result['scanned']}")
     lines.append(f"- Unit cap: {args.unit_cap}; units used: {result['units_used']}")
     lines.append(f"- API cache hits: {result['cache_hits']} (warm-cache reruns cost 0 units)")
+    lines.append(f"- Search: sort={', '.join(args.sort)}, pages={args.pages}, region={', '.join(args.region)}")
     lines.append("- RPM ranges: vendor claims, unverified (see keywords.json)")
     lines.append("")
     if result["stopped_early"]:
@@ -665,6 +712,9 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--outlier-min", type=float, default=OUTLIER_MIN_DEFAULT, help="outlier ratio threshold (default 5)")
     parser.add_argument("--min-age-days", type=int, default=MIN_AGE_DAYS_DEFAULT, help="skip videos younger than N days (default 14)")
     parser.add_argument("--purge-cache-older-than", type=int, default=PURGE_DEFAULT_DAYS, help="purge cache entries older than N days (default 30; set 0 to disable)")
+    parser.add_argument("--sort", action="append", default=None, help=f"search order (default: relevance); options: {', '.join(SORT_OPTIONS)}; repeatable")
+    parser.add_argument("--pages", type=int, default=1, help="number of search result pages per keyword (default 1)")
+    parser.add_argument("--region", action="append", default=None, help="regionCode (default US); repeatable")
     return parser.parse_args(argv)
 
 

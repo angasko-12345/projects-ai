@@ -415,3 +415,149 @@ def test_scan_keyword_stops_on_quota(monkeypatch):
     with pytest.raises(scan.QuotaExceeded):
         scan.scan_keyword(client, "kw", "2025-06-01T00:00:00Z", min_age_days=14)
     assert calls["n"] == 2  # search (call 1) consumed the cap; call 2 is rejected
+
+
+# --- new sort / page / region parameters ---------------------------------------
+
+
+def test_scan_keyword_defaults_single_search(monkeypatch):
+    """Default behavior: single search call, order=relevance, regionCode=US,
+    no pageToken."""
+    calls = []
+
+    def fake_fetch(self, method, path, params, use_cache=True):
+        calls.append((method, path, dict(params)))
+        return {"items": []}
+
+    monkeypatch.setattr(YouTubeClient, "fetch", fake_fetch)
+    client = YouTubeClient(KEY, unit_cap=10_000)
+    scan.scan_keyword(
+        client, "kw", "2025-06-01T00:00:00Z", min_age_days=14
+    )
+    search_calls = [c for c in calls if c[1] == "/search"]
+    assert len(search_calls) == 1
+    _, _, params = search_calls[0]
+    assert params["order"] == "relevance"
+    assert params["regionCode"] == "US"
+    assert "pageToken" not in params
+
+
+def test_scan_keyword_multiple_sorts(monkeypatch):
+    calls = []
+
+    def fake_fetch(self, method, path, params, use_cache=True):
+        calls.append(dict(params))
+        return {"items": []}
+
+    monkeypatch.setattr(YouTubeClient, "fetch", fake_fetch)
+    client = YouTubeClient(KEY, unit_cap=10_000)
+    scan.scan_keyword(
+        client, "kw", "2025-06-01T00:00:00Z", min_age_days=14,
+        sorts=("relevance", "viewCount"), regions=("US",), pages=1
+    )
+    search_calls = [c for c in calls if "order" in c]
+    assert len(search_calls) == 2
+    orders = {c["order"] for c in search_calls}
+    assert orders == {"relevance", "viewCount"}
+    for c in search_calls:
+        assert c["regionCode"] == "US"
+
+
+def test_scan_keyword_multiple_pages_uses_page_token(monkeypatch):
+    calls = []
+
+    def fake_fetch(self, method, path, params, use_cache=True):
+        calls.append(dict(params))
+        if "pageToken" in params:
+            return {"items": [], "nextPageToken": None}
+        return {"items": [], "nextPageToken": "token2"}
+
+    monkeypatch.setattr(YouTubeClient, "fetch", fake_fetch)
+    client = YouTubeClient(KEY, unit_cap=10_000)
+    scan.scan_keyword(
+        client, "kw", "2025-06-01T00:00:00Z", min_age_days=14,
+        sorts=("relevance",), regions=("US",), pages=2
+    )
+    search_calls = [c for c in calls if "order" in c]
+    assert len(search_calls) == 2
+    assert "pageToken" not in search_calls[0]
+    assert search_calls[1]["pageToken"] == "token2"
+
+
+def test_scan_keyword_stops_pagination_without_next_page_token(monkeypatch):
+    calls = []
+
+    def fake_fetch(self, method, path, params, use_cache=True):
+        calls.append(dict(params))
+        return {"items": [], "nextPageToken": None}
+
+    monkeypatch.setattr(YouTubeClient, "fetch", fake_fetch)
+    client = YouTubeClient(KEY, unit_cap=10_000)
+    scan.scan_keyword(
+        client, "kw", "2025-06-01T00:00:00Z", min_age_days=14,
+        sorts=("relevance",), regions=("US",), pages=5
+    )
+    search_calls = [c for c in calls if "order" in c]
+    assert len(search_calls) == 1  # stops after first page when no nextPageToken
+
+
+def test_scan_keyword_multiple_regions(monkeypatch):
+    calls = []
+
+    def fake_fetch(self, method, path, params, use_cache=True):
+        calls.append(dict(params))
+        return {"items": []}
+
+    monkeypatch.setattr(YouTubeClient, "fetch", fake_fetch)
+    client = YouTubeClient(KEY, unit_cap=10_000)
+    scan.scan_keyword(
+        client, "kw", "2025-06-01T00:00:00Z", min_age_days=14,
+        sorts=("relevance",), regions=("US", "UK"), pages=1
+    )
+    search_calls = [c for c in calls if "order" in c]
+    assert len(search_calls) == 2
+    regions = {c["regionCode"] for c in search_calls}
+    assert regions == {"US", "UK"}
+
+
+def test_estimate_units_multiplier():
+    est = scan.estimate_units(
+        30, sorts=("relevance", "viewCount"), pages=2, regions=("US", "UK")
+    )
+    assert est["combination_multiplier"] == 8  # 2 sorts x 2 pages x 2 regions
+    assert est["per_keyword"]["search.list (N calls x 100 units)"] == 800
+    assert est["estimated_total"] == 30 * (800 + 1 + 1 + 100)
+
+
+def test_estimate_units_default_multiplier_is_one():
+    est = scan.estimate_units(30)
+    assert est["combination_multiplier"] == 1
+    assert est["per_keyword"]["search.list (N calls x 100 units)"] == 100
+
+
+def test_dry_run_shows_combo_multiplier(monkeypatch, capsys):
+    def fake_urlopen(req, timeout=None):
+        raise AssertionError("dry-run must not call the API")
+
+    monkeypatch.setattr(scan, "urlopen", fake_urlopen)
+    monkeypatch.delenv("YOUTUBE_API_KEY", raising=False)
+    scan.main(
+        [
+            "--dry-run",
+            "--limit-keywords",
+            "1",
+            "--sort",
+            "relevance",
+            "--sort",
+            "viewCount",
+            "--pages",
+            "2",
+            "--region",
+            "US",
+            "--region",
+            "UK",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert "Search combos: 2 sort(s) x 2 page(s) x 2 region(s) = 8 combos/keyword" in out
+    assert "800 units/keyword x 1 = 800 units" in out
