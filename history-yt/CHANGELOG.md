@@ -29,13 +29,19 @@
 - Assemble fixes: looped image input now uses the configured frame rate (every
   segment was 0.5s instead of 0.6s), first segment uses the first asset, output
   size follows `videos`, and a loudnorm pass targets -14 LUFS / -1 dBTP
+- Assemble fixes found by the first real render: segments are frame-exact (AAC
+  priming made a 28-chunk concat average 29.907 fps), the subtitle pass forces
+  CFR at `videos.fps`, and loudness uses two-pass loudnorm plus a measured
+  gain/limiter correction (one-pass landed at -15.3 LUFS / -0.7 dBTP). Measured
+  output is -14.2 LUFS / -1.6 dBTP; silent input falls back to one pass
 - Description gains chapters (only when they can be valid), a disclosure line
   when the config sets it, and a correction invite
 - New `research --tier`; `config/real.yaml` for opt-in OpenRouter + ElevenLabs
   runs; `qa` and `scene` config sections; canonical stage list shared by
   `state` and `pipeline`
-- Tests: 70 fake-provider tests, including script length, grounding, QA,
-  scenes, ElevenLabs, Commons, chapters, and D: policy
+- Tests: 72 fake-provider tests, including script length, grounding, QA,
+  scenes, ElevenLabs, Commons, chapters, D: policy, and the export specs the
+  first real render failed (frame rate, loudness target, true peak)
 
 ## 0.1.0 — Phase 1 initial
 - Topic → research → script → **[GATE 1: script approval]** → voice → visuals →

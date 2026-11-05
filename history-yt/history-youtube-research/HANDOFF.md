@@ -9,7 +9,14 @@
 - Visual variety is one deterministic card per scene keyed by the style lock, not 3-4 variants of the old title/timeline cards. Real images come from `visuals-fetch` (Wikimedia Commons, license-filtered).
 - Found and fixed a renderer bug the QA check exposed: looped image inputs defaulted to 25fps, so every 0.6s segment rendered 0.5s.
 
-**Remaining blocker:** the first real ElevenLabs run needs `ELEVENLABS_API_KEY` in the environment. The Teutoburg script is already generated, reviewed and approved in run `the-teutoburg-forest-rome-s-limit-2c52d1`; resume with `python -m histyt --config config/real.yaml run the-teutoburg-forest-rome-s-limit-2c52d1`.
+**First real run completed 2026-11-05:** `the-teutoburg-forest-rome-s-limit-2c52d1` went script -> ElevenLabs voice (28 chunks, voice "George", premade) -> scenes -> visuals -> assemble -> QA -> mock upload at 107.3s, QA `revise` with one grounding warning (C15, C21) and no rejections. Output is 1920x1080 h264 at 30.000 fps, -14.2 LUFS, -1.6 dBTP.
+
+Three things only a real run could show, all fixed in `assemble.py` and `config/real.yaml`:
+- The free ElevenLabs tier rejects library voices over the API (HTTP 402). Use a voice listed by `GET /v1/voices` for the key; `real.yaml` now pins George (`JBFqnCBsd6RMkjVDRZzb`).
+- AAC priming per chunk made the concat average 29.907 fps. Segments are now cut to whole frames with audio padded and trimmed to match, and the subtitle pass forces CFR.
+- One-pass loudnorm landed at -15.3 LUFS / -0.7 dBTP, and the dynamic mode of the two-pass form stops about a dB low when the peak ceiling binds. Normalization now corrects with a measured gain plus a limiter whose sample ceiling sits 1 dB under the spec (AAC adds intersample overshoot).
+
+**Next real-run items:** the disclosure toggle is still manual, C15 and C21 need a human look at their source overlap, and the 11 human rubric categories are unscored. A real (non-mock) upload still needs `HISTYT_YT_CLIENT_JSON` and `HISTYT_YT_TOKEN`.
 
 ---
 
