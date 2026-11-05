@@ -23,4 +23,16 @@
 - Captions synced to cumulative TTS durations; 8 seeded thumbnail layouts
 - Duration warning when estimated narration deviates from `target_length_minutes`
 - Pinned dependencies (`pyyaml>=6.0`, `pillow>=10`, `requests>=2.31`), `[tool.ruff]` config
-- `shorts.plan_shorts` Phase-2 stub contract test
+
+## Unreleased — Phase 2 shorts (plan + landscape extract)
+- `shorts-plan <id> [--max-clips N]`: deterministic offline ranking of
+  consecutive-chunk windows (caption timing) by hook/entity/digits/sweet-spot
+  scoring; non-overlapping greedy selection, `shorts/shorts_plan.json` with
+  windows, scores, slugs and deterministic title suggestions
+- `shorts-extract <id>`: cuts planned windows from `final.mp4` into
+  `shorts/short_NN.mp4` (h264/yuv420p + aac, source/landscape aspect) with a
+  `shorts/shorts_manifest.json` (durations + SHA-256); gated on render
+  approval and the pinned `final.mp4` hash (same contract as upload)
+- New `shorts:` config section (`max_clips`, `min_seconds`, `max_seconds`)
+- Replaced the Phase-2 stub contract test with real coverage
+  (`tests/test_shorts.py`); upload gained opt-in `--mock` CLI flag

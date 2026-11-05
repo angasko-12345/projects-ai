@@ -3,7 +3,7 @@ import argparse
 import json
 import sys
 
-from . import pipeline, state as state_mod, topics, upload
+from . import pipeline, shorts as shorts_mod, state as state_mod, topics, upload
 from .assemble import assemble_stage
 from .config import get_runs_dir, load_config
 from .doctor import doctor, format_doctor
@@ -54,6 +54,14 @@ def _parser():
     up.add_argument("id")
     up.add_argument("--mock", action="store_true",
                     help="use the in-memory mock client (no network, no credentials)")
+
+    sp_plan = sub.add_parser("shorts-plan")
+    sp_plan.add_argument("id")
+    sp_plan.add_argument("--max-clips", type=int, default=None,
+                         help="override shorts.max_clips from config")
+
+    sp_ext = sub.add_parser("shorts-extract")
+    sp_ext.add_argument("id")
 
     asg = sub.add_parser("approve-script")
     asg.add_argument("id")
@@ -146,6 +154,20 @@ def main(argv=None):
         if args.command == "variation-check":
             rows, passed = variation_check_stage(runs, args.id, cfg)
             print(format_variation(rows, passed))
+            return 0
+        if args.command == "shorts-plan":
+            plan = shorts_mod.plan_shorts(runs, args.id, cfg,
+                                          max_clips=args.max_clips)
+            print(f"shorts plan: {len(plan['clips'])} clip(s) "
+                  f"(relaxed={plan['relaxed_min_seconds']}) -> shorts/shorts_plan.json")
+            for c in plan["clips"]:
+                print(f"  #{c['index']} {c['start']:.1f}s-{c['end']:.1f}s "
+                      f"({c['duration']:.1f}s) score={c['score']} hook={bool(c['hook'])}")
+            return 0
+        if args.command == "shorts-extract":
+            manifest = shorts_mod.extract_shorts(runs, args.id, cfg)
+            print(f"extracted {len(manifest['shorts'])} landscape short(s) "
+                  "-> shorts/ (manifest: shorts/shorts_manifest.json)")
             return 0
         if args.command == "approve-render":
             pipeline.approve_render(runs, args.id)

@@ -1,4 +1,4 @@
-"""P1 regression tests: resumability, render pin, voice-direct gate, fetch_url, shorts stub."""
+"""P1 regression tests: resumability, render pin, voice-direct gate, fetch_url."""
 import os
 import unittest.mock
 
@@ -92,8 +92,3 @@ def test_fetch_url_caps_oversize_body():
             fetch_url("https://example.com/big", max_bytes=10)
 
 
-def test_shorts_stub_contract():
-    from histyt.shorts import plan_shorts
-
-    with pytest.raises(NotImplementedError, match="Phase 2"):
-        plan_shorts("any-video")

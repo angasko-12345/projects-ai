@@ -17,7 +17,12 @@ python -m histyt approve script <id>          # gate 1 (script hash pinned)
 python -m histyt run <id>                     # voice..variation, stops at render gate
 python -m histyt approve render <id>          # gate 2 (render_approved)
 python -m histyt upload <id>                  # privacyStatus always "private"
+python -m histyt upload <id> --mock          # no network, no credentials (mock client)
+python -m histyt shorts-plan <id> [--max-clips N]  # Phase 2: plan <=60s landscape clips
+python -m histyt shorts-extract <id>               # cut shorts into runs/<id>/shorts/ (render-approval gate)
 ```
+
+Phase 2 (shorts) scope: plan + landscape extract only — vertical reframe, caption re-render, and Shorts upload are out of scope. `shorts-extract` requires render approval and the pinned `final.mp4` hash (same contract as upload).
 
 Exit codes: 0 ok, 1 error, 2 gate. Global flags: `--config PATH`, `--runs DIR`.
 

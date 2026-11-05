@@ -20,6 +20,8 @@ python -m histyt run <id>              # stops at render gate (exit 2)
 python -m histyt approve-render <id>   # GATE 2
 python -m histyt upload <id>           # private only (real upload needs HISTYT_YT_TOKEN)
 python -m histyt upload <id> --mock    # no network, no credentials (mock client)
+python -m histyt shorts-plan <id> [--max-clips N]  # Phase 2: plan <=60s landscape clips
+python -m histyt shorts-extract <id>               # cut shorts/short_NN.mp4 from final.mp4
 python -m histyt status
 python -m histyt topic-list
 python -m pytest tests -q
@@ -39,6 +41,7 @@ runs/<video_id>/
   audio/chunk_NNN.wav  durations.json  captions.srt
   segments/seg_NNN.mp4  video.mp4  final.mp4
   thumbnail.png  thumbnail_meta.json  variation_report.json  upload.json
+  shorts/shorts_plan.json  shorts/short_NN.mp4  shorts/shorts_manifest.json
 ```
 
 ## Config (config/channel.yaml)
@@ -53,7 +56,25 @@ runs/<video_id>/
 | `llm` | provider (fake/google/openrouter/local/openai-compatible), base_url, model |
 | `youtube` | oauth_client_json (env `HISTYT_YT_CLIENT_JSON`), token_path (env `HISTYT_YT_TOKEN`), `contains_synthetic_media` |
 | `ai_image` | provider disabled by default |
+| `shorts` | max_clips (3), min_seconds (15), max_seconds (60) — Shorts planning (Phase 2) |
 | `videos` | width/height/fps (1920x1080@30) |
+
+## Phase 2: shorts (plan + landscape extract)
+
+`shorts-plan` ranks consecutive-chunk windows (from `durations.json`, the same
+timing captions use) by a deterministic, offline heuristic — hook questions,
+named-entity density, digits, sweet-spot length — and picks non-overlapping
+windows of at most `shorts.max_seconds` (default 60). It writes
+`shorts/shorts_plan.json` with per-clip windows, scores, slugs, and title
+suggestions (deterministic scaffolding — review before publishing). Requires
+script approval.
+
+`shorts-extract` cuts the planned windows from `final.mp4` into
+`shorts/short_NN.mp4` (h264/yuv420p + aac, source aspect ratio, landscape) and
+writes `shorts/shorts_manifest.json`. It is gated on render approval and the
+pinned `final.mp4` hash — the same contract as upload. Vertical reframe,
+caption re-render and any Shorts upload are out of scope by design; Shorts
+publishing is a separate, private-only decision.
 
 ## Free providers
 

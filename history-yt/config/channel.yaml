@@ -46,6 +46,11 @@ youtube:
 ai_image:
   provider: disabled
 
+shorts:
+  max_clips: 3
+  min_seconds: 15
+  max_seconds: 60
+
 videos:
   width: 1920
   height: 1080
