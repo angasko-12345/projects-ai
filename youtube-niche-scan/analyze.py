@@ -275,7 +275,7 @@ def fit_filter(keyword: str, niche_key: str):
         )
 
     weights_note = (
-        "Weights: feasibility and differentiation are reported separately (1-3 each); no blended score. "
+        "feasibility and differentiation are reported separately (1-3 each); no blended score. "
         "If combined for ranking: feasibility 0.6 / differentiation 0.4."
     )
     return (
@@ -521,15 +521,23 @@ def build_recommendation(rows, keywords, report_excluded_counts, cache_age):
     # ---------- Economics ----------
     lines.append("## Economics (arithmetic only; RPM is a vendor claim, unverified)")
     lines.append("")
-    live = [fr for fr in fit_results if not fr[1]]
-    if live:
-        top = live[0]
+    # Best non-excluded row across ALL keyword/format rows (not per-niche first-in-dict-order).
+    all_live = []
+    for r in data_rows:
+        excluded, reason, feas, feas_reason, diff, diff_reason, weights = fit_filter(r["keyword"], r["niche_key"])
+        if not excluded:
+            all_live.append((r, excluded, reason, feas, feas_reason, diff, diff_reason, weights))
+    all_live.sort(key=lambda fr: fr[0]["score"], reverse=True)
+
+    if all_live:
+        top = all_live[0]
         best, excluded, reason, feas, feas_reason, diff, diff_reason, weights = top
         nk = best["niche_key"]
         rpm_low = niche_rpm(nk, keywords, "low")
         rpm_mid = niche_rpm(nk, keywords, "mid")
         rpm_high = niche_rpm(nk, keywords, "high")
         lines.append(f"Top niche after fit filter: {keywords['niches'][nk]['name']} ({nk})")
+        lines.append(f"Top keyword/angle: {best['keyword']} ({best['format']}, score {best['score']:.4f})")
         lines.append(f"RPM range (vendor claim, unverified): {rpm_low} - {rpm_high} (mid {rpm_mid})")
         lines.append("")
         lines.append("### Views needed for YPP thresholds (assumptions: all views are long-form;")
@@ -593,9 +601,9 @@ def build_recommendation(rows, keywords, report_excluded_counts, cache_age):
     # ---------- Verdict / confidence ----------
     lines.append("## Verdict")
     lines.append("")
-    if live:
-        lines.append(f"Recommended niche: {keywords['niches'][live[0][0]['niche_key']]['name']} "
-                     f"(top keyword: {live[0][0]['keyword']}, {live[0][0]['format']}).")
+    if all_live:
+        lines.append(f"Recommended niche: {keywords['niches'][all_live[0][0]['niche_key']]['name']} "
+                     f"(top keyword: {all_live[0][0]['keyword']}, {all_live[0][0]['format']}).")
     else:
         lines.append("No niche passed the fit filter; no recommendation.")
     lines.append("")
