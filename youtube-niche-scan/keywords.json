@@ -1,0 +1,71 @@
+{
+  "title": "YouTube niche-scan seed keywords",
+  "note": "rpm_low / rpm_high are vendor claims, unverified. Score = rpm_mid x small-channel win rate.",
+  "lang": "en",
+  "region": "US",
+  "niches": {
+    "niche_1": {
+      "name": "AI workflows for specific jobs",
+      "rpm_low": 8,
+      "rpm_high": 15,
+      "rpm_note": "vendor claim, unverified",
+      "keywords": [
+        "AI workflow for accountants",
+        "AI workflow for real estate agents",
+        "AI workflow for lawyers",
+        "AI workflow for nurses",
+        "AI workflow for teachers",
+        "AI workflow for software engineers",
+        "AI workflow for project managers",
+        "AI workflow for HR recruiters"
+      ]
+    },
+    "niche_2": {
+      "name": "B2B software for one industry",
+      "rpm_low": 10,
+      "rpm_high": 20,
+      "rpm_note": "vendor claim, unverified",
+      "keywords": [
+        "construction software for contractors",
+        "restaurant POS software",
+        "clinic management software",
+        "law firm practice management software",
+        "trucking fleet management software",
+        "medical billing software",
+        "dental practice software",
+        "accounting software for small business"
+      ]
+    },
+    "niche_3": {
+      "name": "narrow-domain education (history, science, literary analysis)",
+      "rpm_low": 7,
+      "rpm_high": 11,
+      "rpm_note": "vendor claim, unverified",
+      "keywords": [
+        "art history analysis",
+        "organic chemistry tutorials",
+        "Shakespeare literary analysis",
+        "quantum physics explained",
+        "US Civil War history",
+        "creative writing workshops",
+        "statistics for data analysis"
+      ]
+    },
+    "niche_4": {
+      "name": "career and professional development",
+      "rpm_low": 5,
+      "rpm_high": 12,
+      "rpm_note": "vendor claim, unverified",
+      "keywords": [
+        "resume writing tips",
+        "interview preparation",
+        "LinkedIn optimization",
+        "career change at 40",
+        "project management certification",
+        "public speaking skills",
+        "salary negotiation"
+      ]
+    }
+  },
+  "keyword_count": 30
+}
