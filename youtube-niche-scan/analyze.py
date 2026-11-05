@@ -398,6 +398,12 @@ def build_recommendation(rows, keywords, report_excluded_counts, cache_age):
 
     n_low_conf = sum(1 for r in data_rows if r["low_confidence"])
     share_low_conf = (n_low_conf / len(data_rows)) if data_rows else 0.0
+
+    # results.csv has no niche_key column; derive it from the niche name.
+    niche_by_name = {n["name"]: nk for nk, n in keywords["niches"].items()}
+    for r in data_rows:
+        r.setdefault("niche_key", niche_by_name.get(r["niche"], "unknown"))
+
     formats = sorted({r["format"] for r in data_rows})
     keywords_seen = sorted({r["keyword"] for r in data_rows})
     niches_seen = sorted({r["niche_key"] for r in data_rows})
