@@ -26,7 +26,7 @@ thresholds:
   history_window: 10
 
 tts:
-  provider: piper
+  provider: fake  # piper needs: pip install piper-tts + model file on D: (see README)
   pacing_min: 0.9
   pacing_max: 1.1
   piper_exe: piper

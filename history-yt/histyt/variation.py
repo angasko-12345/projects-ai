@@ -86,6 +86,8 @@ PASS_FAIL_SEP = "-" * 90
 
 def format_variation(rows, passed):
     """human-readable PASS/FAIL table with actual values vs thresholds."""
+    if not rows:
+        return "OVERALL: PASS (no comparisons — no previous videos in history window)"
     lines = [PASS_FAIL_HEADER, PASS_FAIL_SEP]
     for row in rows:
         if row.get("kind") == "title":
