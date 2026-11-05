@@ -40,7 +40,12 @@ def create(runs_dir, video_id, title, angle):
         "template": "",
         "script_hash_approved": None,
         "render_approved": False,
+        "final_sha256_approved": None,
         "thumbnail_phash": None,
+        "thumbnail_layout": None,
+        "thumbnail_seed": None,
+        "completed_stages": [],
+        "duration_warning": None,
         "created_at": _now(),
         "updated_at": _now(),
         "error": None,
@@ -52,6 +57,8 @@ def create(runs_dir, video_id, title, angle):
 def save(runs_dir, video_id, state):
     os.makedirs(os.path.join(runs_dir, video_id), exist_ok=True)
     state["updated_at"] = _now()
+    # Keep legacy state files working: fill in completed_stages if missing.
+    state.setdefault("completed_stages", [])
     with open(state_path(runs_dir, video_id), "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2, ensure_ascii=False)
 
