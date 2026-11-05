@@ -15,6 +15,8 @@ def test_upload_mock_flag_uses_mock_client(runs, cfg, make_video, capsys):
         f.write(b"fake")
     with open(os.path.join(vdir, "thumbnail.png"), "wb") as f:
         f.write(b"fake")
+    with open(os.path.join(vdir, "qa_report.json"), "w", encoding="utf-8") as f:
+        json.dump({"verdict": "pass", "auto_rejections": [], "checks": []}, f)
     pipeline.approve_render(runs, vid)
     rc = cli.main(["--runs", runs, "upload", vid, "--mock"])
     out = capsys.readouterr().out

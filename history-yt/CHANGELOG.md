@@ -1,5 +1,42 @@
 # Changelog
 
+## Unreleased - workflow refinement (2026-11-05)
+- Script stage enforces the length contract: word budget from
+  `target_length_minutes * words_per_minute`, hard error below 60%, warning band
+  at 60-85% and above 140%, hook and one-idea-per-sentence prompt rules
+- Claims are written under their template section headers; empty template
+  headers are no longer emitted; claim ids are renumbered across the script so
+  models that restart at C1 cannot collide with audio/scene mapping
+- Source grounding: `sources.json` stores an evidence tier (`primary`,
+  `secondary`, `discovery`) and the fetched page text; the script prompt
+  includes source excerpts; each claim gets a lexical support status
+  (`supported`, `weak`, `unverified`, `unchecked`) and missing-number list;
+  `approve-script` prints the review before pinning the hash
+- New `scenes` stage: `scene_manifest.json` with one scene per claim, style
+  lock, camera, lighting, transition, continuity reference and real durations;
+  `durations.json` gains `scene_id` so assemble uses the right image per segment
+- New `qa` stage: `qa_report.json` with provable structural/release checks,
+  auto-rejections, verdict and a null-only 11-category human scorecard;
+  `approve-render` requires a report and refuses on `reject`
+- Per-scene deterministic visual cards keyed by style lock; real assets from
+  `assets.json` are reused; Windows font fallback chain; style lock recorded in
+  `assets.json`
+- ElevenLabs TTS provider (REST + ffmpeg WAV conversion, key redaction, speed
+  from pace); Piper now applies `--length_scale`; `doctor` reports the
+  ElevenLabs key and D: confinement
+- `visuals-fetch` pulls license-filtered public-domain/CC images from Wikimedia
+  Commons with attribution, content-type and size checks
+- Assemble fixes: looped image input now uses the configured frame rate (every
+  segment was 0.5s instead of 0.6s), first segment uses the first asset, output
+  size follows `videos`, and a loudnorm pass targets -14 LUFS / -1 dBTP
+- Description gains chapters (only when they can be valid), a disclosure line
+  when the config sets it, and a correction invite
+- New `research --tier`; `config/real.yaml` for opt-in OpenRouter + ElevenLabs
+  runs; `qa` and `scene` config sections; canonical stage list shared by
+  `state` and `pipeline`
+- Tests: 70 fake-provider tests, including script length, grounding, QA,
+  scenes, ElevenLabs, Commons, chapters, and D: policy
+
 ## 0.1.0 — Phase 1 initial
 - Topic → research → script → **[GATE 1: script approval]** → voice → visuals →
   assemble → thumbnail → variation → **[GATE 2: render approval]** → upload (private)

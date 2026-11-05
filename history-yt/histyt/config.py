@@ -39,3 +39,20 @@ def get(obj, key, default=None):
 def get_runs_dir(cfg=None, path=None):
     """Runs dir: explicit path else <project>/runs."""
     return path or os.path.join(get_project_root(), "runs")
+
+
+def ensure_d_confined(path):
+    """Raise ConfigError unless `path` is on D: or inside the project dir.
+
+    Windows-only: on other platforms there is no drive letter to enforce. This
+    guards installs, models and caches, not pytest temp dirs.
+    """
+    resolved = os.path.abspath(path)
+    if os.name != "nt":
+        return resolved
+    project = os.path.abspath(get_project_root())
+    drive = os.path.splitdrive(resolved)[0].upper()
+    if drive == "D:" or resolved == project or resolved.startswith(project + os.sep):
+        return resolved
+    raise ConfigError(
+        f"path is outside D: and the project dir: {resolved}")

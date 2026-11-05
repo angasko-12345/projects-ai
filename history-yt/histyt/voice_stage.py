@@ -10,6 +10,11 @@ from .state import require_script_approval, set_stage
 
 
 def _pace_for(chunk, pacing_min, pacing_max):
+    """Deterministic speed multiplier in [pacing_min, pacing_max].
+
+    Providers apply it (Piper as length_scale, ElevenLabs as speed); the fake
+    provider ignores it by design.
+    """
     h = int(hashlib.sha256(chunk.encode("utf-8")).hexdigest()[:8], 16)
     frac = (h % 100) / 100.0
     return pacing_min + frac * (pacing_max - pacing_min)

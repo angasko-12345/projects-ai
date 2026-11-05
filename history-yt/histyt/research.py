@@ -9,6 +9,8 @@ import requests
 from .state import PipelineError, set_stage
 
 USER_AGENT = "histyt/0.1.0 (personal research pipeline)"
+SOURCE_TIERS = ("primary", "secondary", "discovery")
+MAX_STORED_TEXT = 200_000
 
 
 def sources_file(runs_dir, video_id):
@@ -23,10 +25,21 @@ def load_sources(runs_dir, video_id):
         return json.load(f)
 
 
-def add_source(runs_dir, video_id, url, title, note, source_id=None):
+def add_source(runs_dir, video_id, url, title, note, source_id=None,
+               tier="secondary", text=""):
+    """Append a source with its evidence tier and extracted text.
+
+    `text` is what the claiming pass checks against, so fetch helpers should
+    store the page text here rather than only a short note.
+    """
+    tier = (tier or "secondary").strip().lower()
+    if tier not in SOURCE_TIERS:
+        raise PipelineError(
+            f"unknown source tier {tier!r} (allowed: {', '.join(SOURCE_TIERS)})")
     sources = load_sources(runs_dir, video_id)
     sid = source_id or f"S{len(sources) + 1}"
-    sources.append({"id": sid, "url": url, "title": title, "note": note or ""})
+    sources.append({"id": sid, "url": url, "title": title, "note": note or "",
+                    "tier": tier, "text": (text or "")[:MAX_STORED_TEXT]})
     os.makedirs(os.path.join(runs_dir, video_id), exist_ok=True)
     with open(sources_file(runs_dir, video_id), "w", encoding="utf-8") as f:
         json.dump(sources, f, indent=2, ensure_ascii=False)
@@ -34,11 +47,23 @@ def add_source(runs_dir, video_id, url, title, note, source_id=None):
 
 
 def research_stage(runs_dir, video_id, sources):
+    """Persist sources, filling in tier/text for callers that omit them."""
+    normalized = []
+    for source in sources:
+        entry = dict(source)
+        entry.setdefault("tier", "secondary")
+        entry.setdefault("text", "")
+        tier = (entry.get("tier") or "secondary").lower()
+        if tier not in SOURCE_TIERS:
+            raise PipelineError(
+                f"unknown source tier {tier!r} for {entry.get('id', '?')}")
+        entry["tier"] = tier
+        normalized.append(entry)
     os.makedirs(os.path.join(runs_dir, video_id), exist_ok=True)
     with open(sources_file(runs_dir, video_id), "w", encoding="utf-8") as f:
-        json.dump(sources, f, indent=2, ensure_ascii=False)
+        json.dump(normalized, f, indent=2, ensure_ascii=False)
     set_stage(runs_dir, video_id, "research")
-    return sources
+    return normalized
 
 
 def fetch_url(url, timeout=30, max_bytes=2_000_000):

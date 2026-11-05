@@ -4,14 +4,31 @@ import json
 import os
 from datetime import datetime, timezone
 
-STAGES = [
-    "topic", "research", "awaiting_script_approval", "approved_script",
-    "voice", "visuals", "assemble", "thumbnail", "variation_check",
-    "awaiting_render_approval", "uploaded",
+# Single canonical pipeline order. `pipeline` and `state` must not keep
+# separate lists: resume logic compares stage labels from both.
+STAGE_ORDER = [
+    "topic",
+    "research",
+    "script",
+    "awaiting_script_approval",
+    "approved_script",
+    "voice",
+    "scenes",
+    "visuals",
+    "assemble",
+    "thumbnail",
+    "variation_check",
+    "qa",
+    "awaiting_render_approval",
+    "awaiting_upload",
+    "uploaded",
 ]
 
+# Backward-compatible alias for callers that imported STAGES.
+STAGES = STAGE_ORDER
+
 # Stages reachable only after script approval.
-POST_SCRIPT_GATE = STAGES[STAGES.index("approved_script"):]
+POST_SCRIPT_GATE = STAGE_ORDER[STAGE_ORDER.index("approved_script"):]
 
 
 class GateError(Exception):
@@ -46,6 +63,7 @@ def create(runs_dir, video_id, title, angle):
         "thumbnail_seed": None,
         "completed_stages": [],
         "duration_warning": None,
+        "qa_verdict": None,
         "created_at": _now(),
         "updated_at": _now(),
         "error": None,

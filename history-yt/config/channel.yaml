@@ -3,6 +3,7 @@ angle: ""
 language: en
 voice: en_US-lessac-medium
 target_length_minutes: 12
+words_per_minute: 150
 
 script_templates:
   - name: origin_story
@@ -26,22 +27,43 @@ thresholds:
   history_window: 10
 
 tts:
-  provider: fake  # piper needs: pip install piper-tts + model file on D: (see README)
+  provider: fake  # fake | piper | elevenlabs
   pacing_min: 0.9
   pacing_max: 1.1
   piper_exe: piper
   model: ""
+  elevenlabs_voice_id: "21m00Tcm4TlvDq8ikWAM"
+  elevenlabs_model: "eleven_multilingual_v2"
+  elevenlabs_output_format: "mp3_44100_128"
 
 llm:
   provider: fake
   base_url: ""
   model: ""
   api_key_env: ""
+  temperature: 0.7
+  max_tokens: null
 
 youtube:
   oauth_client_json: ""
   token_path: ""
   contains_synthetic_media: null
+
+scene:
+  # Style lock is copied into every scene record. Empty means not set, not guessed.
+  style_lock: "engraved documentary, muted earth palette, soft rim light"
+  period: ""
+  location: ""
+
+qa:
+  profile: release  # structural | release
+  loudness_lufs: -14.0
+  loudness_tolerance: 1.0
+  true_peak_max: -1.0
+
+audio:
+  normalize: true
+  loudness_lufs: -14.0
 
 ai_image:
   provider: disabled

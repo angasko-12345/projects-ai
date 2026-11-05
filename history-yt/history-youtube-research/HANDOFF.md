@@ -3,6 +3,14 @@
 **Created:** 2026-11-05
 **Next session task:** Implement the workflow refinement in `D:\admin\code\projects\history-yt` (code edits), run tests and doctor/CLI verification, re-read changed files, then report completion. Then (separate session task only if asked) run a full end-to-end (voice -> visuals -> assemble -> QA -> upload dry-run).
 
+**Status 2026-11-05 (refinement session):** implemented on branch `feat/histyt-refinement`. 70 tests pass and ruff is clean under the repo config. Section 6 items 1-7 are done, plus the ElevenLabs provider and the public-domain image fetch. Notable deviations from the handoff plan, each deliberate:
+- The script stage was fixed before scenes/QA. The old prompt had no word target and wrote all claims after empty section headers; the E2E render was 1.57s long. Length is now a hard contract and claims are grouped and renumbered.
+- QA never scores the 11 human rubric categories. It runs the provable checks, applies the provable auto-rejections, and emits nulls for human scoring.
+- Visual variety is one deterministic card per scene keyed by the style lock, not 3-4 variants of the old title/timeline cards. Real images come from `visuals-fetch` (Wikimedia Commons, license-filtered).
+- Found and fixed a renderer bug the QA check exposed: looped image inputs defaulted to 25fps, so every 0.6s segment rendered 0.5s.
+
+**Remaining blocker:** the first real ElevenLabs run needs `ELEVENLABS_API_KEY` in the environment. The Teutoburg script is already generated, reviewed and approved in run `the-teutoburg-forest-rome-s-limit-2c52d1`; resume with `python -m histyt --config config/real.yaml run the-teutoburg-forest-rome-s-limit-2c52d1`.
+
 ---
 
 ## 1. What the user wants (verbatim intent)

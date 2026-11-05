@@ -1,16 +1,37 @@
-"""Visual assets: license gate, local title/timeline cards, fetch helper."""
+"""Visual assets: license gate, local scene cards, fetch helper.
+
+Cards are a placeholder renderer, not the final visual system. When a scene
+manifest exists, one card is generated per scene with a deterministic palette
+derived from the style lock, and every asset records which scene it serves.
+"""
+import hashlib
 import json
 import os
 
 import requests
 from PIL import Image, ImageDraw, ImageFont
 
+from . import scenes as scenes_mod
+from . import state as state_mod
 from .state import PipelineError, set_stage
 
 ALLOWED_LICENSES = {"public domain", "cc0", "us federal work", "cc-by"}
 GENERATED_LICENSE = "public domain"  # generated locally; no third-party asset
 
 CARD_W, CARD_H = 1920, 1080
+_FONT_CANDIDATES = (
+    "C:/Windows/Fonts/segoeuib.ttf",
+    "C:/Windows/Fonts/arialbd.ttf",
+    "DejaVuSans-Bold.ttf",
+)
+PALETTES = (
+    ((22, 24, 32), (58, 47, 38)),
+    ((18, 30, 36), (48, 56, 40)),
+    ((34, 24, 24), (62, 42, 30)),
+    ((24, 28, 24), (52, 58, 46)),
+    ((26, 26, 38), (46, 40, 58)),
+    ((32, 26, 20), (68, 52, 34)),
+)
 
 
 def _normalize(license_text):
@@ -31,12 +52,18 @@ def write_assets(runs_dir, video_id, assets):
         validate_asset(asset)
     vdir = os.path.join(runs_dir, video_id)
     os.makedirs(vdir, exist_ok=True)
-    rows = [{
-        "path": a.get("path", ""),
-        "license": a.get("license", ""),
-        "source_url": a.get("source_url", ""),
-        "attribution": a.get("attribution", ""),
-    } for a in assets]
+    rows = []
+    for asset in assets:
+        row = {
+            "path": asset.get("path", ""),
+            "license": asset.get("license", ""),
+            "source_url": asset.get("source_url", ""),
+            "attribution": asset.get("attribution", ""),
+        }
+        for key in ("scene_id", "style_lock", "tier", "license_url"):
+            if asset.get(key):
+                row[key] = asset[key]
+        rows.append(row)
     with open(os.path.join(vdir, "assets.json"), "w", encoding="utf-8") as f:
         json.dump(rows, f, indent=2, ensure_ascii=False)
     return rows
@@ -52,8 +79,8 @@ def _gradient(w, h, top, bottom):
     return img
 
 
-def _wrap(draw, text, font, max_width):
-    words = text.split()
+def _wrap(draw, text, font, max_width, max_lines=4):
+    words = (text or "").split()
     lines, cur = [], ""
     for word in words:
         trial = f"{cur} {word}".strip()
@@ -62,55 +89,104 @@ def _wrap(draw, text, font, max_width):
         else:
             lines.append(cur)
             cur = word
-    if cur:
+            if len(lines) == max_lines:
+                break
+    if cur and len(lines) < max_lines:
         lines.append(cur)
-    return lines[:4]
+    return lines
 
 
 def _try_font(size):
+    for name in _FONT_CANDIDATES:
+        try:
+            return ImageFont.truetype(name, size)
+        except OSError:
+            continue
     try:
-        return ImageFont.truetype("DejaVuSans-Bold.ttf", size)
-    except OSError:
+        return ImageFont.load_default(size=size)
+    except TypeError:  # Pillow < 10.1
         return ImageFont.load_default()
 
 
+def _palette_for(style_lock, scene_id):
+    digest = hashlib.sha256(f"{style_lock}|{scene_id}".encode()).hexdigest()
+    return PALETTES[int(digest[:8], 16) % len(PALETTES)]
+
+
+def _draw_card(path, w, h, top, bottom, label, body, footer):
+    img = _gradient(w, h, top, bottom)
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([int(w * 0.08), int(h * 0.16), int(w * 0.084), int(h * 0.84)],
+                   fill=(200, 168, 112))
+    label_font = _try_font(max(20, int(h * 0.028)))
+    body_font = _try_font(max(30, int(h * 0.062)))
+    footer_font = _try_font(max(18, int(h * 0.024)))
+    if label:
+        draw.text((int(w * 0.12), int(h * 0.18)), label.upper(), font=label_font,
+                  fill=(224, 200, 158))
+    lines = _wrap(draw, body, body_font, int(w * 0.76), max_lines=3)
+    base_y = int(h * 0.38)
+    for index, line in enumerate(lines):
+        draw.text((int(w * 0.12), base_y + index * int(h * 0.09)), line,
+                  font=body_font, fill=(245, 242, 236))
+    if footer:
+        draw.text((int(w * 0.12), int(h * 0.84)), footer, font=footer_font,
+                  fill=(190, 184, 170))
+    img.save(path)
+
+
 def generate_cards(runs_dir, video_id, title, cfg=None):
-    """Create title.png + timeline.png locally; no external asset needed."""
+    """Fallback: title and timeline cards, no scene manifest needed."""
     vdir = os.path.join(runs_dir, video_id)
     img_dir = os.path.join(vdir, "images")
     os.makedirs(img_dir, exist_ok=True)
     videos = (cfg or {}).get("videos") or {}
     w = int(videos.get("width", CARD_W))
     h = int(videos.get("height", CARD_H))
-
-    img = _gradient(w, h, (20, 20, 40), (60, 40, 20))
-    draw = ImageDraw.Draw(img)
-    font = _try_font(64)
-    for i, line in enumerate(_wrap(draw, title or "Untitled", font, int(w * 0.8))):
-        draw.text((int(w * 0.1), int(h * 0.4) + i * 80), line, font=font, fill=(255, 255, 255))
     title_path = os.path.join(img_dir, "title.png")
-    img.save(title_path)
-
-    timeline = _gradient(w, h, (40, 20, 20), (20, 40, 60))
-    tdraw = ImageDraw.Draw(timeline)
-    tfont = _try_font(48)
-    tdraw.text((int(w * 0.1), int(h * 0.2)), "Timeline", font=tfont, fill=(255, 255, 255))
-    years = ["1000", "1200", "1400", "1600", "1800", "2000"]
-    for i, year in enumerate(years):
-        x = int(w * 0.1 + i * (w * 0.8 / max(len(years) - 1, 1)))
-        tdraw.ellipse([x - 8, int(h * 0.6) - 8, x + 8, int(h * 0.6) + 8], fill=(255, 200, 100))
-        tdraw.text((x - 30, int(h * 0.6) + 30), year, font=_try_font(36), fill=(255, 255, 255))
     timeline_path = os.path.join(img_dir, "timeline.png")
-    timeline.save(timeline_path)
-
+    _draw_card(title_path, w, h, (20, 20, 40), (60, 40, 20),
+               "history", title or "Untitled", "histyt")
+    _draw_card(timeline_path, w, h, (40, 20, 20), (20, 40, 60),
+               "timeline", "The long arc of events", "histyt")
     assets = [
         {"path": title_path, "license": GENERATED_LICENSE,
          "source_url": "generated locally", "attribution": "histyt"},
         {"path": timeline_path, "license": GENERATED_LICENSE,
          "source_url": "generated locally", "attribution": "histyt"},
     ]
-    validate = write_assets(runs_dir, video_id, assets)
-    return validate
+    return write_assets(runs_dir, video_id, assets)
+
+
+def generate_scene_cards(runs_dir, video_id, manifest, cfg=None):
+    """One deterministic card per scene, derived from the style lock."""
+    vdir = os.path.join(runs_dir, video_id)
+    img_dir = os.path.join(vdir, "images", "scenes")
+    os.makedirs(img_dir, exist_ok=True)
+    videos = (cfg or {}).get("videos") or {}
+    w = int(videos.get("width", CARD_W))
+    h = int(videos.get("height", CARD_H))
+    style_lock = (manifest or {}).get("style_lock") or ""
+    assets = []
+    for scene in (manifest or {}).get("scenes") or []:
+        scene_id = scene.get("scene_id") or "SC"
+        path = os.path.join(img_dir, f"{scene_id}.png")
+        top, bottom = _palette_for(style_lock, scene_id)
+        excerpt = scene.get("narration") or scene.get("section") or ""
+        words = " ".join(excerpt.split()[:12])
+        _draw_card(path, w, h, top, bottom, scene.get("section") or "history",
+                   words, f"{scene_id}  |  {scene.get('section', '')}".strip(" |"))
+        assets.append({
+            "path": path,
+            "license": GENERATED_LICENSE,
+            "source_url": "generated locally",
+            "attribution": "histyt",
+            "scene_id": scene_id,
+            "style_lock": style_lock,
+        })
+    if not assets:
+        raise PipelineError("scene manifest has no scenes")
+    return write_assets(runs_dir, video_id, assets)
 
 
 def fetch_asset(url, dest, license, attribution, source_url, timeout=30):
@@ -136,17 +212,32 @@ class DisabledAIImageProvider:
         raise PipelineError("AI image generation disabled by default")
 
 
+def _existing_assets(runs_dir, video_id):
+    path = os.path.join(runs_dir, video_id, "assets.json")
+    if not os.path.isfile(path):
+        return None
+    with open(path, encoding="utf-8") as f:
+        assets = json.load(f)
+    for asset in assets:
+        validate_asset(asset)
+    return assets
+
+
 def visuals_stage(runs_dir, video_id, cfg, title=None):
-    from . import state as state_mod
     state = state_mod.load(runs_dir, video_id)
-    vdir = os.path.join(runs_dir, video_id)
-    assets_path = os.path.join(vdir, "assets.json")
-    if os.path.isfile(assets_path):
-        with open(assets_path, encoding="utf-8") as f:
-            assets = json.load(f)
-        for asset in assets:
-            validate_asset(asset)
-    else:
-        assets = generate_cards(runs_dir, video_id, title or state.get("title", ""), cfg)
+    manifest = scenes_mod.load_manifest(runs_dir, video_id)
+    assets = _existing_assets(runs_dir, video_id)
+    if assets is None:
+        if manifest:
+            assets = generate_scene_cards(runs_dir, video_id, manifest, cfg)
+        else:
+            assets = generate_cards(runs_dir, video_id, title or state.get("title", ""), cfg)
+    if manifest:
+        paths = [asset.get("path", "") for asset in assets if asset.get("path")]
+        if not paths:
+            raise PipelineError("assets.json has no image paths for the scene manifest")
+        for index, scene in enumerate(manifest.get("scenes") or []):
+            scene["asset"] = paths[index % len(paths)]
+        scenes_mod.save_manifest(runs_dir, video_id, manifest)
     set_stage(runs_dir, video_id, "visuals")
     return assets

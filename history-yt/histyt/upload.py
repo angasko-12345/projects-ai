@@ -8,6 +8,7 @@ from . import state as state_mod
 from .assemble import build_description
 from .config import get
 from .research import load_sources
+from .scenes import load_manifest
 from .state import GateError, PipelineError
 
 YOUTUBE_DOCS_URL = "https://developers.google.com/youtube/v3/docs/videos/insert"
@@ -122,14 +123,16 @@ def upload_stage(runs_dir, video_id, cfg, client=None):
     youtube_cfg = cfg.get("youtube") or {}
     if get(youtube_cfg, "contains_synthetic_media", None) is None:
         print("ACTION REQUIRED: set synthetic/AI disclosure toggle manually in "
-              "YouTube Studio — field not verified in this build")
+              "YouTube Studio; field not verified in this build")
     meta_path = os.path.join(vdir, "script_meta.json")
     script_meta = {}
     if os.path.isfile(meta_path):
         with open(meta_path, encoding="utf-8") as f:
             script_meta = json.load(f)
     description = build_description(script_meta, load_sources(runs_dir, video_id),
-                                    state.get("title", ""))
+                                    state.get("title", ""),
+                                    manifest=load_manifest(runs_dir, video_id),
+                                    cfg=cfg)
     body = build_body(cfg, state.get("title", ""), description)
     if body["status"]["privacyStatus"] != "private":
         raise PipelineError("privacyStatus must be private; refusing non-private upload")

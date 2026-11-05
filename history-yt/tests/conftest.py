@@ -17,6 +17,9 @@ def cfg():
         c = yaml.safe_load(f)
     c["llm"] = {"provider": "fake"}
     c["tts"] = {"provider": "fake", "pacing_min": 0.9, "pacing_max": 1.1}
+    # Keep fake renders fast, and do not apply release thresholds to silence.
+    c["target_length_minutes"] = 1
+    c.setdefault("qa", {})["profile"] = "structural"
     return c
 
 

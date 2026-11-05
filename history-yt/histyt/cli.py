@@ -1,14 +1,20 @@
-"""CLI: `python -m histyt <command>`. Exit codes 0 ok, 1 error, 2 gate."""
+"""CLI: `python -m histyt <command>`. Exit codes 0 ok, 2 gate/reject, 1 error."""
 import argparse
 import json
 import sys
 
-from . import pipeline, shorts as shorts_mod, state as state_mod, topics, upload
+from . import commons, pipeline
+from . import qa as qa_mod
+from . import scenes as scenes_mod
+from . import shorts as shorts_mod
+from . import state as state_mod
+from . import topics, upload
 from .assemble import assemble_stage
 from .config import get_runs_dir, load_config
 from .doctor import doctor, format_doctor
-from .research import add_source, fetch_url, fetch_wikipedia
-from .script_stage import generate_script
+from .research import (SOURCE_TIERS, add_source, extract_text, fetch_url,
+                       fetch_wikipedia)
+from .script_stage import format_review, generate_script
 from .thumbnail import make_thumbnail
 from .variation import format_variation, variation_check_stage
 from .visuals import visuals_stage
@@ -16,7 +22,7 @@ from .voice_stage import voice_stage
 
 
 def _parser():
-    p = argparse.ArgumentParser(prog="histyt", description="History video pipeline (Phase 1)")
+    p = argparse.ArgumentParser(prog="histyt", description="History video pipeline")
     p.add_argument("--config", default=None, help="path to channel.yaml")
     p.add_argument("--runs", default=None, help="runs directory")
     sub = p.add_subparsers(dest="command", required=True)
@@ -42,13 +48,23 @@ def _parser():
     r.add_argument("--url", default=None)
     r.add_argument("--title", default=None)
     r.add_argument("--note", default=None)
+    r.add_argument("--tier", choices=SOURCE_TIERS, default="secondary",
+                   help="source evidence tier (default: secondary)")
     r.add_argument("--fetch-wikipedia", default=None)
     r.add_argument("--fetch-url", default=None)
 
     for name in ("script", "voice", "visuals", "assemble", "thumbnail",
-                 "variation-check", "run"):
+                 "variation-check", "run", "scenes"):
         sp = sub.add_parser(name)
         sp.add_argument("id")
+
+    qa_parser = sub.add_parser("qa")
+    qa_parser.add_argument("id")
+
+    vf = sub.add_parser("visuals-fetch")
+    vf.add_argument("id")
+    vf.add_argument("--query", required=True)
+    vf.add_argument("--limit", type=int, default=4)
 
     up = sub.add_parser("upload")
     up.add_argument("id")
@@ -70,6 +86,15 @@ def _parser():
     return p
 
 
+def _script_meta(runs, video_id):
+    import os
+    path = os.path.join(runs, video_id, "script_meta.json")
+    if not os.path.isfile(path):
+        return {}
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
 def main(argv=None):
     args = _parser().parse_args(argv)
     try:
@@ -88,14 +113,14 @@ def main(argv=None):
                     print("(no videos)")
                 else:
                     gate_stages = ("awaiting_script_approval", "awaiting_render_approval")
-                    print(f"{'VIDEO':<40}{'STAGE':<28}{'THUMB':<20}{'SEED':>8}")
+                    print(f"{'VIDEO':<42}{'STAGE':<28}{'THUMB':<20}{'SEED':>8}")
                     for r in rows_list:
                         vid = r.get("video_id", "?")
                         stage = r.get("stage", "?")
                         flag = " [GATE]" if stage in gate_stages else ""
-                        thumb = r.get("thumbnail_layout") or "—"
+                        thumb = r.get("thumbnail_layout") or "-"
                         seed = r.get("thumbnail_seed")
-                        print(f"{vid:<40}{stage + flag:<28}{thumb:<20}{str(seed if seed is not None else '—'):>8}")
+                        print(f"{vid:<42}{stage + flag:<28}{thumb:<20}{str(seed if seed is not None else '-'):>8}")
             return 0
         if args.command == "topic-list":
             rows = topics.list_topics(runs)
@@ -117,33 +142,51 @@ def main(argv=None):
             if args.fetch_wikipedia:
                 page = fetch_wikipedia(args.fetch_wikipedia)
                 title = page["title"]
-                sid = add_source(runs, vid, "https://en.wikipedia.org",
-                                 title, page["extract"][:500])
-                print(f"fetched wikipedia -> {sid}")
+                url = "https://en.wikipedia.org/wiki/" + title.replace(" ", "_")
+                sid = add_source(runs, vid, url, title, "",
+                                 tier=args.tier, text=page["extract"])
+                print(f"fetched wikipedia -> {sid} ({len(page['extract'])} chars, tier {args.tier})")
             if args.fetch_url:
                 html = fetch_url(args.fetch_url)
                 import re as _re
                 m = _re.search(r"<title[^>]*>(.*?)</title>", html, _re.I | _re.S)
                 title = m.group(1).strip() if m else args.fetch_url
-                sid = add_source(runs, vid, args.fetch_url, title, "")
-                print(f"fetched url -> {sid}")
+                text = extract_text(html)
+                sid = add_source(runs, vid, args.fetch_url, title, "",
+                                 tier=args.tier, text=text)
+                print(f"fetched url -> {sid} ({len(text)} chars, tier {args.tier})")
             if args.url:
-                sid = add_source(runs, vid, args.url, args.title or args.url, args.note or "")
-                print(f"added source {sid}")
+                sid = add_source(runs, vid, args.url, args.title or args.url,
+                                 args.note or "", tier=args.tier)
+                print(f"added source {sid} (tier {args.tier})")
             return 0
         if args.command == "script":
             meta = generate_script(runs, args.id, cfg)
             print(f"script generated ({meta.get('template')}); awaiting approval")
+            print(format_review(meta))
             return 0
         if args.command == "approve-script":
+            meta = _script_meta(runs, args.id)
+            if meta:
+                print(format_review(meta))
             pipeline.approve_script(runs, args.id)
             print("script approved")
             return 0
         if args.command == "voice":
             print(f"voice: {len(voice_stage(runs, args.id, cfg))} chunks")
             return 0
+        if args.command == "scenes":
+            manifest = scenes_mod.build_manifest(runs, args.id, cfg)
+            print(f"scenes: {len(manifest['scenes'])} scene(s), "
+                  f"{manifest['total_duration']:.1f}s -> scene_manifest.json")
+            return 0
         if args.command == "visuals":
             print(f"visuals: {len(visuals_stage(runs, args.id, cfg))} assets")
+            return 0
+        if args.command == "visuals-fetch":
+            added = commons.fetch_images(runs, args.id, args.query, limit=args.limit)
+            for asset in added:
+                print(f"added {asset['path']} [{asset['license']}]")
             return 0
         if args.command == "assemble":
             print(f"assembled -> {assemble_stage(runs, args.id, cfg)['final']}")
@@ -155,6 +198,10 @@ def main(argv=None):
             rows, passed = variation_check_stage(runs, args.id, cfg)
             print(format_variation(rows, passed))
             return 0
+        if args.command == "qa":
+            report = qa_mod.qa_stage(runs, args.id, cfg)
+            print(qa_mod.format_report(report))
+            return 2 if report.get("verdict") == "reject" else 0
         if args.command == "shorts-plan":
             plan = shorts_mod.plan_shorts(runs, args.id, cfg,
                                           max_clips=args.max_clips)
@@ -183,9 +230,17 @@ def main(argv=None):
             return 0
         if args.command == "run":
             state = pipeline.run_until_gate(runs, args.id, cfg)
+            report = qa_mod.load_report(runs, args.id)
+            if report:
+                print(f"QA verdict: {report.get('verdict')} "
+                      f"(see qa_report.json)")
             print(f"stopped at stage: {state.get('stage')}")
             gate_stages = ("awaiting_script_approval", "awaiting_render_approval")
-            return 2 if state.get("stage") in gate_stages else 0
+            if state.get("stage") in gate_stages:
+                return 2
+            if report and report.get("verdict") == "reject":
+                return 2
+            return 0
         return 1
     except state_mod.GateError as exc:
         print(f"GATE: {exc}", file=sys.stderr)

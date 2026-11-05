@@ -5,6 +5,8 @@ import shutil
 import subprocess
 import sys
 
+from .config import ConfigError, ensure_d_confined
+
 
 def _check(name, ok, detail):
     return (name, bool(ok), detail)
@@ -57,8 +59,13 @@ def doctor(cfg, runs_dir):
         checks.append(_check("runs writable", True, runs_dir))
     except OSError as exc:
         checks.append(_check("runs writable", False, str(exc)))
+    try:
+        ensure_d_confined(runs_dir)
+        checks.append(_check("runs on D:", True, runs_dir))
+    except ConfigError as exc:
+        checks.append(_check("runs on D:", False, str(exc)))
     tts = (cfg or {}).get("tts") or {}
-    provider = (tts.get("provider") or "").lower()
+    provider = (tts.get("provider") or "fake").lower()
     if provider == "piper":
         exe = tts.get("piper_exe") or "piper"
         model = tts.get("model") or ""
@@ -67,7 +74,13 @@ def doctor(cfg, runs_dir):
         checks.append(_check("piper model", bool(model and os.path.isfile(model)),
                              f"{model or '(unset)'} [on D:: {bool(on_d)}]"))
     else:
-        checks.append(_check("tts provider", True, f"{provider or 'fake'} (no piper needed)"))
+        checks.append(_check("tts provider", True, provider or "fake"))
+    eleven_key = os.environ.get("ELEVENLABS_API_KEY", "")
+    checks.append(_check("ELEVENLABS_API_KEY", bool(eleven_key) or provider != "elevenlabs",
+                         "present" if eleven_key else "absent"))
+    if provider == "elevenlabs" and not eleven_key:
+        checks.append(_check("elevenlabs usable", False,
+                             "tts.provider is elevenlabs but ELEVENLABS_API_KEY is absent"))
     checks.append(_check("OPENROUTER_API_KEY", True,
                          "present" if os.environ.get("OPENROUTER_API_KEY") else "absent"))
     checks.append(_check("GOOGLE_API_KEY", True,

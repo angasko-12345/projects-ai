@@ -31,8 +31,16 @@ def _write_fake_final(runs, vid):
     return vdir
 
 
+def _write_qa_pass(runs, vid, verdict="pass"):
+    vdir = os.path.join(runs, vid)
+    with open(os.path.join(vdir, "qa_report.json"), "w", encoding="utf-8") as f:
+        json.dump({"verdict": verdict, "auto_rejections": [], "checks": []}, f)
+    return vdir
+
+
 def _approved_render(runs, vid):
     vdir = _write_fake_final(runs, vid)
+    _write_qa_pass(runs, vid)
     pipeline.approve_render(runs, vid)
     return vdir
 
@@ -145,6 +153,7 @@ def test_extract_cuts_real_video_and_writes_manifest(runs, cfg, make_video, tmp_
         "-shortest", "-c:v", "libx264", "-pix_fmt", "yuv420p",
         "-c:a", "aac", final,
     ])
+    _write_qa_pass(runs, vid)
     pipeline.approve_render(runs, vid)
     small = _shorts_cfg(cfg, max_clips=1, min_seconds=1, max_seconds=6)
     plan = plan_shorts(runs, vid, small)

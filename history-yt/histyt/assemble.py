@@ -1,14 +1,16 @@
-"""Assemble per-chunk segments, concat, captions, sidecar/burned subtitle."""
+"""Assemble per-chunk segments, concat, captions, subtitle burn, loudness."""
 import json
 import os
 import subprocess
 import sys
 
+from . import scenes as scenes_mod
 from . import state as state_mod
 from .media import get_streams, has_stream, run_ffmpeg, run_ffprobe
 from .state import PipelineError
 
 IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp")
+LOUDNESS_TARGET = -14.0
 
 
 def _fmt_srt_time(seconds):
@@ -20,7 +22,15 @@ def _fmt_srt_time(seconds):
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
 
-def write_captions(vdir, durations, claims):
+def _fmt_chapter_time(seconds):
+    seconds = max(int(seconds), 0)
+    h = seconds // 3600
+    m = (seconds % 3600) // 60
+    s = seconds % 60
+    return f"{h:02d}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
+
+
+def write_captions(vdir, durations):
     path = os.path.join(vdir, "captions.srt")
     lines = []
     cursor = 0.0
@@ -28,8 +38,7 @@ def write_captions(vdir, durations, claims):
         text = entry.get("text", "")
         start = cursor
         end = cursor + float(entry.get("duration") or 0)
-        lines += [str(i), f"{_fmt_srt_time(start)} --> {_fmt_srt_time(end)}",
-                  text, ""]
+        lines += [str(i), f"{_fmt_srt_time(start)} --> {_fmt_srt_time(end)}", text, ""]
         cursor = end  # cumulative offset: each start = sum of all previous durations
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
@@ -54,26 +63,80 @@ def _image_list(vdir):
     return candidates
 
 
-def _segment_with_image(vdir, image, wav, duration, fps, out_path):
-    """Loop image, pair with wav, zoompan + scale/crop to 1920x1080."""
+def _scene_assets(runs_dir, video_id, vdir):
+    manifest = scenes_mod.load_manifest(runs_dir, video_id)
+    mapping = {}
+    for scene in (manifest or {}).get("scenes") or []:
+        path = scene.get("asset")
+        if not path:
+            continue
+        resolved = path if os.path.isabs(path) else os.path.join(vdir, path)
+        if not os.path.isfile(resolved):
+            raise PipelineError(
+                f"scene {scene.get('scene_id')} asset missing: {resolved}; re-run visuals")
+        mapping[scene.get("scene_id")] = resolved
+    return mapping
+
+
+def _segment_with_image(image, wav, duration, fps, out_path, width=1920, height=1080):
+    """Loop image, pair with wav, zoompan + scale/crop to the configured size.
+
+    The image input needs an explicit frame rate: `-loop 1` otherwise defaults
+    to 25 fps, so a 0.6s segment renders 15 frames (0.5s) and every chunk loses
+    time against the narration.
+    """
     dur = max(float(duration), 0.1)
-    filt = f"scale=2560:1440,zoompan=z='1+0.05*on/{int(fps * max(dur, 1))}':d=1:fps={fps}:s=2560x1440,crop=1920:1080" if image else ""
+    big_w, big_h = max(width, int(width * 4 / 3)), max(height, int(height * 4 / 3))
+    filt = (
+        f"scale={big_w}:{big_h}:force_original_aspect_ratio=increase,"
+        f"crop={big_w}:{big_h},"
+        f"zoompan=z='1+0.05*on/{int(fps * max(dur, 1))}':d=1:fps={fps}:"
+        f"s={big_w}x{big_h},crop={width}:{height}"
+    ) if image else f"scale={width}:{height},format=yuv420p"
     args = []
     if image:
-        args += ["-loop", "1", "-t", f"{dur}", "-i", image]
+        args += ["-loop", "1", "-framerate", str(fps), "-t", f"{dur}", "-i", image]
     else:
         # Black frame via color source avoids a missing-image failure.
-        args += ["-f", "lavfi", "-t", f"{dur}", "-i", "color=c=black:s=1920x1080:r=30"]
-    args += ["-i", wav, "-vf", filt or "format=yuv420p",
+        args += ["-f", "lavfi", "-t", f"{dur}",
+                 "-i", f"color=c=black:s={width}x{height}:r={fps}"]
+    args += ["-i", wav, "-vf", filt,
              "-c:v", "libx264", "-pix_fmt", "yuv420p", "-r", str(fps),
              "-c:a", "aac", "-shortest", out_path]
     run_ffmpeg(args)
 
 
-def build_description(script_meta, sources, title):
+def build_chapters(manifest, min_seconds=10.0):
+    """Section boundaries as YouTube chapters; empty when they cannot be valid.
+
+    YouTube needs at least three chapters, the first at 00:00, and each at
+    least 10 seconds long. Returning [] is honest; a broken chapter list is not.
+    """
+    scenes = (manifest or {}).get("scenes") or []
+    if not scenes:
+        return []
+    starts, cursor, current = [], 0.0, None
+    for scene in scenes:
+        section = scene.get("section") or ""
+        if section != current:
+            starts.append((section or "Opening", cursor))
+            current = section
+        cursor += float(scene.get("duration") or 0)
+    starts[0] = (starts[0][0], 0.0)
+    valid = []
+    for index, (name, start) in enumerate(starts):
+        end = starts[index + 1][1] if index + 1 < len(starts) else cursor
+        if index == 0 or end - start >= min_seconds:
+            valid.append((name, start))
+    if len(valid) < 3:
+        return []
+    return valid
+
+
+def build_description(script_meta, sources, title, manifest=None, cfg=None):
     lines = [title or "", "", "Sources:"]
     for s in sources:
-        lines.append(f"- {s.get('id')}: {s.get('title', '')} — {s.get('url', '')}")
+        lines.append(f"- {s.get('id')}: {s.get('title', '')} - {s.get('url', '')}")
     claims = (script_meta or {}).get("claims") or []
     if claims:
         lines += ["", "Claims & citations:"]
@@ -84,7 +147,28 @@ def build_description(script_meta, sources, title):
         lines += ["", "Needs human check:"]
         for item in needs:
             lines.append(f"- {item}")
+    chapters = build_chapters(manifest)
+    if chapters:
+        lines += ["", "Chapters:"]
+        for name, start in chapters:
+            lines.append(f"{_fmt_chapter_time(start)} {name}")
+    if ((cfg or {}).get("youtube") or {}).get("contains_synthetic_media") is True:
+        lines += ["", "This video contains realistic AI-generated scenes."]
+    lines += ["", "Corrections welcome in the comments."]
     return "\n".join(lines)
+
+
+def _normalize_loudness(final, cfg):
+    audio_cfg = (cfg or {}).get("audio") or {}
+    if not audio_cfg.get("normalize", True):
+        return False
+    target = float(audio_cfg.get("loudness_lufs", LOUDNESS_TARGET))
+    tmp = final + ".norm.mp4"
+    run_ffmpeg(["-i", final, "-c:v", "copy",
+                "-af", f"loudnorm=I={target}:TP=-1:LRA=11",
+                "-c:a", "aac", "-b:a", "192k", tmp])
+    os.replace(tmp, final)
+    return True
 
 
 def assemble_stage(runs_dir, video_id, cfg):
@@ -102,6 +186,7 @@ def assemble_stage(runs_dir, video_id, cfg):
     width, height = int(videos_cfg.get("width", 1920)), int(videos_cfg.get("height", 1080))
     fps = int(videos_cfg.get("fps", 30))
     images = _image_list(vdir)
+    scene_images = _scene_assets(runs_dir, video_id, vdir)
     seg_dir = os.path.join(vdir, "segments")
     os.makedirs(seg_dir, exist_ok=True)
     segments = []
@@ -109,9 +194,12 @@ def assemble_stage(runs_dir, video_id, cfg):
         wav = os.path.join(vdir, entry.get("file", ""))
         if not os.path.isfile(wav):
             raise PipelineError(f"audio chunk missing: {wav}")
-        image = images[i % len(images)] if images else None
+        image = scene_images.get(entry.get("scene_id"))
+        if image is None and images:
+            image = images[(i - 1) % len(images)]
         out = os.path.join(seg_dir, f"seg_{i:03d}.mp4")
-        _segment_with_image(vdir, image, entry and wav, entry.get("duration") or 0.5, fps, out)
+        _segment_with_image(image, wav, entry.get("duration") or 0.5, fps, out,
+                            width=width, height=height)
         segments.append(out)
     concat_path = os.path.join(vdir, "video.mp4")
     list_path = os.path.join(vdir, "concat.txt")
@@ -120,7 +208,7 @@ def assemble_stage(runs_dir, video_id, cfg):
             f.write(f"file '{seg}'\n")
     run_ffmpeg(["-f", "concat", "-safe", "0", "-i", list_path,
                 "-c", "copy", concat_path])
-    write_captions(vdir, durations, [])
+    write_captions(vdir, durations)
     final = os.path.join(vdir, "final.mp4")
     subtitle_ok = True
     try:
@@ -136,7 +224,8 @@ def assemble_stage(runs_dir, video_id, cfg):
         print(f"warning: subtitle burn failed, keeping sidecar only: {exc}")
         # Fallback: copy video.mp4 as final (sidecar captions stay in captions.srt).
         run_ffmpeg(["-i", concat_path, "-c", "copy", final])
-    # Validate with ffprobe.
+    normalized = _normalize_loudness(final, cfg)
+    # Validate with ffprobe after the audio pass.
     info = run_ffprobe(final)
     duration = float((info.get("format") or {}).get("duration") or 0)
     if duration <= 0:
@@ -150,4 +239,4 @@ def assemble_stage(runs_dir, video_id, cfg):
                     f"final.mp4 is {stream.get('width')}x{stream.get('height')}, expected {width}x{height}")
     state_mod.set_stage(runs_dir, video_id, "assemble")
     return {"video": concat_path, "final": final, "subtitle_burned": subtitle_ok,
-            "duration": duration}
+            "loudness_normalized": normalized, "duration": duration}
