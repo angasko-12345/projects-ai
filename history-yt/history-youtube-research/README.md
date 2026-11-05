@@ -20,6 +20,7 @@ See `SCOPE.md` for tooling notes and constraints.
 | 8 | `workflows/agent-architecture.md` | 8 | complete |
 | 9 | `workflows/quality-assurance-checklist.md` | 9 | complete |
 | 10 | `reports/recommended-production-blueprint.md` | 10 | complete |
+| 11 | `reports/visuals-production-plan.md` | 10 (extension) | complete |
 
 ## Supporting files
 

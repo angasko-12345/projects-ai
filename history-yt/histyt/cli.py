@@ -63,8 +63,12 @@ def _parser():
 
     vf = sub.add_parser("visuals-fetch")
     vf.add_argument("id")
-    vf.add_argument("--query", required=True)
-    vf.add_argument("--limit", type=int, default=4)
+    vf.add_argument("--query", default=None,
+                   help="fetch one explicitly queried image")
+    vf.add_argument("--all", action="store_true",
+                   help="resolve one licensed image per scene from the scene manifest")
+    vf.add_argument("--limit", type=int, default=10,
+                    help="candidates searched per query (licenses are filtered after retrieval)")
 
     up = sub.add_parser("upload")
     up.add_argument("id")
@@ -184,6 +188,17 @@ def main(argv=None):
             print(f"visuals: {len(visuals_stage(runs, args.id, cfg))} assets")
             return 0
         if args.command == "visuals-fetch":
+            if args.all:
+                result = commons.fetch_scene_images(runs, args.id, cfg, limit=args.limit)
+                for asset in result["selected"]:
+                    print(f"{asset['scene_id']} <- {asset['path']} [{asset['license']}]")
+                if result["missing"]:
+                    print("missing: " + ", ".join(result["missing"]))
+                print(f"selected {len(result['selected'])} of {result['scene_count']} scene(s)")
+                return 0
+            if not args.query:
+                print("error: visuals-fetch needs --query TEXT or --all")
+                return 2
             added = commons.fetch_images(runs, args.id, args.query, limit=args.limit)
             for asset in added:
                 print(f"added {asset['path']} [{asset['license']}]")

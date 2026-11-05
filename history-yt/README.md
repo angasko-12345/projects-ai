@@ -21,7 +21,8 @@ python -m histyt run <id>              # voice..QA, stops at the render gate (ex
 python -m histyt qa <id>               # print the last QA report
 python -m histyt approve-render <id>   # GATE 2: refuses on a QA reject
 python -m histyt upload <id> --mock    # no network, no credentials
-python -m histyt visuals-fetch <id> --query "Roman legionary relief"  # optional real images
+python -m histyt visuals-fetch <id> --all           # one licensed image per scene
+python -m histyt visuals-fetch <id> --query "Roman legionary relief"  # one extra image
 python -m histyt shorts-plan <id> [--max-clips N]
 python -m histyt shorts-extract <id>
 python -m histyt status
@@ -59,6 +60,7 @@ runs/<video_id>/
 | `llm` | `fake` (default), `google`, `openrouter`, `local`, `openai-compatible`; `temperature`, `max_tokens` |
 | `youtube` | oauth client json, token path, `contains_synthetic_media` |
 | `scene` | `style_lock`, optional `period` and `location` copied into every scene record |
+| `visuals` | archive fetch thresholds: `min_width`, `min_height`, `min_hash_distance`, `max_downloads_per_scene`, `history_window` |
 | `qa` | `profile` (`structural` or `release`), loudness target and tolerance, true peak max |
 | `audio` | `normalize` and `loudness_lufs` for the assemble pass |
 | `ai_image` | provider, disabled by default |
@@ -107,6 +109,20 @@ work, and CC BY are accepted.
 `visuals-fetch` searches Wikimedia Commons, drops anything outside the allowed
 licenses, checks content type and size, and records attribution and source page.
 It does not judge historical authenticity; that stays a human review item.
+
+`visuals-fetch --all` resolves one image per scene from the scene manifest. Each
+scene carries three queries built by `visual_spec` from its claim, plus the
+configured period and location; the narration is never searched as a phrase.
+Candidates are filtered to at least `visuals.min_width` × `min_height`, must be
+landscape, and are rejected when their average hash sits within
+`visuals.min_hash_distance` of an image already used in this video or the last
+`visuals.history_window` runs. Selection is deterministic: the same search picks
+the same file. A scene with no usable candidate is marked `missing` in the
+manifest and can be reviewed with `histyt scenes`; it is never filled with an
+image from the wrong period. Quotes are a limit on candidates *searched*, not
+images kept, because Commons filters by license after retrieval — a low limit
+can look empty while the same query finds public-domain results further down.
+Re-running the command only fills scenes that are still empty.
 
 ## QA stage and the render gate
 

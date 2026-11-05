@@ -21,6 +21,7 @@ python -m histyt qa <id>                      # print qa_report.json (exit 2 on 
 python -m histyt approve-render <id>          # gate 2, refuses on a QA reject
 python -m histyt upload <id>                  # privacyStatus always "private"
 python -m histyt upload <id> --mock           # no network, no credentials
+python -m histyt visuals-fetch <id> --all          # per-scene Commons resolution
 python -m histyt visuals-fetch <id> --query "Roman legionary relief"
 python -m histyt scenes <id>
 python -m histyt shorts-plan <id> [--max-clips N]

@@ -26,6 +26,19 @@
   ElevenLabs key and D: confinement
 - `visuals-fetch` pulls license-filtered public-domain/CC images from Wikimedia
   Commons with attribution, content-type and size checks
+- Visual spec (plan slice 1): every scene carries `visual_type`, three archive
+  queries, `subject`, `period_note` and `authenticity_risk`, built
+  deterministically from the claim, period and location; the narration is never
+  searched as a phrase
+- Per-scene archive resolution (plan slice 2): `visuals-fetch --all` resolves one
+  licensed image per scene, rejecting candidates under `visuals.min_width` by
+  `min_height`, portraits, and near-duplicates of this video or recent runs by
+  average-hash distance. Selection is deterministic; assets record provider,
+  query, dimensions, phash, sha256 and credit line, and a scene with no usable
+  candidate is marked `missing` instead of being filled with a wrong-era image
+- `visuals` keeps pinned per-scene assets instead of replacing them with
+  generated cards; per-candidate download failures are skipped with the reason
+  left on the scene, and downloads retry once for Wikimedia's rate limit
 - Assemble fixes: looped image input now uses the configured frame rate (every
   segment was 0.5s instead of 0.6s), first segment uses the first asset, output
   size follows `videos`, and a loudnorm pass targets -14 LUFS / -1 dBTP
@@ -39,9 +52,10 @@
 - New `research --tier`; `config/real.yaml` for opt-in OpenRouter + ElevenLabs
   runs; `qa` and `scene` config sections; canonical stage list shared by
   `state` and `pipeline`
-- Tests: 72 fake-provider tests, including script length, grounding, QA,
-  scenes, ElevenLabs, Commons, chapters, D: policy, and the export specs the
-  first real render failed (frame rate, loudness target, true peak)
+- Tests: 90 fake-provider tests, including script length, grounding, QA,
+  scenes, ElevenLabs, Commons, chapters, D: policy, the export specs the first
+  real render failed (frame rate, loudness target, true peak), visual specs and
+  per-scene archive resolution
 
 ## 0.1.0 — Phase 1 initial
 - Topic → research → script → **[GATE 1: script approval]** → voice → visuals →

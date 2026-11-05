@@ -47,6 +47,32 @@ def validate_asset(asset):
     return True
 
 
+def image_signature(path):
+    """64-bit average hash; catches the same image reused across scenes.
+
+    An average hash is enough for duplicate detection and needs no numpy. It is
+    not a backstop for near-duplicates of a different crop; the QA slice will
+    compare a wider Hamming distance only if that turns out to matter.
+    """
+    with Image.open(path) as img:
+        small = img.convert("L").resize((8, 8))
+        flattened = getattr(small, "get_flattened_data", None)
+        pixels = list(flattened() if flattened else small.getdata())
+    if not pixels:
+        return ""
+    average = sum(pixels) / len(pixels)
+    bits = "".join("1" if pixel > average else "0" for pixel in pixels)
+    return f"{int(bits, 2):016x}"
+
+
+def hash_distance(first, second):
+    """Hamming distance between two signatures: 0 identical, 64 opposite."""
+    try:
+        return bin(int(first, 16) ^ int(second, 16)).count("1")
+    except (TypeError, ValueError):
+        return 64
+
+
 def write_assets(runs_dir, video_id, assets):
     for asset in assets:
         validate_asset(asset)
@@ -60,8 +86,10 @@ def write_assets(runs_dir, video_id, assets):
             "source_url": asset.get("source_url", ""),
             "attribution": asset.get("attribution", ""),
         }
-        for key in ("scene_id", "style_lock", "tier", "license_url"):
-            if asset.get(key):
+        for key in ("scene_id", "style_lock", "tier", "license_url", "license_name",
+                    "visual_type", "provider", "model", "prompt", "seed", "width",
+                    "height", "phash", "query", "credit_line", "sha256"):
+            if asset.get(key) is not None and asset.get(key) != "":
                 row[key] = asset[key]
         rows.append(row)
     with open(os.path.join(vdir, "assets.json"), "w", encoding="utf-8") as f:
@@ -223,10 +251,25 @@ def _existing_assets(runs_dir, video_id):
     return assets
 
 
+def _scene_asset_path(vdir, path):
+    return path if os.path.isabs(path) else os.path.join(vdir, path)
+
+
 def visuals_stage(runs_dir, video_id, cfg, title=None):
     state = state_mod.load(runs_dir, video_id)
     manifest = scenes_mod.load_manifest(runs_dir, video_id)
     assets = _existing_assets(runs_dir, video_id)
+    if manifest and assets is not None:
+        vdir = os.path.join(runs_dir, video_id)
+        scenes_list = manifest.get("scenes") or []
+        pinned = [scene for scene in scenes_list
+                  if scene.get("asset")
+                  and os.path.isfile(_scene_asset_path(vdir, scene["asset"]))]
+        if scenes_list and len(pinned) == len(scenes_list):
+            # Archive assets are already chosen per scene; cards would replace
+            # them with placeholders, so this stage is a no-op.
+            set_stage(runs_dir, video_id, "visuals")
+            return assets
     if assets is None:
         if manifest:
             assets = generate_scene_cards(runs_dir, video_id, manifest, cfg)

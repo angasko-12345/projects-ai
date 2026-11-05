@@ -8,6 +8,7 @@ import json
 import os
 from datetime import datetime, timezone
 
+from . import visual_spec
 from .providers_tts import chunk_text
 from .script_stage import count_words, parse_script
 from .state import PipelineError, load, require_script_approval, set_stage
@@ -97,7 +98,7 @@ def build_manifest(runs_dir, video_id, cfg):
             seconds = max(1.5, round(count_words(claim.get("text", "")) / WORDS_PER_SECOND * 2) / 2)
         transition = "dissolve" if previous_section not in (None, section) else "cut"
         previous_section = section
-        scenes.append({
+        scene = {
             "scene_id": f"SC{index:03d}",
             "claim_id": claim["id"],
             "section": section,
@@ -111,14 +112,20 @@ def build_manifest(runs_dir, video_id, cfg):
             "continuity_ref": f"style:{style_lock}" if style_lock else "",
             "style_lock": style_lock,
             "asset": None,
-        })
+        }
+        # Type, archive queries and period constraints are decided here, once,
+        # so fetch and render never invent a different query at render time.
+        scene.update(visual_spec.spec_for_scene(
+            claim.get("text", ""), section, period, location, cfg))
+        scenes.append(scene)
     manifest = {
         "video_id": video_id,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "style_lock": style_lock,
         "total_duration": round(sum(s["duration"] for s in scenes), 3),
         "scenes": scenes,
-        "note": "period and location come from config; empty means not set, not guessed",
+        "note": "period and location come from config; empty means not set, not guessed; "
+                "visual_queries are built from the claim, period and location, not the narration",
     }
     with open(os.path.join(vdir, "scene_manifest.json"), "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2, ensure_ascii=False)

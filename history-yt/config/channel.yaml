@@ -65,6 +65,16 @@ audio:
   normalize: true
   loudness_lufs: -14.0
 
+visuals:
+  # Archive fetch (visuals-fetch --all). Every provider is license-gated; these
+  # thresholds only decide whether a candidate is usable, never what rights are.
+  min_width: 1600
+  min_height: 900
+  min_hash_distance: 12   # reject near-duplicates of this video and recent runs
+  max_downloads_per_scene: 3
+  history_window: 10
+  allow_placeholder_cards: false  # release builds must not ship debug cards
+
 ai_image:
   provider: disabled
 
