@@ -41,16 +41,31 @@ def research_stage(runs_dir, video_id, sources):
     return sources
 
 
-def fetch_url(url, timeout=30):
-    """Fetch https URL as text; raise PipelineError on any HTTP error (no silent fallback)."""
+def fetch_url(url, timeout=30, max_bytes=2_000_000):
+    """Fetch https URL as HTML text; validate status + content-type, cap length.
+
+    Raises PipelineError on: non-https, redirect loops (via requests' own
+    redirect history), non-2xx status, non-HTML content-type, or oversize body.
+    """
     if not url.startswith("https://"):
         raise PipelineError(f"only https URLs allowed: {url}")
     try:
-        resp = requests.get(url, timeout=timeout, headers={"User-Agent": USER_AGENT})
+        resp = requests.get(url, timeout=timeout, headers={"User-Agent": USER_AGENT},
+                            allow_redirects=True)
         resp.raise_for_status()
     except requests.RequestException as exc:
         raise PipelineError(f"fetch failed for {url}: {exc}") from exc
-    return resp.text
+    if len(resp.history) > 5:
+        raise PipelineError(f"too many redirects for {url} ({len(resp.history)})")
+    content_type = (resp.headers.get("content-type") or "").lower()
+    if "text/html" not in content_type and "application/xhtml" not in content_type:
+        raise PipelineError(
+            f"fetch returned non-HTML content-type for {url}: {content_type or '(missing)'}")
+    text = resp.text
+    if len(text) > max_bytes:
+        raise PipelineError(
+            f"fetched page too large for {url}: {len(text)} chars (limit {max_bytes})")
+    return text[:max_bytes]
 
 
 def fetch_wikipedia(title, timeout=30):
@@ -94,3 +109,12 @@ def fetch_loc(url, timeout=30):
 def fetch_met(url, timeout=30):
     html = fetch_url(url, timeout=timeout)
     return {"title": _title_from_html(html), "text": html[:4000]}
+
+
+def extract_text(html, max_chars=4000):
+    """Strip tags from HTML, collapse whitespace, cap length (Priority 1.5)."""
+    text = re.sub(r"<script[^>]*>.*?</script>", " ", html, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r"<style[^>]*>.*?</style>", " ", text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:max_chars]

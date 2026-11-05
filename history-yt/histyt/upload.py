@@ -110,6 +110,15 @@ def upload_stage(runs_dir, video_id, cfg, client=None):
     for path in (final, thumb):
         if not os.path.isfile(path):
             raise PipelineError(f"required file missing: {path}")
+    # Re-check pinned hash (Priority 1, item 2).
+    pinned = state.get("final_sha256_approved")
+    if pinned:
+        from .state import sha256_file
+        current = sha256_file(final)
+        if current != pinned:
+            raise GateError(
+                f"final.mp4 changed after render approval for {video_id}; "
+                "re-run: approve render <id>")
     youtube_cfg = cfg.get("youtube") or {}
     if get(youtube_cfg, "contains_synthetic_media", None) is None:
         print("ACTION REQUIRED: set synthetic/AI disclosure toggle manually in "

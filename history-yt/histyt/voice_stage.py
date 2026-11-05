@@ -17,7 +17,7 @@ def _pace_for(chunk, pacing_min, pacing_max):
 
 def voice_stage(runs_dir, video_id, cfg, provider=None):
     state = state_mod.load(runs_dir, video_id)
-    require_script_approval(state, runs_dir)
+    require_script_approval(state, runs_dir)  # enforces script-approval gate internally
     vdir = os.path.join(runs_dir, video_id)
     with open(os.path.join(vdir, "script.md"), encoding="utf-8") as f:
         script_text = f.read()

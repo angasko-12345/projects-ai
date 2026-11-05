@@ -34,11 +34,10 @@ def recent_templates(runs_dir, window=5, exclude=None):
     return [t for _, t in found[:window]]
 
 
-def pick_template(cfg, history_ids, recent=None):
+def pick_template(cfg, recent=None):
     """Pick a template differing from the last window templates.
 
-    `history_ids` is accepted for compatibility; `recent` (list of names,
-    newest first) overrides history lookup when given.
+    `recent` (list of names, newest first) overrides history lookup when given.
     """
     templates = cfg.get("script_templates") or []
     names = [t["name"] for t in templates if isinstance(t, dict) and t.get("name")]
@@ -126,7 +125,7 @@ def generate_script(runs_dir, video_id, cfg, provider=None):
     sources = load_sources(runs_dir, video_id)
     if len(sources) < 2:
         raise PipelineError(f"need >=2 sources before script generation (have {len(sources)})")
-    template = pick_template(cfg, [], recent=recent_templates(runs_dir, exclude=video_id))
+    template = pick_template(cfg, recent=recent_templates(runs_dir, exclude=video_id))
     sections = []
     for t in cfg.get("script_templates") or []:
         if t.get("name") == template:
@@ -161,5 +160,21 @@ def generate_script(runs_dir, video_id, cfg, provider=None):
         json.dump(meta, f, indent=2, ensure_ascii=False)
     state["template"] = template
     state["stage"] = "awaiting_script_approval"
+    # Warn if estimated TTS duration deviates from target (Priority 3, item 12).
+    target_min = float(cfg.get("target_length_minutes") or 0)
+    if target_min > 0:
+        # Estimate: 0.6s per fake chunk is not real; use word-count heuristic
+        # (~150 wpm narration) on claim text.
+        words = sum(len(c.get("text", "").split()) for c in claims)
+        est_minutes = words / 150.0 if words else 0.0
+        ratio = est_minutes / target_min if target_min else 0.0
+        if ratio < 0.5 or ratio > 1.5:
+            state["duration_warning"] = (
+                f"estimated narration {est_minutes:.1f}min is "
+                f"{'below 50%' if ratio < 0.5 else 'above 150%'} of "
+                f"target {target_min}min (ratio {ratio:.2f}); verify script length"
+            )
+        else:
+            state["duration_warning"] = None
     state_mod.save(runs_dir, video_id, state)
     return meta
