@@ -15,10 +15,11 @@ python -m histyt topic-add "The Fall of Rome" --angle rise_fall
 python -m histyt research <id> --url https://example.com/a --title "Source A"
 python -m histyt research <id> --url https://example.com/b --title "Source B"
 python -m histyt script <id>
-python -m histyt approve script <id>   # GATE 1
+python -m histyt approve-script <id> # GATE 1
 python -m histyt run <id>              # stops at render gate (exit 2)
-python -m histyt approve render <id>   # GATE 2
-python -m histyt upload <id>           # private only
+python -m histyt approve-render <id>   # GATE 2
+python -m histyt upload <id>           # private only (real upload needs HISTYT_YT_TOKEN)
+python -m histyt upload <id> --mock    # no network, no credentials (mock client)
 python -m histyt status
 python -m histyt topic-list
 python -m pytest tests -q

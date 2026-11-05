@@ -46,9 +46,14 @@ def _parser():
     r.add_argument("--fetch-url", default=None)
 
     for name in ("script", "voice", "visuals", "assemble", "thumbnail",
-                 "variation-check", "upload", "run"):
+                 "variation-check", "run"):
         sp = sub.add_parser(name)
         sp.add_argument("id")
+
+    up = sub.add_parser("upload")
+    up.add_argument("id")
+    up.add_argument("--mock", action="store_true",
+                    help="use the in-memory mock client (no network, no credentials)")
 
     asg = sub.add_parser("approve-script")
     asg.add_argument("id")
@@ -147,7 +152,12 @@ def main(argv=None):
             print("render approved")
             return 0
         if args.command == "upload":
-            print(f"uploaded: {upload.upload_stage(runs, args.id, cfg)}")
+            if args.mock:
+                client = upload.MockYouTubeClient(video_id=f"mock-{args.id}")
+                record = upload.upload_stage(runs, args.id, cfg, client=client)
+                print(f"uploaded (mock): {record}")
+            else:
+                print(f"uploaded: {upload.upload_stage(runs, args.id, cfg)}")
             return 0
         if args.command == "run":
             state = pipeline.run_until_gate(runs, args.id, cfg)
