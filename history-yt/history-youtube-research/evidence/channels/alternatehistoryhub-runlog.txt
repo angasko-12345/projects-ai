@@ -1,0 +1,6 @@
+﻿OK count=30 -> D:\admin\code\projects\history-yt\history-youtube-research\evidence\channels\alternatehistoryhub-latest.json
+sort-open: Γ£ô Done
+sort-set: Unknown subcommand: menuitem
+sort-set: Valid options: role, text, label, placeholder, alt, title, testid, first, last, nth
+popular: OK
+about: OK

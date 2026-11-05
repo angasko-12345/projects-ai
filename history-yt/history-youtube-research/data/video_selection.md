@@ -1,0 +1,69 @@
+# Phase 2 video selection (2026-11-05)
+
+Rule: per channel, top popular video + one mid/popular-rank-4 video + best recent by views. Timeline/OverSimplified have few videos, included fully above.
+
+Total: 63 videos across 21 channels.
+
+- [The real Dune](https://www.youtube.com/watch?v=R0krUthYxF4) — alt-shift-x · popular_top1 · 25M | 4y ago ·  · len=?s · id=R0krUthYxF4
+- [The real Tyrion Lannister](https://www.youtube.com/watch?v=H9HFigfkKHA) — alt-shift-x · popular_rank4 · 12M | 5y ago ·  · len=?s · id=H9HFigfkKHA
+- [The real Jon Snow](https://www.youtube.com/watch?v=qSy2uaJ7ecU) — alt-shift-x · recent_top · 13M | 2y ago · 2y ago · len=?s · id=qSy2uaJ7ecU
+- [History of the Fallout World (Lore)](https://www.youtube.com/watch?v=abdqo4v4NLQ) — alternatehistoryhub · popular_top1 · 11M | 11y ago ·  · len=?s · id=abdqo4v4NLQ
+- [The Dystopian World of 1984 Explained](https://www.youtube.com/watch?v=GQxOKXEff4I) — alternatehistoryhub · popular_rank4 · 7.1M | 9y ago ·  · len=?s · id=GQxOKXEff4I
+- [The Only Way Germany Could’ve Won WWII](https://www.youtube.com/watch?v=FME3eEcvhss) — alternatehistoryhub · recent_top · 2.9M | 2y ago · 2y ago · len=1257s · id=FME3eEcvhss
+- [Game of Thrones: Robert's Rebellion & Battle of the Trident 283 AC](https://www.youtube.com/watch?v=k1zsvHusfPQ) — bazbattles · popular_top1 · 10M | 9y ago ·  · len=?s · id=k1zsvHusfPQ
+- [Game of Thrones: Greyjoy's Rebellion & Siege of Pyke 289 AC](https://www.youtube.com/watch?v=8yChY_ZJrJg) — bazbattles · popular_rank4 · 3.6M | 8y ago ·  · len=?s · id=8yChY_ZJrJg
+- [The Battle of Raseiniai 1941](https://www.youtube.com/watch?v=nFEZnscW8KA) — bazbattles · recent_top · 811K | 6y ago · 6y ago · len=694s · id=nFEZnscW8KA
+- [Greek Mythology Creation Story Explained in 8 Minutes (Animation)](https://www.youtube.com/watch?v=ilZ99sGM-kA) — captivating-history · popular_top1 · 6M | 8y ago ·  · len=?s · id=ilZ99sGM-kA
+- [Why Is Greenland Part Of Denmark?](https://www.youtube.com/watch?v=ZuGr0kw4JgU) — captivating-history · popular_rank4 · 1.9M | 4y ago ·  · len=?s · id=ZuGr0kw4JgU
+- [The Mongol Invasions of Europe: Why They Suddenly Stopped](https://www.youtube.com/watch?v=hnNQOlZ44Nc) — captivating-history · recent_top · 23K | 1mo ago · 1mo ago · len=775s · id=hnNQOlZ44Nc
+- [The Greatest General in History? Alexander the Great (All Parts)](https://www.youtube.com/watch?v=K7lb6KWBanI) — epic-history-tv · popular_top1 · 29M | 8y ago ·  · len=?s · id=K7lb6KWBanI
+- [World War One (All Parts) (age-restricted)](https://www.youtube.com/watch?v=GG0LY8OLBG8) — epic-history-tv · popular_rank4 · 16M | 5y ago ·  · len=?s · id=GG0LY8OLBG8
+- [Alexander’s Speech That Crushed a Mutiny](https://www.youtube.com/watch?v=2Ih1ffiuwj0) — epic-history-tv · recent_top · 4.2M | 2mo ago · 2mo ago · len=534s · id=2Ih1ffiuwj0
+- [D-Day 1: The Great Crusade | WW2 | Extra History](https://www.youtube.com/watch?v=-KY1pDLulF4) — extra-history · popular_top1 · 8M | 9y ago ·  · len=?s · id=-KY1pDLulF4
+- [Genghis Khan - Temüjin the Child - Extra History - Part 1](https://www.youtube.com/watch?v=3cVTVF6ioaY) — extra-history · popular_rank4 · 6.2M | 8y ago ·  · len=?s · id=3cVTVF6ioaY
+- [Dividing the Middle East | Extra History Complete | Middle Eastern History](https://www.youtube.com/watch?v=J0xO8NNNELE) — extra-history · recent_top · 544K | 1mo ago · 1mo ago · len=2822s · id=J0xO8NNNELE
+- [8. The Sumerians - Fall of the First Cities](https://www.youtube.com/watch?v=d2lJUOv0hLA) — fall-of-civilizations · popular_top1 · 41M | 6y ago ·  · len=?s · id=d2lJUOv0hLA
+- [17. Carthage - Empire of the Phoenicians](https://www.youtube.com/watch?v=6dbdVhVSat8) — fall-of-civilizations · popular_rank4 · 12M | 3y ago ·  · len=?s · id=6dbdVhVSat8
+- [8. The Sumerians - Fall of the First Cities](https://www.youtube.com/watch?v=d2lJUOv0hLA) — fall-of-civilizations · recent_top · 41M | 6y ago · 6y ago · len=?s · id=d2lJUOv0hLA
+- [The Longest Year in Human History (46 B.C.E.)](https://www.youtube.com/watch?v=fD-R35DSSZY) — historia-civilis · popular_top1 · 7.3M | 7y ago ·  · len=?s · id=fD-R35DSSZY
+- [Caesar Crosses the Rubicon (52 to 49 B.C.E.)](https://www.youtube.com/watch?v=SYxN134gb-8) — historia-civilis · popular_rank4 · 3.8M | 8y ago ·  · len=?s · id=SYxN134gb-8
+- [The Longest Year in Human History (46 B.C.E.)](https://www.youtube.com/watch?v=fD-R35DSSZY) — historia-civilis · recent_top · 7.3M | 7y ago · 7y ago · len=1633s · id=fD-R35DSSZY
+- [What a Samurai vs. Mongol Battle Really Looked Like](https://www.youtube.com/watch?v=uDhqUUXCtMU) — history-dose · popular_top1 · 10M | 6y ago ·  · len=?s · id=uDhqUUXCtMU
+- [Henry Every: The Brutal King of the Pirates](https://www.youtube.com/watch?v=j1u7cqrH7HQ) — history-dose · popular_rank4 · 3.5M | 4y ago ·  · len=?s · id=j1u7cqrH7HQ
+- [First Battle in History: Egypt vs Canaanites (1458 BC)](https://www.youtube.com/watch?v=NXTdd9ThTOs) — history-dose · recent_top · 1.6M | 1y ago · 1y ago · len=1299s · id=NXTdd9ThTOs
+- [What Was Sex Really Like in the Middle Ages?](https://www.youtube.com/watch?v=R8JPN9tWVPQ) — history-hit · popular_top1 · 11M | 4y ago ·  · len=?s · id=R8JPN9tWVPQ
+- [Military Historian Reviews the Best Movie Battle Scenes of All Time](https://www.youtube.com/watch?v=Lsdm8VyWlbk) — history-hit · popular_rank4 · 6.6M | 3y ago ·  · len=?s · id=Lsdm8VyWlbk
+- [WW2 Expert Answers Hitler Questions](https://www.youtube.com/watch?v=jX_RENRrglo) — history-hit · recent_top · 2.5M | 2mo ago · 2mo ago · len=1877s · id=jX_RENRrglo
+- [What Happens When You Die?](https://www.youtube.com/watch?v=vLaErMfgJ8Q) — infographics-show · popular_top1 · 27M | 8y ago ·  · len=?s · id=vLaErMfgJ8Q
+- [What Happens to Your Body While You Are Having Sex?](https://www.youtube.com/watch?v=ww_FFS8yjlc) — infographics-show · popular_rank4 · 19M | 8y ago ·  · len=?s · id=ww_FFS8yjlc
+- [The AI bubble is about to pop...](https://www.youtube.com/watch?v=MgngwkPAuqQ) — infographics-show · recent_top · 4.3M | 8d ago · 8d ago · len=1202s · id=MgngwkPAuqQ
+- [How Rome Conquered Greece - Roman History DOCUMENTARY](https://www.youtube.com/watch?v=v5q1rerf-qw) — kings-and-generals · popular_top1 · 20M | 5y ago ·  · len=?s · id=v5q1rerf-qw
+- [Caesar in Gaul - Roman History DOCUMENTARY](https://www.youtube.com/watch?v=LRV185XaMIM) — kings-and-generals · popular_rank4 · 10M | 6y ago ·  · len=?s · id=LRV185XaMIM
+- [Largest Land Battle Before WWI Caused the First Russian Revolution](https://www.youtube.com/watch?v=efyxLW1Yeqo) — kings-and-generals · recent_top · 706K | 2w ago · 2w ago · len=965s · id=efyxLW1Yeqo
+- [The Secret Chinese Company That Owns Everything](https://www.youtube.com/watch?v=51fWzJ-A5w4) — magnatesmedia · popular_top1 · 12M | 3y ago ·  · len=?s · id=51fWzJ-A5w4
+- [Why Netflix is Collapsing: The Truth About Netflix's Empire](https://www.youtube.com/watch?v=UXZzyKTsBMw) — magnatesmedia · popular_rank4 · 6.5M | 4y ago ·  · len=?s · id=UXZzyKTsBMw
+- [Rockefeller: The World’s First Billionaire](https://www.youtube.com/watch?v=fNh_GyRbJDA) — magnatesmedia · recent_top · 7.7M | 2y ago · 2y ago · len=2973s · id=fNh_GyRbJDA
+- [Panzerfaust - How Effective was it? - Military History](https://www.youtube.com/watch?v=ENc2ZDgkv7Q) — military-history-visualized · popular_top1 · 4M | 9y ago ·  · len=?s · id=ENc2ZDgkv7Q
+- [Flak Towers: Effective or not?](https://www.youtube.com/watch?v=6jgvkzD8d3k) — military-history-visualized · popular_rank4 · 2.1M | 9y ago ·  · len=?s · id=6jgvkzD8d3k
+- [Why NO sloped Panzer IV?](https://www.youtube.com/watch?v=P8ER4XWfgrs) — military-history-visualized · recent_top · 183K | 1y ago · 1y ago · len=754s · id=P8ER4XWfgrs
+- [WW2 - OverSimplified (Part 1)](https://www.youtube.com/watch?v=_uk_6vfqwTA) — oversimplified · popular_top1 · 105M | 8y ago ·  · len=?s · id=_uk_6vfqwTA
+- [The Napoleonic Wars  - OverSimplified (Part 1)](https://www.youtube.com/watch?v=zqllxbPWKNI) — oversimplified · popular_rank4 · 69M | 5y ago ·  · len=?s · id=zqllxbPWKNI
+- [WW2 - OverSimplified (Part 1)](https://www.youtube.com/watch?v=_uk_6vfqwTA) — oversimplified · recent_top · 105M | 8y ago · 8y ago · len=826s · id=_uk_6vfqwTA
+- [Sniper Decoys: Dummy Heads](https://www.youtube.com/watch?v=zvBiIvKUiOQ) — simple-history · popular_top1 · 23M | 7y ago ·  · len=?s · id=zvBiIvKUiOQ
+- [How Long did a Person Stay Alive after being Guillotined?](https://www.youtube.com/watch?v=jgGp7Zvz5QA) — simple-history · popular_rank4 · 11M | 6y ago ·  · len=?s · id=jgGp7Zvz5QA
+- [Gun Tricks that can give you an Advantage in Combat](https://www.youtube.com/watch?v=VRzAfowLiUM) — simple-history · recent_top · 1.2M | 1mo ago · 1mo ago · len=2070s · id=VRzAfowLiUM
+- [Life And Death 3,000,000 Years Ago](https://www.youtube.com/watch?v=u6kc7rEQXpI) — stefan-milo · popular_top1 · 5M | 4y ago ·  · len=?s · id=u6kc7rEQXpI
+- [Who are the Sentinelese really?](https://www.youtube.com/watch?v=o1cyBZ8M7dE) — stefan-milo · popular_rank4 · 2.7M | 7mo ago ·  · len=?s · id=o1cyBZ8M7dE
+- [Who are the Sentinelese really?](https://www.youtube.com/watch?v=o1cyBZ8M7dE) — stefan-milo · recent_top · 2.7M | 7mo ago · 7mo ago · len=1573s · id=o1cyBZ8M7dE
+- [Robertson, Phillips, and the History of the Screwdriver](https://www.youtube.com/watch?v=R-mDqKtivuI) — the-history-guy · popular_top1 · 3.4M | 6y ago ·  · len=?s · id=R-mDqKtivuI
+- [Good Morning, Captain](https://www.youtube.com/watch?v=hDUEEqJer9k) — the-history-guy · popular_rank4 · 2.1M | 4y ago ·  · len=?s · id=hDUEEqJer9k
+- [John Bulkeley and the Devil Boats](https://www.youtube.com/watch?v=wZIJnn54BuA) — the-history-guy · recent_top · 113K | 1mo ago · 1mo ago · len=1007s · id=wZIJnn54BuA
+- [A Bankrupt Germany Didn't Create the Nazis - Weimar's Golden Era | Between 2 Wars | 1928 Part 1 of 1](https://www.youtube.com/watch?v=4DBfKNpE-dc) — timeghost-history · popular_top1 · 1.2M | 7y ago ·  · len=?s · id=4DBfKNpE-dc
+- [Not all Fascists Are Nazis - Civil War in Austria | BETWEEN 2 WARS I 1934 Part 2 of 4](https://www.youtube.com/watch?v=sqYTTOHc7yM) — timeghost-history · popular_rank4 · 505K | 6y ago ·  · len=?s · id=sqYTTOHc7yM
+- [Dien Bien Phu: The Battle that Ended French Indochina - W2W 45](https://www.youtube.com/watch?v=y7skgKWnZnc) — timeghost-history · recent_top · 79K | 1y ago · 1y ago · len=1289s · id=y7skgKWnZnc
+- [Is There Scientific Proof Of The Bible's Plagues | The Exodus Decoded](https://www.youtube.com/watch?v=XObk07uabLI) — timeline · popular_top1 · 15M | 7y ago ·  · len=?s · id=XObk07uabLI
+- [Have Archeologists Finally Found The Lost Tomb Of Christ?](https://www.youtube.com/watch?v=Qyrrdoqspdg) — timeline · popular_rank4 · 12M | 8y ago ·  · len=?s · id=Qyrrdoqspdg
+- [1942: The Complete Story Of The Battle Of Stalingrad](https://www.youtube.com/watch?v=yjKDNED2crw) — timeline · recent_top · 320K | 1mo ago · 1mo ago · len=?s · id=yjKDNED2crw
+- [Rare Footage from Egypt - Ancient Machined Artifacts found deep beneath the Step Pyramid!](https://www.youtube.com/watch?v=jHK2-MoR9Fs) — unchartedx · popular_top1 · 3.3M | 4y ago ·  · len=?s · id=jHK2-MoR9Fs
+- [The Story of the Enigmatic and Mysterious Tube Drills of Ancient Egypt - UnchartedX full documentary](https://www.youtube.com/watch?v=KFuf-gBuuno) — unchartedx · popular_rank4 · 2.5M | 7y ago ·  · len=?s · id=KFuf-gBuuno
+- [The Unknown Ancient Site said to be 'Greater than the Pyramids?' Confirmed with Satellite scans!](https://www.youtube.com/watch?v=xwK3XIxTvzU) — unchartedx · recent_top · 3.2M | 1y ago · 1y ago · len=?s · id=xwK3XIxTvzU
