@@ -26,10 +26,11 @@ def write_captions(vdir, durations, claims):
     cursor = 0.0
     for i, entry in enumerate(durations, 1):
         text = entry.get("text", "")
-        start, end = cursor, cursor + float(entry.get("duration") or 0)
+        start = cursor
+        end = cursor + float(entry.get("duration") or 0)
         lines += [str(i), f"{_fmt_srt_time(start)} --> {_fmt_srt_time(end)}",
                   text, ""]
-        cursor = end
+        cursor = end  # cumulative offset: each start = sum of all previous durations
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
     return path

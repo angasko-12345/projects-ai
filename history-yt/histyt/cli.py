@@ -10,7 +10,7 @@ from .doctor import doctor, format_doctor
 from .research import add_source, fetch_url, fetch_wikipedia
 from .script_stage import generate_script
 from .thumbnail import make_thumbnail
-from .variation import variation_check_stage
+from .variation import format_variation, variation_check_stage
 from .visuals import visuals_stage
 from .voice_stage import voice_stage
 
@@ -25,6 +25,10 @@ def _parser():
 
     st = sub.add_parser("status")
     st.add_argument("id", nargs="?")
+    st.add_argument("--json", action="store_true", help="emit JSON instead of table")
+
+    tl = sub.add_parser("topic-list")
+    tl.add_argument("--json", action="store_true", help="emit JSON instead of table")
 
     ta = sub.add_parser("topic-add")
     ta.add_argument("title")
@@ -62,7 +66,31 @@ def main(argv=None):
             print(format_doctor(doctor(cfg, runs)))
             return 0
         if args.command == "status":
-            print(json.dumps(pipeline.status(runs, args.id), indent=2, ensure_ascii=False))
+            rows = pipeline.status(runs, args.id)
+            if args.json:
+                print(json.dumps(rows, indent=2, ensure_ascii=False))
+            else:
+                rows_list = rows if isinstance(rows, list) else [rows]
+                if not rows_list:
+                    print("(no videos)")
+                else:
+                    gate_stages = ("awaiting_script_approval", "awaiting_render_approval")
+                    print(f"{'VIDEO':<40}{'STAGE':<28}{'THUMB':<20}{'SEED':>8}")
+                    for r in rows_list:
+                        vid = r.get("video_id", "?")
+                        stage = r.get("stage", "?")
+                        flag = " [GATE]" if stage in gate_stages else ""
+                        thumb = r.get("thumbnail_layout") or "—"
+                        seed = r.get("thumbnail_seed")
+                        print(f"{vid:<40}{stage + flag:<28}{thumb:<20}{str(seed if seed is not None else '—'):>8}")
+            return 0
+        if args.command == "topic-list":
+            rows = topics.list_topics(runs)
+            if args.json:
+                print(json.dumps(rows, indent=2, ensure_ascii=False))
+            else:
+                for t in rows:
+                    print(f"{t.get('video_id','?')}\t{t.get('title','')}\t{t.get('angle','')}")
             return 0
         if args.command == "topic-add":
             vid = topics.add_topic(runs, args.title, args.angle)
@@ -112,9 +140,7 @@ def main(argv=None):
             return 0
         if args.command == "variation-check":
             rows, passed = variation_check_stage(runs, args.id, cfg)
-            for row in rows:
-                print(row)
-            print(f"variation {'PASSED' if passed else 'FAILED'}")
+            print(format_variation(rows, passed))
             return 0
         if args.command == "approve-render":
             pipeline.approve_render(runs, args.id)

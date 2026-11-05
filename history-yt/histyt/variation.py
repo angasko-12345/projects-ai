@@ -50,9 +50,10 @@ def variation_check(runs_dir, video_id, cfg):
     rows, passed = [], True
     for other in history:
         sim = title_similarity(state.get("title", ""), other.get("title", ""), ngram)
+        ok = sim < sim_threshold
         rows.append({"against": other.get("video_id"), "title_similarity": round(sim, 3),
-                     "kind": "title"})
-        if sim >= sim_threshold:
+                     "threshold": sim_threshold, "ok": ok, "kind": "title"})
+        if not ok:
             passed = False
     phash = state.get("thumbnail_phash")
     if phash:
@@ -61,13 +62,15 @@ def variation_check(runs_dir, video_id, cfg):
             if not other_phash:
                 continue
             dist = hamming(phash, other_phash)
+            ok = dist >= phash_threshold
             rows.append({"against": other.get("video_id"), "phash_distance": dist,
-                         "kind": "thumbnail"})
-            if dist < phash_threshold:
+                         "threshold": phash_threshold, "ok": ok, "kind": "thumbnail"})
+            if not ok:
                 passed = False
     recent_templates = [o.get("template", "") for o in history[:template_window]]
     if state.get("template") and state["template"] in recent_templates:
         rows.append({"against": "template", "template": state["template"],
+                     "threshold": f"not in {recent_templates}", "ok": False,
                      "kind": "template_repeat"})
         passed = False
     report = {"video_id": video_id, "passed": passed, "rows": rows}
@@ -75,6 +78,32 @@ def variation_check(runs_dir, video_id, cfg):
               encoding="utf-8") as f:
         json.dump(report, f, indent=2, ensure_ascii=False)
     return rows, passed
+
+
+PASS_FAIL_HEADER = f"{'CHECK':<20}{'AGAINST':<36}{'VALUE':>10}{'THRESHOLD':>14}  RESULT"
+PASS_FAIL_SEP = "-" * 90
+
+
+def format_variation(rows, passed):
+    """human-readable PASS/FAIL table with actual values vs thresholds."""
+    lines = [PASS_FAIL_HEADER, PASS_FAIL_SEP]
+    for row in rows:
+        if row.get("kind") == "title":
+            value, thresh = row.get("title_similarity"), row.get("threshold")
+        elif row.get("kind") == "thumbnail":
+            value, thresh = row.get("phash_distance"), row.get("threshold")
+        else:
+            value, thresh = row.get("template", ""), row.get("threshold", "")
+        ok = row.get("ok", True)
+        lines.append(
+            f"{(row.get('kind') or ''):<20}"
+            f"{str(row.get('against') or ''):<36}"
+            f"{str(value):>10}"
+            f"{str(thresh):>14}  "
+            f"{'PASS' if ok else 'FAIL'}"
+        )
+    lines.append(f"OVERALL: {'PASS' if passed else 'FAIL'}")
+    return "\n".join(lines)
 
 
 def variation_check_stage(runs_dir, video_id, cfg):

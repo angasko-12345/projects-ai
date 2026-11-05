@@ -1,11 +1,36 @@
 """Environment + config health checks. Never prints secret values."""
 import os
+import requests
 import shutil
+import subprocess
 import sys
 
 
 def _check(name, ok, detail):
     return (name, bool(ok), detail)
+
+
+def _ffmpeg_version(ffmpeg_path):
+    try:
+        proc = subprocess.run([ffmpeg_path, "-version"], capture_output=True,
+                              timeout=10)
+        first = proc.stdout.decode("utf-8", "replace").splitlines() or [""]
+        return first[0].strip()[:200]
+    except (OSError, subprocess.SubprocessError):
+        return "unknown version"
+
+
+def _check_api_key(name, env_var, url, key):
+    """Cheap models-list usability probe (10s timeout); never logs the key."""
+    if not key:
+        return _check(name, True, "absent (optional)")
+    try:
+        resp = requests.get(url, headers={"Authorization": f"Bearer {key}"}, timeout=10)
+        if resp.status_code == 200:
+            return _check(name, True, "usable (HTTP 200)")
+        return _check(name, False, f"HTTP {resp.status_code}")
+    except (requests.RequestException, ValueError) as exc:
+        return _check(name, False, str(exc)[:200])
 
 
 def doctor(cfg, runs_dir):
@@ -38,20 +63,37 @@ def doctor(cfg, runs_dir):
         exe = tts.get("piper_exe") or "piper"
         model = tts.get("model") or ""
         checks.append(_check("piper exe", bool(shutil.which(exe) or os.path.isfile(exe)), exe))
-        checks.append(_check("piper model", bool(model and os.path.isfile(model)), model or "(unset)"))
+        on_d = model and model.upper().startswith("D:")
+        checks.append(_check("piper model", bool(model and os.path.isfile(model)),
+                             f"{model or '(unset)'} [on D:: {bool(on_d)}]"))
     else:
         checks.append(_check("tts provider", True, f"{provider or 'fake'} (no piper needed)"))
     checks.append(_check("OPENROUTER_API_KEY", True,
                          "present" if os.environ.get("OPENROUTER_API_KEY") else "absent"))
     checks.append(_check("GOOGLE_API_KEY", True,
                          "present" if os.environ.get("GOOGLE_API_KEY") else "absent"))
+    # Optional usability probes (cheap models-list, 10s timeout, never key).
+    checks.append(_check_api_key(
+        "openrouter usable", "OPENROUTER_API_KEY",
+        "https://openrouter.ai/api/v1/models", os.environ.get("OPENROUTER_API_KEY", "")))
+    checks.append(_check_api_key(
+        "google usable", "GOOGLE_API_KEY",
+        "https://generativelanguage.googleapis.com/v1beta/models", os.environ.get("GOOGLE_API_KEY", "")))
+    # ffmpeg Gyan build detection (Priority 2, item 6).
+    ffmpeg_path = shutil.which("ffmpeg") or ""
+    if ffmpeg_path:
+        ver = _ffmpeg_version(ffmpeg_path)
+        gyan = "gyan" in ver.lower()
+        checks.append(_check("ffmpeg build", True, ver or ffmpeg_path + (" [Gyan build]" if gyan else "")))
+    else:
+        checks.append(_check("ffmpeg build", False, "not on PATH"))
     youtube = (cfg or {}).get("youtube") or {}
     client_json = os.environ.get("HISTYT_YT_CLIENT_JSON") or youtube.get("oauth_client_json") or ""
     token = os.environ.get("HISTYT_YT_TOKEN") or youtube.get("token_path") or ""
     checks.append(_check("youtube client json", bool(client_json and os.path.isfile(client_json)),
-                         client_json or "(unset)"))
+                         client_json or "set env HISTYT_YT_CLIENT_JSON"))
     checks.append(_check("youtube token", bool(token and os.path.isfile(token)),
-                         token or "(unset)"))
+                         token or "set env HISTYT_YT_TOKEN"))
     return checks
 
 

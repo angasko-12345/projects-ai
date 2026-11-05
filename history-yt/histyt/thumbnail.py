@@ -55,8 +55,47 @@ def _layout_bottom_band(img, text):
         draw.text((40, THUMB_H - band_h + 20 + i * 70), line, font=font, fill=(255, 255, 255))
 
 
-THUMB_LAYOUTS = [_layout_bold_left, _layout_centered, _layout_split, _layout_bottom_band]
-LAYOUT_NAMES = ["bold-left", "centered", "split", "bottom-band"]
+def _layout_top_banner(img, text):
+    draw = ImageDraw.Draw(img, "RGBA")
+    font = _try_font(60)
+    draw.rectangle([0, 0, THUMB_W, 180], fill=(0, 0, 0, 120))
+    for i, line in enumerate(_wrap(draw, text, font, int(THUMB_W * 0.85))):
+        draw.text((40, 30 + i * 75), line, font=font, fill=(255, 255, 255))
+
+
+def _layout_duotone_panel(img, text):
+    draw = ImageDraw.Draw(img, "RGBA")
+    font = _try_font(66)
+    draw.rectangle([int(THUMB_W * 0.52), 0, THUMB_W, THUMB_H], fill=(180, 60, 20, 160))
+    for i, line in enumerate(_wrap(draw, text, font, int(THUMB_W * 0.4))):
+        draw.text((int(THUMB_W * 0.54), 90 + i * 88), line, font=font, fill=(255, 255, 255))
+
+
+def _layout_letterbox(img, text):
+    draw = ImageDraw.Draw(img, "RGBA")
+    font = _try_font(68)
+    draw.rectangle([0, THUMB_H - 240, THUMB_W, THUMB_H], fill=(10, 10, 30, 170))
+    for i, line in enumerate(_wrap(draw, text, font, int(THUMB_W * 0.85))):
+        draw.text((40, THUMB_H - 210 + i * 85), line, font=font, fill=(255, 255, 255))
+
+
+def _layout_compact_caption(img, text):
+    draw = ImageDraw.Draw(img, "RGBA")
+    font = _try_font(54)
+    lines = _wrap(draw, text, font, int(THUMB_W * 0.6))
+    box_h = max(120, len(lines) * 70 + 30)
+    draw.rectangle([30, THUMB_H - box_h - 20, int(THUMB_W * 0.72), THUMB_H - 20],
+                   fill=(0, 0, 0, 170))
+    for i, line in enumerate(lines):
+        draw.text((50, THUMB_H - box_h - 10 + i * 70), line, font=font,
+                  fill=(255, 255, 255))
+
+
+THUMB_LAYOUTS = [_layout_bold_left, _layout_centered, _layout_split, _layout_bottom_band,
+                 _layout_top_banner, _layout_duotone_panel, _layout_letterbox,
+                 _layout_compact_caption]
+LAYOUT_NAMES = ["bold-left", "centered", "split", "bottom-band",
+                "top-banner", "duotone-panel", "letterbox", "compact-caption"]
 
 
 def dhash_image(path):
@@ -110,6 +149,8 @@ def make_thumbnail(runs_dir, video_id, seed=None, layout=None):
     with open(os.path.join(vdir, "thumbnail_meta.json"), "w", encoding="utf-8") as f:
         json.dump(meta, f, indent=2)
     state["thumbnail_phash"] = phash
+    state["thumbnail_layout"] = meta["layout"]
+    state["thumbnail_seed"] = seed_int
     state_mod.save(runs_dir, video_id, state)
     set_stage(runs_dir, video_id, "thumbnail")
     return meta
