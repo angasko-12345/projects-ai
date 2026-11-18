@@ -53,6 +53,12 @@ select = ["E4", "E7", "E9", "W", "F", "B", "UP"]
 # same path bootstrap before importing the app package.
 "tiktok-slop-factory/tests/conftest.py" = ["E402"]
 
+# Kaggle kernels and the Kaggle driver bootstrap sys.path before importing the
+# private bench dataset, so their imports cannot move above the setup. They run
+# on Kaggle, not in this repository's test suite.
+"small-model-fleet/experiments/**/*.py" = ["E402"]
+"small-model-fleet/src/smf_kaggle.py" = ["E402"]
+
 [tool.ruff.format]
 # Formatted: agentops/, ai-token-tracker/, small-projects/mini-llm/, tools/ and
 # the root .py files. Not formatted yet, on purpose: universal-game-agent has a

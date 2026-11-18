@@ -1,0 +1,18 @@
+{
+  "competition_sources": [],
+  "language": "python",
+  "id": "wataeshi/smf-lfm3-17b-sft-v1",
+  "title": "SMF LFM3 17B SFT v1",
+  "is_private": true,
+  "enable_internet": true,
+  "model_sources": [],
+  "kernel_sources": [],
+  "code_file": "run.py",
+  "enable_gpu": true,
+  "enable_tpu": false,
+  "machine_shape": "",
+  "kernel_type": "script",
+  "dataset_sources": [
+    "wataeshi/smf-bench"
+  ]
+}

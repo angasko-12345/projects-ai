@@ -1,0 +1,190 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "fs_list",
+      "description": "List the entries of a directory inside the workspace.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {"type": "string", "description": "Absolute directory path, e.g. D:\\workspace\\reports"}
+        },
+        "required": ["path"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "fs_read",
+      "description": "Read a text file inside the workspace and return its contents.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {"type": "string", "description": "Absolute file path inside D:\\workspace"},
+          "max_bytes": {"type": "integer", "description": "Maximum number of bytes to return", "default": 65536}
+        },
+        "required": ["path"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "fs_write",
+      "description": "Create or overwrite a text file inside the workspace.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {"type": "string", "description": "Absolute file path inside D:\\workspace"},
+          "content": {"type": "string", "description": "Full text content to write"}
+        },
+        "required": ["path", "content"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "fs_move",
+      "description": "Move or rename a file or directory inside the workspace.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "src": {"type": "string", "description": "Source absolute path"},
+          "dst": {"type": "string", "description": "Destination absolute path"}
+        },
+        "required": ["src", "dst"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "fs_delete",
+      "description": "Delete a file or empty directory. Only permitted inside D:\\workspace.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {"type": "string", "description": "Absolute path to delete"}
+        },
+        "required": ["path"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "proc_list",
+      "description": "List running processes with pid, name and CPU percent.",
+      "parameters": {"type": "object", "properties": {}, "required": []}
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "proc_kill",
+      "description": "Terminate a process by pid.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "pid": {"type": "integer", "description": "Process id to terminate"}
+        },
+        "required": ["pid"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "shell_run",
+      "description": "Run a shell command inside the workspace sandbox and return stdout, stderr and exit code.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "command": {"type": "string", "description": "Command line to execute"}
+        },
+        "required": ["command"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "open_app",
+      "description": "Launch an installed desktop application by name.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "app_name": {"type": "string", "description": "Application name, e.g. notepad or chrome"}
+        },
+        "required": ["app_name"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "screenshot",
+      "description": "Capture the current desktop screen and return an image reference.",
+      "parameters": {"type": "object", "properties": {}, "required": []}
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ui_click",
+      "description": "Click a screen coordinate in pixels.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "x": {"type": "integer", "description": "X coordinate in pixels"},
+          "y": {"type": "integer", "description": "Y coordinate in pixels"}
+        },
+        "required": ["x", "y"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ui_type",
+      "description": "Type text into the currently focused window.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "text": {"type": "string", "description": "Text to type"}
+        },
+        "required": ["text"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ask_user",
+      "description": "Ask the user for information you cannot obtain with another tool.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "question": {"type": "string", "description": "A single specific question"}
+        },
+        "required": ["question"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "finish",
+      "description": "Declare the task complete and report the outcome. Call only when the task is actually done.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "summary": {"type": "string", "description": "One or two sentences describing what was achieved"}
+        },
+        "required": ["summary"]
+      }
+    }
+  }
+]

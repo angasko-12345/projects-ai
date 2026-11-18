@@ -1,0 +1,75 @@
+{
+  "project": "small-model-fleet",
+  "bench_dataset": "wataeshi/smf-bench",
+  "bench_version": "1.0.3",
+  "bench_version_note": "1.0.3 adds src/smf_sft.py and bench/README.md; every file present in 1.0.2 is byte-identical, verified by sha256.",
+  "created": "2026-11-17",
+  "experiments": [
+    {
+      "experiment_id": "planner/qwen3-4b-thinking-2507-baseline",
+      "kernel": "wataeshi/smf-qwen3-4b-thinking-planner",
+      "title": "SMF Qwen3 4B Thinking Planner",
+      "model": "Qwen/Qwen3-4B-Thinking-2507",
+      "suite": "planner",
+      "gpu": true,
+      "status": "queued",
+      "pushed_versions": [1],
+      "notes": "Safe-architecture planner reference. max_new_tokens=2048, thinking on, greedy."
+    },
+    {
+      "experiment_id": "planner/qwen35-4b-baseline",
+      "kernel": "wataeshi/smf-qwen35-4b-planner",
+      "title": "SMF Qwen35 4B Planner",
+      "model": "Qwen/Qwen3.5-4B",
+      "suite": "planner",
+      "gpu": true,
+      "status": "prepared-not-pushed",
+      "pushed_versions": [],
+      "notes": "Multimodal qwen3_5 checkpoint; loader tries several auto classes. max_new_tokens=1536. Has SKIP_CASES resume hook."
+    },
+    {
+      "experiment_id": "agent-worker/lfm3-17b-baseline",
+      "kernel": "wataeshi/smf-lfm3-1-7b-baseline",
+      "title": "SMF LFM3 1.7B Baseline",
+      "model": "LiquidAI/LFM3-1.7B",
+      "suite": "specialist",
+      "gpu": true,
+      "status": "queued",
+      "pushed_versions": [1, 2],
+      "notes": "Unmodified LFM3-1.7B, enable_thinking=False to match the SFT recipe."
+    },
+    {
+      "experiment_id": "agent-worker/lfm3-17b-sft-v1",
+      "kernel": "wataeshi/smf-lfm3-17b-sft-v1",
+      "title": "SMF LFM3 17B SFT v1",
+      "model": "LiquidAI/LFM3-1.7B",
+      "suite": "specialist",
+      "gpu": true,
+      "status": "prepared-not-pushed",
+      "pushed_versions": [],
+      "notes": "Data prep + pre-training val loss + 60-step pilot + full LoRA run + post-training eval + CPU adapter reload check. Exits cleanly at every stage boundary so partial evidence survives."
+    },
+    {
+      "experiment_id": "agent-worker/lfm3-17b-sft-v1/dryrun",
+      "kernel": "wataeshi/smf-sft-dryrun",
+      "title": "SMF SFT Dryrun",
+      "model": "hf-internal-testing/tiny-random-LlamaForCausalLM",
+      "suite": null,
+      "gpu": false,
+      "status": "running",
+      "pushed_versions": [1],
+      "notes": "Not an experiment. CPU pipeline test: pinned install, real datasets, real LFM3 tokenizer, 3 training steps on a tiny random model, adapter save/reload."
+    },
+    {
+      "experiment_id": "env/probe",
+      "kernel": "wataeshi/smf-probe-env",
+      "title": "SMF Probe Env",
+      "model": null,
+      "suite": null,
+      "gpu": false,
+      "status": "complete",
+      "pushed_versions": [1],
+      "notes": "CPU-only environment probe. Confirmed torch 2.11.0, transformers 5.20.2, trl/bb missing, 33.7 GB RAM, 20.9 GB working disk."
+    }
+  ]
+}

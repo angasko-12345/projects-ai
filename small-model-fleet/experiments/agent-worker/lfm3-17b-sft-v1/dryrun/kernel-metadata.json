@@ -1,0 +1,18 @@
+{
+  "competition_sources": [],
+  "language": "python",
+  "id": "wataeshi/smf-sft-dryrun",
+  "title": "SMF SFT Dryrun",
+  "is_private": true,
+  "enable_internet": true,
+  "model_sources": [],
+  "kernel_sources": [],
+  "code_file": "run.py",
+  "enable_gpu": false,
+  "enable_tpu": false,
+  "machine_shape": "",
+  "kernel_type": "script",
+  "dataset_sources": [
+    "wataeshi/smf-bench"
+  ]
+}
