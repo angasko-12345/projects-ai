@@ -1,0 +1,86 @@
+# Opt-in real-provider config. channel.yaml stays on fake providers so tests and
+# dry-runs never touch the network or spend credits.
+#
+# Requires OPENROUTER_API_KEY and ELEVENLABS_API_KEY in the environment.
+# target_length_minutes is 2 for the first real run: about 300 words of
+# narration, roughly 1,800 ElevenLabs characters on the free tier.
+niche: history
+angle: ""
+language: en
+voice: en_US-lessac-medium
+target_length_minutes: 2
+words_per_minute: 150
+
+script_templates:
+  - name: origin_story
+    sections: [origin, growth, turning_point, legacy]
+  - name: conflict_resolution
+    sections: [setup, conflict, escalation, resolution]
+  - name: day_in_life_era
+    sections: [morning, work, evening, what_changed]
+  - name: rise_fall
+    sections: [rise, peak, decline, fall]
+  - name: mystery_evidence
+    sections: [mystery, clues, evidence, verdict]
+  - name: comparison
+    sections: [side_a, side_b, comparison, conclusion]
+
+thresholds:
+  title_ngram_similarity: 0.7
+  title_ngram: 3
+  thumbnail_phash_distance: 8
+  template_repeat_window: 5
+  history_window: 10
+
+tts:
+  provider: elevenlabs
+  pacing_min: 0.95
+  pacing_max: 1.05
+  piper_exe: piper
+  model: ""
+  elevenlabs_voice_id: "JBFqnCBsd6RMkjVDRZzb"
+  elevenlabs_model: "eleven_multilingual_v2"
+  elevenlabs_output_format: "mp3_44100_128"
+
+llm:
+  provider: openrouter
+  base_url: ""
+  model: "stealth/crouton-alpha"
+  api_key_env: ""
+  temperature: 0.7
+  max_tokens: 6000
+
+youtube:
+  oauth_client_json: ""
+  token_path: ""
+  contains_synthetic_media: null
+
+# scene.period and scene.location are per topic. These two belong to the first
+# run (Teutoburg); change them before producing a different video with this file.
+scene:
+  style_lock: "engraved documentary, muted earth palette, soft rim light"
+  period: "Roman Empire, 9 CE"
+  location: "Teutoburg Forest, Germania"
+
+qa:
+  profile: release
+  loudness_lufs: -14.0
+  loudness_tolerance: 1.0
+  true_peak_max: -1.0
+
+audio:
+  normalize: true
+  loudness_lufs: -14.0
+
+ai_image:
+  provider: disabled
+
+shorts:
+  max_clips: 3
+  min_seconds: 15
+  max_seconds: 60
+
+videos:
+  width: 1920
+  height: 1080
+  fps: 30

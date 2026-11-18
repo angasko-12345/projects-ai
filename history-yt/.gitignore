@@ -1,0 +1,15 @@
+.venv
+runs/
+*.mp4
+*.wav
+__pycache__/
+*.pyc
+.env
+secrets/
+models/
+*.log
+.pytest_cache/
+pytest-of-*/
+*.egg-info/
+build/
+dist/

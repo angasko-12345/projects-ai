@@ -1,0 +1,23 @@
+[project]
+name = "histyt"
+version = "0.1.0"
+description = "History YouTube video pipeline (Phase 1)"
+requires-python = ">=3.10"
+dependencies = ["pyyaml>=6.0", "pillow>=10", "requests>=2.31"]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["histyt*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"

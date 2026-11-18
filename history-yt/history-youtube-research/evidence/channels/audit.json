@@ -1,0 +1,142 @@
+{
+  "alt-shift-x": {
+    "status": "OK: popular.json sorted",
+    "good": "alt-shift-x-popular.json",
+    "about_full": true,
+    "n_latest": 0,
+    "header": ""
+  },
+  "alternatehistoryhub": {
+    "status": "OK: popular.json sorted",
+    "good": "alternatehistoryhub-popular-manual.json",
+    "about_full": true,
+    "n_latest": 0,
+    "header": ""
+  },
+  "bazbattles": {
+    "status": "OK: popular.json sorted",
+    "good": "bazbattles-popular-manual.json",
+    "about_full": true,
+    "n_latest": 0,
+    "header": ""
+  },
+  "captivating-history": {
+    "status": "OK: popular.json sorted",
+    "good": "captivating-history-popular-manual.json",
+    "about_full": true,
+    "n_latest": 0,
+    "header": ""
+  },
+  "epic-history-tv": {
+    "status": "OK: popular.json sorted",
+    "good": "epic-history-tv-popular.json",
+    "about_full": true,
+    "n_latest": 0,
+    "header": ""
+  },
+  "extra-history": {
+    "status": "OK: popular.json sorted",
+    "good": "extra-history-popular.json",
+    "about_full": true,
+    "n_latest": 0,
+    "header": ""
+  },
+  "fall-of-civilizations": {
+    "status": "OK: popular.json sorted",
+    "good": "fall-of-civilizations-popular.json",
+    "about_full": true,
+    "n_latest": 0,
+    "header": ""
+  },
+  "historia-civilis": {
+    "status": "OK: popular.json sorted",
+    "good": "historia-civilis-popular.json",
+    "about_full": true,
+    "n_latest": 0,
+    "header": ""
+  },
+  "history-dose": {
+    "status": "OK: popular.json sorted",
+    "good": "history-dose-popular-manual.json",
+    "about_full": true,
+    "n_latest": 0,
+    "header": ""
+  },
+  "history-hit": {
+    "status": "OK: popular.json sorted",
+    "good": "history-hit-popular.json",
+    "about_full": true,
+    "n_latest": 0,
+    "header": ""
+  },
+  "infographics-show": {
+    "status": "OK: popular.json sorted",
+    "good": "infographics-show-popular-manual.json",
+    "about_full": true,
+    "n_latest": 0,
+    "header": ""
+  },
+  "magnatesmedia": {
+    "status": "OK: popular.json sorted",
+    "good": "magnatesmedia-popular-manual.json",
+    "about_full": true,
+    "n_latest": 0,
+    "header": ""
+  },
+  "military-history-visualized": {
+    "status": "OK: popular.json sorted",
+    "good": "military-history-visualized-popular-manual.json",
+    "about_full": true,
+    "n_latest": 0,
+    "header": ""
+  },
+  "oversimplified": {
+    "status": "OK: popular.json sorted",
+    "good": "oversimplified-popular-manual.json",
+    "about_full": true,
+    "n_latest": 0,
+    "header": ""
+  },
+  "simple-history": {
+    "status": "OK: popular.json sorted",
+    "good": "simple-history-popular.json",
+    "about_full": true,
+    "n_latest": 0,
+    "header": ""
+  },
+  "stefan-milo": {
+    "status": "OK: popular.json sorted",
+    "good": "stefan-milo-popular.json",
+    "about_full": true,
+    "n_latest": 0,
+    "header": ""
+  },
+  "the-history-guy": {
+    "status": "OK: popular.json sorted",
+    "good": "the-history-guy-popular.json",
+    "about_full": true,
+    "n_latest": 0,
+    "header": ""
+  },
+  "timeghost-history": {
+    "status": "OK: popular.json sorted",
+    "good": "timeghost-history-popular-manual.json",
+    "about_full": true,
+    "n_latest": 0,
+    "header": ""
+  },
+  "timeline": {
+    "status": "OK: popular.json sorted",
+    "good": "timeline-popular.json",
+    "about_full": true,
+    "n_latest": 0,
+    "header": ""
+  },
+  "unchartedx": {
+    "status": "OK: popular.json sorted",
+    "good": "unchartedx-popular-manual.json",
+    "about_full": true,
+    "n_latest": 0,
+    "header": ""
+  }
+}

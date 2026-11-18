@@ -64,3 +64,12 @@ Thumbs.db
 # and evidence snapshots materialized under .agents/tmp-tests/. Disposable
 # by-products; every durable claim they fed is recorded in .agents/memory.
 /.agents/tmp-tests/
+
+# youtube-niche-scan: local runtime data, outputs, secrets, and venvs stay out
+# of git. Only scan.py, keywords.json, tests/, and README.md are committable.
+youtube-niche-scan/data/
+youtube-niche-scan/outputs/
+youtube-niche-scan/.env
+youtube-niche-scan/.env.*
+youtube-niche-scan/venv/
+youtube-niche-scan/.venv/
