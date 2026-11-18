@@ -2,8 +2,7 @@ import pytest
 
 from histyt.providers_llm import LLMProvider
 from histyt.research import add_source, load_sources
-from histyt.script_stage import (assess_claim, format_review, generate_script,
-                                 parse_script_full)
+from histyt.script_stage import assess_claim, format_review, generate_script, parse_script_full
 from histyt.state import PipelineError
 
 
@@ -80,5 +79,6 @@ def test_generate_script_records_review(runs, cfg, make_video):
     meta = generate_script(runs, vid, cfg, provider=GroundedProvider())
     assert meta["review"]["counts"]["supported"] >= 1
     assert "source grounding" in format_review(meta)
-    parsed = parse_script_full(open(f"{runs}/{vid}/script.md", encoding="utf-8").read())
+    with open(f"{runs}/{vid}/script.md", encoding="utf-8") as handle:
+        parsed = parse_script_full(handle.read())
     assert parsed["sections"] == ["rise"]

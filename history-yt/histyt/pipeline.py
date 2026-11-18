@@ -7,8 +7,7 @@ from .assemble import assemble_stage
 from .research import load_sources, research_stage
 from .scenes import scenes_stage
 from .script_stage import generate_script
-from .state import (STAGE_ORDER, PipelineError, require_script_approval,
-                    sha256_file)
+from .state import STAGE_ORDER, PipelineError, require_script_approval, sha256_file
 from .thumbnail import make_thumbnail
 from .upload import upload_stage
 from .variation import variation_check_stage

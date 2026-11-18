@@ -64,7 +64,7 @@ def _ffmpeg_stderr(args, timeout=300):
         return None
     try:
         proc = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", *args],
-                              capture_output=True, timeout=timeout)
+                              capture_output=True, timeout=timeout, check=False)
     except (OSError, subprocess.SubprocessError):
         return None
     return (proc.stderr or b"").decode("utf-8", "replace")

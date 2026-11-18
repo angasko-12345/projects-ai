@@ -1,5 +1,7 @@
 """Audit channel evidence: which popular files are truly Popular-sorted."""
-import json, glob, os
+import glob
+import json
+import os
 
 CH = r"D:\admin\code\projects\history-yt\history-youtube-research\evidence\channels"
 

@@ -1,5 +1,6 @@
 """Consolidate evidence (v2): %m patterns fixed; joined/total via last-match on about-full."""
-import json, glob, os, re
+import json
+import re
 
 CH = r"D:\admin\code\projects\history-yt\history-youtube-research\evidence\channels"
 AUDIT = json.load(open(CH + r"\audit.json", encoding="utf-8"))

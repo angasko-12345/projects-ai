@@ -1,4 +1,6 @@
-import json, sys
+import json
+import sys
+
 f = sys.argv[1] if len(sys.argv) > 1 else r"D:\admin\code\projects\history-yt\history-youtube-research\data\video_meta\MvwAWgiERBM.json"
 d = json.load(open(f, encoding="utf-8-sig"))
 print(d.get("title"))

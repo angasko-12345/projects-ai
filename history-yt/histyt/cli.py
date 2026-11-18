@@ -3,17 +3,15 @@ import argparse
 import json
 import sys
 
-from . import commons, pipeline
+from . import commons, pipeline, topics, upload
 from . import qa as qa_mod
 from . import scenes as scenes_mod
 from . import shorts as shorts_mod
 from . import state as state_mod
-from . import topics, upload
 from .assemble import assemble_stage
 from .config import get_runs_dir, load_config
 from .doctor import doctor, format_doctor
-from .research import (SOURCE_TIERS, add_source, extract_text, fetch_url,
-                       fetch_wikipedia)
+from .research import SOURCE_TIERS, add_source, extract_text, fetch_url, fetch_wikipedia
 from .script_stage import format_review, generate_script
 from .thumbnail import make_thumbnail
 from .variation import format_variation, variation_check_stage
@@ -124,7 +122,7 @@ def main(argv=None):
                         flag = " [GATE]" if stage in gate_stages else ""
                         thumb = r.get("thumbnail_layout") or "-"
                         seed = r.get("thumbnail_seed")
-                        print(f"{vid:<42}{stage + flag:<28}{thumb:<20}{str(seed if seed is not None else '-'):>8}")
+                        print(f"{vid:<42}{stage + flag:<28}{thumb:<20}{seed if seed is not None else '-'!s:>8}")
             return 0
         if args.command == "topic-list":
             rows = topics.list_topics(runs)
@@ -153,7 +151,7 @@ def main(argv=None):
             if args.fetch_url:
                 html = fetch_url(args.fetch_url)
                 import re as _re
-                m = _re.search(r"<title[^>]*>(.*?)</title>", html, _re.I | _re.S)
+                m = _re.search(r"<title[^>]*>(.*?)</title>", html, _re.IGNORECASE | _re.DOTALL)
                 title = m.group(1).strip() if m else args.fetch_url
                 text = extract_text(html)
                 sid = add_source(runs, vid, args.fetch_url, title, "",
@@ -260,6 +258,6 @@ def main(argv=None):
     except state_mod.GateError as exc:
         print(f"GATE: {exc}", file=sys.stderr)
         return 2
-    except (state_mod.PipelineError, Exception) as exc:
+    except Exception as exc:  # noqa: BLE001 - top-level CLI boundary
         print(f"error: {exc}", file=sys.stderr)
         return 1

@@ -14,8 +14,8 @@ from histyt import pipeline
 from histyt.assemble import _measure_loudnorm, _normalize_loudness, assemble_stage
 from histyt.media import get_streams, run_ffmpeg
 from histyt.providers_tts import chunk_text
-from histyt.script_stage import parse_script
 from histyt.scenes import scenes_stage
+from histyt.script_stage import parse_script
 from histyt.visuals import visuals_stage
 
 pytestmark = pytest.mark.skipif(

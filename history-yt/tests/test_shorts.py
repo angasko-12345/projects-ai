@@ -1,4 +1,5 @@
 """Phase 2 shorts: heuristic planning + landscape extraction, render-gate hash pin."""
+import itertools
 import json
 import os
 
@@ -100,7 +101,7 @@ def test_plan_windows_bounded_non_overlapping_and_deterministic(runs, cfg, make_
         assert clip["title_suggestions"]
         assert clip["slug"]
     ordered = sorted(clips, key=lambda c: c["start"])
-    for prev, nxt in zip(ordered, ordered[1:], strict=False):
+    for prev, nxt in itertools.pairwise(ordered):
         assert prev["end"] <= nxt["start"] + 1e-6
     assert plan["relaxed_min_seconds"] is False
     assert any(c["hook"] for c in clips), "hook-led window should be selected"

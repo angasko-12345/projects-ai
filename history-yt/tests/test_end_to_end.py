@@ -32,7 +32,7 @@ def test_full_dry_run(runs, cfg):
     final = os.path.join(vdir, "final.mp4")
     assert os.path.isfile(final)
     streams = get_streams(final)
-    video = [s for s in streams if s.get("codec_type") == "video"][0]
+    video = next(s for s in streams if s.get("codec_type") == "video")
     assert int(video.get("width")) == 1920 and int(video.get("height")) == 1080
     assert has_stream(final, "audio")
     assert os.path.isfile(os.path.join(vdir, "thumbnail.png"))

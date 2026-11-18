@@ -1,4 +1,10 @@
-import json, glob, os, csv, statistics, re
+import csv
+import glob
+import json
+import os
+import re
+import statistics
+
 root = r"D:\admin\code\projects\history-yt\history-youtube-research"
 cand_file = root + r"\data\video_candidates.json"
 meta_dir = root + r"\data\video_meta"
@@ -92,7 +98,6 @@ with open(root+r"\data\video_analysis.csv","w",newline="",encoding="utf-8") as f
     w=csv.DictWriter(f, fieldnames=list(rows[0].keys())); w.writeheader(); w.writerows(rows)
 print(f"wrote {len(rows)} rows; channels={len({r['channel_slug'] for r in rows})} unique_ids={len({r['video_id'] for r in rows})}")
 # summary stats for report
-import collections
 print("question_titles", sum(r["title_question"] for r in rows))
 print("median_dur", statistics.median([r["duration_s"] for r in rows if r["duration_s"]!="UNKNOWN"]))
 print("median_chapters", statistics.median([r["chapter_count"] for r in rows]))

@@ -73,9 +73,8 @@ def test_search_filters_unlicensed_candidates():
 
 def test_download_rejects_non_image_content(tmp_path):
     response = FakeResponse(content=b"{}", content_type="application/json")
-    with mock_get(response):
-        with pytest.raises(PipelineError, match="not an image"):
-            commons.download_image("https://upload.example/x", str(tmp_path / "x"))
+    with mock_get(response), pytest.raises(PipelineError, match="not an image"):
+        commons.download_image("https://upload.example/x", str(tmp_path / "x"))
 
 
 def test_fetch_images_merges_into_assets(runs, make_video):
@@ -104,9 +103,11 @@ def test_fetch_images_fails_when_no_allowed_license(runs, make_video):
         "index": 1, "title": "File:Modern.jpg",
         "imageinfo": [{"thumburl": "https://upload.example/modern.jpg",
                        "extmetadata": {"LicenseShortName": {"value": "CC BY-SA 4.0"}}}]}}}}
-    with mock_get(FakeResponse(payload=payload)):
-        with pytest.raises(PipelineError, match="no allowed-license images"):
-            commons.fetch_images(runs, vid, "modern")
+    with (
+        mock_get(FakeResponse(payload=payload)),
+        pytest.raises(PipelineError, match="no allowed-license images"),
+    ):
+        commons.fetch_images(runs, vid, "modern")
 
 
 def mock_get(response):

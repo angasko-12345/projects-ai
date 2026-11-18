@@ -1,5 +1,7 @@
 """Regenerate audit.json from current on-disk evidence (verified popular file per channel)."""
-import json, os, glob
+import glob
+import json
+import os
 
 ROOT = r"D:\admin\code\projects\history-yt\history-youtube-research"
 CH = ROOT + r"\evidence\channels"

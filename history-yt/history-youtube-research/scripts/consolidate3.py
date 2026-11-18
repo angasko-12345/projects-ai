@@ -1,6 +1,7 @@
 """Consolidate evidence v3: joined + total + exact_vids via LAST occurrence.
 Also merge K&G and other manual files. Writes consolidated.json + about_overrides.json."""
-import json, os, re, glob
+import json
+import re
 
 CH = r"D:\admin\code\projects\history-yt\history-youtube-research\evidence\channels"
 AUDIT = json.load(open(CH + r"\audit.json", encoding="utf-8"))
@@ -39,8 +40,6 @@ for slug, info in sorted(AUDIT.items()):
     subs = overrides.get(slug, {}).get("_subs_tail") if slug in overrides else None
     if not subs:
         subs = subs_m.group(1) if subs_m else "UNKNOWN"
-    else:
-        subs = subs
     vc_m = re.search(r"([\d,]+\s*[KMB]?)\s*videos", header)
     lat_vids = lat.get("videos") or []
     newest = lat_vids[0] if lat_vids else {}

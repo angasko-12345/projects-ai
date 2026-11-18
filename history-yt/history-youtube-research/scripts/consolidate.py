@@ -1,5 +1,6 @@
 """Consolidate evidence: pick verified popular file, parse joined/views from about-full."""
-import json, glob, os, re, shutil
+import json
+import re
 
 CH = r"D:\admin\code\projects\history-yt\history-youtube-research\evidence\channels"
 AUDIT = json.load(open(CH + r"\audit.json", encoding="utf-8"))

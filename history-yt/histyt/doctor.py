@@ -1,9 +1,10 @@
 """Environment + config health checks. Never prints secret values."""
 import os
-import requests
 import shutil
 import subprocess
 import sys
+
+import requests
 
 from .config import ConfigError, ensure_d_confined
 
@@ -15,7 +16,7 @@ def _check(name, ok, detail):
 def _ffmpeg_version(ffmpeg_path):
     try:
         proc = subprocess.run([ffmpeg_path, "-version"], capture_output=True,
-                              timeout=10)
+                              timeout=10, check=False)
         first = proc.stdout.decode("utf-8", "replace").splitlines() or [""]
         return first[0].strip()[:200]
     except (OSError, subprocess.SubprocessError):

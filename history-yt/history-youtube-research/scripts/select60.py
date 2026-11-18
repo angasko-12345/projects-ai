@@ -3,7 +3,8 @@ Rule: per channel take 1) top popular video, 2) a mid-popular video (rank 4-6),
 3) best recent video by views; adjust so total = 60. OverSimplified and Timeline
 have few videos; all taken. Writes data/video_selection.md + video_candidates.json.
 """
-import json, re
+import json
+import re
 
 ROOT = r"D:\admin\code\projects\history-yt\history-youtube-research"
 data = json.load(open(ROOT + r"\evidence\channels\consolidated.json", encoding="utf-8"))
@@ -58,8 +59,8 @@ for k, v in sorted(cnt.items()): print(f"  {k}: {v}")
 json.dump(sel, open(ROOT + r"\data\video_candidates.json", "w", encoding="utf-8"), indent=2, ensure_ascii=False)
 
 md = ["# Phase 2 video selection (2026-11-05)", "",
- "Rule: per channel, top popular video + one mid/popular-rank-4 video + best recent by views. "
- "Timeline/OverSimplified have few videos, included fully above.", "",
+ ("Rule: per channel, top popular video + one mid/popular-rank-4 video + best recent by views. "
+ "Timeline/OverSimplified have few videos, included fully above."), "",
  f"Total: {len(sel)} videos across {len(cnt)} channels.", ""]
 for s in sel:
     md.append(f"- [{s['title']}]({s['url']}) — {s['slug']} · {s['kind']} · {s['parts'] or ''} · {s['published'] or ''} · len={s['length_s'] or '?'}s · id={s['id']}")

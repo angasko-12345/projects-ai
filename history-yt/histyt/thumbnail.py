@@ -1,13 +1,14 @@
 """Seeded 1280x720 thumbnails + dhash for variation checks."""
 import hashlib
+import itertools
 import json
 import os
 
 from PIL import Image, ImageDraw, ImageEnhance
 
 from . import state as state_mod
-from .visuals import _gradient, _try_font, _wrap
 from .state import set_stage
+from .visuals import _gradient, _try_font, _wrap
 
 THUMB_W, THUMB_H = 1280, 720
 
@@ -104,7 +105,7 @@ def dhash_image(path):
         small = img.convert("L").resize((8, 8))
         px = list(small.get_flattened_data()) if hasattr(small, "get_flattened_data") else list(small.getdata())
     value = 0
-    for i, (a, b) in enumerate(zip(px, px[1:], strict=False)):
+    for i, (a, b) in enumerate(itertools.pairwise(px)):
         if i % 8 == 7:
             continue
         if a > b:
@@ -113,7 +114,7 @@ def dhash_image(path):
 
 
 def hamming(a, b):
-    return bin(int(a, 16) ^ int(b, 16)).count("1")
+    return (int(a, 16) ^ int(b, 16)).bit_count()
 
 
 def _base_image(vdir, seed):

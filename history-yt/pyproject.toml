@@ -21,3 +21,10 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+
+[tool.ruff.lint.per-file-ignores]
+# The research record keeps the one-off data-collection scripts that produced
+# its evidence. They are archived artifacts, not product code: they are never
+# imported or run by the product or its tests, so their broad failure handling
+# and bare open() calls stay exactly as the runs that made the data.
+"history-youtube-research/scripts/*.py" = ["BLE001", "S110", "S112", "SIM115"]

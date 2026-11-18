@@ -1,7 +1,10 @@
 """Build candidate Phase 2 video selection from evidence popular/latest JSONs.
 Prints a ranked table per channel. The human/agent picks final 60+.
 """
-import json, glob, re, os
+import glob
+import json
+import os
+import re
 
 CH = r"D:\admin\code\projects\history-yt\history-youtube-research\evidence\channels"
 

@@ -20,7 +20,7 @@ def _fmt_srt_time(seconds):
     h = int(seconds // 3600)
     m = int((seconds % 3600) // 60)
     s = int(seconds % 60)
-    ms = int(round((seconds - int(seconds)) * 1000))
+    ms = round((seconds - int(seconds)) * 1000)
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
 
@@ -94,7 +94,7 @@ def _segment_with_image(image, wav, duration, fps, out_path, width=1920, height=
     number of frames and its audio is padded and trimmed to that same length.
     """
     dur = max(float(duration), 0.1)
-    frames = max(1, int(round(dur * fps)))
+    frames = max(1, round(dur * fps))
     seg_dur = frames / fps
     big_w, big_h = max(width, int(width * 4 / 3)), max(height, int(height * 4 / 3))
     filt = (
@@ -181,7 +181,7 @@ def _measure_loudnorm(path, target, ceiling, lra):
             f"loudnorm=I={target}:TP={ceiling}:LRA={lra}:print_format=json",
             "-f", "null", "-"]
     try:
-        proc = subprocess.run(args, capture_output=True, timeout=300,
+        proc = subprocess.run(args, capture_output=True, timeout=300, check=False,
                               **({"creationflags": subprocess.CREATE_NO_WINDOW}
                                  if sys.platform == "win32" else {}))
     except (OSError, subprocess.SubprocessError):
@@ -318,8 +318,7 @@ def assemble_stage(runs_dir, video_id, cfg):
     concat_path = os.path.join(vdir, "video.mp4")
     list_path = os.path.join(vdir, "concat.txt")
     with open(list_path, "w", encoding="utf-8") as f:
-        for seg in segments:
-            f.write(f"file '{seg}'\n")
+        f.writelines(f"file '{seg}'\n" for seg in segments)
     run_ffmpeg(["-f", "concat", "-safe", "0", "-i", list_path,
                 "-c", "copy", concat_path])
     write_captions(vdir, durations)
@@ -348,10 +347,11 @@ def assemble_stage(runs_dir, video_id, cfg):
     if not has_stream(final, "video") or not has_stream(final, "audio"):
         raise PipelineError("final.mp4 must have both video and audio streams")
     for stream in get_streams(final):
-        if stream.get("codec_type") == "video":
-            if int(stream.get("width") or 0) != width or int(stream.get("height") or 0) != height:
-                raise PipelineError(
-                    f"final.mp4 is {stream.get('width')}x{stream.get('height')}, expected {width}x{height}")
+        if stream.get("codec_type") == "video" and (
+                int(stream.get("width") or 0) != width
+                or int(stream.get("height") or 0) != height):
+            raise PipelineError(
+                f"final.mp4 is {stream.get('width')}x{stream.get('height')}, expected {width}x{height}")
     state_mod.set_stage(runs_dir, video_id, "assemble")
     return {"video": concat_path, "final": final, "subtitle_burned": subtitle_ok,
             "loudness_normalized": normalized, "duration": duration}

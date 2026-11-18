@@ -1,7 +1,12 @@
 """Normalize channel evidence JSON -> data/channel_benchmark.csv
 Run after all benchmark lanes finish. Reads ONLY files present; missing = UNKNOWN.
 """
-import json, re, glob, os, statistics, csv
+import csv
+import glob
+import json
+import os
+import re
+import statistics
 
 CH = r"D:\admin\code\projects\history-yt\history-youtube-research\evidence\channels"
 OUT = r"D:\admin\code\projects\history-yt\history-youtube-research\data"
@@ -51,7 +56,7 @@ for slug, lf in sorted(latest.items()):
     v_counts = []
     for v in videos:
         m = re.search(r"([\d.]+[KMB]?)", part(v))
-        if m and re.search(r"view", part(v), re.I) or (m and "ago" in part(v) and "|" in part(v)):
+        if m and re.search(r"view", part(v), re.IGNORECASE) or (m and "ago" in part(v) and "|" in part(v)):
             vv = parse_views(m.group(1))
             if vv: v_counts.append(vv)
     ages = [v.get("published", "") for v in videos]

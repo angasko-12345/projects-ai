@@ -31,7 +31,7 @@ def _history(runs_dir, video_id, window):
         if os.path.isfile(p):
             try:
                 s = state_mod.load(runs_dir, vid)
-            except Exception:
+            except Exception:  # noqa: BLE001, S112 - skip unreadable history rows
                 continue
             rows.append(s)
     rows.sort(key=lambda s: s.get("updated_at", ""), reverse=True)
@@ -99,9 +99,9 @@ def format_variation(rows, passed):
         ok = row.get("ok", True)
         lines.append(
             f"{(row.get('kind') or ''):<20}"
-            f"{str(row.get('against') or ''):<36}"
-            f"{str(value):>10}"
-            f"{str(thresh):>14}  "
+            f"{row.get('against') or ''!s:<36}"
+            f"{value!s:>10}"
+            f"{thresh!s:>14}  "
             f"{'PASS' if ok else 'FAIL'}"
         )
     lines.append(f"OVERALL: {'PASS' if passed else 'FAIL'}")

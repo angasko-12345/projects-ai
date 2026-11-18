@@ -20,10 +20,9 @@ import re
 from datetime import datetime, timezone
 
 from .media import run_ffmpeg, run_ffprobe
-from .script_stage import parse_script
-from .state import (GateError, PipelineError, load, require_script_approval,
-                    sha256_file)
 from .providers_tts import chunk_text
+from .script_stage import parse_script
+from .state import GateError, PipelineError, load, require_script_approval, sha256_file
 
 DEFAULT_MAX_SECONDS = 60
 DEFAULT_MIN_SECONDS = 15

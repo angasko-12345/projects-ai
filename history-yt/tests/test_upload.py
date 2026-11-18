@@ -15,8 +15,9 @@ def _prepare(runs, cfg, make_video):
     pipeline.approve_script(runs, vid)
     # Minimal final artifacts for upload.
     vdir = os.path.join(runs, vid)
-    open(os.path.join(vdir, "final.mp4"), "wb").write(b"fake")
-    open(os.path.join(vdir, "thumbnail.png"), "wb").write(b"fake")
+    for name in ("final.mp4", "thumbnail.png"):
+        with open(os.path.join(vdir, name), "wb") as handle:
+            handle.write(b"fake")
     return vid
 
 

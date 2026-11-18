@@ -68,7 +68,7 @@ def image_signature(path):
 def hash_distance(first, second):
     """Hamming distance between two signatures: 0 identical, 64 opposite."""
     try:
-        return bin(int(first, 16) ^ int(second, 16)).count("1")
+        return (int(first, 16) ^ int(second, 16)).bit_count()
     except (TypeError, ValueError):
         return 64
 

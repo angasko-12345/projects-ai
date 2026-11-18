@@ -3,8 +3,13 @@ import os
 import pytest
 
 from histyt.providers_llm import LLMProvider
-from histyt.script_stage import (build_prompt, count_words, generate_script,
-                                 parse_script_full, target_words)
+from histyt.script_stage import (
+    build_prompt,
+    count_words,
+    generate_script,
+    parse_script_full,
+    target_words,
+)
 from histyt.state import PipelineError
 
 

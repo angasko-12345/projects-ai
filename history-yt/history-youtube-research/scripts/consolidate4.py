@@ -1,6 +1,7 @@
 """Consolidate v4: joined+total from best source (new about_full > legacy about-full > UNKNOWN)."""
-import json, os, re
-from datetime import date
+import json
+import os
+import re
 
 ROOT = r"D:\admin\code\projects\history-yt\history-youtube-research"
 CH = ROOT + r"\evidence\channels"

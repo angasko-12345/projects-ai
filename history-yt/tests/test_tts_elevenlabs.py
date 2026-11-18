@@ -4,8 +4,7 @@ from unittest import mock
 
 import pytest
 
-from histyt.providers_tts import (ElevenLabsProvider, PiperProvider,
-                                  _clamp_speed, _length_scale)
+from histyt.providers_tts import ElevenLabsProvider, PiperProvider, _clamp_speed, _length_scale
 from histyt.state import PipelineError
 
 
@@ -54,9 +53,11 @@ def test_success_sends_speed_and_writes_wav(tmp_path):
 def test_http_error_redacts_the_key(tmp_path):
     out = str(tmp_path / "chunk.wav")
     failing = FakeResponse(status=401, text="key test-key is invalid")
-    with mock.patch("histyt.providers_tts.requests.post", return_value=failing):
-        with pytest.raises(PipelineError) as exc:
-            ElevenLabsProvider("test-key").synthesize_chunk("Hi.", out, 1.0)
+    with (
+        mock.patch("histyt.providers_tts.requests.post", return_value=failing),
+        pytest.raises(PipelineError) as exc,
+    ):
+        ElevenLabsProvider("test-key").synthesize_chunk("Hi.", out, 1.0)
     message = str(exc.value)
     assert "test-key" not in message
     assert "[redacted]" in message

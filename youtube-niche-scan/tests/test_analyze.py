@@ -1,7 +1,5 @@
 """Tests for analyze.py. No live API calls; standard library only."""
 import csv
-import os
-from datetime import datetime, timezone
 
 import pytest
 
@@ -85,7 +83,7 @@ def test_rank_stability_always_top3_and_never_top3():
     assert per_row[("kw-0", "long-form")]["top3"] == 27
     # lowest win rate always 4th (never top 3 with 4 rows)
     assert per_row[("kw-3", "long-form")]["top3"] == 0
-    for key, stats in per_row.items():
+    for _key, stats in per_row.items():
         assert stats["total"] == 27
 
 

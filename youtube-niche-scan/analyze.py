@@ -392,8 +392,8 @@ def build_recommendation(rows, keywords, report_excluded_counts, cache_age):
     lines.append("## Data status (verified facts vs assumptions vs unknowns)")
     lines.append("")
     lines.append("- Verified fact: results.csv present with measured rows.")
-    lines.append(f"- Assumption: RPM values are vendor claims (keywords.json), unverified.")
-    lines.append(f"- Unknown: true audience country (API gives none); true win rates beyond this sample.")
+    lines.append("- Assumption: RPM values are vendor claims (keywords.json), unverified.")
+    lines.append("- Unknown: true audience country (API gives none); true win rates beyond this sample.")
     lines.append("")
 
     n_low_conf = sum(1 for r in data_rows if r["low_confidence"])
@@ -720,7 +720,7 @@ def validate_recommendation(data_rows, keywords, scored_base):
         b = scored_base[i + 1]
         ia = intervals[(a["keyword"], a["format"])]
         ib = intervals[(b["keyword"], b["format"])]
-        overlaps = intervals_overlap(ia, ib)
+        intervals_overlap(ia, ib)
         # We can't re-read the markdown flag here; instead verify overlap is symmetric/sane.
         if not (ia[0] <= ia[1] and ib[0] <= ib[1]):
             overlap_mismatches += 1

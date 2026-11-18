@@ -7,15 +7,7 @@ stages never invent a query at render time.
 """
 import re
 
-STOPWORDS = frozenset("""
-a about above after again against all am an and any are as at be because been
-before being below between both but by can could did do does doing down during
-each few for from further had has have having he her here hers him his how i if
-in into is it its itself just me more most my no nor not now of off on once only
-or other our out over own same she should so some such than that the their them
-then there these they this those through to too under until up very was we were
-what when where which while who whom why will with would you your
-""".split())
+STOPWORDS = frozenset(["a", "about", "above", "after", "again", "against", "all", "am", "an", "and", "any", "are", "as", "at", "be", "because", "been", "before", "being", "below", "between", "both", "but", "by", "can", "could", "did", "do", "does", "doing", "down", "during", "each", "few", "for", "from", "further", "had", "has", "have", "having", "he", "her", "here", "hers", "him", "his", "how", "i", "if", "in", "into", "is", "it", "its", "itself", "just", "me", "more", "most", "my", "no", "nor", "not", "now", "of", "off", "on", "once", "only", "or", "other", "our", "out", "over", "own", "same", "she", "should", "so", "some", "such", "than", "that", "the", "their", "them", "then", "there", "these", "they", "this", "those", "through", "to", "too", "under", "until", "up", "very", "was", "we", "were", "what", "when", "where", "which", "while", "who", "whom", "why", "will", "with", "would", "you", "your"])
 
 VISUAL_TYPES = ("archive", "generated", "map", "diagram", "card")
 
@@ -31,26 +23,26 @@ GENERIC_PERIOD_NOTE = (
 # Condensed from handbooks/ai-visual-production-handbook.md, part 4.
 PERIOD_NOTES = (
     (("roman", "rome", "legion", "latin", "caesar"),
-     "Roman: lorica segmentata and galea from the 1st century AD; Republican "
-     "troops in mail with Montefortino helmets; no plate armour on foot soldiers"),
+     ("Roman: lorica segmentata and galea from the 1st century AD; Republican "
+     "troops in mail with Montefortino helmets; no plate armour on foot soldiers")),
     (("greek", "grecian", "hoplite", "sparta", "athens", "macedon"),
-     "Greek: linothorax or bronze muscle cuirass, Corinthian or Attic helmet, "
-     "aspis; painted marble, not bare white"),
+     ("Greek: linothorax or bronze muscle cuirass, Corinthian or Attic helmet, "
+     "aspis; painted marble, not bare white")),
     (("egypt", "pharaoh", "nile", "ptolemaic", "pyramid"),
-     "Egyptian: linen kilt, nemes headdress for royalty, shenti for others; "
-     "painted temple walls; no anachronistic pyramid-building cliches"),
+     ("Egyptian: linen kilt, nemes headdress for royalty, shenti for others; "
+     "painted temple walls; no anachronistic pyramid-building cliches")),
     (("medieval", "knight", "castle", "crusade", "viking", "feudal"),
-     "Medieval: mail before plate, full plate only from about 1420; Romanesque "
-     "arches before 1150, Gothic after"),
+     ("Medieval: mail before plate, full plate only from about 1420; Romanesque "
+     "arches before 1150, Gothic after")),
     (("japan", "samurai", "shogun", "edo", "sengoku", "ronin"),
-     "Japanese: o-yoroi early, tosei-gusoku after the mid-16th century; kabuto "
-     "with maedate; no Edo-period obi on Sengoku figures"),
+     ("Japanese: o-yoroi early, tosei-gusoku after the mid-16th century; kabuto "
+     "with maedate; no Edo-period obi on Sengoku figures")),
     (("ww1", "world war 1", "world war i", "1914", "1918", "trench"),
-     "WW1: horizon-blue French from 1915, field-grey German, khaki British with "
-     "Brodie helmet from 1915, Stahlhelm from 1916"),
+     ("WW1: horizon-blue French from 1915, field-grey German, khaki British with "
+     "Brodie helmet from 1915, Stahlhelm from 1916")),
     (("ww2", "world war 2", "world war ii", "1939", "1945", "wehrmacht", "nazi"),
-     "WW2: feldgrau and Stahlhelm for German troops, battledress and Brodie or "
-     "MkII for British, olive drab and M1 for US; context the insignia"),
+     ("WW2: feldgrau and Stahlhelm for German troops, battledress and Brodie or "
+     "MkII for British, olive drab and M1 for US; context the insignia")),
 )
 
 _NAME_PAIR = re.compile(r"\b[A-Z][a-z]{2,}\s+[A-Z][a-z]{2,}\b")

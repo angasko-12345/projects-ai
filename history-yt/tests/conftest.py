@@ -6,8 +6,8 @@ import yaml
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from histyt import topics  # noqa: E402
-from histyt.research import research_stage  # noqa: E402
+from histyt import topics
+from histyt.research import research_stage
 
 
 @pytest.fixture()

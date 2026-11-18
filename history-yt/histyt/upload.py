@@ -82,7 +82,7 @@ def check_synthetic_field(timeout=15):
         resp = requests.get(YOUTUBE_DOCS_URL, timeout=timeout)
         resp.raise_for_status()
         return "containsSyntheticMedia" in resp.text
-    except Exception:
+    except Exception:  # noqa: BLE001 - best-effort docs probe must not crash
         return False
 
 

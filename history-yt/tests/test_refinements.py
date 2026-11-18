@@ -76,9 +76,11 @@ def test_fetch_url_rejects_non_https_and_non_html():
     fake.headers = {"content-type": "application/json"}
     fake.text = "{}"
     fake.raise_for_status = lambda: None
-    with unittest.mock.patch("histyt.research.requests.get", return_value=fake):
-        with pytest.raises(PipelineError, match="non-HTML"):
-            fetch_url("https://example.com/data.json")
+    with (
+        unittest.mock.patch("histyt.research.requests.get", return_value=fake),
+        pytest.raises(PipelineError, match="non-HTML"),
+    ):
+        fetch_url("https://example.com/data.json")
 
 
 def test_fetch_url_caps_oversize_body():
@@ -87,8 +89,10 @@ def test_fetch_url_caps_oversize_body():
     fake.headers = {"content-type": "text/html"}
     fake.text = "x" * 3000
     fake.raise_for_status = lambda: None
-    with unittest.mock.patch("histyt.research.requests.get", return_value=fake):
-        with pytest.raises(PipelineError, match="too large"):
-            fetch_url("https://example.com/big", max_bytes=10)
+    with (
+        unittest.mock.patch("histyt.research.requests.get", return_value=fake),
+        pytest.raises(PipelineError, match="too large"),
+    ):
+        fetch_url("https://example.com/big", max_bytes=10)
 
 

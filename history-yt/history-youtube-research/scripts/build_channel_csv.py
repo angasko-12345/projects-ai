@@ -1,7 +1,10 @@
 """Build data/channel_benchmark.csv (+ findings summary numbers) from consolidated.json
 Adds derived columns: views/subscriber ratio, views per video, recent median views.
 """
-import json, re, statistics, csv, os
+import csv
+import json
+import re
+import statistics
 
 ROOT = r"D:\admin\code\projects\history-yt\history-youtube-research"
 data = json.load(open(ROOT + r"\evidence\channels\consolidated.json", encoding="utf-8"))

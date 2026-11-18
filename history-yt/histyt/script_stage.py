@@ -29,15 +29,7 @@ MIN_LENGTH_RATIO = 0.6
 WARN_LOW_RATIO = 0.85
 WARN_HIGH_RATIO = 1.4
 
-STOPWORDS = frozenset("""
-about above after again against almost along already also although among another
-because before being below between both came can could did does doing during each
-every few first from further had has have having here how into itself just like
-many more most much must near only other our out over own same should since some
-such than that the their theirs them then there these they this those through
-too under until very was were what when where which while who whom why will with
-within without would year years
-""".split())
+STOPWORDS = frozenset(["about", "above", "after", "again", "against", "almost", "along", "already", "also", "although", "among", "another", "because", "before", "being", "below", "between", "both", "came", "can", "could", "did", "does", "doing", "during", "each", "every", "few", "first", "from", "further", "had", "has", "have", "having", "here", "how", "into", "itself", "just", "like", "many", "more", "most", "much", "must", "near", "only", "other", "our", "out", "over", "own", "same", "should", "since", "some", "such", "than", "that", "the", "their", "theirs", "them", "then", "there", "these", "they", "this", "those", "through", "too", "under", "until", "very", "was", "were", "what", "when", "where", "which", "while", "who", "whom", "why", "will", "with", "within", "without", "would", "year", "years"])
 
 
 def recent_templates(runs_dir, window=5, exclude=None):
@@ -85,7 +77,7 @@ def target_words(cfg):
     wpm = int((cfg or {}).get("words_per_minute") or DEFAULT_WORDS_PER_MINUTE)
     if minutes <= 0:
         return 0, wpm
-    return int(round(minutes * wpm)), wpm
+    return round(minutes * wpm), wpm
 
 
 def _extract_source_ids(text):
@@ -122,8 +114,7 @@ def parse_script_full(text):
         if header:
             name = header.group(1).strip()
             lowered = name.lower()
-            if lowered.startswith("source") or lowered.startswith("needs check") \
-                    or lowered.startswith("needs human check"):
+            if lowered.startswith(("source", "needs check", "needs human check")):
                 in_needs = lowered.startswith("needs")
                 current = None
             else:
@@ -294,9 +285,9 @@ def format_review(meta):
     review = (meta or {}).get("review") or {}
     counts = review.get("counts") or {}
     lines = [
-        "source grounding: "
+        ("source grounding: "
         f"{counts.get('supported', 0)} supported, {counts.get('weak', 0)} weak, "
-        f"{counts.get('unverified', 0)} unverified, {counts.get('unchecked', 0)} unchecked"
+        f"{counts.get('unverified', 0)} unverified, {counts.get('unchecked', 0)} unchecked")
     ]
     for warning in review.get("warnings") or []:
         lines.append(f"WARN: {warning}")
@@ -387,13 +378,9 @@ def generate_script(runs_dir, video_id, cfg, provider=None):
             f"deficit {target - words} words. Re-run the script stage with a model "
             "that can produce the requested narration length.")
     warnings = []
-    if target and ratio is not None:
-        if ratio < WARN_LOW_RATIO:
-            warnings.append(
-                f"narration is {words} words, {ratio:.2f} of the {target}-word target")
-        elif ratio > WARN_HIGH_RATIO:
-            warnings.append(
-                f"narration is {words} words, {ratio:.2f} of the {target}-word target")
+    if target and ratio is not None and (ratio < WARN_LOW_RATIO or ratio > WARN_HIGH_RATIO):
+        warnings.append(
+            f"narration is {words} words, {ratio:.2f} of the {target}-word target")
 
     sources_by_id = {s.get("id"): s for s in sources}
     for claim in claims:
