@@ -7,6 +7,10 @@ AgentOps, Universal Game Agent, mini-llm and AI Token Tracker are the four Pytho
 
 Everything here runs on your own machine: no accounts, no hosted backend, and no telemetry unless a project says otherwise.
 
+A complete, verified catalog of every project lives in [PROJECTS.md](PROJECTS.md) and
+[`project-index.json`](project-index.json). Independent repositories and local-only
+experiments are listed there too.
+
 ## Main projects
 
 | Project | What it is | Status | Stack |
@@ -23,6 +27,10 @@ Everything here runs on your own machine: no accounts, no hosted backend, and no
 | [mini-llm](small-projects/mini-llm/) | A small GPT-style language model written from scratch in PyTorch: tokenizer, training loop, sampling. |
 | [Privacy Audit Tool](small-projects/privacy_audit_tool/) | A read-only Windows tool that finds your forgotten online accounts from mail exports, browser history and usernames. It deletes nothing and runs offline by default; its optional username checks contact external sites. |
 | [TikTok Slop Factory](tiktok-slop-factory/) | An experiment that turns short fictional scripts into vertical videos with one command. |
+| [histyt](history-yt/) | The history YouTube pipeline: topic → research → script → approval gates → voice, visuals, QA and private upload. |
+| [YouTube niche-scan](youtube-niche-scan/) | Read-only YouTube Data API v3 tool that ranks niches by RPM tier and small-channel win rate. |
+| [Small Model Fleet](small-model-fleet/) | Benchmark harness and Kaggle experiment kernels for a fleet of small specialised language models. |
+| [verytinyllm](small-projects/verytinyllm/), [tinyllm.py](small-projects/tinyllm.py) | Minimal from-scratch character-level PyTorch language models. |
 | [quickscripts](archive/quickscripts/), [Cube Timer](archive/Cube%20Timer.html) | Small utilities, archived (not maintained). |
 
 ## Quick start
@@ -69,10 +77,15 @@ agentops/               AgentOps orchestrator (Python package + GUI)
 qr-generator/           Android QR app (Expo)
 ai-token-tracker/       Token usage dashboard
 universal-game-agent/   Pixel-based RL testbed
+history-yt/             History YouTube video pipeline
+youtube-niche-scan/     YouTube niche research tool
 tiktok-slop-factory/    Video generation experiment
-small-projects/         mini-llm, privacy audit tool
+small-model-fleet/      Small-model benchmark harness and Kaggle kernels
+small-projects/         mini-llm, privacy audit tool, verytinyllm, tinyllm.py
 archive/                Unmaintained standalone files (Cube Timer, quickscripts)
 tools/evidence/         Verification-evidence tooling used by CI
+tools/obsidian-sync/    One-way agent-memory mirror to Obsidian
+rojo/ride-a-noob/       Separate nested Git repository (Rojo Roblox project)
 .agents/                Agent instructions, plans and verification records
 tasks/                  Active-task slot (or pointer) + after-task procedure; live queue: .agents/pending_tasks.md
 .agents/memory/archive/ Completed task records, preserved verbatim and searchable
@@ -94,6 +107,23 @@ Planned work is tracked in [Issues](https://github.com/angasko-12345/projects-ai
 - AI Token Tracker: per-account limit warnings and session handoff notes ([#13](https://github.com/angasko-12345/projects-ai/issues/13))
 - Universal Game Agent: PPO on a live browser game ([#15](https://github.com/angasko-12345/projects-ai/issues/15))
 - Privacy Audit Tool: a recurring-charge scan from bank statements ([#16](https://github.com/angasko-12345/projects-ai/issues/16))
+
+## Independent repositories
+
+Some work lives outside this monorepo and keeps its own history:
+
+| Repository | Visibility | Relationship |
+|---|---|---|
+| [qr-generator](https://github.com/angasko-12345/qr-generator) | Public | Standalone QR app repository. It has `docs/` and `marketing/` that the monorepo copy lacks, while the monorepo copy has newer `src/util/feedback*.ts` and `review*.ts`. The copies have diverged and were not merged. |
+| [OpenFrontHOI4](https://github.com/angasko-12345/OpenFrontHOI4) | Public | No local checkout was found under `D:\admin\code` during the 2026-11-18 audit. |
+| [qr-poster-service](https://github.com/angasko-12345/qr-poster-service) | Private | No local checkout was found under `D:\admin\code` during the 2026-11-18 audit. |
+| [Worlds-Divided](https://github.com/angasko-12345/Worlds-Divided) | Private | No local checkout was found under `D:\admin\code` during the 2026-11-18 audit. |
+
+Two local projects are not under version control: `D:\admin\code\outreach` (manual
+Facebook outreach toolkit; `leads.csv` and `samples/` contain real personal data) and
+`D:\admin\code\kagglegpt` (a single inference script plus a 1.79 GB local resume bundle).
+`rojo/ride-a-noob/` is a separate nested Git repository with no GitHub remote yet.
+See [PROJECTS.md](PROJECTS.md) for details.
 
 ## Contributing
 
