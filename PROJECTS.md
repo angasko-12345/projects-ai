@@ -171,16 +171,16 @@ Status legend: **Active** (maintained, working), **Research** (measured experime
 
 ## Experiments and archived utilities
 
-### ride-a-noob (nested repository)
+### ride-a-noob (standalone repository)
 
 - **Status:** Experimental (early foundation)
-- **Purpose:** Rojo project skeleton for a Roblox game. Code-container-only mapping with server/client/shared trees. This is a **separate Git repository** nested at `rojo/ride-a-noob/`, with its own history and no GitHub remote yet.
+- **Purpose:** Rojo project skeleton for a Roblox game. Code-container-only mapping with server/client/shared trees. This is a **separate Git repository** nested at `rojo/ride-a-noob/`, with its own history and a private GitHub remote.
 - **Stack:** Lua/Luau, Rojo 7.7.1, Rokit
-- **Directory:** `rojo/ride-a-noob/` (nested repo, not part of the monorepo history)
-- **GitHub:** none yet — see "Outstanding work"
+- **Directory:** `rojo/ride-a-noob/` (nested directory, not part of the monorepo history)
+- **GitHub:** <https://github.com/angasko-12345/ride-a-noob> (private)
 - **Entry points:** `default.project.json`
-- **Docs:** `rojo/ride-a-noob/AGENTS.md`, `.agents/memory/ride-a-noob.md`
-- **Tests:** none
+- **Docs:** `rojo/ride-a-noob/README.md`, `rojo/ride-a-noob/AGENTS.md`, `.agents/memory/ride-a-noob.md`
+- **Tests:** `python tests/roundtrip/verify.py`
 
 ### Archived utilities
 
@@ -189,18 +189,18 @@ Status legend: **Active** (maintained, working), **Research** (measured experime
 - **Status:** Archived. Not maintained, tested or measured.
 - **GitHub:** <https://github.com/angasko-12345/projects-ai/tree/main/archive>
 
-## Local-only projects (no version control)
+## Standalone repositories and local-only experiments
 
 ### outreach
 
-- **Status:** Active (local-only)
+- **Status:** Active
 - **Purpose:** Manual Facebook outreach toolkit: OpenStreetMap lead finder, message writer, image sampler and a daily driver. Sending is manual only.
 - **Stack:** Python 3, Pillow, optional LiteLLM
 - **Directory:** `D:\admin\code\outreach`
-- **GitHub:** none
+- **GitHub:** <https://github.com/angasko-12345/outreach> (private)
 - **Entry points:** `python find_leads.py`, `python write_messages.py`, `python make_samples.py`, `python today.py`
-- **Docs:** `README.txt`, `AGENTS.md`
-- **Important:** `leads.csv` and `samples/` contain real personal data and must never be committed. A repository would need a strict `.gitignore` and a sanitised sample.
+- **Docs:** `README.md`, `README.txt`, `AGENTS.md`
+- **Important:** `leads.csv` and `samples/` contain real personal data. They are git-ignored and must never be committed; the repository contains code and documentation only.
 
 ### kagglegpt
 

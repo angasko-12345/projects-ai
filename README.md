@@ -115,15 +115,14 @@ Some work lives outside this monorepo and keeps its own history:
 | Repository | Visibility | Relationship |
 |---|---|---|
 | [qr-generator](https://github.com/angasko-12345/qr-generator) | Public | Standalone QR app repository. It has `docs/` and `marketing/` that the monorepo copy lacks, while the monorepo copy has newer `src/util/feedback*.ts` and `review*.ts`. The copies have diverged and were not merged. |
+| [ride-a-noob](https://github.com/angasko-12345/ride-a-noob) | Private | Separate Rojo/Roblox repository nested at `rojo/ride-a-noob/`; its history is not part of this monorepo. |
+| [outreach](https://github.com/angasko-12345/outreach) | Private | Manual Facebook outreach toolkit at `D:\admin\code\outreach`. `leads.csv` and `samples/` are git-ignored and never pushed. |
 | [OpenFrontHOI4](https://github.com/angasko-12345/OpenFrontHOI4) | Public | No local checkout was found under `D:\admin\code` during the 2026-11-18 audit. |
 | [qr-poster-service](https://github.com/angasko-12345/qr-poster-service) | Private | No local checkout was found under `D:\admin\code` during the 2026-11-18 audit. |
 | [Worlds-Divided](https://github.com/angasko-12345/Worlds-Divided) | Private | No local checkout was found under `D:\admin\code` during the 2026-11-18 audit. |
 
-Two local projects are not under version control: `D:\admin\code\outreach` (manual
-Facebook outreach toolkit; `leads.csv` and `samples/` contain real personal data) and
-`D:\admin\code\kagglegpt` (a single inference script plus a 1.79 GB local resume bundle).
-`rojo/ride-a-noob/` is a separate nested Git repository with no GitHub remote yet.
-See [PROJECTS.md](PROJECTS.md) for details.
+`D:\admin\code\kagglegpt` is still local-only: one inference script plus a 1.79 GB
+resume bundle that is not uploaded. See [PROJECTS.md](PROJECTS.md) for details.
 
 ## Contributing
 
