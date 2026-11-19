@@ -576,6 +576,8 @@ def fmt_pct(value: float) -> str:
 def write_markdown(result: dict, niches: dict, args, path: Path) -> None:
     rows = result["rows"]
     totals = result["totals"]
+    sorts = tuple(args.sort) if args.sort else ("relevance",)
+    regions = tuple(args.region) if args.region else ("US",)
 
     lines = []
     lines.append("# YouTube niche-scan report")
@@ -586,7 +588,9 @@ def write_markdown(result: dict, niches: dict, args, path: Path) -> None:
     lines.append(f"- Keywords scanned: {result['scanned']}")
     lines.append(f"- Unit cap: {args.unit_cap}; units used: {result['units_used']}")
     lines.append(f"- API cache hits: {result['cache_hits']} (warm-cache reruns cost 0 units)")
-    lines.append(f"- Search: sort={', '.join(args.sort)}, pages={args.pages}, region={', '.join(args.region)}")
+    lines.append(
+        f"- Search: sort={', '.join(sorts)}, pages={args.pages}, region={', '.join(regions)}"
+    )
     lines.append("- RPM ranges: vendor claims, unverified (see keywords.json)")
     lines.append("")
     if result["stopped_early"]:
@@ -691,8 +695,22 @@ def write_markdown(result: dict, niches: dict, args, path: Path) -> None:
     lines.append("")
 
     lines.append("## Known limits")
-    lines.append("- `search.list(order=relevance)` is relevance-ordered, not a random sample; results are biased toward established channels.")
-    lines.append("- Shorts are not exposed by the API; `<= 180s` duration is used as a proxy for short-form.")
+    lines.append(
+        f"- Search results use order={', '.join(sorts)}, region={', '.join(regions)}, "
+        f"and at most {args.pages} page(s) per keyword. This is a bounded, non-random sample."
+    )
+    if len(sorts) > 1 or len(regions) > 1 or args.pages > 1:
+        lines.append(
+            "- Results from query combinations are deduplicated by video ID before scoring; "
+            "this expands coverage but does not create independent or representative samples."
+        )
+    lines.append(
+        "- Search ordering and pagination favor some videos/channels over others; rankings can "
+        "change with a different order, region, or page depth."
+    )
+    lines.append(
+        "- Shorts are not exposed by the API; `<= 180s` duration is used as a proxy for short-form."
+    )
     lines.append("- The API cannot show audience country; RPM is treated as niche-level only.")
     lines.append("- Score = rpm_mid x small_win_rate is an unvalidated heuristic, not a revenue forecast.")
     lines.append("- Cache entries are raw API responses; subscriber/view counts are refreshed at most every 30 days per policy.")
@@ -712,7 +730,13 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--outlier-min", type=float, default=OUTLIER_MIN_DEFAULT, help="outlier ratio threshold (default 5)")
     parser.add_argument("--min-age-days", type=int, default=MIN_AGE_DAYS_DEFAULT, help="skip videos younger than N days (default 14)")
     parser.add_argument("--purge-cache-older-than", type=int, default=PURGE_DEFAULT_DAYS, help="purge cache entries older than N days (default 30; set 0 to disable)")
-    parser.add_argument("--sort", action="append", default=None, help=f"search order (default: relevance); options: {', '.join(SORT_OPTIONS)}; repeatable")
+    parser.add_argument(
+        "--sort",
+        action="append",
+        choices=SORT_OPTIONS,
+        default=None,
+        help="search order (default: relevance); repeatable",
+    )
     parser.add_argument("--pages", type=int, default=1, help="number of search result pages per keyword (default 1)")
     parser.add_argument("--region", action="append", default=None, help="regionCode (default US); repeatable")
     return parser.parse_args(argv)

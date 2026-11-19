@@ -11,6 +11,11 @@ RevenueCat `premium` entitlement.
 Everything runs on-device. No accounts, no backend, no analytics, no ads. The
 free tier never requires a purchase.
 
+The monorepo copy is the canonical source; the standalone public repository is
+a distribution mirror with known outstanding differences. Follow
+[`REPOSITORY_POLICY.md`](REPOSITORY_POLICY.md) for the reconciliation checklist
+and release process.
+
 ## Features
 
 - 5 input types: Text, URL, Email, Phone, Wi-Fi (with security, hidden SSID, and
@@ -31,8 +36,12 @@ free tier never requires a purchase.
 - Honest "purchases are not connected in this build" state until the store
   setup in `BILLING_SETUP.md` is completed; purchases are never faked
 - Saved codes, history, and settings stored locally (AsyncStorage): history is
-  deduplicated by payload and capped at 100 entries; saved codes are neither
-  deduplicated nor capped
+  deduplicated by payload and capped at 100 entries; Wi-Fi codes are excluded
+  from automatic history, including older entries removed during upgrade; saving
+  a Wi-Fi code to the library requires a confirmation; saved codes are neither
+  deduplicated nor capped. AsyncStorage is app-private local storage, not an
+  encrypted credential vault; do not save sensitive network passwords unless
+  you trust the device
 - In-app review prompt (expo-store-review) only after the 3rd successful
   save/share/export, never in a session that showed an error, at most once per
   90 days; "Send feedback" mailto link in the Library sheet

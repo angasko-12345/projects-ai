@@ -440,6 +440,17 @@ def test_cli_table_and_warn_exit_code(tmp_path):
     assert "verdict: WARN (exit 2)" in proc.stdout
 
 
+def test_cli_strict_rejects_campaign_with_no_specific_rules(tmp_path):
+    campaign = tmp_path / "empty.toml"
+    campaign.write_text('[campaign]\nname = "label only"\n', encoding="utf-8")
+
+    proc = _cli(tmp_path / "not-inspected.mp4", "--campaign", campaign, "--strict")
+
+    assert proc.returncode == 1
+    assert "--strict requires at least one campaign rule" in proc.stderr
+    assert "not-inspected.mp4" not in proc.stdout
+
+
 def test_cli_bad_campaign_exits_1_with_clear_message(tmp_path):
     bad = tmp_path / "c.toml"
     bad.write_text("[video]\nlenght_range = [1, 2]\n", encoding="utf-8")

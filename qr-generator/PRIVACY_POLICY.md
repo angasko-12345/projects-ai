@@ -24,11 +24,20 @@ The following is stored locally in the app's private storage on your device and 
 removed if you clear the app's data or uninstall the app:
 
 - The text you type and the QR codes you generate
-- QR codes you save to your library and your generation history
+- QR codes you save to your library and eligible generation history
 - App settings, such as your theme preference
 - Any image you choose from your photos to place inside a QR code
 
-Nothing in this list leaves your device.
+Wi-Fi QR codes (including their network name and password) are not added to
+automatic history. If you explicitly save one to your library, the app asks for
+confirmation first. AsyncStorage is app-private local storage, not an encrypted
+credential vault; Android app backup is disabled, but someone with access to
+the unlocked device or app data may still be able to read saved values. Avoid
+saving sensitive credentials on a device you do not trust.
+
+Nothing in this list is transmitted by the app to its own servers (the app has
+none). User-initiated sharing/export and purchase validation are described
+elsewhere in this policy.
 
 ## Permissions
 

@@ -1,7 +1,16 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { EMPTY_DRAFT, DEFAULT_SETTINGS, type HistoryEntry } from '../types';
-import { HISTORY_LIMIT, loadSavedCodes, loadSettings, prependHistory, saveSettings } from './storage';
+import {
+  HISTORY_LIMIT,
+  loadHistory,
+  loadSavedCodes,
+  loadSettings,
+  prependHistory,
+  shouldRecordHistory,
+  saveSettings,
+  writeSavedCodes,
+} from './storage';
 
 function entry(payload: string): HistoryEntry {
   return {
@@ -16,6 +25,35 @@ function entry(payload: string): HistoryEntry {
 
 beforeEach(async () => {
   await AsyncStorage.clear();
+});
+
+describe('history privacy', () => {
+  it('does not automatically record Wi-Fi codes', () => {
+    expect(shouldRecordHistory('wifi')).toBe(false);
+    expect(shouldRecordHistory('text')).toBe(true);
+  });
+
+  it('purges Wi-Fi credentials from history written by older versions', async () => {
+    const oldWifiEntry: HistoryEntry = {
+      ...entry('WIFI:T:WPA;S:Home;P:secret-password;;'),
+      type: 'wifi',
+      draft: {
+        ...EMPTY_DRAFT,
+        type: 'wifi',
+        wifi: { ssid: 'Home', password: 'secret-password', security: 'wpa', hidden: false },
+      },
+    };
+    await AsyncStorage.setItem(
+      '@qrgen:v1:history',
+      JSON.stringify([entry('ordinary'), oldWifiEntry]),
+    );
+
+    await expect(loadHistory()).resolves.toEqual([entry('ordinary')]);
+
+    const stored = await AsyncStorage.getItem('@qrgen:v1:history');
+    expect(stored).not.toContain('secret-password');
+    expect(JSON.parse(stored ?? '[]')).toHaveLength(1);
+  });
 });
 
 describe('prependHistory', () => {
@@ -61,8 +99,19 @@ describe('settings persistence', () => {
 });
 
 describe('saved codes persistence', () => {
-  it('returns an empty list when the stored JSON is corrupt', async () => {
+  it('rejects corrupt stored JSON instead of treating it as an empty library', async () => {
     await AsyncStorage.setItem('@qrgen:v1:saved', '[');
-    await expect(loadSavedCodes()).resolves.toEqual([]);
+    await expect(loadSavedCodes()).rejects.toThrow();
+    await expect(AsyncStorage.getItem('@qrgen:v1:saved')).resolves.toBe('[');
+  });
+
+  it('propagates a storage read failure so callers do not overwrite unread data', async () => {
+    jest.mocked(AsyncStorage.getItem).mockRejectedValueOnce(new Error('read failed'));
+    await expect(loadSavedCodes()).rejects.toThrow('read failed');
+  });
+
+  it('propagates write failures so the UI can avoid reporting persistence success', async () => {
+    jest.mocked(AsyncStorage.setItem).mockRejectedValueOnce(new Error('disk full'));
+    await expect(writeSavedCodes([])).rejects.toThrow('disk full');
   });
 });

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-11-18",
+  "generated": "2026-11-19",
   "workspace_root": "D:/admin/code",
   "central_repository": "https://github.com/angasko-12345/projects-ai",
   "projects": [
@@ -150,9 +150,9 @@
       "repository_type": "monorepo",
       "technologies": ["Python", "PyTorch"],
       "entry_points": ["python tiny_llm.py"],
-      "documentation": [],
+      "documentation": ["small-projects/README.md"],
       "tests": null,
-      "last_indexed": "2026-11-18"
+      "last_indexed": "2026-11-19"
     },
     {
       "name": "tinyllm (script)",
@@ -165,9 +165,9 @@
       "repository_type": "monorepo",
       "technologies": ["Python", "PyTorch"],
       "entry_points": ["python tinyllm.py"],
-      "documentation": [],
+      "documentation": ["small-projects/README.md"],
       "tests": null,
-      "last_indexed": "2026-11-18"
+      "last_indexed": "2026-11-19"
     },
     {
       "name": "Privacy Audit Tool",
@@ -280,7 +280,7 @@
     {
       "name": "qr-generator (standalone copy)",
       "slug": "qr-generator-public",
-      "description": "Standalone public repository for the QR app. It has docs, marketing and privacy corrections that the monorepo copy lacks, while the monorepo copy has newer feedback/review source files. The two copies have diverged and were not merged.",
+      "description": "Public distribution mirror for the QR app. The canonical implementation is qr-generator/ in the projects-ai monorepo; the copies remain divergent and need reconciliation before the next public release.",
       "status": "pre-release",
       "category": "main-products",
       "path": null,

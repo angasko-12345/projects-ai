@@ -14,6 +14,7 @@ on:
       - ".github/workflows/agentops.yml"
       - ".github/CI.md"
       - "acceptance_test.py"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -72,6 +73,26 @@ jobs:
   # "multi-line prompt reaches the agent byte-exact or is refused" claim is
   # exercised on an actual Windows host. Scoped to the transport modules: the
   # full suite has not been validated on windows-latest yet.
+  # Packaging needs an actual Windows desktop launch, which the Linux PR jobs
+  # cannot prove. Keep this opt-in until the hosted runner's GUI behavior is
+  # established; invoke with workflow_dispatch when validating a release build.
+  windows-exe-smoke:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: agentops
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install Windows packaging and desktop dependencies
+        run: python -m pip install ".[windows,desktop]"
+      - name: Build and launch the packaged app from a neutral location
+        run: python scripts/build_windows_exe.py --smoke
+
   windows-prompt-transport:
     runs-on: windows-latest
     timeout-minutes: 15

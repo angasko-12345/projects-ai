@@ -1,7 +1,10 @@
+import io
 import json
 import sqlite3
 import tempfile
 import unittest
+import zipfile
+from unittest import mock
 from collections import Counter
 from pathlib import Path
 
@@ -10,6 +13,8 @@ from privacy_audit.main import (
     domain_from_email,
     domain_from_url,
     extract_username_candidates,
+    firefox_epoch_to_iso,
+    chrome_epoch_to_iso,
     parse_message_bytes,
 )
 
@@ -18,6 +23,13 @@ class CoreTests(unittest.TestCase):
     def test_domains(self):
         self.assertEqual(domain_from_email('x@www.testsite.com'), 'testsite.com')
         self.assertEqual(domain_from_url('https://www.testsite.com/a'), 'testsite.com')
+
+    def test_browser_timestamps_are_explicit_utc(self):
+        unix_microseconds = 1_700_000_000_000_000
+        chrome_microseconds = unix_microseconds + 11_644_473_600_000_000
+        expected = '2023-11-14T22:13:20Z'
+        self.assertEqual(chrome_epoch_to_iso(chrome_microseconds), expected)
+        self.assertEqual(firefox_epoch_to_iso(unix_microseconds), expected)
 
     def test_usernames(self):
         vals = extract_username_candidates('hello old_username_2019 and gamer-name42')
@@ -97,6 +109,56 @@ class SafetyTests(unittest.TestCase):
 
 
 class RobustnessTests(unittest.TestCase):
+    def test_takeout_zip_rejects_oversized_mail_member_before_extracting(self):
+        with tempfile.TemporaryDirectory() as td:
+            archive = Path(td) / 'takeout.zip'
+            with zipfile.ZipFile(archive, 'w') as z:
+                z.writestr('Takeout/Mail/all.mbox', 'x' * 20)
+            candidates, domains = [], Counter()
+            m.WARNINGS.clear()
+            with mock.patch.object(m, 'MAX_TAKEOUT_MEMBER_BYTES', 10):
+                m.scan_takeout_zip(archive, candidates, domains)
+            self.assertEqual(candidates, [])
+            self.assertTrue(any('per-file limit' in warning for warning in m.WARNINGS))
+
+    def test_takeout_zip_enforces_actual_stream_size_even_if_header_lies(self):
+        class FakeZip:
+            def __enter__(self):
+                info = zipfile.ZipInfo('Takeout/Mail/all.eml')
+                info.file_size = 1
+                self.member = info
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def infolist(self):
+                return [self.member]
+
+            def open(self, member):
+                return io.BytesIO(b'x' * 20)
+
+        candidates, domains = [], Counter()
+        m.WARNINGS.clear()
+        with (
+            mock.patch.object(m, 'MAX_TAKEOUT_MEMBER_BYTES', 10),
+            mock.patch.object(m.zipfile, 'ZipFile', return_value=FakeZip()),
+        ):
+            m.scan_takeout_zip(Path('takeout.zip'), candidates, domains)
+        self.assertTrue(any('exceeded the per-file size limit' in warning for warning in m.WARNINGS))
+
+    def test_takeout_zip_enforces_combined_size_limit(self):
+        with tempfile.TemporaryDirectory() as td:
+            archive = Path(td) / 'takeout.zip'
+            with zipfile.ZipFile(archive, 'w') as z:
+                z.writestr('Takeout/Mail/one.eml', '123456')
+                z.writestr('Takeout/Mail/two.eml', '123456')
+            candidates, domains = [], Counter()
+            m.WARNINGS.clear()
+            with mock.patch.object(m, 'MAX_TAKEOUT_TOTAL_BYTES', 10):
+                m.scan_takeout_zip(archive, candidates, domains)
+            self.assertTrue(any('archive limit' in warning for warning in m.WARNINGS))
+
     def test_sqlite_path_with_special_chars(self):
         with tempfile.TemporaryDirectory() as td:
             d = Path(td) / 'a#b %c'

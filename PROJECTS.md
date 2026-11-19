@@ -1,7 +1,7 @@
 # Project catalog
 
 A verified map of the software projects in `D:\admin\code` and their GitHub homes.
-Generated 2026-11-18. Machine-readable form: [`project-index.json`](project-index.json).
+Generated 2026-11-19. Machine-readable form: [`project-index.json`](project-index.json).
 
 Status legend: **Active** (maintained, working), **Research** (measured experiments, not a product),
 **Experimental** (prototype or learning project), **Pre-release** (product heading to release),
@@ -120,8 +120,8 @@ Status legend: **Active** (maintained, working), **Research** (measured experime
 - **Directory:** `small-projects/verytinyllm/`
 - **GitHub:** <https://github.com/angasko-12345/projects-ai/tree/main/small-projects/verytinyllm>
 - **Entry points:** `python tiny_llm.py`
-- **Docs:** none (source docstring only)
-- **Tests:** none
+- **Docs:** [`small-projects/README.md`](small-projects/README.md) and source docstring
+- **Tests:** none (educational experiment, not a maintained product)
 
 ### tinyllm (script)
 
@@ -131,8 +131,8 @@ Status legend: **Active** (maintained, working), **Research** (measured experime
 - **Directory:** `small-projects/tinyllm.py`
 - **GitHub:** <https://github.com/angasko-12345/projects-ai/blob/main/small-projects/tinyllm.py>
 - **Entry points:** `python tinyllm.py`
-- **Docs:** source docstring
-- **Tests:** none
+- **Docs:** [`small-projects/README.md`](small-projects/README.md) and source docstring
+- **Tests:** none (educational experiment, not a maintained product)
 
 ## Developer infrastructure and tools
 
@@ -218,10 +218,10 @@ Status legend: **Active** (maintained, working), **Research** (measured experime
 ### qr-generator (standalone copy)
 
 - **Status:** Pre-release
-- **Purpose:** Standalone public repository for the QR app, with `docs/`, `marketing/` and `PRIVACY_POLICY_CORRECTIONS.md` that the monorepo copy does not have. The monorepo copy has newer `src/util/feedback*.ts` and `review*.ts` that the standalone copy does not.
+- **Purpose:** Public distribution mirror for the QR app. The canonical implementation is `qr-generator/` in this monorepo.
 - **Directory:** `D:\admin\code\qr-generator-public`
 - **GitHub:** <https://github.com/angasko-12345/qr-generator>
-- **Note:** The two copies have diverged. They were **not** merged or overwritten. Reconciliation needs an explicit decision about which copy is canonical.
+- **Note:** The copies remain divergent: the standalone repo has docs, marketing and privacy corrections absent here; this monorepo has newer feedback/review source. Reconcile before the next public release using [`qr-generator/REPOSITORY_POLICY.md`](qr-generator/REPOSITORY_POLICY.md).
 
 ## GitHub repositories without a local working copy
 

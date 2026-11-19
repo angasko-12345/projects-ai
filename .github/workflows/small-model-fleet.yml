@@ -1,0 +1,36 @@
+# Offline checks for the benchmark harness and report renderer. No model,
+# Kaggle credentials, GPU, downloads, or inference are required.
+name: small-model-fleet
+
+on:
+  push:
+    paths:
+      - "small-model-fleet/**"
+      - ".github/workflows/small-model-fleet.yml"
+      - ".github/CI.md"
+  pull_request:
+    paths:
+      - "small-model-fleet/**"
+      - ".github/workflows/small-model-fleet.yml"
+      - ".github/CI.md"
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: small-model-fleet
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Run offline harness self-test
+        run: python tests/test_harness.py
+      - name: Run offline report self-test
+        run: python tests/test_report.py

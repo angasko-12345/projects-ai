@@ -52,12 +52,22 @@ python scan.py --unit-cap 3000
 # Different small-channel ceiling / outlier threshold / minimum video age
 python scan.py --small-sub-max 5000 --outlier-min 5 --min-age-days 14
 
+# Change the bounded search sample (each search query consumes quota)
+python scan.py --sort viewCount --pages 2 --region US --region GB
+
+# Compare multiple search orders in one run (deduplicated by video ID)
+python scan.py --sort relevance --sort viewCount
+
 # Purge cache entries older than N days before running (default 30 days,
 # per the YouTube API Services developer policies)
 python scan.py --purge-cache-older-than 30
 ```
 
-Outputs: `outputs/results.csv` (per keyword/format aggregates) and
+Search order, region, and page depth change which videos can enter the sample;
+none of these choices is random or representative. Multiple query combinations
+are deduplicated before scoring and do not become independent samples. The
+Markdown report records the chosen settings and these limits. Outputs:
+`outputs/results.csv` (per keyword/format aggregates) and
 `outputs/report.md` (ranking by keyword, aggregate by niche, long-form vs
 short-form side by side, excluded counts, units used).
 

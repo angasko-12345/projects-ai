@@ -15,7 +15,7 @@ import tempfile
 import zipfile
 from collections import Counter
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from email import policy
 from email.parser import BytesParser
 from pathlib import Path
@@ -47,6 +47,9 @@ SAFE_USERNAME_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$')
 MAX_HTML_CANDIDATES = 5000
 MAX_HTML_BROWSER = 1000
 CHROMIUM_HISTORY_LIMIT = 5000
+MAX_TAKEOUT_MAIL_MEMBERS = 10_000
+MAX_TAKEOUT_MEMBER_BYTES = 512 * 1024 * 1024
+MAX_TAKEOUT_TOTAL_BYTES = 2 * 1024 * 1024 * 1024
 
 WARNINGS: list[str] = []
 _MAX_STORED_WARNINGS = 500
@@ -215,14 +218,45 @@ def scan_takeout_zip(path: Path, candidates: list[AccountCandidate], domains: Co
         temp = Path(td)
         try:
             with zipfile.ZipFile(path) as z:
-                members = [n for n in z.namelist() if n.lower().endswith(('.mbox', '.eml'))]
-                for i, name in enumerate(members):
-                    found += 1
+                members = [
+                    item
+                    for item in z.infolist()
+                    if item.filename.lower().endswith(('.mbox', '.eml'))
+                ]
+                found = len(members)
+                declared_total = sum(item.file_size for item in members)
+                if len(members) > MAX_TAKEOUT_MAIL_MEMBERS:
+                    raise ValueError(
+                        f'too many mail files in {path.name} '
+                        f'({len(members)}; limit {MAX_TAKEOUT_MAIL_MEMBERS})'
+                    )
+                if any(item.file_size > MAX_TAKEOUT_MEMBER_BYTES for item in members):
+                    raise ValueError(
+                        f'a mail file in {path.name} exceeds the '
+                        f'{MAX_TAKEOUT_MEMBER_BYTES // (1024 * 1024)} MiB per-file limit'
+                    )
+                if declared_total > MAX_TAKEOUT_TOTAL_BYTES:
+                    raise ValueError(
+                        f'mail files in {path.name} total more than the '
+                        f'{MAX_TAKEOUT_TOTAL_BYTES // (1024 * 1024)} MiB archive limit'
+                    )
+
+                copied_total = 0
+                for i, member in enumerate(members):
                     # Only mail files are extracted, into a disposable temp dir. A per-member
                     # index prevents same-named files from overwriting each other.
-                    target = temp / f'{i}_{Path(name).name}'
-                    with z.open(name) as src, open(target, 'wb') as dst:
-                        shutil.copyfileobj(src, dst)
+                    target = temp / f'{i}_{Path(member.filename).name}'
+                    copied_member = 0
+                    with z.open(member) as src, open(target, 'wb') as dst:
+                        while chunk := src.read(1024 * 1024):
+                            copied_member += len(chunk)
+                            copied_total += len(chunk)
+                            # Enforce actual streamed bytes too; do not trust ZIP directory sizes.
+                            if copied_member > MAX_TAKEOUT_MEMBER_BYTES:
+                                raise ValueError(f'{member.filename} exceeded the per-file size limit')
+                            if copied_total > MAX_TAKEOUT_TOTAL_BYTES:
+                                raise ValueError(f'{path.name} exceeded the total extracted-size limit')
+                            dst.write(chunk)
                     if target.suffix.lower() == '.mbox':
                         scan_mbox(target, candidates, domains)
                     else:
@@ -265,17 +299,18 @@ def chrome_epoch_to_iso(value):
         ts = value / 1_000_000 - 11644473600
         if ts <= 0:
             return ''
-        return datetime.fromtimestamp(ts).isoformat(timespec='seconds')
+        return datetime.fromtimestamp(ts, timezone.utc).isoformat(timespec='seconds').replace('+00:00', 'Z')
     except Exception:
         return ''
 
 
 def firefox_epoch_to_iso(value):
     try:
+        # Firefox timestamps: microseconds since the Unix epoch in UTC.
         ts = value / 1_000_000
         if ts <= 0:
             return ''
-        return datetime.fromtimestamp(ts).isoformat(timespec='seconds')
+        return datetime.fromtimestamp(ts, timezone.utc).isoformat(timespec='seconds').replace('+00:00', 'Z')
     except Exception:
         return ''
 

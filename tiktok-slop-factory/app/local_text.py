@@ -6,16 +6,19 @@ WHY THIS EXISTS
 The default backend's only external dependency is the Gemini API: story ideas,
 the script, the caption, and the narration audio. Four of those five calls are
 plain text generation, which needs no key at all -- only ``generate_tts`` needs
-a real speech API. This module supplies the text from a local JSON file and
-synthesizes audio with Microsoft Edge TTS, which is free and keyless.
+a real speech API. This module supplies the text from a local JSON file and synthesizes audio
+with Microsoft's online Edge TTS service. The service receives the full
+narration text; it is keyless, but it is not offline or local speech synthesis.
+The CLI prints a privacy notice and requires ``--allow-online-tts`` before a
+non-dry-run local-backend generation.
 
 So the split is:
-  ideas / script / caption  -> TEXT_PROVIDER_JSON (local_text.json)
-  narration audio           -> edge-tts  (free, no key)
+  ideas / script / caption  -> TEXT_PROVIDER_JSON (local_text.json; local)
+  narration audio           -> edge-tts (online service; no key)
 
 Select it with:
 
-    python make_videos.py --backend local --count 1
+    python make_videos.py --backend local --allow-online-tts --count 1
 
 The contract is identical to ``app.gemini``: ``generate_ideas`` -> list[str],
 ``generate_script`` -> dict with hook/story/twist/ending/cta/title/hashtags,

@@ -1,0 +1,35 @@
+# The scanner tests use mocked HTTP and require no API key or network access.
+name: youtube-niche-scan
+
+on:
+  push:
+    paths:
+      - "youtube-niche-scan/**"
+      - ".github/workflows/youtube-niche-scan.yml"
+      - ".github/CI.md"
+  pull_request:
+    paths:
+      - "youtube-niche-scan/**"
+      - ".github/workflows/youtube-niche-scan.yml"
+      - ".github/CI.md"
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: youtube-niche-scan
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install pytest
+        run: python -m pip install pytest
+      - name: Run YouTube niche-scan tests
+        run: python -m pytest tests -q

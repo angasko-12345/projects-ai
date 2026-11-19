@@ -2,12 +2,15 @@
 CLI entrypoint.
 
     python make_videos.py --count 1                     # Gemini backend
-    python make_videos.py --backend local --count 1     # keyless backend
+    python make_videos.py --backend local --allow-online-tts --count 1
     python make_videos.py --backend local --dry-run     # check, make nothing
 
-``--backend`` chooses where the text comes from; ``TEXT_BACKEND`` in the
+``--backend`` chooses where scripts come from; ``TEXT_BACKEND`` in the
 environment is the fallback when the flag is omitted, and Gemini is the
-default. Only the Gemini backend needs ``GEMINI_API_KEY``.
+default. The ``local`` backend reads scripts from disk, but sends narration text
+to Microsoft's online Edge TTS service. The CLI prints a privacy notice and
+requires ``--allow-online-tts`` before that network request. Only the Gemini
+backend needs ``GEMINI_API_KEY``.
 
 Exit codes: 0 when at least one video was produced, 1 on setup failure or a
 total failure, 2 on a partial failure (some videos produced, some not).
@@ -18,13 +21,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from app.config import BACKENDS, DEFAULT_BACKEND, ConfigError, normalize_backend
+from app.config import BACKENDS, DEFAULT_BACKEND, ConfigError, get_backend, normalize_backend
 from app.pipeline import run_pipeline
 
 _BACKEND_HELP = {
     "gemini": "ideas, script, caption and voice from the Gemini API "
               "(needs GEMINI_API_KEY)",
-    "local": "text from local_text.json, voice from Edge TTS (no key, no API)",
+    "local": "scripts from local_text.json; narration text sent to Microsoft Edge TTS (no key)",
 }
 
 
@@ -46,7 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="NAME",
         help=(
-            f"Text backend: {' or '.join(BACKENDS)} "
+            f"Script/voice backend: {' or '.join(BACKENDS)} "
             f"(default: $TEXT_BACKEND, else {DEFAULT_BACKEND})"
         ),
     )
@@ -54,6 +57,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run",
         action="store_true",
         help="Check configuration and dependencies, then exit.",
+    )
+    parser.add_argument(
+        "--allow-online-tts",
+        action="store_true",
+        help="Allow sending narration text to Microsoft's online Edge TTS service (local backend only)",
     )
     return parser
 
@@ -66,13 +74,31 @@ def main(argv=None) -> int:
         print("--count must be at least 1", file=sys.stderr)
         return 1
 
-    # Reject an unknown backend here, so argparse's own error path is not the
-    # only thing between a typo and a confusing mid-run failure.
-    if args.backend is not None:
-        try:
-            normalize_backend(args.backend)
-        except ConfigError as e:
+    # Reject an unknown explicit backend here, so a typo is not a confusing
+    # mid-run failure. Invalid environment configuration remains the
+    # pipeline's structured setup error, as before.
+    try:
+        selected_backend = (
+            normalize_backend(args.backend) if args.backend is not None else get_backend()
+        )
+    except ConfigError as e:
+        if args.backend is not None:
             parser.error(str(e))  # exits with code 2
+        selected_backend = None
+
+    if selected_backend == "local" and not args.dry_run:
+        print(
+            "PRIVACY NOTICE: script text stays local, but narration text is sent "
+            "to Microsoft's online Edge TTS service for speech synthesis.",
+            file=sys.stderr,
+        )
+        if not args.allow_online_tts:
+            print(
+                "Generation stopped before network access. Re-run with "
+                "--allow-online-tts only if you agree to send this text.",
+                file=sys.stderr,
+            )
+            return 1
 
     result = run_pipeline(args.count, args.dry_run, backend=args.backend)
     success = result.get("success") or []

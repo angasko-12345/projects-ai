@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import type { AppSettings, HistoryEntry, SavedCode } from '../types';
+import type { AppSettings, HistoryEntry, QrType, SavedCode } from '../types';
 import { DEFAULT_SETTINGS } from '../types';
 
 const SETTINGS_KEY = '@qrgen:v1:settings';
@@ -14,24 +14,21 @@ export function makeId(): string {
 }
 
 async function readList<T>(key: string): Promise<T[]> {
-  try {
-    const raw = await AsyncStorage.getItem(key);
-    if (!raw) {
-      return [];
-    }
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as T[]) : [];
-  } catch {
+  const raw = await AsyncStorage.getItem(key);
+  if (!raw) {
     return [];
   }
+  const parsed: unknown = JSON.parse(raw);
+  if (!Array.isArray(parsed)) {
+    throw new Error(`Stored list ${key} is not an array.`);
+  }
+  return parsed as T[];
 }
 
 async function writeList(key: string, entries: unknown[]): Promise<void> {
-  try {
-    await AsyncStorage.setItem(key, JSON.stringify(entries));
-  } catch {
-    // Storage failures must not crash the app; the in-memory state stays authoritative.
-  }
+  // Propagate errors so the UI can distinguish a persisted change from an
+  // in-memory-only change. Callers must not report durable success on failure.
+  await AsyncStorage.setItem(key, JSON.stringify(entries));
 }
 
 export async function loadSettings(): Promise<AppSettings> {
@@ -69,8 +66,20 @@ export function writeSavedCodes(entries: SavedCode[]): Promise<void> {
   return writeList(SAVED_KEY, entries);
 }
 
-export function loadHistory(): Promise<HistoryEntry[]> {
-  return readList<HistoryEntry>(HISTORY_KEY);
+export async function loadHistory(): Promise<HistoryEntry[]> {
+  const entries = await readList<HistoryEntry>(HISTORY_KEY);
+  // Older app versions automatically retained Wi-Fi payloads (including
+  // passwords). Remove those on upgrade before exposing history to the UI.
+  const safeEntries = entries.filter((entry) => entry.type !== 'wifi');
+  if (safeEntries.length !== entries.length) {
+    await writeList(HISTORY_KEY, safeEntries);
+  }
+  return safeEntries;
+}
+
+/** Wi-Fi credentials are intentionally never retained in automatic history. */
+export function shouldRecordHistory(type: QrType): boolean {
+  return type !== 'wifi';
 }
 
 /** Newest first, deduplicated by payload, capped at HISTORY_LIMIT. */
