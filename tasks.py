@@ -66,6 +66,24 @@ PRODUCTS: dict[str, dict] = {
         "tests": [("tiktok-slop-factory", ["-m", "pytest", "tests", "-q"])],
         "evidence": None,
     },
+    "history-yt": {
+        "directory": "history-yt",
+        "tests": [("history-yt", ["-m", "pytest", "tests", "-q"])],
+        "evidence": None,
+    },
+    "small-model-fleet": {
+        "directory": "small-model-fleet",
+        "tests": [
+            ("small-model-fleet", ["tests/test_harness.py"]),
+            ("small-model-fleet", ["tests/test_report.py"]),
+        ],
+        "evidence": None,
+    },
+    "youtube-niche-scan": {
+        "directory": "youtube-niche-scan",
+        "tests": [("youtube-niche-scan", ["-m", "pytest", "tests", "-q"])],
+        "evidence": None,
+    },
 }
 
 ALIASES = {
@@ -74,6 +92,9 @@ ALIASES = {
     "privacy": "privacy-audit",
     "privacy_audit_tool": "privacy-audit",
     "slop": "tiktok-slop-factory",
+    "histyt": "history-yt",
+    "smf": "small-model-fleet",
+    "niche-scan": "youtube-niche-scan",
     "small-projects/mini-llm": "mini-llm",
 }
 

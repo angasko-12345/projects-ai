@@ -1,5 +1,9 @@
 # histyt - history YouTube pipeline
 
+Requires Python 3.10+ and FFmpeg/ffprobe on `PATH` for media QA, rendering,
+shorts, and the synthetic-media tests. Install the Python project and test
+dependencies with `pip install -e .[test]`.
+
 Topic -> research -> script -> **script approval gate** -> voice -> scenes -> visuals ->
 assemble -> thumbnail -> variation -> **QA** -> **render approval gate** -> private upload.
 

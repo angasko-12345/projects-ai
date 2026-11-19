@@ -1,7 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { EMPTY_DRAFT, DEFAULT_SETTINGS, type HistoryEntry } from '../types';
-import { HISTORY_LIMIT, loadSavedCodes, loadSettings, prependHistory, saveSettings } from './storage';
+import {
+  HISTORY_LIMIT,
+  loadSavedCodes,
+  loadSettings,
+  prependHistory,
+  saveSettings,
+  writeSavedCodes,
+} from './storage';
 
 function entry(payload: string): HistoryEntry {
   return {
@@ -61,8 +68,19 @@ describe('settings persistence', () => {
 });
 
 describe('saved codes persistence', () => {
-  it('returns an empty list when the stored JSON is corrupt', async () => {
+  it('rejects corrupt stored JSON instead of treating it as an empty library', async () => {
     await AsyncStorage.setItem('@qrgen:v1:saved', '[');
-    await expect(loadSavedCodes()).resolves.toEqual([]);
+    await expect(loadSavedCodes()).rejects.toThrow();
+    await expect(AsyncStorage.getItem('@qrgen:v1:saved')).resolves.toBe('[');
+  });
+
+  it('propagates a storage read failure so callers do not overwrite unread data', async () => {
+    jest.mocked(AsyncStorage.getItem).mockRejectedValueOnce(new Error('read failed'));
+    await expect(loadSavedCodes()).rejects.toThrow('read failed');
+  });
+
+  it('propagates write failures so the UI can avoid reporting persistence success', async () => {
+    jest.mocked(AsyncStorage.setItem).mockRejectedValueOnce(new Error('disk full'));
+    await expect(writeSavedCodes([])).rejects.toThrow('disk full');
   });
 });

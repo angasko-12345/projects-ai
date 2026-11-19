@@ -82,7 +82,7 @@ The tool creates `ONLINE_SCAN_WARNING.txt` to make the networked nature explicit
 
 This is an evidence finder, not a perfect account detector. A domain in your mail/history may be a newsletter, purchase, login provider, or unrelated link. Always verify candidates before deleting an account.
 
-Browser scanning is best-effort because browsers can keep database files locked. Close the relevant browser before scanning. Read failures are reported in the console, `warnings.txt` and the report; a `Warnings: 0` line means nothing was skipped. Only the 5000 most recent history rows per profile are read, and the HTML report shows the first 5000 candidates / 1000 browser rows (CSVs are complete).
+Browser scanning is best-effort because browsers can keep database files locked. Close the relevant browser before scanning. Read failures are reported in the console, `warnings.txt` and the report; a `Warnings: 0` line means nothing was skipped. Only the 5000 most recent history rows per profile are read, and the HTML report shows the first 5000 candidates / 1000 browser rows (CSVs are complete). For safety, a Takeout ZIP is rejected if it contains over 10,000 mail files, any mail member expands beyond 512 MiB, or mail members expand beyond 2 GiB combined; split larger exports before scanning.
 
 Confidence labels are heuristic: they count distinct signup/security phrases in the message and attribute them to the sender only.
 

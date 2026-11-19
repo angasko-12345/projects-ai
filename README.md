@@ -1,9 +1,9 @@
 # projects-ai
 
 Local-first AI tools and experiments by [@angasko-12345](https://github.com/angasko-12345).
-Each folder is a self-contained project with its own README, dependencies and tests.
+Maintained products document their own setup and tests. Small learning scripts and archived experiments are called out separately in [PROJECTS.md](PROJECTS.md).
 
-AgentOps, Universal Game Agent, mini-llm and AI Token Tracker are the four Python products measured in `.agents/evidence/verification.json`. Every product here has a CI test suite; TikTok Slop Factory is deliberately left out of the evidence file (its real FFmpeg renders make re-measuring expensive), and QR Generator is a Node app outside that file.
+AgentOps, Universal Game Agent, mini-llm and AI Token Tracker are the four Python products measured in `.agents/evidence/verification.json`. Maintained products with test suites have CI coverage; TikTok Slop Factory is deliberately left out of the evidence file (its real FFmpeg renders make re-measuring expensive), and QR Generator is a Node app outside that file.
 
 Everything here runs on your own machine: no accounts, no hosted backend, and no telemetry unless a project says otherwise.
 
@@ -62,13 +62,13 @@ See each project's README for full setup, configuration and tests.
 ```powershell
 python tasks.py list                    # products and the exact commands behind them
 python tasks.py test agentops           # unit suite + acceptance_test.py
-python tasks.py test all                # every Python product's suite
+python tasks.py test all                # all registered Python product suites
 python tasks.py lint                    # ruff check . with the repo-wide config
 python tasks.py format-check mini-llm   # ruff format --check on one product
 python tasks.py evidence ai-token-tracker   # regenerate + check verification evidence
 ```
 
-Product names: `agentops`, `ai-token-tracker` (`tracker`), `mini-llm`, `universal-game-agent` (`uga`), `privacy-audit`, `tiktok-slop-factory`.
+Product names: `agentops`, `ai-token-tracker` (`tracker`), `mini-llm`, `universal-game-agent` (`uga`), `privacy-audit`, `tiktok-slop-factory` (`slop`), `history-yt` (`histyt`), `small-model-fleet` (`smf`), and `youtube-niche-scan` (`niche-scan`). Install each project's documented dependencies before running its tests.
 
 ## Repository layout
 
@@ -81,7 +81,7 @@ history-yt/             History YouTube video pipeline
 youtube-niche-scan/     YouTube niche research tool
 tiktok-slop-factory/    Video generation experiment
 small-model-fleet/      Small-model benchmark harness and Kaggle kernels
-small-projects/         mini-llm, privacy audit tool, verytinyllm, tinyllm.py
+small-projects/         mini-llm, privacy audit tool, tinyllm experiments (see README.md)
 archive/                Unmaintained standalone files (Cube Timer, quickscripts)
 tools/evidence/         Verification-evidence tooling used by CI
 tools/obsidian-sync/    One-way agent-memory mirror to Obsidian
@@ -92,12 +92,12 @@ tasks/                  Active-task slot (or pointer) + after-task procedure; li
 AGENTS.md, pi_AGENTS.md Root instruction shims (canonical copies live in .agents/)
 acceptance_test.py      AgentOps acceptance tests from Issue #4
 tasks.py                Dev entrypoint: test / lint / evidence per product
-.github/workflows/      Nine CI workflows: a test suite for every product, plus repo-wide ruff and the evidence checker
+.github/workflows/      CI suites for maintained products, repo-wide Ruff, and evidence checks
 ```
 
 ## How work gets verified
 
-Changes are developed with coding agents, then checked before they're trusted. Test suites for every product run in CI — AgentOps, Universal Game Agent, mini-llm and AI Token Tracker on Python 3.11, plus TikTok Slop Factory, QR Generator and the Privacy Audit Tool in their own jobs — and `tools/evidence/` records which commands ran and whether they passed in `.agents/evidence/verification.json` for the four measured products. A change isn't done until its tests pass and the evidence is regenerated. Test counts are not quoted in this README — they live in the evidence file.
+Changes are developed with coding agents, then checked before they're trusted. CI runs the maintained product suites: AgentOps, Universal Game Agent, mini-llm, AI Token Tracker, Privacy Audit Tool, TikTok Slop Factory, QR Generator, histyt, Small Model Fleet, and YouTube niche-scan. `tools/evidence/` separately records measured results for AgentOps, Universal Game Agent, mini-llm, and AI Token Tracker in `.agents/evidence/verification.json`. A change isn't done until its relevant tests pass and (for measured products) the evidence is regenerated. Test counts are not quoted in this README — they live in the evidence file.
 
 ## Roadmap
 
@@ -114,7 +114,7 @@ Some work lives outside this monorepo and keeps its own history:
 
 | Repository | Visibility | Relationship |
 |---|---|---|
-| [qr-generator](https://github.com/angasko-12345/qr-generator) | Public | Standalone QR app repository. It has `docs/` and `marketing/` that the monorepo copy lacks, while the monorepo copy has newer `src/util/feedback*.ts` and `review*.ts`. The copies have diverged and were not merged. |
+| [qr-generator](https://github.com/angasko-12345/qr-generator) | Public | Distribution mirror; `qr-generator/` in this monorepo is canonical for code. The copies still differ; see [`qr-generator/REPOSITORY_POLICY.md`](qr-generator/REPOSITORY_POLICY.md) for the reconciliation checklist. |
 | [ride-a-noob](https://github.com/angasko-12345/ride-a-noob) | Private | Separate Rojo/Roblox repository nested at `rojo/ride-a-noob/`; its history is not part of this monorepo. |
 | [outreach](https://github.com/angasko-12345/outreach) | Private | Manual Facebook outreach toolkit at `D:\admin\code\outreach`. `leads.csv` and `samples/` are git-ignored and never pushed. |
 | [OpenFrontHOI4](https://github.com/angasko-12345/OpenFrontHOI4) | Public | No local checkout was found under `D:\admin\code` during the 2026-11-18 audit. |

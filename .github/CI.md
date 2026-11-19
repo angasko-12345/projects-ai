@@ -1,7 +1,7 @@
 # What CI validates
 
-Seven product workflows, each scoped to one product's paths, plus one workflow
-that checks the recorded verification evidence. Six products run Python
+Ten product workflows, each scoped to one product's paths, plus one workflow
+that checks the recorded verification evidence. Nine products run Python
 suites; four of them are measured in `.agents/evidence/verification.json`
 (`privacy-audit` is not measured there), and `qr-generator/` is an
 Expo/React Native product whose suite is Node/React Native, also not
@@ -17,14 +17,16 @@ from that product's directory. There is no repository-wide test command.
 | `ai-token-tracker.yml` | `ai-token-tracker/` | `python -m unittest discover -s tests -v`, on Python 3.10 (the declared floor) and 3.11 | none (stdlib only) |
 | `privacy-audit.yml` | `small-projects/privacy_audit_tool/` | `python -m unittest discover -s tests` | none (stdlib only; `maigret` is optional, online-scan-only, and deliberately not installed) |
 | `qr-generator.yml` | `qr-generator/` | `npm run typecheck`, `npm run lint`, `npm test` | `npm ci` (installs from the lockfile); Node 24 |
-| `tiktok-slop-factory.yml` | `tiktok-slop-factory/` | `python -m pytest tests -q` (pytest, not unittest) | `pip install -r requirements.txt` and the optional `requirements-qc.txt` (numpy, so clipcheck's logo tests run instead of skipping); `ffmpeg` apt-installed; ~10-minute suite; no key, see below |
+| `tiktok-slop-factory.yml` | `tiktok-slop-factory/` | `python -m pytest tests -q` | `pip install -r requirements.txt` and the optional `requirements-qc.txt` (numpy, so clipcheck's logo tests run instead of skipping); `ffmpeg` apt-installed; ~10-minute suite; no key, see below |
+| `history-yt.yml` | `history-yt/` | `python -m pytest tests -q` | `ffmpeg` apt-installed for synthetic media tests; `pip install -e ".[test]"`; provider/API behavior is mocked/offline |
+| `small-model-fleet.yml` | `small-model-fleet/` | `python tests/test_harness.py`, then `python tests/test_report.py` | none; synthetic inputs only, no model/GPU/Kaggle |
+| `youtube-niche-scan.yml` | `youtube-niche-scan/` | `python -m pytest tests -q` | `pip install pytest`; HTTP is mocked, no API key |
 | `evidence.yml` | repository root | `python tools/evidence/check.py` | none (stdlib only); needs full history |
 
-All jobs run on `ubuntu-latest` on CPU. The four measured Python products use
-Python 3.11; `ai-token-tracker` also runs on 3.10, its declared floor. The `privacy-audit` job also uses
-Python 3.11, matching the other Python product jobs; the product itself
-declares `requires-python = ">=3.10"`, so that declared floor is not the
-version CI runs. The `qr-generator` job uses Node 24,
+All jobs run on `ubuntu-latest` on CPU. Python product jobs use Python 3.11,
+except `small-model-fleet` (3.12); `ai-token-tracker` also runs on 3.10, its
+declared floor. `history-yt` and `privacy-audit` declare Python 3.10+ but CI
+currently exercises them on 3.11. The `qr-generator` job uses Node 24,
 one of the ranges `react-native@0.86`'s engines field supports
 (`^20.19.4 || ^22.13.0 || ^24.3.0 || >= 25.0.0`) — npm pins the dependency
 tree from `package-lock.json`, so the suite runs the versions the developer
@@ -51,25 +53,27 @@ This is a testing-only policy. Production GUI code is unchanged and still
 fails loudly when it cannot start; AgentOps never fabricates a GUI success
 condition.
 
-## FFmpeg requirements and runtime (tiktok-slop-factory)
+## FFmpeg requirements and runtime (histyt and tiktok-slop-factory)
 
-The tiktok-slop-factory suite is the repository's only pytest product and its
-only suite that shells out to real FFmpeg:
+Both `history-yt` and `tiktok-slop-factory` invoke real FFmpeg in offline
+fixture tests, so both workflows install FFmpeg rather than relying on the
+runner image. The histyt fixtures create short synthetic media; TikTok Slop
+Factory has the longer render tier:
 
-- **Requirement:** `ffmpeg`/`ffprobe` binaries. The render tier's skip
+- **Requirement:** `ffmpeg`/`ffprobe` binaries. The TikTok render tier's skip
   condition resolves `FFMPEG_PATH`/`FFPROBE_PATH` through `app.config`
   (project-root `.env` included, falling back to `PATH` when unset), so it
-  never runs hidden-but-interactive. The CI workflow installs FFmpeg with apt
-  explicitly instead of trusting the runner image, so a missing binary fails
-  the install step rather than silently skipping the render tier.
-- **Runtime:** the full suite takes on the order of ten minutes, dominated by
-  real 1080x1920 H.264/AAC renders; the job carries a 30-minute timeout.
-- **Credentials:** none. No `GEMINI_API_KEY` is set in CI and no test needs
-  one: HTTP behavior is exercised behind faked transports, and CLI tests are
-  dry-run only, so no Edge TTS synthesis happens either. The former
-  credential-gated test (`test_generate_ideas_rejects_duplicate_padding`,
-  which failed offline with `ConfigError` and made a real Gemini API call
-  with a key set) was made hermetic at the `_json_request` seam.
+  never runs hidden-but-interactive. The CI workflows apt-install FFmpeg so a
+  missing binary fails setup instead of silently skipping media coverage.
+- **Runtime:** the TikTok suite takes on the order of ten minutes, dominated by
+  real 1080x1920 H.264/AAC renders; its job carries a 30-minute timeout.
+- **Credentials:** neither suite needs live API credentials. No
+  `GEMINI_API_KEY` is set in CI and no test needs one: TikTok HTTP behavior is
+  exercised behind faked transports, and CLI tests are dry-run only, so no
+  Edge TTS synthesis happens either. The former credential-gated test
+  (`test_generate_ideas_rejects_duplicate_padding`, which failed offline with
+  `ConfigError` and made a real Gemini API call with a key set) was made
+  hermetic at the `_json_request` seam.
 
 ## Verification evidence
 
@@ -109,9 +113,9 @@ three suites: those numbers would be a fifth place a count could live.
 
 ## What CI does NOT validate
 
-- No lint, formatter, type-check, or coverage gate for the five Python
-  products: none of them configures one, so CI invents none. (`qr-generator`
-  does configure eslint and tsc, and `qr-generator.yml` runs them.)
+- No lint, formatter, type-check, or coverage gate for the Python products:
+  none of them configures one, so CI invents none. (`qr-generator` does configure
+  eslint and tsc, and `qr-generator.yml` runs them.)
 - No Maigret / online username scan for `privacy-audit`: CI installs no optional
   dependency, so the `--online-usernames` path (and the Maigret command builder
   it uses) can only be exercised through the tests' stubs, never against real

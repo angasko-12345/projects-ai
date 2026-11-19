@@ -11,6 +11,11 @@ RevenueCat `premium` entitlement.
 Everything runs on-device. No accounts, no backend, no analytics, no ads. The
 free tier never requires a purchase.
 
+The monorepo copy is the canonical source; the standalone public repository is
+a distribution mirror with known outstanding differences. Follow
+[`REPOSITORY_POLICY.md`](REPOSITORY_POLICY.md) for the reconciliation checklist
+and release process.
+
 ## Features
 
 - 5 input types: Text, URL, Email, Phone, Wi-Fi (with security, hidden SSID, and

@@ -96,11 +96,13 @@ function MainScreen() {
   const [toast, setToast] = useState<ToastData | null>(null);
   const [saved, setSaved] = useState<SavedCode[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
-  const [hydrated, setHydrated] = useState(false);
+  const [savedHydrated, setSavedHydrated] = useState(false);
+  const [historyHydrated, setHistoryHydrated] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
 
   const captureViewRef = useRef<RNView>(null);
   const toastTimerRef = useRef<number | null>(null);
+  const savedWriteInFlightRef = useRef(false);
   const lastSaveDirectoryRef = useRef<string | null>(null);
   // Any error shown this session blocks the in-app review prompt.
   const sessionHadErrorRef = useRef(false);
@@ -123,30 +125,53 @@ function MainScreen() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([loadSavedCodes(), loadHistory()]).then(([loadedSaved, loadedHistory]) => {
+    void Promise.allSettled([loadSavedCodes(), loadHistory()]).then(([savedResult, historyResult]) => {
       if (cancelled) {
         return;
       }
-      setSaved(loadedSaved);
-      setHistory(loadedHistory);
-      setHydrated(true);
+      if (savedResult.status === 'fulfilled') {
+        setSaved(savedResult.value);
+        setSavedHydrated(true);
+      } else {
+        showToast('Saved codes could not be loaded. Existing data was left untouched.', 'error');
+      }
+      if (historyResult.status === 'fulfilled') {
+        setHistory(historyResult.value);
+        setHistoryHydrated(true);
+      } else {
+        showToast('QR history could not be loaded. Existing data was left untouched.', 'error');
+      }
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [showToast]);
+
+  const persistSavedCodes = async (next: SavedCode[]): Promise<boolean> => {
+    if (savedWriteInFlightRef.current) {
+      showToast('A library update is already being saved. Try again in a moment.', 'neutral');
+      return false;
+    }
+    savedWriteInFlightRef.current = true;
+    try {
+      await writeSavedCodes(next);
+      setSaved(next);
+      return true;
+    } catch {
+      showToast('Saved codes could not be stored on this device. Your library was not changed.', 'error');
+      return false;
+    } finally {
+      savedWriteInFlightRef.current = false;
+    }
+  };
 
   useEffect(() => {
-    if (hydrated) {
-      writeSavedCodes(saved);
+    if (historyHydrated) {
+      void writeHistory(history).catch(() =>
+        showToast('QR history changed in this session but could not be stored on this device.', 'error'),
+      );
     }
-  }, [saved, hydrated]);
-
-  useEffect(() => {
-    if (hydrated) {
-      writeHistory(history);
-    }
-  }, [history, hydrated]);
+  }, [history, historyHydrated, showToast]);
 
   useEffect(() => () => clearTimeout(toastTimerRef.current), []);
 
@@ -300,7 +325,11 @@ function MainScreen() {
     setDraft(EMPTY_DRAFT);
   };
 
-  const handleSaveToLibrary = () => {
+  const handleSaveToLibrary = async () => {
+    if (!savedHydrated) {
+      showToast('Saved codes are unavailable because local storage could not be read.', 'error');
+      return;
+    }
     if (validation.status !== 'ok') {
       showToast('Build a valid QR code first.', 'error');
       return;
@@ -316,9 +345,10 @@ function MainScreen() {
       draft: { ...draft, wifi: { ...draft.wifi } },
       appearance: { ...appearance },
     };
-    setSaved((current) => [code, ...current]);
-    showToast('Code saved to your library.', 'success');
-    noteSuccess();
+    if (await persistSavedCodes([code, ...saved])) {
+      showToast('Code saved to your library.', 'success');
+      noteSuccess();
+    }
   };
 
   const handleLoadSaved = (code: SavedCode) => {
@@ -335,12 +365,24 @@ function MainScreen() {
   };
 
   const handleDeleteSaved = (id: string) => {
-    setSaved((current) => current.filter((code) => code.id !== id));
+    if (savedHydrated) {
+      void persistSavedCodes(saved.filter((code) => code.id !== id));
+    }
   };
 
   const handleClearHistory = () => {
-    setHistory([]);
-    showToast('History cleared.', 'neutral');
+    if (!historyHydrated) {
+      showToast('History cannot be cleared because local storage could not be read.', 'error');
+      return;
+    }
+    void writeHistory([])
+      .then(() => {
+        setHistory([]);
+        showToast('History cleared.', 'neutral');
+      })
+      .catch(() =>
+        showToast('QR history could not be cleared on this device. Your history was not changed.', 'error'),
+      );
   };
 
   return (

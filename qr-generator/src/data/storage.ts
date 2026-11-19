@@ -14,24 +14,21 @@ export function makeId(): string {
 }
 
 async function readList<T>(key: string): Promise<T[]> {
-  try {
-    const raw = await AsyncStorage.getItem(key);
-    if (!raw) {
-      return [];
-    }
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as T[]) : [];
-  } catch {
+  const raw = await AsyncStorage.getItem(key);
+  if (!raw) {
     return [];
   }
+  const parsed: unknown = JSON.parse(raw);
+  if (!Array.isArray(parsed)) {
+    throw new Error(`Stored list ${key} is not an array.`);
+  }
+  return parsed as T[];
 }
 
 async function writeList(key: string, entries: unknown[]): Promise<void> {
-  try {
-    await AsyncStorage.setItem(key, JSON.stringify(entries));
-  } catch {
-    // Storage failures must not crash the app; the in-memory state stays authoritative.
-  }
+  // Propagate errors so the UI can distinguish a persisted change from an
+  // in-memory-only change. Callers must not report durable success on failure.
+  await AsyncStorage.setItem(key, JSON.stringify(entries));
 }
 
 export async function loadSettings(): Promise<AppSettings> {

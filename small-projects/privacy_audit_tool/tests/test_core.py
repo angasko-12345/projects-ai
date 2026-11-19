@@ -1,7 +1,10 @@
+import io
 import json
 import sqlite3
 import tempfile
 import unittest
+import zipfile
+from unittest import mock
 from collections import Counter
 from pathlib import Path
 
@@ -97,6 +100,56 @@ class SafetyTests(unittest.TestCase):
 
 
 class RobustnessTests(unittest.TestCase):
+    def test_takeout_zip_rejects_oversized_mail_member_before_extracting(self):
+        with tempfile.TemporaryDirectory() as td:
+            archive = Path(td) / 'takeout.zip'
+            with zipfile.ZipFile(archive, 'w') as z:
+                z.writestr('Takeout/Mail/all.mbox', 'x' * 20)
+            candidates, domains = [], Counter()
+            m.WARNINGS.clear()
+            with mock.patch.object(m, 'MAX_TAKEOUT_MEMBER_BYTES', 10):
+                m.scan_takeout_zip(archive, candidates, domains)
+            self.assertEqual(candidates, [])
+            self.assertTrue(any('per-file limit' in warning for warning in m.WARNINGS))
+
+    def test_takeout_zip_enforces_actual_stream_size_even_if_header_lies(self):
+        class FakeZip:
+            def __enter__(self):
+                info = zipfile.ZipInfo('Takeout/Mail/all.eml')
+                info.file_size = 1
+                self.member = info
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def infolist(self):
+                return [self.member]
+
+            def open(self, member):
+                return io.BytesIO(b'x' * 20)
+
+        candidates, domains = [], Counter()
+        m.WARNINGS.clear()
+        with (
+            mock.patch.object(m, 'MAX_TAKEOUT_MEMBER_BYTES', 10),
+            mock.patch.object(m.zipfile, 'ZipFile', return_value=FakeZip()),
+        ):
+            m.scan_takeout_zip(Path('takeout.zip'), candidates, domains)
+        self.assertTrue(any('exceeded the per-file size limit' in warning for warning in m.WARNINGS))
+
+    def test_takeout_zip_enforces_combined_size_limit(self):
+        with tempfile.TemporaryDirectory() as td:
+            archive = Path(td) / 'takeout.zip'
+            with zipfile.ZipFile(archive, 'w') as z:
+                z.writestr('Takeout/Mail/one.eml', '123456')
+                z.writestr('Takeout/Mail/two.eml', '123456')
+            candidates, domains = [], Counter()
+            m.WARNINGS.clear()
+            with mock.patch.object(m, 'MAX_TAKEOUT_TOTAL_BYTES', 10):
+                m.scan_takeout_zip(archive, candidates, domains)
+            self.assertTrue(any('archive limit' in warning for warning in m.WARNINGS))
+
     def test_sqlite_path_with_special_chars(self):
         with tempfile.TemporaryDirectory() as td:
             d = Path(td) / 'a#b %c'
