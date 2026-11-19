@@ -14,7 +14,8 @@ on one command would make scripts that call either one ambiguous.
 
 Exit codes: 0 every check passed (or was not configured), 2 at least one
 warning, 1 at least one failure, or the check could not run at all (bad
-arguments, unreadable campaign file, missing post file, FFmpeg missing).
+arguments, unreadable campaign file, missing post file, FFmpeg missing). Use
+``--strict`` to require at least one campaign-specific rule before checking.
 """
 import argparse
 import sys
@@ -49,7 +50,28 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--json", action="store_true", help="Print the report as JSON")
     parser.add_argument("--threads", type=int, default=1, metavar="N",
                         help="FFmpeg threads per analysis pass (default 1; 0 = FFmpeg decides)")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="fail unless the campaign configures at least one campaign-specific rule",
+    )
     return parser
+
+
+def has_configured_rules(campaign) -> bool:
+    """Whether the brief contains a constraint beyond generic media checks."""
+    return any(
+        (
+            campaign.length_range,
+            campaign.max_static_seconds,
+            campaign.loudness_target,
+            campaign.max_true_peak is not None,
+            campaign.cta_logo_path is not None and campaign.cta_min_seconds is not None,
+            campaign.required_hashtags,
+            campaign.required_mentions,
+            campaign.disclosure_line,
+        )
+    )
 
 
 def main(argv=None) -> int:
@@ -71,6 +93,14 @@ def main(argv=None) -> int:
         except (OSError, UnicodeDecodeError) as e:
             print(f"clipcheck: cannot read post file {args.post}: {e}", file=sys.stderr)
             return 1
+
+    if args.strict and not has_configured_rules(campaign):
+        print(
+            "clipcheck: --strict requires at least one campaign rule "
+            "(video, audio, CTA, or post requirement); generic media checks alone do not qualify.",
+            file=sys.stderr,
+        )
+        return 1
 
     try:
         report = run_checks(Path(args.video), campaign, post_text,

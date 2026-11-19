@@ -36,8 +36,12 @@ and release process.
 - Honest "purchases are not connected in this build" state until the store
   setup in `BILLING_SETUP.md` is completed; purchases are never faked
 - Saved codes, history, and settings stored locally (AsyncStorage): history is
-  deduplicated by payload and capped at 100 entries; saved codes are neither
-  deduplicated nor capped
+  deduplicated by payload and capped at 100 entries; Wi-Fi codes are excluded
+  from automatic history, including older entries removed during upgrade; saving
+  a Wi-Fi code to the library requires a confirmation; saved codes are neither
+  deduplicated nor capped. AsyncStorage is app-private local storage, not an
+  encrypted credential vault; do not save sensitive network passwords unless
+  you trust the device
 - In-app review prompt (expo-store-review) only after the 3rd successful
   save/share/export, never in a session that showed an error, at most once per
   90 days; "Send feedback" mailto link in the Library sheet

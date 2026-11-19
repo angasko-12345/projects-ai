@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 
 from app import config, gemini, local_text, pipeline, providers
+import make_videos
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -312,6 +313,45 @@ def test_cli_help_documents_the_backend_flag():
     assert proc.returncode == 0
     assert "--backend" in proc.stdout
     assert "gemini" in proc.stdout and "local" in proc.stdout
+
+
+def test_local_generation_prints_external_tts_privacy_notice(monkeypatch, capsys):
+    monkeypatch.delenv("TEXT_BACKEND", raising=False)
+    monkeypatch.setattr(
+        make_videos,
+        "run_pipeline",
+        lambda count, dry_run, backend: {
+            "success": [{"file": "story.mp4", "duration": 20, "visual_styles": []}],
+            "failed": [],
+        },
+    )
+
+    assert (
+        make_videos.main(
+            ["--backend", "local", "--allow-online-tts", "--count", "1"]
+        )
+        == 0
+    )
+
+    captured = capsys.readouterr()
+    assert "PRIVACY NOTICE" in captured.err
+    assert "narration text is sent" in captured.err
+    assert "Edge TTS" in captured.err
+
+
+def test_local_generation_requires_explicit_online_tts_opt_in(monkeypatch, capsys):
+    monkeypatch.delenv("TEXT_BACKEND", raising=False)
+    # Reaching the pipeline would mean network-backed work could start.
+    monkeypatch.setattr(
+        make_videos,
+        "run_pipeline",
+        lambda *args, **kwargs: pytest.fail("pipeline ran"),
+    )
+
+    assert make_videos.main(["--backend", "local", "--count", "1"]) == 1
+    captured = capsys.readouterr()
+    assert "PRIVACY NOTICE" in captured.err
+    assert "Generation stopped before network access" in captured.err
 
 
 def test_cli_local_dry_run_needs_no_gemini_key():

@@ -3,6 +3,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -21,6 +22,7 @@ import {
   loadSavedCodes,
   makeId,
   prependHistory,
+  shouldRecordHistory,
   writeHistory,
   writeSavedCodes,
 } from './src/data/storage';
@@ -203,7 +205,7 @@ function MainScreen() {
   const payload = validation.status === 'ok' ? validation.payload : null;
 
   useEffect(() => {
-    if (!payload) {
+    if (!payload || !shouldRecordHistory(draft.type)) {
       return;
     }
     const timer = setTimeout(() => {
@@ -325,7 +327,21 @@ function MainScreen() {
     setDraft(EMPTY_DRAFT);
   };
 
-  const handleSaveToLibrary = async () => {
+  const persistCurrentCode = async () => {
+    const code: SavedCode = {
+      id: makeId(),
+      createdAt: Date.now(),
+      label: contentLabel(draft),
+      draft: { ...draft, wifi: { ...draft.wifi } },
+      appearance: { ...appearance },
+    };
+    if (await persistSavedCodes([code, ...saved])) {
+      showToast('Code saved to your library.', 'success');
+      noteSuccess();
+    }
+  };
+
+  const handleSaveToLibrary = () => {
     if (!savedHydrated) {
       showToast('Saved codes are unavailable because local storage could not be read.', 'error');
       return;
@@ -338,17 +354,18 @@ function MainScreen() {
       showToast('Free plan saves up to 3 codes. Go premium for unlimited.', 'neutral');
       return;
     }
-    const code: SavedCode = {
-      id: makeId(),
-      createdAt: Date.now(),
-      label: contentLabel(draft),
-      draft: { ...draft, wifi: { ...draft.wifi } },
-      appearance: { ...appearance },
-    };
-    if (await persistSavedCodes([code, ...saved])) {
-      showToast('Code saved to your library.', 'success');
-      noteSuccess();
+    if (draft.type === 'wifi') {
+      Alert.alert(
+        'Save Wi-Fi credentials?',
+        'This saves the network name and password in this app\'s local storage on this device.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Save Wi-Fi code', onPress: () => void persistCurrentCode() },
+        ],
+      );
+      return;
     }
+    void persistCurrentCode();
   };
 
   const handleLoadSaved = (code: SavedCode) => {

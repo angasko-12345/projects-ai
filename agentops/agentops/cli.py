@@ -187,6 +187,11 @@ def build_parser() -> argparse.ArgumentParser:
     artifacts.add_argument("--task")
     artifacts.add_argument("--kind")
     artifacts.add_argument("--show")
+    artifacts.add_argument(
+        "--orphans",
+        action="store_true",
+        help="list artifact files with no database record (read-only)",
+    )
     artifacts.add_argument("--prune-keep", type=int, default=None)
     artifacts.add_argument("--limit", type=int, default=20)
     artifacts.add_argument("--offset", type=int, default=0)
@@ -513,6 +518,27 @@ def main(argv: list[str] | None = None, services: CliServices | None = None) -> 
                 except (ArtifactError, OSError) as error:
                     print(f"ERROR: {error}")
                     return 2
+                return 0
+            if args.orphans:
+                # Read all metadata rows in bounded pages. The scan is
+                # intentionally read-only: orphan files can be crash residue,
+                # and age alone is not enough to prove deletion is safe.
+                known: set[str] = set()
+                offset = 0
+                while True:
+                    page = state.list_artifacts(limit=1000, offset=offset)
+                    known.update(item.rel_path for item in page)
+                    if len(page) < 1000:
+                        break
+                    offset += len(page)
+                orphans = store.find_orphans(known)
+                if not orphans:
+                    print("No orphaned artifact files.")
+                else:
+                    print(f"Found {len(orphans)} orphaned artifact file(s) (not deleted):")
+                    for rel_path in orphans:
+                        print(rel_path)
+                    print("Review these paths before removing files; this command is read-only.")
                 return 0
             found = state.list_artifacts(
                 args.workflow, args.task, args.kind, args.limit, args.offset

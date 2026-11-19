@@ -655,6 +655,25 @@ class EventsCommandTests(CliTestCase):
 
 
 class ArtifactsCommandTests(CliTestCase):
+    def test_artifacts_orphan_scan_is_read_only(self):
+        state = MagicMock(name="state")
+        state.list_artifacts.return_value = []
+        artifact_store = MagicMock(name="artifact_store")
+        artifact_store.find_orphans.return_value = ["plans/wf/orphan"]
+        services = self._services(
+            state_store=lambda path: state,
+            artifact_store=lambda path: artifact_store,
+        )
+
+        code, stdout, _ = self._invoke(["artifacts", "--orphans"], services)
+
+        self.assertEqual(code, 0)
+        self.assertIn("plans/wf/orphan", stdout)
+        self.assertIn("not deleted", stdout)
+        artifact_store.find_orphans.assert_called_once_with(set())
+        artifact_store.prune.assert_not_called()
+        state.delete_artifact_record.assert_not_called()
+
     def test_artifacts_with_no_artifacts(self):
         code, stdout, _ = self._invoke(["artifacts"])
         self.assertEqual(code, 0)

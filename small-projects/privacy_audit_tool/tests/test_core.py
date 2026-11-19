@@ -13,6 +13,8 @@ from privacy_audit.main import (
     domain_from_email,
     domain_from_url,
     extract_username_candidates,
+    firefox_epoch_to_iso,
+    chrome_epoch_to_iso,
     parse_message_bytes,
 )
 
@@ -21,6 +23,13 @@ class CoreTests(unittest.TestCase):
     def test_domains(self):
         self.assertEqual(domain_from_email('x@www.testsite.com'), 'testsite.com')
         self.assertEqual(domain_from_url('https://www.testsite.com/a'), 'testsite.com')
+
+    def test_browser_timestamps_are_explicit_utc(self):
+        unix_microseconds = 1_700_000_000_000_000
+        chrome_microseconds = unix_microseconds + 11_644_473_600_000_000
+        expected = '2023-11-14T22:13:20Z'
+        self.assertEqual(chrome_epoch_to_iso(chrome_microseconds), expected)
+        self.assertEqual(firefox_epoch_to_iso(unix_microseconds), expected)
 
     def test_usernames(self):
         vals = extract_username_candidates('hello old_username_2019 and gamer-name42')

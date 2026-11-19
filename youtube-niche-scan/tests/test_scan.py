@@ -535,6 +535,32 @@ def test_estimate_units_default_multiplier_is_one():
     assert est["per_keyword"]["search.list (N calls x 100 units)"] == 100
 
 
+def test_default_report_arguments_are_safe_and_truthful(tmp_path):
+    args = scan.parse_args([])
+    result = {
+        "rows": [],
+        "totals": {"excluded_young": 0, "excluded_hidden_channels": 0, "ignored_mid_length": 0},
+        "scanned": 0,
+        "stopped_early": False,
+        "units_used": 0,
+        "calls": {name: 0 for name in scan.QUOTA_COSTS},
+        "cache_hits": 0,
+    }
+    path = tmp_path / "report.md"
+
+    scan.write_markdown(result, {}, args, path)
+
+    report = path.read_text(encoding="utf-8")
+    assert "sort=relevance" in report
+    assert "region=US" in report
+    assert "bounded, non-random sample" in report
+
+
+def test_sort_option_rejects_unknown_values():
+    with pytest.raises(SystemExit):
+        scan.parse_args(["--sort", "random"])
+
+
 def test_dry_run_shows_combo_multiplier(monkeypatch, capsys):
     def fake_urlopen(req, timeout=None):
         raise AssertionError("dry-run must not call the API")

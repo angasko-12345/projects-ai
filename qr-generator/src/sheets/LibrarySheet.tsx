@@ -151,6 +151,9 @@ export function LibrarySheet({
     />
   ) : (
     <View style={styles.tabStack}>
+      <Text style={[styles.historyPrivacyNote, { color: colors.textMuted }]}>
+        Wi-Fi codes are not stored in history. Saving one to your library requires confirmation.
+      </Text>
       {history.length === 0 ? (
         <View style={styles.emptyBox}>
           <Ionicons name="time-outline" size={44} color={colors.textMuted} />
@@ -323,6 +326,10 @@ const styles = StyleSheet.create({
     fontSize: TYPE.label,
     textAlign: 'center',
     paddingHorizontal: SPACING.lg,
+  },
+  historyPrivacyNote: {
+    fontSize: TYPE.caption,
+    lineHeight: TYPE.caption * 1.5,
   },
   list: {
     gap: SPACING.sm,

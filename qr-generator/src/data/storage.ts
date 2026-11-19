@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import type { AppSettings, HistoryEntry, SavedCode } from '../types';
+import type { AppSettings, HistoryEntry, QrType, SavedCode } from '../types';
 import { DEFAULT_SETTINGS } from '../types';
 
 const SETTINGS_KEY = '@qrgen:v1:settings';
@@ -66,8 +66,20 @@ export function writeSavedCodes(entries: SavedCode[]): Promise<void> {
   return writeList(SAVED_KEY, entries);
 }
 
-export function loadHistory(): Promise<HistoryEntry[]> {
-  return readList<HistoryEntry>(HISTORY_KEY);
+export async function loadHistory(): Promise<HistoryEntry[]> {
+  const entries = await readList<HistoryEntry>(HISTORY_KEY);
+  // Older app versions automatically retained Wi-Fi payloads (including
+  // passwords). Remove those on upgrade before exposing history to the UI.
+  const safeEntries = entries.filter((entry) => entry.type !== 'wifi');
+  if (safeEntries.length !== entries.length) {
+    await writeList(HISTORY_KEY, safeEntries);
+  }
+  return safeEntries;
+}
+
+/** Wi-Fi credentials are intentionally never retained in automatic history. */
+export function shouldRecordHistory(type: QrType): boolean {
+  return type !== 'wifi';
 }
 
 /** Newest first, deduplicated by payload, capped at HISTORY_LIMIT. */

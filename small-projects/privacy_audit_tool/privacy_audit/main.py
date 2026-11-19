@@ -15,7 +15,7 @@ import tempfile
 import zipfile
 from collections import Counter
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from email import policy
 from email.parser import BytesParser
 from pathlib import Path
@@ -299,17 +299,18 @@ def chrome_epoch_to_iso(value):
         ts = value / 1_000_000 - 11644473600
         if ts <= 0:
             return ''
-        return datetime.fromtimestamp(ts).isoformat(timespec='seconds')
+        return datetime.fromtimestamp(ts, timezone.utc).isoformat(timespec='seconds').replace('+00:00', 'Z')
     except Exception:
         return ''
 
 
 def firefox_epoch_to_iso(value):
     try:
+        # Firefox timestamps: microseconds since the Unix epoch in UTC.
         ts = value / 1_000_000
         if ts <= 0:
             return ''
-        return datetime.fromtimestamp(ts).isoformat(timespec='seconds')
+        return datetime.fromtimestamp(ts, timezone.utc).isoformat(timespec='seconds').replace('+00:00', 'Z')
     except Exception:
         return ''
 

@@ -39,7 +39,7 @@ The AgentOps desktop client is PySide6, an optional dependency (the
 (`agentops/tests/qt_display.py`) and always run on Qt's `offscreen`
 platform, so no `$DISPLAY` is needed.
 
-`agentops.yml` runs two jobs:
+`agentops.yml` runs four jobs, two of them Windows-specific:
 
 - `tests`: the stdlib-only suite with no PySide6, so every `@requires_qt`
   test is skipped with an explicit reason. This is the configuration the
@@ -48,6 +48,13 @@ platform, so no `$DISPLAY` is needed.
   Ubuntu), checks that a `QApplication` starts offscreen, and runs the whole
   suite with the GUI tests enabled. A broken Qt install fails that check
   instead of silently skipping the GUI tests again.
+- `windows-prompt-transport`: runs the prompt-transport and init/doctor suites
+  on a real Windows host, including `.cmd` shim behavior.
+- `windows-exe-smoke`: manually dispatched only. It builds the packaged app
+  with the Windows extras, then runs `scripts/build_windows_exe.py --smoke`,
+  which launches a copy from an isolated neutral location and verifies the
+  window, startup log, and clean shutdown. It is not a PR gate until that
+  hosted runner path has been proven stable.
 
 This is a testing-only policy. Production GUI code is unchanged and still
 fails loudly when it cannot start; AgentOps never fabricates a GUI success

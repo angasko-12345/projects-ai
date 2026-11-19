@@ -3,13 +3,13 @@
 Tiny MVP that generates vertical TikTok-style videos from short fictional
 story scripts. One command in, playable MP4s out.
 
-Everything runs on free tiers, and the only external dependency is **one text
-backend** — pick one:
+No stock-media API is required. Choose a text/script backend; note that speech
+synthesis may contact an external service even when the script source is local:
 
 | Backend | Ideas / script / caption | Narration voice | Needs a key |
 |---|---|---|---|
 | `gemini` (default) | Gemini API | Gemini TTS | `GEMINI_API_KEY` |
-| `local` | `local_text.json` on disk | Edge TTS (free) | no |
+| `local` | `local_text.json` on disk | Microsoft Edge TTS (online; narration text is sent to the service) | no |
 
 Visuals are generated locally with FFmpeg, so no stock-media API is required.
 There is no database, no dashboard, no Docker, and no browser automation.
@@ -39,8 +39,12 @@ text and voice providers differ.
 | FFmpeg **and** ffprobe | Both ship together; both must be on `PATH` |
 | A Gemini API key | Only for `--backend gemini`. Free tier: <https://aistudio.google.com/apikey> |
 
-With `--backend local` there is no key of any kind; `edge-tts` and a text file
-are the whole dependency list. No stock-media or image API either way.
+With `--backend local` there is no API key, but it is **not an offline mode**:
+script ideas and narration text are read from a local file, then the complete
+narration text is sent over the network to Microsoft's Edge TTS service to
+create audio. The CLI prints a privacy notice and requires `--allow-online-tts`
+before generation. Do not use this backend for confidential text. No stock-media
+or image API is used.
 
 ## Setup on Windows
 
@@ -122,20 +126,25 @@ python make_videos.py --count 3
 
 # Local backend (no key at all)
 python make_videos.py --backend local --dry-run
-python make_videos.py --backend local --count 1
+python make_videos.py --backend local --allow-online-tts --count 1
 ```
 
-`--backend` accepts `gemini` or `local`; anything else is rejected with the
+For the non-dry-run `local` backend, `--allow-online-tts` is required before
+narration can be sent to Microsoft Edge TTS. `--backend` accepts `gemini` or
+`local`; anything else is rejected with the
 valid choices. Omit it and the `TEXT_BACKEND` environment variable decides,
 falling back to `gemini`. So `set TEXT_BACKEND=local` makes the flag
 unnecessary, but the flag wins when both are present.
 
-Exit codes: `0` all good, `1` setup failure or nothing produced, `2` partial
+Exit codes: `0` all good, `1` setup failure, nothing produced, or local
+narration stopped because `--allow-online-tts` was not supplied; `2` partial
 success (some videos failed). A single bad video never aborts the batch.
 
 ## The local backend
 
-`--backend local` replaces the Gemini API with two local substitutes:
+`--backend local` replaces Gemini text generation with a local script file, but
+its narration is still synthesized by an online service. It is a **local text
+source**, not a fully local/offline backend:
 
 * **Text** comes from `local_text.json` (override with `TEXT_PROVIDER_JSON`).
   It holds one `scripts` array of complete scripts:
@@ -161,9 +170,11 @@ success (some videos failed). A single bad video never aborts the batch.
   is not an object, or a script with no narration text each produce an error
   naming the file, the problem, and what to do about it — not a traceback.
 
-* **Narration** comes from Microsoft Edge TTS (`edge-tts`), which is free and
-  needs no account. Voice and rate are `EDGE_TTS_VOICE` and `EDGE_TTS_RATE`;
-  they are separate from `TTS_VOICE` because that one names a Gemini voice.
+* **Narration** is sent to Microsoft's online Edge TTS service through
+  `edge-tts`. It needs no key or account, but the complete narration text leaves
+  the device; the service is not a local/offline voice. Voice and rate are
+  `EDGE_TTS_VOICE` and `EDGE_TTS_RATE`; they are separate from `TTS_VOICE`
+  because that one names a Gemini voice.
 
 One `--count N` request draws from the first N scripts, so each request is one
 video. Beyond the scripts in the file, ideas repeat — the backend does not
@@ -328,6 +339,7 @@ Copy-Item examples\campaign.example.toml my_campaign.toml
 notepad my_campaign.toml
 python clipcheck.py "C:\clips\my clip.mp4" --campaign my_campaign.toml --post post.txt
 python clipcheck.py "C:\clips\my clip.mp4" --campaign my_campaign.toml --json
+python clipcheck.py "C:\clips\my clip.mp4" --campaign my_campaign.toml --strict
 ```
 
 `--post` is a plain UTF-8 text file holding exactly the post description.
@@ -336,7 +348,10 @@ out of the way of a render running on the same machine; `0` lets FFmpeg pick).
 
 The campaign file is TOML (`examples/campaign.example.toml` documents every
 key). Every rule is optional; a rule you leave out reports `SKIP`, never a
-silent pass. Unknown keys are rejected so a typo cannot switch a rule off.
+silent pass. `--strict` additionally rejects a brief that has no campaign-
+specific rule configured, so generic media checks alone cannot be mistaken for
+compliance with a brief. Unknown keys are rejected so a typo cannot switch a
+rule off.
 
 | Check | Measured with | Fails / warns when |
 |---|---|---|
@@ -353,7 +368,8 @@ silent pass. Unknown keys are rejected so a typo cannot switch a rule off.
 
 Exit codes: `0` everything passed (or was not configured), `2` at least one
 warning, `1` at least one failure or the check could not run (bad arguments,
-unreadable campaign or post file, FFmpeg missing). This differs from
+unreadable campaign or post file, FFmpeg missing). With `--strict`, no
+campaign-specific rule is a failure (exit `1`). This differs from
 `make_videos.py`, whose `2` means a partial batch, which is why clipcheck is
 its own command rather than a `make_videos.py` subcommand.
 
