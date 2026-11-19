@@ -232,16 +232,17 @@ class StalenessTests(unittest.TestCase):
         self.assertTrue(any("dirty working tree" in p for p in check_staleness(document)))
 
     def test_product_change_after_the_measurement_is_stale(self):
-        commits = subprocess.run(
-            ["git", "log", "--format=%H", "--", "agentops"],
-            cwd=str(REPO_ROOT),
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout.split()
-        self.assertGreater(len(commits), 1, "expected product history to compare")
-        problems = check_staleness(self._document_at(commits[-1]))
-        self.assertTrue(any("stale" in p for p in problems), problems)
+        # Use explicit synthetic history instead of relying on this checkout
+        # retaining more than one historical product commit. PR branches may
+        # start at a shallow or squashed repository snapshot.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run, measured = self._scratch_repo(root)
+            (root / "agentops" / "module.py").write_text("x = 2\n", encoding="utf-8")
+            run("add", "-A")
+            run("commit", "-q", "-m", "product change")
+            problems = check_staleness(self._document_at(measured), repo_root=root)
+            self.assertTrue(any("agentops:" in p and "stale" in p for p in problems), problems)
 
     @staticmethod
     def _commits_touching(paths: list[str]) -> list[str]:
@@ -466,29 +467,54 @@ class StalenessTests(unittest.TestCase):
         """`generate.py <product>` re-dates the document but carries the other
         products' records over. Judging per record is what catches that: the
         carried-over record still names the older commit, and the diff over its
-        own directory finds the change."""
-        product = next(r for r in PRODUCTS if r["product"] == "universal-game-agent")
-        commits = subprocess.run(
-            ["git", "log", "--format=%H", "--", product["directory"]],
-            cwd=str(REPO_ROOT),
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout.split()
-        self.assertGreater(len(commits), 1, "expected product history to compare")
+        own directory finds the change. The synthetic history makes this
+        independent of the checkout's branch depth."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
 
-        head = self._head()
-        document = self._document_at(head)
-        # Only agentops was re-measured; UGA's record is carried over from before
-        # a commit that touched universal-game-agent/.
-        for record in document["products"]:
-            if record["product"] == "universal-game-agent":
-                record["commit"] = commits[-1]
-        problems = check_staleness(document)
-        self.assertTrue(
-            any("universal-game-agent" in p and "stale" in p for p in problems), problems
-        )
-        self.assertFalse(any(p.startswith("agentops") for p in problems), problems)
+            def run(*args: str) -> str:
+                return subprocess.run(
+                    [
+                        "git",
+                        "-c",
+                        "user.name=t",
+                        "-c",
+                        "user.email=t@example.com",
+                        "-c",
+                        "commit.gpgsign=false",
+                        *args,
+                    ],
+                    cwd=str(root),
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                ).stdout.strip()
+
+            run("init", "-q")
+            for product in ("agentops", "universal-game-agent"):
+                (root / product).mkdir()
+                (root / product / "module.py").write_text("x = 1\n", encoding="utf-8")
+            run("add", "-A")
+            run("commit", "-q", "-m", "initial products")
+            measured = run("rev-parse", "HEAD")
+
+            (root / "universal-game-agent" / "module.py").write_text(
+                "x = 2\n", encoding="utf-8"
+            )
+            run("add", "-A")
+            run("commit", "-q", "-m", "UGA change")
+            head = run("rev-parse", "HEAD")
+
+            document = self._document_at(head)
+            # Only agentops was re-measured; UGA's record carries the older SHA.
+            for record in document["products"]:
+                if record["product"] == "universal-game-agent":
+                    record["commit"] = measured
+            problems = check_staleness(document, repo_root=root)
+            self.assertTrue(
+                any("universal-game-agent" in p and "stale" in p for p in problems), problems
+            )
+            self.assertFalse(any(p.startswith("agentops:") for p in problems), problems)
 
     def test_a_record_cannot_claim_a_directory_it_does_not_own(self):
         document = good_document()
