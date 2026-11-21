@@ -12,6 +12,7 @@ from .artifacts import ArtifactsView
 from .base import ViewContext
 from .dashboard import DashboardView
 from .failures import FailuresView
+from .mission_control import MissionControlView
 from .runs import RunsView
 from .settings import SettingsView
 from .tasks import TasksView
@@ -20,6 +21,7 @@ from .worktrees import WorktreesView
 from .workflows import WorkflowsView
 
 VIEW_SPECS: tuple[tuple[str, str, type], ...] = (
+    ("mission_control", "Mission Control", MissionControlView),
     ("dashboard", "Dashboard", DashboardView),
     ("tasks", "Tasks", TasksView),
     ("workflows", "Workflows", WorkflowsView),

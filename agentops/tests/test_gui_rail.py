@@ -37,14 +37,30 @@ class IconRailTest(unittest.TestCase):
             destroy(self.window)
 
     def test_one_icon_button_per_view_in_view_specs_order(self):
-        from agentops.gui.shell import _RAIL_ICONS, RAIL_WIDTH
+        from agentops.gui.shell import _RAIL_ICONS, _VIEW_SHORTCUTS, RAIL_WIDTH
         from agentops.gui.views import VIEW_SPECS
 
         self.assertEqual(list(self.window._nav_buttons), [v for v, _t, _f in VIEW_SPECS])
-        for index, (view_id, title, _factory) in enumerate(VIEW_SPECS):
+        self.assertEqual(_VIEW_SHORTCUTS["mission_control"], "Ctrl+Shift+1")
+        self.assertEqual(
+            {view_id: sequence for view_id, sequence in _VIEW_SHORTCUTS.items() if view_id != "mission_control"},
+            {
+                "dashboard": "Ctrl+1",
+                "tasks": "Ctrl+2",
+                "workflows": "Ctrl+3",
+                "agents": "Ctrl+4",
+                "runs": "Ctrl+5",
+                "verification": "Ctrl+6",
+                "failures": "Ctrl+7",
+                "worktrees": "Ctrl+8",
+                "artifacts": "Ctrl+9",
+                "settings": "Ctrl+0",
+            },
+        )
+        for view_id, title, _factory in VIEW_SPECS:
             button = self.window._nav_buttons[view_id]
             self.assertEqual(button.icon_name(), _RAIL_ICONS[view_id])
-            self.assertEqual(button.toolTip(), f"{title}  Ctrl+{(index + 1) % 10}")
+            self.assertEqual(button.toolTip(), f"{title}  {_VIEW_SHORTCUTS[view_id]}")
             self.assertEqual(button.accessibleName(), title)
             self.assertTrue(button.isVisible(), view_id)
         rail = self.window.findChild(type(self.window._sidebar), "Rail")
@@ -63,14 +79,19 @@ class IconRailTest(unittest.TestCase):
         self.assertEqual(self.window._status_dot.toolTip(), "Idle")
 
     def test_rail_click_and_shortcuts_navigate_and_select(self):
-        from agentops.gui.views import VIEW_SPECS
+        from agentops.gui.shell import _VIEW_SHORTCUTS
 
         self.window._nav_buttons["runs"].click()
         wait(20)
         self.assertIs(self.window.active_view(), self.window._views["runs"])
         self.assertTrue(self.window._nav_buttons["runs"].isChecked())
-        for index, (view_id, _title, _factory) in enumerate(VIEW_SPECS):
-            self.window._shortcuts[f"Ctrl+{(index + 1) % 10}"].activated.emit()
+        self.window._shortcuts["Ctrl+Shift+1"].activated.emit()
+        wait(10)
+        self.assertIs(self.window.active_view(), self.window._views["mission_control"])
+        for view_id, sequence in _VIEW_SHORTCUTS.items():
+            if view_id == "mission_control":
+                continue
+            self.window._shortcuts[sequence].activated.emit()
             wait(10)
             self.assertIs(self.window.active_view(), self.window._views[view_id])
             checked = [vid for vid, b in self.window._nav_buttons.items() if b.isChecked()]

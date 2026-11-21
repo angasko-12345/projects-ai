@@ -51,10 +51,25 @@ _SHORTCUTS: tuple[tuple[str, str], ...] = (
     ("Ctrl+B", "toggle_sidebar"),
 )
 
+_VIEW_SHORTCUTS: dict[str, str] = {
+    "mission_control": "Ctrl+Shift+1",
+    "dashboard": "Ctrl+1",
+    "tasks": "Ctrl+2",
+    "workflows": "Ctrl+3",
+    "agents": "Ctrl+4",
+    "runs": "Ctrl+5",
+    "verification": "Ctrl+6",
+    "failures": "Ctrl+7",
+    "worktrees": "Ctrl+8",
+    "artifacts": "Ctrl+9",
+    "settings": "Ctrl+0",
+}
+
 # Sidebar grouping. Every view id in VIEW_SPECS must appear here exactly once
 # (enforced by tests/test_gui_qt.py); the first id of each group renders a
 # section label, and the order must follow VIEW_SPECS.
 _NAV_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("Overview", ("mission_control",)),
     ("Orchestrate", ("dashboard", "tasks", "workflows", "agents")),
     ("Inspect", ("runs", "verification", "failures", "worktrees", "artifacts")),
     ("Configure", ("settings",)),
@@ -64,6 +79,7 @@ _NAV_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
 # is pinned to the bottom of the rail; every other group follows VIEW_SPECS
 # order with a hairline separator between groups.
 _RAIL_ICONS: dict[str, str] = {
+    "mission_control": "layout-dashboard",
     "dashboard": "layout-dashboard",
     "tasks": "list-checks",
     "workflows": "workflow",
@@ -349,7 +365,8 @@ class MainWindow(QMainWindow, AsyncMixin):
             view = self._views.get(view_id)
             if view is None:
                 continue
-            tooltip = f"{title}  Ctrl+{(index + 1) % 10}" if index < 10 else title
+            shortcut = _VIEW_SHORTCUTS.get(view_id)
+            tooltip = f"{title}  {shortcut}" if shortcut else title
             button = IconButton(_RAIL_ICONS.get(view_id, "circle-dashed"), tooltip, title)
             button.setCheckable(True)
             button.clicked.connect(lambda _checked=False, vid=view_id: self.navigate(vid))
@@ -393,13 +410,10 @@ class MainWindow(QMainWindow, AsyncMixin):
             shortcut = QShortcut(QKeySequence(sequence), self)
             shortcut.activated.connect(getattr(self, method))
             self._shortcuts[sequence] = shortcut
-        for index, (view_id, _title, _factory) in enumerate(VIEW_SPECS):
-            if index > 9:
-                break
-            digit = (index + 1) % 10
-            shortcut = QShortcut(QKeySequence(f"Ctrl+{digit}"), self)
+        for view_id, sequence in _VIEW_SHORTCUTS.items():
+            shortcut = QShortcut(QKeySequence(sequence), self)
             shortcut.activated.connect(lambda vid=view_id: self.navigate(vid))
-            self._shortcuts[f"Ctrl+{digit}"] = shortcut
+            self._shortcuts[sequence] = shortcut
 
     def _build_tray(self) -> None:
         self._tray = QSystemTrayIcon(_app_icon(), self)
@@ -818,16 +832,15 @@ class MainWindow(QMainWindow, AsyncMixin):
     # ------------------------------------------------------------------
     def open_palette(self) -> None:
         commands: list[Command] = []
-        for index, (view_id, title, _factory) in enumerate(VIEW_SPECS):
+        for view_id, title, _factory in VIEW_SPECS:
             if view_id == "settings":
                 continue  # exposed as the standalone "Settings" command below
-            digit = (index + 1) % 10
             commands.append(
                 Command(
                     title=f"Open {title}",
                     run=lambda vid=view_id: self.navigate(vid),
                     keywords=f"view open navigate {view_id}",
-                    shortcut=f"Ctrl+{digit}",
+                    shortcut=_VIEW_SHORTCUTS.get(view_id, ""),
                     group="Navigation",
                 )
             )
@@ -857,7 +870,7 @@ class MainWindow(QMainWindow, AsyncMixin):
                     "Settings",
                     lambda: self.navigate("settings"),
                     keywords="preferences configure options",
-                    shortcut="Ctrl+0",
+                    shortcut=_VIEW_SHORTCUTS["settings"],
                     group="Actions",
                 ),
                 Command(
